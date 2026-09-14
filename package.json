@@ -1,0 +1,20 @@
+{
+  "name": "gasclaw",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && node build.mjs",
+    "test": "vitest run",
+    "up": "./gasclaw up",
+    "ship": "./gasclaw ship"
+  },
+  "devDependencies": {
+    "@google/clasp": "3.4.1",
+    "@types/google-apps-script": "2.0.13",
+    "@types/node": "24.13.4",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  }
+}

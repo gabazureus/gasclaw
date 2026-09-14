@@ -2,5 +2,6 @@ node_modules/
 dist/
 .env.local
 .clasprc.json
+.clasp.json
 *.log
 .DS_Store
