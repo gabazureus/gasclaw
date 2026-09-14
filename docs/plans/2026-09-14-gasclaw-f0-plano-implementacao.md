@@ -1648,6 +1648,11 @@ A F0 precisa rodar no mesmo dia com o menor código possível, respeitando os li
 10. Web app com `access: MYSELF` (tela só do dono; `assertOwner` como defesa extra). Fallback `DOMAIN` se o Chat exigir.
 11. CI publica dev e prod sem health/rollback automático; rollback manual por `./gasclaw rollback --prod` até a F1.
 
+## Correções feitas durante a execução (Tasks 1–8)
+12. **Task 1:** `npm install` do plano não trazia `@types/node` (peer opcional do vitest 5) e deixava `typescript` sem versão; `tsc --noEmit` cobre `test/`, que importa `node:*`. Adicionados `@types/node@24` (24.13.4) e `typescript@7.0.2`; todas as devDependencies ficaram com versão exata no `package.json`.
+13. **Task 6:** `(): void => props().setProperty(...)` falha no TS 7 (TS2322: `Properties` não é `void`). Setters do `store.ts` passaram a usar corpo em bloco.
+14. **Task 7:** `settings.html` ganhou acessibilidade mínima: `lang="pt-BR"`, `<label for>` nos campos, `role="status"`/`aria-live` nas mensagens e na resposta.
+
 ## Consequências
 Cada item tem substituição planejada na seção "Parte D" do plano `docs/plans/2026-09-14-gasclaw-f0-plano-implementacao.md`.
 ```

@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+# gasclaw — ponto de entrada único e idempotente.  Uso: ./gasclaw <comando> [--prod]
+set -euo pipefail
+cd "$(dirname "$0")"
+export PATH="$PATH:/usr/local/share/google-cloud-sdk/bin:/opt/homebrew/share/google-cloud-sdk/bin"
+
+ENV_FILE=gasclaw.env
+touch "$ENV_FILE"
+set -a
+. "./$ENV_FILE"
+[ -f .env.local ] && . ./.env.local
+set +a
+
+CMD="${1:-help}"
+[ $# -gt 0 ] && shift
+TARGET=dev
+for a in "$@"; do [ "$a" = "--prod" ] && TARGET=prod; done
+UP=$(printf '%s' "$TARGET" | tr '[:lower:]' '[:upper:]')
+
+say()  { printf '\033[1;36m▸ %s\033[0m\n' "$*"; }
+ok()   { printf '\033[32m✓ %s\033[0m\n' "$*"; }
+warn() { printf '\033[33m! %s\033[0m\n' "$*"; }
+die()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
+var()  { eval "printf '%s' \"\${$1:-}\""; }
+setvar() {
+  grep -v "^$1=" "$ENV_FILE" > "$ENV_FILE.tmp" || true
+  printf '%s=%s\n' "$1" "$2" >> "$ENV_FILE.tmp"
+  mv "$ENV_FILE.tmp" "$ENV_FILE"
+  eval "export $1=\"\$2\""
+}
+pause() { # $1 chave de concluído · $2 URL a abrir (ou vazio) · $3 instrução
+  [ -n "$(var "$1")" ] && return 0
+  [ -n "${CI:-}" ] && die "passo manual pendente: $3"
+  printf '\n\033[33m⏸  %s\033[0m\n' "$3"
+  [ -n "$2" ] && open "$2"
+  printf '   Pressione Enter quando terminar… '
+  read -r _
+  setvar "$1" 1
+}
+clasp_() {
+  printf '{"scriptId":"%s","rootDir":"dist","projectId":"%s"}\n' "$(var "SCRIPT_ID_$UP")" "$(var "GCP_PROJECT_$UP")" > .clasp.json
+  npx --no-install clasp "$@"
+}
+url() { printf 'https://script.google.com/a/macros/%s/s/%s/exec' "${DOMAIN:-}" "$(var "DEPLOY_ID_$UP")"; }
+remote() {
+  local t
+  t=$(gcloud auth print-access-token 2>/dev/null) || return 1
+  curl -fsSL -H "Authorization: Bearer $t" "$(url)?action=$1"
+}
+
+ensure_tools() {
+  command -v brew >/dev/null || die "Homebrew não encontrado: instale em https://brew.sh e rode de novo"
+  command -v node >/dev/null || brew install node
+  command -v gcloud >/dev/null || brew install --cask google-cloud-sdk
+  command -v gh >/dev/null || brew install gh
+  [ -x node_modules/.bin/clasp ] || npm ci
+  ok "ferramentas"
+}
+
+ensure_auth() {
+  local acct
+  acct=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1)
+  if [ -z "$acct" ]; then
+    say "login no Google Cloud (abre o navegador)"
+    gcloud auth login --enable-gdrive-access
+    acct=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -1)
+  fi
+  setvar ACCOUNT "$acct"
+  setvar DOMAIN "${acct#*@}"
+  if [ ! -f "$HOME/.clasprc.json" ]; then
+    say "login no clasp (abre o navegador)"
+    npx --no-install clasp login
+  fi
+  pause APPS_SCRIPT_API_OK "https://script.google.com/home/usersettings" "Ligue 'Google Apps Script API' (On)."
+  ok "autenticado como $ACCOUNT"
+}
+
+ensure_gcp() {
+  local p
+  p=$(var "GCP_PROJECT_$UP")
+  if [ -z "$p" ]; then
+    p="gasclaw-$TARGET-$(openssl rand -hex 3)"
+    say "criando projeto GCP $p"
+    gcloud projects create "$p" --name="gasclaw $TARGET"
+    setvar "GCP_PROJECT_$UP" "$p"
+  fi
+  gcloud services enable script.googleapis.com chat.googleapis.com drive.googleapis.com logging.googleapis.com --project "$p" >/dev/null
+  setvar "GCP_NUMBER_$UP" "$(gcloud projects describe "$p" --format='value(projectNumber)')"
+  pause "CONSENT_OK_$UP" "https://console.cloud.google.com/auth/branding?project=$p" \
+    "Tela de consentimento OAuth: público INTERNO, nome 'gasclaw', e-mail de suporte $ACCOUNT. Salve."
+  ok "projeto GCP $p"
+}
+
+ensure_script() {
+  if [ -z "$(var "SCRIPT_ID_$UP")" ]; then
+    rm -f .clasp.json
+    mkdir -p dist
+    npx --no-install clasp create-script --type standalone --title "gasclaw-$TARGET" --rootDir dist
+    setvar "SCRIPT_ID_$UP" "$(node -p 'require("./.clasp.json").scriptId')"
+  fi
+  pause "GCP_LINKED_$UP" "https://script.google.com/home/projects/$(var "SCRIPT_ID_$UP")/settings" \
+    "Configurações do projeto → Projeto do Google Cloud → Alterar projeto → cole o número $(var "GCP_NUMBER_$UP") → Definir projeto."
+  ok "script $(var "SCRIPT_ID_$UP")"
+}
+
+deploy() {
+  local out v d
+  say "build + testes"
+  npm run build >/dev/null
+  npm test >/dev/null
+  say "push ($TARGET)"
+  clasp_ push --force >/dev/null
+  out=$(clasp_ create-version "gasclaw $(git rev-parse --short HEAD 2>/dev/null || echo local)")
+  v=$(printf '%s' "$out" | grep -oE 'ersion [0-9]+' | grep -oE '[0-9]+' | head -1)
+  [ -n "$v" ] || die "não consegui ler o número da versão: $out"
+  d=$(var "DEPLOY_ID_$UP")
+  if [ -z "$d" ]; then
+    out=$(clasp_ create-deployment -V "$v" -d "gasclaw $TARGET")
+    d=$(printf '%s' "$out" | grep -oE 'AKfy[A-Za-z0-9_-]+' | head -1)
+    [ -n "$d" ] || die "não consegui ler o ID da implantação: $out"
+    setvar "DEPLOY_ID_$UP" "$d"
+  else
+    clasp_ create-deployment -i "$d" -V "$v" -d "gasclaw $TARGET" >/dev/null
+  fi
+  ok "$TARGET na versão $v → $(url)"
+}
+
+authorize() {
+  local label="gasclaw"
+  [ "$TARGET" = dev ] && label="gasclaw dev"
+  pause "WEBAPP_AUTH_$UP" "$(url)" "Na aba aberta, escolha sua conta e clique em Permitir (primeira autorização)."
+  pause "CHAT_OK_$UP" "https://console.cloud.google.com/apis/api/chat.googleapis.com/hangouts-chat?project=$(var "GCP_PROJECT_$UP")" \
+    "Chat API → Configuração: nome '$label'; avatar https://fonts.gstatic.com/s/e/notoemoji/latest/1f980/512.png; descrição 'Agentes do Drive'; DESMARQUE 'Criar como complemento do Google Workspace'; Funcionalidade: receber mensagens 1:1 e participar de espaços; Conexão: Projeto do Apps Script → ID de implantação $(var "DEPLOY_ID_$UP"); Visibilidade: pessoas específicas do domínio $DOMAIN (ou o domínio todo); Salvar."
+}
+
+health() {
+  local r
+  r=$(remote health 2>/dev/null || true)
+  case "$r" in
+    *'"ok":true'*) ok "health: $r" ;;
+    *) warn "health não confirmado automaticamente (abra $(url)). Resposta: ${r:0:160}" ;;
+  esac
+}
+
+cmd_up() {
+  ensure_tools
+  ensure_auth
+  ensure_gcp
+  ensure_script
+  deploy
+  authorize
+  remote enable >/dev/null 2>&1 || true
+  health
+  if [ -n "${OPENROUTER_API_KEY:-}" ]; then
+    printf '%s' "$OPENROUTER_API_KEY" | pbcopy
+    say "chave OpenRouter copiada — cole em 'Chave OpenRouter' na tela (só na primeira vez)"
+  else
+    warn "sem OPENROUTER_API_KEY no .env.local — cole a chave direto na tela"
+  fi
+  open "$(url)"
+  ok "pronto ($TARGET): $(url)"
+}
+
+cmd_down()    { remote disable && echo && ok "agentes pausados ($TARGET)"; }
+cmd_restart() { cmd_down || true; cmd_up; }
+cmd_open()    { open "$(url)"; }
+
+cmd_ship() {
+  TARGET=prod; UP=PROD
+  [ -n "$(var SCRIPT_ID_PROD)" ] || die "prod ainda não existe: rode ./gasclaw up --prod uma vez"
+  deploy
+  health
+}
+
+cmd_ci() { # usado pelo GitHub Actions: sem pausas, sem gcloud
+  [ -x node_modules/.bin/clasp ] || npm ci
+  TARGET=dev; UP=DEV; deploy
+  TARGET=prod; UP=PROD; deploy
+}
+
+cmd_logs() { clasp_ tail-logs --watch | grep -v '^PAST'; }
+
+cmd_status() {
+  printf 'ambiente:     %s\nconta:        %s\nprojeto GCP:  %s\neditor:       https://script.google.com/home/projects/%s/edit\nweb app:      %s\n\n' \
+    "$TARGET" "${ACCOUNT:-?}" "$(var "GCP_PROJECT_$UP")" "$(var "SCRIPT_ID_$UP")" "$(url)"
+  clasp_ list-deployments || true
+  remote health && echo || warn "health indisponível"
+}
+
+check() { # $1 descrição · $2 comando · $3 correção
+  if eval "$2" >/dev/null 2>&1; then ok "$1"; else warn "$1 → $3"; fi
+}
+cmd_doctor() {
+  check "Node ≥ 20" 'node -e "process.exit(Number(process.versions.node.split(\".\")[0]) < 20 ? 1 : 0)"' "brew install node"
+  check "gcloud instalado" 'command -v gcloud' "brew install --cask google-cloud-sdk"
+  check "login gcloud" 'gcloud auth list --filter=status:ACTIVE --format="value(account)" | grep -q @' "gcloud auth login --enable-gdrive-access"
+  check "login clasp" '[ -f "$HOME/.clasprc.json" ]' "npx clasp login"
+  check "dependências npm" '[ -x node_modules/.bin/clasp ]' "npm ci"
+  check "build e testes" 'npm run build && npm test' "rode 'npm test' para ver o erro"
+  check "script $TARGET criado" '[ -n "$(var "SCRIPT_ID_$UP")" ]' "./gasclaw up"
+  check "web app $TARGET publicado" '[ -n "$(var "DEPLOY_ID_$UP")" ]' "./gasclaw up"
+  check "OPENROUTER_API_KEY no .env.local" '[ -n "${OPENROUTER_API_KEY:-}" ]' "crie .env.local com OPENROUTER_API_KEY=sk-or-…"
+  check "health remoto" 'remote health | grep -q "\"ok\":true"' "abra a tela e autorize, ou: gcloud auth login --enable-gdrive-access"
+}
+
+cmd_rollback() {
+  local d cur
+  d=$(var "DEPLOY_ID_$UP")
+  [ -n "$d" ] || die "sem implantação em $TARGET"
+  cur=$(clasp_ list-deployments | grep "$d" | grep -oE '@[0-9]+' | tr -d @ | head -1)
+  { [ -n "$cur" ] && [ "$cur" -gt 1 ]; } || die "sem versão anterior (atual: ${cur:-?})"
+  clasp_ create-deployment -i "$d" -V "$((cur - 1))" -d "rollback" >/dev/null
+  ok "$TARGET voltou para a versão $((cur - 1))"
+}
+
+case "$CMD" in
+  up|down|restart|ship|ci|logs|status|doctor|rollback|open) "cmd_$CMD" ;;
+  *) cat <<'TXT'
+gasclaw — agentes do Drive rodando no Google Apps Script
+
+  ./gasclaw up [--prod]       configura (1ª vez), publica e abre a tela
+  ./gasclaw down [--prod]     pausa todos os agentes
+  ./gasclaw restart [--prod]  down + up
+  ./gasclaw ship              publica em prod (mesma URL)
+  ./gasclaw logs [--prod]     logs ao vivo
+  ./gasclaw status [--prod]   IDs, URLs, implantações e health
+  ./gasclaw doctor [--prod]   diagnostica e diz como corrigir
+  ./gasclaw rollback [--prod] volta para a versão anterior
+  ./gasclaw open [--prod]     abre a tela gasclaw
+TXT
+  ;;
+esac

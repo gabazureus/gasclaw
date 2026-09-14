@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.vitest/
 .env.local
 .clasprc.json
 .clasp.json
