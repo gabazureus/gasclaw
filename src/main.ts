@@ -1,4 +1,4 @@
-import { runP6 } from '../poc/p6-docs-nativos/harness';
+import { pocP6 } from '../poc/p6-docs-nativos/harness';
 import { reply } from './agent';
 import { handleChat, type ChatDeps, type ChatEvent } from './chat';
 import { complete } from './llm';
@@ -34,6 +34,10 @@ export function doGet(e: GoogleAppsScript.Events.DoGet) {
   }
   try {
     assertOwner();
+    if (action === 'poc') {
+      const run = POCS[e.parameter.id ?? ''];
+      return json(run ? run(e.parameter.step) : { ok: false, pass: false, error: `POC desconhecida: ${e.parameter.id}` });
+    }
     if (action === 'health') return json({ ok: true, enabled: store.isEnabled(), agents: store.listAgents().length, hasKey: !!store.getApiKey() });
     if (action === 'disable' || action === 'enable') {
       store.setEnabled(action === 'enable');
@@ -142,10 +146,8 @@ export function pocUrlFetchTimeout() {
   }
 }
 
-// ---------- POC P6: agentes em Google Docs/Sheets nativos (sai após o ADR-012) ----------
-export function pocDocsNativos(url: string) {
-  assertOwner();
-  const id = extractFolderId(url ?? '');
-  if (!id) throw new Error('URL de pasta inválida. Copie a URL da pasta no Google Drive.');
-  return runP6(id);
-}
+// ---------- POCs automáticas: ./gasclaw poc <id> [etapa] → doGet?action=poc ----------
+const POCS: Record<string, (step?: string) => unknown> = {
+  p1: () => pocUrlFetchTimeout(),
+  p6: (step) => pocP6(step, ownerEmail()),
+};
