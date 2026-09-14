@@ -1,0 +1,28 @@
+[
+  {
+    "phase": "Align (Task 0 preflight)",
+    "summary": "Handoff+plano lidos; Task 0 Steps 1-2 verificados; commit inicial aguardando gate",
+    "scores": {
+      "correctness": {
+        "score": 7,
+        "note": "ferramentas e git status verificados agora; nada implementado"
+      },
+      "design": {
+        "score": 7,
+        "note": "spec+ADR 001-008 aprovados; lacuna tsc/@types/node detectada no plano"
+      },
+      "testing": {
+        "score": 5,
+        "note": "sem codigo ainda; testes previstos por task no plano"
+      },
+      "safety": {
+        "score": 8,
+        "note": "sem segredos nos 184 arquivos; .beads e settings.local excluidos; guardrails ativos"
+      },
+      "clarity": {
+        "score": 8,
+        "note": "plano pt-BR detalhado; handoff consistente com ambiente"
+      }
+    }
+  }
+]

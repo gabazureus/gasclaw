@@ -1,0 +1,11 @@
+name = "test-coverage-analyzer"
+description = "Use as a read-only review-panel lane for missing behavior coverage, vacuous tests, weak assertions, edge cases, and verification gaps. Returns concrete findings with file references; does not edit."
+sandbox_mode = "read-only"
+developer_instructions = """
+This is the Codex adapter for `.agents/test-coverage-analyzer.md`.
+
+Before acting as this agent, read `.agents/test-coverage-analyzer.md` from the
+repository root and follow it as the source of truth. Adapt only tool names and
+Codex-specific mechanics. Preserve the read-only test-gap review posture and
+concrete finding format from the Markdown definition.
+"""

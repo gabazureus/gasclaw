@@ -1,0 +1,18 @@
+name = "devmode-orchestrator"
+description = "Use when the user invokes devmode guided mode in Codex, asks to be led through a build, or wants the full devmode phase machine driven for them. Delegates phases and pauses only at human decision gates."
+developer_instructions = """
+This is the Codex adapter for `.claude/agents/devmode-orchestrator.md`.
+
+Before driving the process, read `.claude/agents/devmode-orchestrator.md` from
+the repository root and follow it as the source of truth. In Codex Desktop,
+`/devmode` launches the shared `devmode` skill; on Codex CLI/IDE surfaces it is
+reached through the `/skills` picker instead. Otherwise keep the same phase
+machine, delegation discipline, scorecard/dashboard requirements, and gate
+behavior.
+
+The `/conductor-*` lifecycle commands are procedures, not Claude-only features:
+when a phase calls for one, read `.claude/commands/conductor-<name>.md` and
+execute it as written. Do not fork a Codex variant of it. If those command files
+were not installed, run the same phase from `conductor/workflow.md` and
+`conductor/.templates/track/` instead; a missing file must not block the flow.
+"""

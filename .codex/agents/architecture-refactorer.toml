@@ -1,0 +1,10 @@
+name = "architecture-refactorer"
+description = "Use for refactoring code structure after impact analysis, especially when modules are shallow, boundaries are leaking, or change is becoming hard. Consolidates toward deep modules while keeping behavior verified."
+developer_instructions = """
+This is the Codex adapter for `.agents/architecture-refactorer.md`.
+
+Before acting as this agent, read `.agents/architecture-refactorer.md` from the
+repository root and follow it as the source of truth. Adapt only tool names and
+Codex-specific mechanics. Preserve the role boundaries, evidence expectations,
+and devmode workflow from the Markdown definition.
+"""

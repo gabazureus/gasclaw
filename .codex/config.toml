@@ -1,0 +1,22 @@
+# Project-local Codex compatibility for devmode.
+#
+# This file deliberately avoids model, provider, sandbox, and approval defaults;
+# those are personal or environment policy. It only enables the surfaces devmode
+# needs when this project is trusted by Codex.
+#
+# devmode-managed: codex-config v1 — update.sh refreshes the devmode-owned keys below; delete this line to own the file.
+# Every other key, table, and comment you add to this file is preserved.
+
+# Reserve headroom for project and nested AGENTS.md instructions as the repo
+# evolves, so Codex does not truncate a longer instruction chain.
+project_doc_max_bytes = 65536
+
+[features]
+# hooks: the devmode gates run as Codex project hooks.
+# multi_agent: guided mode delegates to the devmode-orchestrator custom agent.
+hooks = true
+multi_agent = true
+
+[agents]
+# The review panel dispatches four read-only reviewers at once.
+max_concurrent_threads_per_session = 8

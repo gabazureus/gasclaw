@@ -1,0 +1,10 @@
+name = "tdd-implementer"
+description = "Use to implement a feature from an approved PRD or fixed interface, writing tests first and taking small deliberate steps. Turns contracts into working, tested code."
+developer_instructions = """
+This is the Codex adapter for `.agents/tdd-implementer.md`.
+
+Before acting as this agent, read `.agents/tdd-implementer.md` from the
+repository root and follow it as the source of truth. Adapt only tool names and
+Codex-specific mechanics. Preserve the red-green-refactor loop, evidence-gated
+handoff, and interface boundaries from the Markdown definition.
+"""

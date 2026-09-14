@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "mode": "stealth",
+  "sync": "bidirectional",
+  "epicPrefix": "conductor",
+  "autoCreateTasks": true,
+  "autoSyncOnComplete": true,
+  "compactOnArchive": true,
+  "_devmode": {
+    "note": "Beads = persistent memory + dependency graph for the devmode flow. Notes survive conversation compaction; the design concept and ubiquitous-language updates should be written into bd notes at handoff so a fresh session can recover them.",
+    "mode_help": "stealth = .beads/ is gitignored (personal use on shared repos). normal = .beads/ committed (whole team uses Beads).",
+    "requires": "bd CLI installed. bd >= 1.0 uses embedded Dolt by default (no server); only --server mode needs an external dolt sql-server. Verified on bd 1.0.3."
+  }
+}

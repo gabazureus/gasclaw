@@ -1,0 +1,70 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>devmode · gasclaw</title><style>
+:root{font:15px/1.5 system-ui,sans-serif;color:#1a1a1a}
+body{max-width:900px;margin:32px auto;padding:0 16px}
+h1{font-size:24px;margin:0 0 4px} .sub{color:#4b5563;margin:0 0 20px}
+.card{border:1px solid #e5e7eb;border-radius:8px;padding:16px 20px;margin:16px 0}
+.card h2{font-size:16px;margin:0 0 12px}
+table{width:100%;border-collapse:collapse} td{padding:6px 8px;vertical-align:middle}
+.crit{font-weight:600;width:96px} .num{font-variant-numeric:tabular-nums;text-align:right;width:64px}
+.note{color:#6b7280;font-size:13px} code{background:#f3f4f6;border-radius:4px;padding:1px 5px;font-size:12px}
+.bar{background:#f3f4f6;border-radius:4px;height:12px;width:180px;overflow:hidden}
+.fill{height:12px;border-radius:4px}
+.phase{display:inline-block;background:#1d4ed8;color:#fff;border-radius:999px;padding:2px 12px;font-size:13px}
+ul{margin:8px 0 0;padding-left:18px} li{margin:4px 0}
+.ok{color:#15803d;font-weight:600} .bad{color:#b91c1c;font-weight:600}
+/* KPI strip */
+.kpis{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 16px}
+.kpi{flex:1 1 96px;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;background:#fafafa}
+.kpi .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.kpi .v .slash{font-size:13px;color:#9ca3af;font-weight:400}
+.kpi .l{color:#6b7280;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+/* pipeline */
+.pipe{display:flex;align-items:center;flex-wrap:wrap;gap:2px}
+.node{display:flex;flex-direction:column;align-items:center;gap:5px;flex:0 0 auto;min-width:60px}
+.node .ring{width:20px;height:20px;border-radius:50%;border:2px solid #d1d5db;background:#fff}
+.node.done .ring{background:#15803d;border-color:#15803d}
+.node.cur .ring{background:#1d4ed8;border-color:#1d4ed8;box-shadow:0 0 0 4px #dbeafe}
+.node .lbl{font-size:11px;color:#9ca3af} .node.done .lbl,.node.cur .lbl{color:#1a1a1a}
+.seg{height:2px;background:#e5e7eb;flex:1 1 6px;min-width:6px} .seg.done{background:#15803d}
+/* trend + sparkline */
+.trendrow{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.spark{flex:0 0 auto} .trend{color:#4b5563;font-size:13px}
+/* timeline */
+.timeline{list-style:none;margin:0;padding:0;position:relative}
+.timeline:before{content:"";position:absolute;left:7px;top:6px;bottom:10px;width:2px;background:#e5e7eb}
+.ev{position:relative;padding:0 0 16px 28px} .ev:last-child{padding-bottom:0}
+.dot{position:absolute;left:0;top:3px;width:16px;height:16px;border-radius:50%;background:#1d4ed8;border:3px solid #fff;box-shadow:0 0 0 1px #d1d5db}
+.ev.review .dot{background:#7c3aed}
+.ev.loop .dot{background:#b45309}
+.loopback{background:#fef3c7;color:#92400e;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:600;white-space:nowrap}
+.ev-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.ev-phase{font-weight:600} .ev-score{font-variant-numeric:tabular-nums;color:#4b5563;font-size:13px;white-space:nowrap}
+.ev-sum{color:#6b7280;font-size:13px;margin-top:2px}
+.up{color:#15803d;font-weight:600} .down{color:#b91c1c;font-weight:600} .flat{color:#9ca3af}
+/* gates */
+.gate{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid #f3f4f6}
+.gate:last-of-type{border-bottom:0}
+</style></head><body>
+<h1>devmode · gasclaw</h1>
+<p class="sub">Current phase: <span class="phase">Align (Task 0 preflight)</span></p>
+
+<div class="kpis"><div class="kpi"><div class="v">7.0<span class="slash">/10</span></div><div class="l">Overall</div></div><div class="kpi"><div class="v">Solid</div><div class="l">Band</div></div><div class="kpi"><div class="v">1</div><div class="l">Phases</div></div><div class="kpi"><div class="v">0</div><div class="l">Tracks</div></div><div class="kpi"><div class="v">—</div><div class="l">Tasks</div></div><div class="kpi"><div class="v">0</div><div class="l">ADRs</div></div><div class="kpi"><div class="v"><span class="note">—</span></div><div class="l">Gates</div></div></div>
+
+<div class="card"><h2>Workflow pipeline</h2><div class="pipe"><div class="node"><span class="ring"></span><span class="lbl">Align</span></div><div class="seg"></div><div class="node"><span class="ring"></span><span class="lbl">Language</span></div><div class="seg"></div><div class="node"><span class="ring"></span><span class="lbl">Specify</span></div><div class="seg"></div><div class="node"><span class="ring"></span><span class="lbl">Architect</span></div><div class="seg"></div><div class="node"><span class="ring"></span><span class="lbl">Implement</span></div><div class="seg"></div><div class="node"><span class="ring"></span><span class="lbl">Review</span></div><div class="seg"></div><div class="node"><span class="ring"></span><span class="lbl">Refactor</span></div></div></div>
+
+<div class="card"><h2>Scorecard</h2><table><tr><td class="crit">Correctness</td><td><div class="bar"><div class="fill" style="width:126px;background:#15803d"></div></div></td><td class="num">7/10</td><td class="note">ferramentas e git status verificados agora; nada implementado</td></tr><tr><td class="crit">Design</td><td><div class="bar"><div class="fill" style="width:126px;background:#15803d"></div></div></td><td class="num">7/10</td><td class="note">spec+ADR 001-008 aprovados; lacuna tsc/@types/node detectada no plano</td></tr><tr><td class="crit">Testing</td><td><div class="bar"><div class="fill" style="width:90px;background:#b45309"></div></div></td><td class="num">5/10</td><td class="note">sem codigo ainda; testes previstos por task no plano</td></tr><tr><td class="crit">Safety</td><td><div class="bar"><div class="fill" style="width:144px;background:#15803d"></div></div></td><td class="num">8/10</td><td class="note">sem segredos nos 184 arquivos; .beads e settings.local excluidos; guardrails ativos</td></tr><tr><td class="crit">Clarity</td><td><div class="bar"><div class="fill" style="width:144px;background:#15803d"></div></div></td><td class="num">8/10</td><td class="note">plano pt-BR detalhado; handoff consistente com ambiente</td></tr></table>
+<div class="trendrow"><span class="trend">Trend: Align (Task 0 preflight) 7.0</span></div></div>
+
+<div class="card"><h2>Gates &mdash; last run</h2><p class="note">No gate run recorded yet. Run <code>ci/check.sh</code> — it writes <code>.devmode/gates.json</code>.</p></div>
+
+<div class="card"><h2>Timeline</h2><ul class="timeline"><li class="ev build"><span class="dot"></span><div class="ev-body"><div class="ev-head"><span class="ev-phase">Align (Task 0 preflight)</span><span class="ev-score">7.0/10 <span class="flat">start</span></span></div><div class="ev-sum">Handoff+plano lidos; Task 0 Steps 1-2 verificados; commit inicial aguardando gate</div></div></li></ul></div>
+
+<div class="card"><h2>Tracks</h2><table>
+<tr><td class="crit">Track</td><td>Progress</td><td class="num">Done</td><td></td><td class="num">ADRs</td></tr>
+<tr><td colspan="5" class="note">no tracks yet</td></tr></table></div>
+
+
+<p class="note">Generated by devmode · open this file anytime · re-run scripts/dashboard.py to refresh.</p>
+</body></html>

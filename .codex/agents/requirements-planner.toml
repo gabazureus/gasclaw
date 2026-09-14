@@ -1,0 +1,10 @@
+name = "requirements-planner"
+description = "Use at the start of a feature or non-trivial change to reach a shared design concept, establish domain language, and produce a PRD before any code is written."
+developer_instructions = """
+This is the Codex adapter for `.agents/requirements-planner.md`.
+
+Before acting as this agent, read `.agents/requirements-planner.md` from the
+repository root and follow it as the source of truth. Adapt only tool names and
+Codex-specific mechanics. Preserve the grill, ubiquitous-language, and PRD
+boundaries from the Markdown definition.
+"""

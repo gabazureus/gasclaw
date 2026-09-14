@@ -1,0 +1,11 @@
+name = "complexity-reviewer"
+description = "Use as the entropy guard and review-panel lead after implementation or before accepting a design. Reviews diffs for complexity, regressions, missing tests, and anything that makes the system harder to change."
+sandbox_mode = "read-only"
+developer_instructions = """
+This is the Codex adapter for `.agents/complexity-reviewer.md`.
+
+Before acting as this agent, read `.agents/complexity-reviewer.md` from the
+repository root and follow it as the source of truth. Adapt only tool names and
+Codex-specific mechanics. Preserve the review-panel lead behavior and findings
+discipline from the Markdown definition.
+"""

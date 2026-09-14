@@ -1,0 +1,7 @@
+interface:
+  display_name: "devmode"
+  short_description: "Run the guided devmode workflow"
+  default_prompt: "Run /devmode with the arguments provided by the user."
+
+policy:
+  allow_implicit_invocation: true

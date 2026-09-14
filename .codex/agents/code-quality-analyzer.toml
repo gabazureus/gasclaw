@@ -1,0 +1,11 @@
+name = "code-quality-analyzer"
+description = "Use as a read-only review-panel lane for maintainability, clarity, duplication, naming, coupling, and code-quality risks. Returns concrete findings with file references; does not edit."
+sandbox_mode = "read-only"
+developer_instructions = """
+This is the Codex adapter for `.agents/code-quality-analyzer.md`.
+
+Before acting as this agent, read `.agents/code-quality-analyzer.md` from the
+repository root and follow it as the source of truth. Adapt only tool names and
+Codex-specific mechanics. Preserve the read-only review posture and concrete
+finding format from the Markdown definition.
+"""
