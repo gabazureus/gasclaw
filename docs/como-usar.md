@@ -112,6 +112,7 @@ Todos aceitam `--prod`; sem a flag, valem para dev.
 | `./gasclaw doctor` | algo não funciona: checa tudo e diz o comando de correção |
 | `./gasclaw status` | ver conta, projeto, URLs, versões publicadas e health |
 | `./gasclaw logs` | acompanhar erros ao vivo enquanto testa no Chat |
+| `./gasclaw poc <id>` | rodar uma POC no dev de forma automática (ex.: `poc p6`); sai com erro se algum critério falhar |
 | `./gasclaw down` | parar todos os agentes na hora (emergência, custo) |
 | `./gasclaw restart` | `down` + `up`, para recomeçar limpo |
 | `./gasclaw rollback` | a última publicação quebrou: volta para a versão anterior |

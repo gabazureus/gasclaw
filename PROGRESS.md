@@ -1,7 +1,7 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, com a porcentagem de progresso e se já foi resolvido.
-> **Atualizado em:** 2026-09-14 · último commit `d4c3e38` · testes 40/40 · dev na versão 3 · prod na versão 1.
+> **Atualizado em:** 2026-09-14 · último commit `79178b3` + POC P6 automática · testes 46/46 · dev na versão 4 · prod na versão 1.
 > **Fontes:** [spec](docs/specs/), [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementacao.md),
 > [ADRs](docs/adr/README.md), [CHANGELOG](CHANGELOG.md), [log da wiki](docs/wiki/log.md),
 > [tracks](conductor/tracks.md), Beads (`bd list`) e `git log`.
@@ -35,15 +35,15 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | Fase | Itens | Progresso | Resolvidos |
 |---|---|---|---|
 | **F0**: fundação e primeira fatia | 18 | ████████░░ **82%** | 11 de 18 |
-| **F1**: agente-pasta completo | 12 | ██░░░░░░░░ **17%** | 0 de 12 |
+| **F1**: agente-pasta completo | 12 | ██░░░░░░░░ **20%** | 1 de 12 |
 | **F2**: tarefas longas e aprovação | 10 | █░░░░░░░░░ **10%** | 0 de 10 |
 | **F3**: proatividade e dados | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
 | **F4**: canais extras | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
 | **Transversal** (docs, open source, segurança, POCs) | 18 | ███████░░░ **67%** | 10 de 18 |
-| **Produto (F0–F4)** | 48 | ████░░░░░░ **39%** | 11 de 48 |
-| **Geral** | 66 | █████░░░░░ **46%** | 21 de 66 |
+| **Produto (F0–F4)** | 48 | ████░░░░░░ **39%** | 12 de 48 |
+| **Geral** | 66 | █████░░░░░ **47%** | 22 de 66 |
 
-> Desde o primeiro inventário, a Task 11 e os READMEs foram concluídos e a POC P6 foi publicada no dev.
+> Desde o primeiro inventário, a Task 11 e os READMEs foram concluídos e a POC P6 passou de forma automática (`./gasclaw poc p6`, ADR-012).
 > A porcentagem da F1 e do Transversal ficou menor que antes porque entraram **itens novos**
 > (modelos gratuitos, chat na tela, privacidade), e não porque algo andou para trás.
 
@@ -74,11 +74,11 @@ A porcentagem de cada fase é a média simples dos itens dela.
 
 ---
 
-## F1 — Agente-pasta completo (17%)
+## F1 — Agente-pasta completo (20%)
 
 | Elemento | Status | % | Resolvido? | O que falta | Fonte |
 |---|---|---|---|---|---|
-| **POC P6: agentes em Google Docs/Sheets nativos (com `.md` também)** | 🔄 | 60 | ❌ Não | código publicado no dev (v3) com o botão "Rodar POC P6"; falta você criar as pastas de teste, rodar e medir C1–C5 → ADR-012 | [poc/p6-docs-nativos](poc/p6-docs-nativos/README.md); Beads `gasclaw-0ce` |
+| **POC P6: agentes em Google Docs/Sheets nativos (com `.md` também)** | ✅ | 100 | ✅ Sim | — (passou em 2 execuções automáticas; a leitura híbrida em produção e a opção "Criar como Docs \| Markdown" entram nos itens seguintes da F1) | [ADR-012](docs/adr/012-agentes-em-docs-e-sheets.md); [poc/p6-docs-nativos](poc/p6-docs-nativos/README.md) |
 | Rodízio de modelos gratuitos (`model: free`) | ⏳ | 10 | ❌ Não | decidido: logo depois da P6; lista de `GET /api/v1/models` com preço zero e cache diário, troca de modelo em 429/5xx | Beads `gasclaw-v53` |
 | Chat na tela gasclaw (para quem usa Gmail pessoal) | ⏳ | 10 | ❌ Não | decidido: aba de conversa no web app, com instalação e cota próprias da pessoa; exige ADR (a spec §2 deixava o chat web fora do MVP) | Beads `gasclaw-v53` |
 | `./gasclaw up` detecta Gmail pessoal e pula o Chat | ⏳ | 10 | ❌ Não | decidido: conta `@gmail.com` → pula consentimento Interno e app do Chat; verificar consentimento "Externo/Teste" | Beads `gasclaw-v53` |
@@ -166,7 +166,7 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | P3: step via doPost | F2 | ⏳ | ❌ Não | 50 steps sem consumir o tempo de trigger | — |
 | P4: run durável | F2 | ⏳ | ❌ Não | 3+ execuções sem perder estado | — |
 | P5: GASADK | F2 | ⏳ | ❌ Não | planner via OpenRouter com checkpoint por step | — |
-| **P6: Docs/Sheets nativos** | F1 | 🔄 | ❌ Não | C1: 4 Docs < 3 s · C2: < 200 ms com cache (V1, V2 ou validade de 30 s) · C3: editar invalida o cache · C4: títulos e listas preservados · C5: pasta mista resolve cada papel | aguardando o teste no dev (v3) |
+| **P6: Docs/Sheets nativos** | F1 | ✅ | ✅ Sim | C1: 4 Docs < 3 s · C2: < 200 ms com cache (V1, V2 ou validade de 30 s) · C3: editar invalida o cache · C4: títulos e listas preservados · C5: pasta mista resolve cada papel | C1 1,1–1,2 s; V1 472–608 ms e V2 294–383 ms → validade de 30 s (54–77 ms); C3, C4 e C5 ✅ ([ADR-012](docs/adr/012-agentes-em-docs-e-sheets.md)) |
 | P7: token do CI | F0 | ⏸️ | ⏸️ Adiado | deploy verde 8+ dias depois do login | — |
 | P8: Excel → Sheets | F3 | ⏳ | ❌ Não | xlsx de 5 MB lido em < 60 s | — |
 | P9: papéis responder/validar/redigir | F2 | ⏳ | ❌ Não | a definir: tempo da cadeia com modelos gratuitos e ganho de qualidade medido | — |
@@ -182,6 +182,7 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | Criar um app do Chat exige *"A Business or Enterprise Google Workspace account"* | Google, quickstart de Chat app com Apps Script | quem usa Gmail pessoal não tem app do Chat → chat na tela gasclaw |
 | O export de Doc como markdown é `drive/v3/files/{id}/export?mimeType=text/markdown` (até 10 MB) e o escopo `drive` já basta | docs da Drive API, conferido pelo orquestrador | a P6 não pediu reautorização |
 | O Apps Script aguenta uma chamada única de mais de 2 min | ADR-010 | a F2 pode fazer chamadas longas por passo |
+| Upload com conversão aceita Markdown → Google Doc; listar a pasta custa 294–608 ms | docs da Drive API; ADR-012 | a tela pode criar Docs sem escopo novo; cache de 30 s em vez de validar a cada mensagem |
 
 ## Decisões recentes (2026-09-14)
 
@@ -189,7 +190,7 @@ A porcentagem de cada fase é a média simples dos itens dela.
 |---|---|---|
 | Fechar a F0 com markdown; a F1 começa pela POC P6 | ✅ Sim | log da wiki; ADR-009 |
 | Suportar os dois formatos (Google Doc e `.md`); a tela oferece "Criar como Docs \| Markdown" | 🟡 Parcial (núcleo pronto; tela na F1) | Beads `gasclaw-0ce` |
-| Cache da P6: a checagem mais rápida abaixo de 200 ms; senão validade de 30 s | 🟡 Parcial (medição pendente) | README da POC |
+| Cache da P6: nenhuma checagem ficou abaixo de 200 ms → validade de 30 s | ✅ Sim (medido) | [ADR-012](docs/adr/012-agentes-em-docs-e-sheets.md) |
 | GitHub e CI adiados | ⏸️ Adiado | Beads `gasclaw-mw8` |
 | Não trocar a chave do OpenRouter que apareceu parcialmente na sessão | ✅ Sim (risco aceito) | CHANGELOG#Segurança |
 | Modelos gratuitos: rodízio na F1, logo depois da P6 | ✅ Sim (decisão) | Beads `gasclaw-v53` |
@@ -199,9 +200,9 @@ A porcentagem de cada fase é a média simples dos itens dela.
 
 ## Bloqueios e próximos passos
 
-1. **Agora, com você:** rodar a POC P6 no dev (pastas `P6 teste` e `P6 misto`) e mandar os 3 resultados.
+1. **POCs sem trabalho manual:** `./gasclaw poc <id>` (a P6 passou; as próximas POCs seguem o mesmo padrão).
 2. **Fechar as ressalvas da F0:** teste do haicai, memória no Chat, outra pessoa do domínio, e a chave e o agente no prod.
-3. **Depois da P6:** ADR-012 e o plano detalhado da F1 (rodízio `model: free`, chat na tela, detecção de Gmail pessoal, memória).
+3. **Agora (P6 resolvida):** o plano detalhado da F1, começando pela leitura híbrida com cache de 30 s (rodízio `model: free`, chat na tela, detecção de Gmail pessoal, memória).
 4. **Quando quiser:** retomar a Task 10 (GitHub) investigando antes o erro do `gh auth login`.
 
 ## Como manter este arquivo

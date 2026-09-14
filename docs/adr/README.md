@@ -15,3 +15,4 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [009](009-ajustes-f0.md) | Ajustes de minimal code na F0 (e desvios das Tasks 9–10) | Aceito |
 | [010](010-poc-p1-urlfetch.md) | POC P1: UrlFetch longo (>2 min) funciona | Aceito |
 | [011](011-licenca-e-docs-da-comunidade.md) | Licença Apache-2.0 e docs da comunidade em inglês | Aceito |
+| [012](012-agentes-em-docs-e-sheets.md) | Agentes em Google Docs e Sheets nativos (POC P6) | Aceito |

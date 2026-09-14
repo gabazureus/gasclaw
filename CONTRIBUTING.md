@@ -64,7 +64,8 @@ network beyond `npm ci` or require a Google account.
   validation, error handling, or security to save lines.
 - **Improvements over Apps Script limits need evidence.** Any change that works
   around a GAS limit or builds on GASADK requires a proof of concept in `poc/`
-  with a measured acceptance criterion, plus an ADR in `docs/adr/`.
+  with a measured acceptance criterion, plus an ADR in `docs/adr/`. POCs run
+  automatically on dev with `./gasclaw poc <id>` (no manual fixtures).
 - **Zero manual operation after setup.** Operational steps go through an
   idempotent `./gasclaw <command>`.
 - **Language.** Code identifiers in English. Internal docs in pt-BR; community

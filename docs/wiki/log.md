@@ -44,3 +44,9 @@ Proposta do usuário: trocar markdown por Google Docs (texto) e Google Sheets (d
 - Fonte da verdade conferida: export da Drive API v3 `GET /drive/v3/files/{id}/export?mimeType=text/markdown` (limite de 10 MB; aceita os escopos `drive`, `drive.readonly`, `drive.file` e `drive.meet.readonly`). Sem escopo novo: listagem (V2) e export via UrlFetch com o token do script; planilha `config` exportada como `text/csv`.
 - Núcleo puro (TDD): `resolveRoles`, `signature`, `mergeConfig`, `buildSpec` por papel; regressão `.md` idêntica à F0. Produção segue lendo só `.md` até o ADR-012.
 - Harness `poc/p6-docs-nativos/harness.ts` + botão "Rodar POC P6"; `./gasclaw up` publicou o dev na versão 3 com health ok. Aguardando a medição manual do usuário.
+
+## [2026-09-14] ops | POC P6 automática: passou (ADR-012)
+- `./gasclaw poc <id>` criado: chama `?action=poc` no web app dev (token do gcloud, dono verificado), com registro de POCs (P1 e P6) e exit ≠ 0 se algum critério falhar. O botão manual da P6 saiu da tela.
+- Fixtures idempotentes em `gasclaw-poc/p6-teste` e `gasclaw-poc/p6-misto` (import markdown → Doc e CSV → Sheet pela Drive API; nada é apagado).
+- Dev versão 4; 2 execuções completas: C1 1.091/1.224 ms; V1 472/608 ms e V2 294/383 ms (acima de 200 ms) → validade de 30 s (54/77 ms); C3, C4, C5 e a config pela planilha ✅. Duração de 66/51 s. Conferido sem duplicatas (5 e 4 arquivos).
+- Decisão: leitura híbrida por papel + cache de 30 s ([ADR-012](../adr/012-agentes-em-docs-e-sheets.md)); implementação em produção na F1.
