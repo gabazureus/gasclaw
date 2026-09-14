@@ -1,7 +1,7 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, com a porcentagem de progresso e se já foi resolvido.
-> **Atualizado em:** 2026-09-14 · POC P10 automática (ADR-013) · testes 64/64 · dev na versão 10 · prod na versão 1.
+> **Atualizado em:** 2026-09-14 · POC P10 (ADR-013) e trace do agente P14 (ADR-014) · testes 82/82 · dev na versão 13 · prod na versão 1.
 > **Fontes:** [spec](docs/specs/), [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementacao.md),
 > [ADRs](docs/adr/README.md), [CHANGELOG](CHANGELOG.md), [log da wiki](docs/wiki/log.md),
 > [tracks](conductor/tracks.md), Beads (`bd list`) e `git log`.
@@ -35,16 +35,16 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | Fase | Itens | Progresso | Resolvidos |
 |---|---|---|---|
 | **F0**: fundação e primeira fatia | 18 | ████████░░ **82%** | 11 de 18 |
-| **F1**: agente-pasta completo | 14 | ██░░░░░░░░ **21%** | 1 de 14 |
+| **F1**: agente-pasta completo | 14 | ███░░░░░░░ **26%** | 1 de 14 |
 | **F2**: tarefas longas e aprovação | 10 | █░░░░░░░░░ **10%** | 0 de 10 |
 | **F3**: proatividade e dados | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
 | **F4**: canais extras | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
 | **Transversal** (docs, open source, segurança, POCs) | 18 | ███████░░░ **67%** | 10 de 18 |
-| **Produto (F0–F4)** | 50 | ████░░░░░░ **39%** | 12 de 50 |
-| **Geral** | 68 | █████░░░░░ **46%** | 22 de 68 |
+| **Produto (F0–F4)** | 50 | ████░░░░░░ **40%** | 12 de 50 |
+| **Geral** | 68 | █████░░░░░ **47%** | 22 de 68 |
 
 > Desde o primeiro inventário, a Task 11 e os READMEs foram concluídos, a POC P6 passou de forma automática (`./gasclaw poc p6`, ADR-012) e a POC P10 também (`./gasclaw poc p10`, ADR-013).
-> Entraram dois itens na F1 (autoria no editor do Apps Script a 40%, trace do agente a 10%): o Geral caiu de 47% para 46% por causa dos itens novos, e não porque algo andou para trás.
+> Entraram dois itens na F1 (autoria no editor do Apps Script a 40%; trace do agente, que já está no dev com 8 de 10 critérios, a 80%).
 > A porcentagem da F1 e do Transversal ficou menor que antes porque entraram **itens novos**
 > (modelos gratuitos, chat na tela, privacidade), e não porque algo andou para trás.
 
@@ -75,13 +75,13 @@ A porcentagem de cada fase é a média simples dos itens dela.
 
 ---
 
-## F1 — Agente-pasta completo (21%)
+## F1 — Agente-pasta completo (26%)
 
 | Elemento | Status | % | Resolvido? | O que falta | Fonte |
 |---|---|---|---|---|---|
 | **POC P6: agentes em Google Docs/Sheets nativos (com `.md` também)** | ✅ | 100 | ✅ Sim | — (passou em 2 execuções automáticas; a leitura híbrida em produção e a opção "Criar como Docs \| Markdown" entram nos itens seguintes da F1) | [ADR-012](docs/adr/012-agentes-em-docs-e-sheets.md); [poc/p6-docs-nativos](poc/p6-docs-nativos/README.md) |
 | **Autoria no editor do Apps Script** (`agentes/<nome>/<PAPEL>.md.html` + pasta do Drive criada sozinha) | 🔄 | 40 | ❌ Não | POC P10 ✅ e no dev: motor em 1 arquivo, `up` preserva o editor, precedência editor → Doc → `.md` no núcleo (testes), "Novo agente" cria `gasclaw/agentes/<nome>/`; falta ligar a leitura do editor no `loadAgent` (junto com a leitura híbrida da P6), usar "Novo agente" de verdade e decidir levar para prod | [ADR-013](docs/adr/013-autoria-editor-e-drive.md); [poc/p10-editor](poc/p10-editor/README.md) |
-| Trace do agente: cada run com os passos (arquivos lidos e origem, prompt, chamadas ao modelo com tokens/custo, ferramentas, memória, resposta) · aba Ao vivo + detalhe do run na tela · planilha com 1 linha por run · JSON completo em `gasclaw/runs/<id>.json` guardado por 90 dias e depois para a lixeira · `./gasclaw trace <id>` | ⏳ | 10 | ❌ Não | decidido: não usa nem duplica a página Execuções do Google; ao vivo grava o status no início, antes de passos lentos e no fim; custo de `usage.cost` do OpenRouter; ADR previsto: ADR-014 | Beads `gasclaw-5rn` (POC P14) |
+| Trace do agente: cada run com os passos (arquivos lidos e origem, prompt, chamadas ao modelo com tokens/custo, ferramentas, memória, resposta) · aba Ao vivo + detalhe do run na tela · planilha com 1 linha por run · JSON completo em `gasclaw/runs/<id>.json` guardado por 90 dias e depois para a lixeira · `./gasclaw trace <id>` | 🟡 | 80 | 🟡 Parcial | no dev (v13) e medido pela POC P14: 8 de 10 critérios ✅; falta decidir o C1 (o trace custa de 3 a 4 s por run, só o JSON síncrono leva 1,3–1,6 s) e o C6 da planilha (5,2 s); a origem de cada papel entra no `resolve_agent` quando a leitura do editor for ligada | [ADR-014](docs/adr/014-trace-do-agente.md); [poc/p14-trace](poc/p14-trace/README.md) |
 | Rodízio de modelos gratuitos (`model: free`) | ⏳ | 10 | ❌ Não | decidido: logo depois da P6; lista de `GET /api/v1/models` com preço zero e cache diário, troca de modelo em 429/5xx | Beads `gasclaw-v53` |
 | Chat na tela gasclaw (para quem usa Gmail pessoal) | ⏳ | 10 | ❌ Não | decidido: aba de conversa no web app, com instalação e cota próprias da pessoa; exige ADR (a spec §2 deixava o chat web fora do MVP) | Beads `gasclaw-v53` |
 | `./gasclaw up` detecta Gmail pessoal e pula o Chat | ⏳ | 10 | ❌ Não | decidido: conta `@gmail.com` → pula consentimento Interno e app do Chat; verificar consentimento "Externo/Teste" | Beads `gasclaw-v53` |
@@ -172,7 +172,7 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | **P6: Docs/Sheets nativos** | F1 | ✅ | ✅ Sim | C1: 4 Docs < 3 s · C2: < 200 ms com cache (V1, V2 ou validade de 30 s) · C3: editar invalida o cache · C4: títulos e listas preservados · C5: pasta mista resolve cada papel | C1 1,1–1,2 s; V1 472–608 ms e V2 294–383 ms → validade de 30 s (54–77 ms); C3, C4 e C5 ✅ ([ADR-012](docs/adr/012-agentes-em-docs-e-sheets.md)) |
 | P7: token do CI | F0 | ⏸️ | ⏸️ Adiado | deploy verde 8+ dias depois do login | — |
 | **P10: editor do Apps Script** | F1 | ✅ | ✅ Sim | C1 nomes `.md.html` preservados · C3 leitura fiel byte a byte, listagem sem hardcode, < 3 s, precedência editor → Doc → `.md` · C4 edição chega sem `up` · C5 `up` preserva o editor · C6 motor em 1 arquivo | ver a linha da P10 na Esteira e o [ADR-013](docs/adr/013-autoria-editor-e-drive.md) |
-| P14: trace do agente | F1 | ⏳ | ❌ Não | C1–C10 na Esteira | — |
+| **P14: trace do agente** | F1 | 🟡 | 🟡 Parcial | C1–C10 na Esteira | 2 execuções automáticas: C2–C5 e C7–C10 ✅; C1 ❌ p95 3.893 ms; C6 tela 2,5 s ✅ e planilha 5,2 s ([ADR-014](docs/adr/014-trace-do-agente.md)) |
 | P8: Excel → Sheets | F3 | ⏳ | ❌ Não | xlsx de 5 MB lido em < 60 s | — |
 | P9: papéis responder/validar/redigir | F2 | ⏳ | ❌ Não | a definir: tempo da cadeia com modelos gratuitos e ganho de qualidade medido | — |
 
@@ -219,7 +219,7 @@ Cada POC tem critério medido, roda sozinha por `./gasclaw poc <id>` (só no dev
 | — | P1: chamada longa | O UrlFetch aguenta mais de 60 s? | > 60 s sem erro | botão/`poc p1` | ✅ passou (109–126 s) · ADR-010 | F2: passos longos |
 | — | P6: Docs/Sheets nativos | Dá para ler o agente em Google Docs rápido e fiel? | C1 < 3 s · C2 < 200 ms com cache · C3 edição invalida · C4 títulos/listas · C5 pasta mista | `poc p6` (100% automática) | ✅ passou (C1 1,1–1,2 s; cache 30 s) · ADR-012 | F1: leitura híbrida Doc/.md |
 | — | P10: editor do Apps Script como pasta do agente | Dá para criar e editar o agente dentro do editor do Apps Script, com nomes de arquivo servindo de pastas e o motor num único arquivo? | C1 nomes `.md.html` preservados · C2 exibição no editor · C3 leitura fiel byte a byte, listagem sem hardcode, < 3 s, precedência editor → Doc → `.md` · C4 edição chega ao agente sem `up` · C5 `up` não apaga o editor · C6 motor em 1 arquivo | `poc p10` (100% automática) | ✅ passou (execução 1 completa; execução 2 parcial repetiu C1, C3 e C4): `getContent` não é fiel, `getRawContent` e o export do HEAD são (419–1.270 ms); edição vista sem deploy pelo export; `up` 34,8 s preserva; só `_motor.gs` · ADR-013 | F1: autoria no editor + Drive |
-| 1 | **P14: trace do agente** | Dá para registrar cada run do agente, passo a passo, e ver ao vivo dentro do gasclaw (tela, planilha e `./gasclaw trace`) sem passar dos 30 s do Chat e sem duplicar a página Execuções do Google? | C1 checkpoint + flush com p95 < 1,5 s em 50 runs · C2 5 runs simultâneos sem misturar · C3 falha de gravação não derruba a resposta · C4 criação automática da planilha e da pasta · C5 `./gasclaw poc p14` · C6 ao vivo ≤ 5 s · C7 polling 5 s por 30 min dentro da cota · C8 trace com `resolve_agent` + `llm_call` + `reply`, soma dos passos ±10% da duração · C9 zero ocorrência de chave ou `Bearer` (teste canário) · C10 `./gasclaw trace <id>` mostra a árvore | `poc p14` | ⏳ (ADR-014 previsto) | F1: trace do agente (aba Ao vivo, detalhe do run, planilha, `gasclaw/runs/<id>.json` por 90 dias); base de medição da P11 e da P9 |
+| 1 | **P14: trace do agente** | Dá para registrar cada run do agente, passo a passo, e ver ao vivo dentro do gasclaw (tela, planilha e `./gasclaw trace`) sem passar dos 30 s do Chat e sem duplicar a página Execuções do Google? | C1 checkpoint + flush com p95 < 1,5 s em 50 runs · C2 5 runs simultâneos sem misturar · C3 falha de gravação não derruba a resposta · C4 criação automática da planilha e da pasta · C5 `./gasclaw poc p14` · C6 ao vivo ≤ 5 s · C7 polling 5 s por 30 min dentro da cota · C8 trace com `resolve_agent` + `llm_call` + `reply`, soma dos passos ±10% da duração · C9 zero ocorrência de chave ou `Bearer` (teste canário) · C10 `./gasclaw trace <id>` mostra a árvore | `poc p14` (100% automática) | 🟡 8 de 10 no dev (v13): C1 p95 3.893 ms ❌ (JSON síncrono 1,3–1,6 s); C6 tela 2,5 s ✅, planilha 5,2 s; C8 cobertura 0,92; C9 0 vazamentos · ADR-014 | F1: trace do agente (aba Ao vivo, detalhe do run, planilha, `gasclaw/runs/<id>.json` por 90 dias); base de medição da P11 e da P9 |
 | 2 | P11: rodízio de modelos gratuitos | Os modelos `:free` respondem dentro dos 30 s do Chat com troca automática? | taxa de sucesso ≥ 95% em 20 mensagens · p95 < 25 s · troca em 429/5xx < 2 s | `poc p11` | ⏳ | F1: `model: free` |
 | 3 | P12: conta Gmail pessoal | O gasclaw instala e roda numa conta `@gmail.com` (consentimento Externo/Teste) sem o app do Chat? | `up` sem pausas de Workspace · chat na tela responde · token dura ≥ 8 dias | `poc p12` (precisa de uma conta pessoal de teste) | ⏳ | F1: chat na tela e 2ª usuária |
 | 4 | P2: Chat assíncrono | Dá para responder "pensando…" e enviar a resposta depois, como app? | card enviado 2 min depois do evento, sem chave de conta de serviço | `poc p2` | ⏳ | F2: resposta assíncrona |
