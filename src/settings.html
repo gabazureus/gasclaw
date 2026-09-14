@@ -1,1 +1,122 @@
-<!doctype html><p>gasclaw</p>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <title>gasclaw</title>
+  <style>
+    body { font: 15px/1.45 system-ui, sans-serif; margin: 0; background: #f6f5f2; color: #1d1d1b; }
+    main { max-width: 720px; margin: 0 auto; padding: 24px; }
+    h1 { font-size: 22px; margin: 0 0 4px; } h2 { font-size: 16px; margin: 0 0 8px; }
+    section { background: #fff; border: 1px solid #e3e1db; border-radius: 10px; padding: 16px; margin: 12px 0; }
+    input, textarea { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font: inherit; }
+    button { padding: 8px 12px; border: 0; border-radius: 6px; background: #1d1d1b; color: #fff; cursor: pointer; margin-top: 8px; font: inherit; }
+    button.sec { background: #e3e1db; color: #1d1d1b; }
+    .row { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 4px 0; }
+    .err { color: #b3261e; }
+    pre { white-space: pre-wrap; background: #f6f5f2; padding: 8px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>🦀 gasclaw</h1>
+  <p id="msg" role="status" aria-live="polite">Carregando…</p>
+
+  <section>
+    <h2>Status</h2>
+    <div class="row"><span id="status"></span><button class="sec" id="toggle">…</button></div>
+  </section>
+
+  <section>
+    <h2><label for="key">Chave OpenRouter</label></h2>
+    <input id="key" type="password" placeholder="sk-or-v1-…" autocomplete="off">
+    <button id="saveKey">Salvar chave</button>
+  </section>
+
+  <section>
+    <h2><label for="url">Agentes</label></h2>
+    <p>Cole a URL de uma pasta do Google Drive. O agente com ⭐ responde no Google Chat.</p>
+    <input id="url" placeholder="https://drive.google.com/drive/folders/…">
+    <button id="add">Adicionar e verificar</button>
+    <div id="agents"></div>
+  </section>
+
+  <section>
+    <h2><label for="prompt">Testar</label></h2>
+    <textarea id="prompt" rows="2">Quem é você?</textarea>
+    <button id="test">Enviar ao agente ⭐</button>
+    <pre id="answer" hidden aria-live="polite"></pre>
+  </section>
+
+  <section>
+    <h2>POC P1 — UrlFetch longo</h2>
+    <p>Pede uma resposta longa ao OpenRouter e mede o tempo. Aceite: mais de 60 s sem erro.</p>
+    <button class="sec" id="poc">Rodar POC P1</button>
+    <pre id="pocOut" hidden></pre>
+  </section>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let state = null;
+
+  function call(fn, ...args) {
+    $('msg').className = '';
+    $('msg').textContent = 'Trabalhando…';
+    return new Promise((ok, fail) =>
+      google.script.run
+        .withSuccessHandler(ok)
+        .withFailureHandler((e) => { $('msg').className = 'err'; $('msg').textContent = e.message; fail(e); })[fn](...args));
+  }
+
+  function button(label, onClick) {
+    const b = document.createElement('button');
+    b.className = 'sec';
+    b.textContent = label;
+    b.onclick = onClick;
+    return b;
+  }
+
+  function render(s) {
+    state = s;
+    $('msg').textContent = 'Conectado como ' + s.me;
+    $('status').textContent = (s.enabled ? '🟢 Ativo' : '⏸ Pausado') + ' · chave ' + (s.hasKey ? 'salva' : 'faltando') + ' · ' + s.agents.length + ' agente(s)';
+    $('toggle').textContent = s.enabled ? 'Pausar' : 'Ativar';
+    $('agents').replaceChildren(...s.agents.map((a, i) => {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const link = document.createElement('a');
+      link.href = 'https://drive.google.com/drive/folders/' + a.folderId;
+      link.textContent = (i === 0 ? '⭐ ' : '') + a.name;
+      const actions = document.createElement('span');
+      if (i > 0) actions.append(button('Tornar padrão', () => call('makeDefault', a.folderId).then(render)), ' ');
+      actions.append(button('Remover', () => call('removeAgent', a.folderId).then(render)));
+      row.append(link, actions);
+      return row;
+    }));
+  }
+
+  $('toggle').onclick = () => call('setRuntimeEnabled', !state.enabled).then(render);
+  $('saveKey').onclick = () => call('saveKey', $('key').value).then((s) => { $('key').value = ''; render(s); });
+  $('add').onclick = () => call('addAgent', $('url').value).then((r) => {
+    $('url').value = '';
+    render(r.state);
+    $('msg').textContent = r.created.length ? 'Pasta verificada. Criados: ' + r.created.join(', ') : 'Pasta verificada.';
+  });
+  $('test').onclick = () => {
+    if (!state.agents.length) { $('msg').textContent = 'Adicione um agente primeiro.'; return; }
+    call('testAgent', state.agents[0].folderId, $('prompt').value).then((r) => {
+      $('answer').hidden = false;
+      $('answer').textContent = r.text + '\n\n— ' + r.model + ' · ' + r.ms + ' ms';
+      $('msg').textContent = 'Resposta recebida.';
+    });
+  };
+  $('poc').onclick = () => call('pocUrlFetchTimeout').then((r) => {
+    $('pocOut').hidden = false;
+    $('pocOut').textContent = JSON.stringify(r, null, 2);
+    $('msg').textContent = r.pass ? 'POC P1 aprovada ✅' : 'POC P1 não atingiu o critério';
+  });
+
+  call('settingsState').then(render);
+</script>
+</body>
+</html>
