@@ -52,7 +52,6 @@ ensure_tools() {
   command -v brew >/dev/null || die "Homebrew não encontrado: instale em https://brew.sh e rode de novo"
   command -v node >/dev/null || brew install node
   command -v gcloud >/dev/null || brew install --cask google-cloud-sdk
-  command -v gh >/dev/null || brew install gh
   [ -x node_modules/.bin/clasp ] || npm ci
   ok "ferramentas"
 }

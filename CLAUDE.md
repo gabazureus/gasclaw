@@ -9,6 +9,7 @@
 - **Zero operação manual** depois do setup inicial: tudo passa por `./gasclaw <comando>` idempotente.
 - **Docs:** `docs/` é o hub (`docs/README.md`). Spec: `docs/specs/`. ADRs: `docs/adr/`. Wiki: `docs/wiki/` + `docs/raw/`. Tracks: `conductor/`.
 - Idioma: conteúdo em pt-BR; identificadores de código em inglês.
+- Exceção de idioma ([ADR-011](docs/adr/011-licenca-e-docs-da-comunidade.md)): `README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` e `LICENSING.md` em inglês, com `README.pt-BR.md` espelhado. Licença Apache-2.0.
 
 > **If this file is imported (`@CLAUDE.devmode.md`) into an existing project's
 > `CLAUDE.md`:** that project's own instructions are the host and **take

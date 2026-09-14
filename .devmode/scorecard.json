@@ -24,5 +24,31 @@
         "note": "plano pt-BR detalhado; handoff consistente com ambiente"
       }
     }
+  },
+  {
+    "phase": "Implement (Tasks 0-8)",
+    "summary": "Fundacao, build, workspace, llm, agent, chat, store, main+tela, CLI; 8 commits locais; 28 testes verdes",
+    "scores": {
+      "correctness": {
+        "score": 8,
+        "note": "28/28 testes, tsc limpo, build com 12 globais, doctor ok; nada verificado no GAS real ainda"
+      },
+      "design": {
+        "score": 8,
+        "note": "nucleo puro (workspace/llm/agent/chat) com casca fina (store/main); deps injetadas"
+      },
+      "testing": {
+        "score": 7,
+        "note": "TDD red->green em Tasks 2-5,7; store/main/CLI sem teste unitario (verificacao real na Task 9)"
+      },
+      "safety": {
+        "score": 8,
+        "note": "assertOwner+MYSELF, chave fora do git, sem push/recurso externo; parse de saida do clasp nao verificado"
+      },
+      "clarity": {
+        "score": 8,
+        "note": "3 desvios registrados no ADR-009 do plano; minimal: marcados"
+      }
+    }
   }
 ]

@@ -1,5 +1,20 @@
 {
   "name": "gasclaw",
+  "description": "AI agents that run 100% on Google Apps Script: each agent is a Google Drive folder of markdown, you talk to it in Google Chat, and the model comes from OpenRouter.",
+  "keywords": [
+    "google-apps-script",
+    "ai-agents",
+    "llm",
+    "openrouter",
+    "google-chat",
+    "google-drive",
+    "google-workspace",
+    "clasp",
+    "typescript",
+    "serverless"
+  ],
+  "author": "Gabriel Sorrentino <gabriel.br@gmail.com>",
+  "license": "Apache-2.0",
   "private": true,
   "type": "module",
   "scripts": {

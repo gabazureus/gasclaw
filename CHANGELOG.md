@@ -1,80 +1,82 @@
 # Changelog — gasclaw
 
-> **Regra de manutenção:** ao concluir cada task, adicionar a entrada neste arquivo **no mesmo commit** da task.
-> Status: ✅ feito · 🔄 em andamento · ⏳ pendente. Fonte: `git log` e
-> [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementacao.md).
+> **Regra de manutenção:** sempre que uma capacidade do produto mudar (algo que você passa a poder, ou deixa de poder, fazer), atualize este arquivo no mesmo commit.
 
-Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
+O que o gasclaw faz em cada etapa, contado por quem usa.
+
+- Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); o projeto vai adotar [Versionamento Semântico](https://semver.org/lang/pt-BR/) a partir da primeira versão publicada.
+- Status: ✅ disponível · 🔄 em construção · ⏳ planejado.
+- Como usar: [docs/como-usar.md](docs/como-usar.md).
 
 ## [Não publicado]
 
-Nada foi enviado ao remoto ainda (commits apenas locais).
+### F0 — Primeira conversa com um agente do Drive 🔄
 
-### F0 — fundação + primeira fatia utilizável
+**Hoje:** o ambiente **dev está publicado no Google** (versão 1). O `./gasclaw doctor` passa em todos os itens, e o health responde com o gasclaw ativo e a chave do OpenRouter salva.
+Ainda faltam: terminar a configuração do app no Google Chat, adicionar o primeiro agente, fazer o primeiro teste real no Chat e rodar a POC P1. Até lá, considere a etapa em validação.
 
-#### Task 0 — Pré-condições da máquina ✅
-- Verificação de ferramentas e commit inicial da fundação: devmode adopt + wiki, hub `docs/`, spec e ADRs 001–008.
-- Commit: `96b6d55`
+Detalhes técnicos: [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementacao.md), Tasks 0–8 concluídas, Task 9 em andamento, Tasks 10–11 pendentes.
 
-#### Task 1 — Scaffold de build e testes ✅
-- Build com esbuild em formato IIFE, com stubs globais para o Apps Script, e testes com vitest.
-- Commit: `2fcbdf5`
-- Desvios: foram adicionados `@types/node@24` (24.13.4) e `typescript@7.0.2`, e todas as devDependencies ficaram com versão exata (ADR-009 rascunho, item 12).
+#### Adicionado
 
-#### Task 2 — Leitura da pasta do agente (núcleo puro) ✅
-- `workspace.ts` transforma a pasta do agente em `AgentSpec`, com limites de tamanho, marcação `(missing)` e controle de acesso (`users`).
-- Commit: `e886b50`
+- 🔄 **Um comando para publicar e operar:** `./gasclaw up` instala o que falta, cria o projeto e publica. Nos passos que só dão para fazer clicando, ele pausa e abre a página certa. Depois disso, `down`, `status`, `logs`, `doctor`, `rollback`, `open` e `ship` cuidam do dia a dia.
+- 🔄 **Agente = pasta do Google Drive:** você cola a URL da pasta, e o gasclaw cria `AGENTS.md`, `SOUL.md`, `IDENTITY.md` e `USER.md` a partir de modelos, sem sobrescrever o que já existe. Mudou um arquivo? A próxima mensagem já usa a versão nova, sem publicar de novo.
+- 🔄 **Tela gasclaw** (só o dono acessa): salvar a chave do OpenRouter, adicionar e remover agentes, escolher o agente ⭐, testar uma pergunta e pausar ou reativar tudo.
+- 🔄 **Conversa no Google Chat:** o agente ⭐ responde no Google Chat usando os markdown da pasta do Drive, em DM ou num espaço, e lembra das mensagens recentes.
+- 🔄 **Controle de acesso por agente:** só falam com o agente o dono e os e-mails listados em `users` no `AGENTS.md`.
+- 🔄 **Botão de pânico:** `./gasclaw down` ou "Pausar" na tela; o Chat passa a responder que o gasclaw está pausado.
+- ⏳ **Publicação automática:** repositório privado no GitHub, com publicação em dev e prod a cada push.
 
-#### Task 3 — Cliente OpenRouter ✅
-- `llm.ts` com request e response puros e `http` injetável.
-- Commit: `100f1d3`
+#### Alterado
 
-#### Task 4 — Turno do agente ✅
-- `agent.ts` faz um turno único (1 chamada ao LLM, sem tools) e mantém no máximo 20 mensagens de histórico.
-- Commit: `34ee6cd`
+- A resposta no Google Chat, que a spec colocava na F1, foi antecipada para a F0 numa versão simples (síncrona e com memória curta), para existir algo utilizável já na primeira etapa.
 
-#### Task 5 — Handler do Google Chat ✅
-- `chat.ts` responde de forma síncrona e trata o kill switch, o acesso por agente e os erros com mensagens amigáveis.
-- Commit: `f4b5cba`
+#### Segurança
 
-#### Task 6 — Armazenamento (Properties + Cache) ✅
-- `store.ts` guarda a chave, o dono, os agentes, o kill switch e o histórico em cache (6 h).
-- Commit: `d47738c`
-- Desvios: no TS 7, os setters passaram a usar corpo em bloco (TS2322) (ADR-009 rascunho, item 13).
+- A chave do OpenRouter apareceu parcialmente numa sessão local; `.env` foi adicionado ao `.gitignore`.
 
-#### Task 7 — Entrypoint GAS e tela gasclaw ✅
-- `main.ts` traz o web app (`health`/`enable`/`disable`), os eventos do Chat, a tela gasclaw e a POC P1.
-- Commit: `20bf660`
-- Desvios: `settings.html` ganhou acessibilidade mínima: `lang`, `<label for>` e `role="status"`/`aria-live` (ADR-009 rascunho, item 14).
+#### O que ainda não faz / limites
 
-#### Task 8 — CLI `./gasclaw` ✅
-- Comandos `up`, `down`, `restart`, `ship`, `ci`, `logs`, `status`, `doctor`, `rollback` e `open`, todos idempotentes, com pausas guiadas nos passos manuais.
-- As correções das Tasks 1–8 foram registradas no rascunho do ADR-009, dentro do plano (Task 11).
-- Commit: `96357c4`
-- Desvios: `.vitest/` entrou no `.gitignore`.
+- Só conversa: não envia e-mail, não mexe em planilha, não agenda nada (ferramentas chegam na F2).
+- Só **um** agente responde no Chat, o ⭐, em todos os espaços.
+- Memória curta: as últimas 20 mensagens por agente e por conversa, por até 6 h. Depois disso, o agente esquece.
+- Cada arquivo da pasta é cortado em 20.000 caracteres (60.000 no total).
+- Resposta curta (até 1.000 tokens), porque o Chat espera no máximo 30 s. Modelo lento = o Chat mostra que o app não respondeu.
+- `users` aceita só e-mails, não grupos.
+- Sem nova tentativa automática quando o OpenRouter falha (429/5xx).
 
-#### Task 9 — Primeiro `./gasclaw up` real (dev) 🔄
-Passos externos (plano, seção A.6 e Task 9):
-- [x] Login no gcloud (`owner@example.com`)
-- [ ] Login no clasp (`clasp login`)
-- [ ] Ligar a Google Apps Script API (script.google.com/home/usersettings)
-- [ ] Criar o projeto GCP dev (`gasclaw-dev-…`)
-- [ ] Tela de consentimento OAuth **Interna**
-- [ ] Vincular o número do projeto GCP ao script
-- [ ] Autorizar o web app na primeira abertura
-- [ ] Configurar o Chat app (conexão pelo ID de implantação)
-- [ ] Criar `.env.local` com a **nova** chave do OpenRouter e colá-la na tela
-- [ ] Adicionar o primeiro agente (URL da pasta do Drive) e testar pela tela
-- [ ] Testar pelo Google Chat e verificar `status`/`down`/`doctor`/`rollback`
-- [ ] Rodar a POC P1 e escrever o ADR-010
+## Próximas etapas
 
-#### Task 10 — Repositório GitHub privado e CI ⏳
-- `./gasclaw up --prod`, criação de `.github/workflows/deploy.yml`, repositório privado, secret `CLASPRC_JSON` e push. Cada ação externa precisa de confirmação antes.
+### F1 — Agente-pasta completo ⏳
 
-#### Task 11 — ADR-009, índices e tracks do conductor ⏳
-- `docs/adr/009-ajustes-f0.md`, índice de ADRs e tracks F0–F4 em `conductor/tracks.md`.
+- Conversas guardadas no Drive, sem o limite de 6 h, com resumo automático quando ficam longas.
+- Memória: o agente anota fatos em `memory/AAAA-MM-DD.md`; `MEMORY.md` só é lido na DM do dono.
+- Ritual de estreia (`BOOTSTRAP.md`): na primeira conversa, o agente pergunta seu nome e estilo.
+- Skills: `skills/<nome>/SKILL.md`, lidas quando o agente precisa.
+- Vários agentes: cada espaço do Chat ligado ao seu agente; na DM responde o ⭐.
+- Grupos do Google em `users`.
+- Publicação mais segura: detecta mudanças feitas direto no editor, guarda só as 5 últimas versões e volta sozinha para a anterior se o health falhar.
+- "Verificar" na tela: checa pasta, arquivos, chamada real ao modelo e Chat configurado.
 
-### Segurança
-- **Fato:** durante a Task 9, a chave do OpenRouter apareceu parcialmente na conversa, exposta pela saída do proxy `rtk`.
-- **Ação:** o usuário foi orientado a revogar essa chave no OpenRouter e gerar uma nova. `.env` entrou no `.gitignore` (ainda sem commit).
-- **Nota:** o CLI lê a chave de `.env.local`, e não de `.env`. Coloque a nova chave só em `.env.local`, que já é ignorado pelo git.
+### F2 — Tarefas longas e aprovação ⏳
+
+- Tarefas que passam de 30 s: o agente responde "pensando…" e continua em segundo plano, sem perder o progresso entre execuções.
+- Ferramentas: Gmail, Drive, Sheets, Docs, Agenda e HTTP (só para hosts liberados em `http_allow`).
+- Cards **Aprovar/Negar** no Chat antes de ações com efeito. Sem resposta, a ação é negada.
+- Limites por tarefa (`steps`, `usd_per_run`) e nova tentativa automática quando o OpenRouter falha.
+
+### F3 — Proatividade e dados ⏳
+
+- `HEARTBEAT.md`: o agente confere uma checklist a cada 30 min, no horário ativo, e só fala se houver algo.
+- `jobs.md`: agendamentos em formato cron (ex.: briefing do dia às 7h).
+- Pasta `inbox/`: arquivos `.xlsx` soltos ali viram Google Sheets.
+- Modelos prontos de agente: assistente executivo e analista de planilhas.
+
+### F4 — Canais extras ⏳
+
+- Gmail: e-mails com a label `gasclaw` viram tarefas, e a resposta sai na própria thread.
+- Chamada por HTTP com token; MCP/A2A se a POC do GASADK aprovar.
+- `npx gasclaw` para qualquer pessoa instalar.
+
+<!-- Único lugar com o endereço do repositório: troque OWNER pelo dono real antes de abrir o repo. -->
+[Não publicado]: https://github.com/OWNER/gasclaw/commits/main

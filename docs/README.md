@@ -4,8 +4,8 @@ Comece por aqui. Tudo que existe no projeto está indexado nesta página.
 
 | Preciso de… | Vá para |
 |---|---|
-| Usar o gasclaw e acompanhar o desenvolvimento | [como-usar.md](como-usar.md) |
-| Ver o que mudou em cada etapa | [../CHANGELOG.md](../CHANGELOG.md) |
+| Usar o gasclaw (publicar, criar agente, conversar no Chat) | [como-usar.md](como-usar.md) |
+| Ver o que o gasclaw faz em cada etapa (F0–F4) | [../CHANGELOG.md](../CHANGELOG.md) |
 | Entender o que é e como funciona | [specs/2026-09-14-gasclaw-design.md](specs/2026-09-14-gasclaw-design.md) |
 | Retomar numa nova conversa | [plans/2026-09-14-handoff.md](plans/2026-09-14-handoff.md) |
 | Implementar (passo a passo, com código) | [plans/2026-09-14-gasclaw-f0-plano-implementacao.md](plans/2026-09-14-gasclaw-f0-plano-implementacao.md) |
@@ -17,6 +17,9 @@ Comece por aqui. Tudo que existe no projeto está indexado nesta página.
 | Vocabulário e mapa de módulos | [../UBIQUITOUS_LANGUAGE.md](../UBIQUITOUS_LANGUAGE.md) |
 | Base de conhecimento (pesquisa, conceitos) | [wiki/index.md](wiki/index.md) · fontes brutas em [raw/sources/](raw/sources/) |
 | Como usar o wiki | [wiki-howto.md](wiki-howto.md) · schema em [../KARPATHY.md](../KARPATHY.md) |
+| Apresentação pública do projeto (inglês / pt-BR) | [../README.md](../README.md) · [../README.pt-BR.md](../README.pt-BR.md) |
+| Contribuir (setup, regras, PR, DCO, vulnerabilidades) | [../CONTRIBUTING.md](../CONTRIBUTING.md) · [../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) |
+| Licença, contribuições e licenças das dependências | [../LICENSE](../LICENSE) · [../NOTICE](../NOTICE) · [../LICENSING.md](../LICENSING.md) |
 
 ## Estrutura
 

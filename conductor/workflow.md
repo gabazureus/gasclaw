@@ -94,7 +94,7 @@ Follow this for every task. One behavior at a time.
 
 8. **Record in `plan.md`** — mark the task `[x]` and append the 7-char commit SHA.
    Commit the plan update separately (`conductor(plan): mark '<task>' complete`).
-   **gasclaw:** ao concluir cada task, adicionar a entrada em `CHANGELOG.md` no mesmo commit da task.
+   **gasclaw:** atualizar o `CHANGELOG.md` (no mesmo commit) quando uma capacidade do produto mudar.
 
 9. **Beads completion (if enabled)** — add structured notes and close:
    ```bash
