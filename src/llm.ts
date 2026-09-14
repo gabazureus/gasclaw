@@ -1,5 +1,11 @@
 export type Message = { role: 'system' | 'user' | 'assistant'; content: string };
-export type Completion = { text: string; usage?: { prompt_tokens: number; completion_tokens: number } };
+export type Completion = {
+  text: string;
+  usage?: { prompt_tokens: number; completion_tokens: number; cost?: number };
+  id?: string;
+  model?: string;
+  finish_reason?: string;
+};
 type Init = { method: 'post'; contentType: string; headers: Record<string, string>; payload: string; muteHttpExceptions: true };
 export type Http = (url: string, init: Init) => { code: number; body: string };
 
@@ -23,7 +29,7 @@ export function parseResponse(code: number, body: string): Completion {
   const json = JSON.parse(body);
   const text = json.choices?.[0]?.message?.content;
   if (typeof text !== 'string') throw new Error('OpenRouter: resposta sem conteúdo');
-  return { text, usage: json.usage };
+  return { text, usage: json.usage, id: json.id, model: json.model, finish_reason: json.choices[0].finish_reason }; // usage.cost vem sempre (docs OpenRouter)
 }
 
 // minimal: sem retry/backoff para 429/5xx; entra na F2 junto com a fila durável.

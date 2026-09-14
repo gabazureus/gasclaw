@@ -19,6 +19,10 @@ describe('parseResponse', () => {
     const body = JSON.stringify({ choices: [{ message: { content: 'olá' } }], usage: { prompt_tokens: 3, completion_tokens: 1 } });
     expect(parseResponse(200, body)).toEqual({ text: 'olá', usage: { prompt_tokens: 3, completion_tokens: 1 } });
   });
+  test('devolve id, modelo real, finish_reason e usage.cost para o trace', () => {
+    const body = JSON.stringify({ id: 'gen-1', model: 'meta/x:free', choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }], usage: { prompt_tokens: 3, completion_tokens: 1, cost: 0.0002 } });
+    expect(parseResponse(200, body)).toEqual({ text: 'ok', id: 'gen-1', model: 'meta/x:free', finish_reason: 'stop', usage: { prompt_tokens: 3, completion_tokens: 1, cost: 0.0002 } });
+  });
   test('erro HTTP vira exceção legível sem vazar a chave', () => {
     expect(() => parseResponse(401, '{"error":{"message":"No auth"}}')).toThrow('OpenRouter 401: {"error":{"message":"No auth"}}');
   });

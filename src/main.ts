@@ -1,9 +1,12 @@
 import { pocP10 } from '../poc/p10-editor/harness';
+import { pocP14 } from '../poc/p14-trace/harness';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
 import { reply } from './agent';
 import { handleChat, type ChatDeps, type ChatEvent } from './chat';
-import { complete } from './llm';
+import { complete, type Completion, type Message } from './llm';
+import * as runlog from './runlog';
 import * as store from './store';
+import { coverage } from './trace';
 import { agentFolderPath, ensureFolderPath, extractFolderId, loadAgent, seedAgent, validAgentName } from './workspace';
 
 const CHAT_MAX_TOKENS = 1000; // resposta síncrona precisa caber em 30 s
@@ -26,6 +29,17 @@ function json(o: unknown): GoogleAppsScript.Content.TextOutput {
   return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
 }
 
+/** Dados do span llm_call: modelo real, tokens, custo e o prompt completo (vai só para o JSON do run). */
+const llmInfo = (requested: string, messages: Message[]) => (c: Completion) => ({
+  model: c.model ?? requested,
+  prompt_tokens: c.usage?.prompt_tokens ?? 0,
+  completion_tokens: c.usage?.completion_tokens ?? 0,
+  cost: c.usage?.cost ?? 0,
+  finish_reason: c.finish_reason,
+  generation: c.id,
+  messages,
+});
+
 // ---------- Web app ----------
 export function doGet(e: GoogleAppsScript.Events.DoGet) {
   const action = e?.parameter?.action;
@@ -37,7 +51,17 @@ export function doGet(e: GoogleAppsScript.Events.DoGet) {
     assertOwner();
     if (action === 'poc') {
       const run = POCS[e.parameter.id ?? ''];
-      return json(run ? run(e.parameter.step, e.parameter) : { ok: false, pass: false, error: `POC desconhecida: ${e.parameter.id}` });
+      if (!run) return json({ ok: false, pass: false, error: `POC desconhecida: ${e.parameter.id}` });
+      if (e.parameter.trace === '0') return json(run(e.parameter.step, e.parameter)); // sondas da P14 não viram run
+      const t = runlog.begin('poc', { question: `poc ${e.parameter.id} ${e.parameter.step ?? ''}`.trim() });
+      try {
+        const r = t.step(`poc_${e.parameter.id}`, () => run(e.parameter.step, e.parameter));
+        t.end({ answer: JSON.stringify(r).slice(0, 500) });
+        return json(r);
+      } catch (err) {
+        t.end({ error: (err as Error).message });
+        throw err;
+      }
     }
     if (action === 'health') {
       const agents = store.listAgents();
@@ -48,6 +72,9 @@ export function doGet(e: GoogleAppsScript.Events.DoGet) {
       store.setEnabled(action === 'enable');
       return json({ ok: true, enabled: store.isEnabled() });
     }
+    if (action === 'trace') return json({ ok: true, ...runlog.runDetail(e.parameter.run) });
+    if (action === 'live') return json({ ok: true, ...runlog.liveRuns() });
+    if (action === 'runs') return json({ ok: true, url: runlog.sheetUrl(runlog.ensureRunStore().sheetId) });
     return json({ ok: false, error: `ação desconhecida: ${action}` });
   } catch (err) {
     return json({ ok: false, error: (err as Error).message });
@@ -69,7 +96,17 @@ function chatDeps(): ChatDeps {
 }
 
 export function onMessage(e: ChatEvent) {
-  return handleChat(e, chatDeps());
+  const d = chatDeps();
+  if (e.type !== 'MESSAGE') return handleChat(e, d);
+  const t = runlog.begin('chat', { question: (e.message?.argumentText ?? e.message?.text ?? '').trim(), user: e.user.email });
+  const out = handleChat(e, {
+    ...d,
+    load: (id) => t.step('resolve_agent', () => d.load(id), (s) => ({ agent: s.name, folderId: id, configModel: s.config.model })),
+    llm: (key, model, messages) => t.step('llm_call', () => d.llm(key, model, messages), llmInfo(model, messages), true),
+  });
+  t.mark('reply');
+  t.end({ answer: out.text });
+  return out;
 }
 
 export function onAddToSpace(e: ChatEvent) {
@@ -128,16 +165,34 @@ export function testAgent(folderId: string, text: string) {
   assertOwner();
   const key = store.getApiKey();
   if (!key) throw new Error('Salve a chave do OpenRouter primeiro.');
-  const spec = loadAgent(folderId);
-  const t0 = Date.now();
-  const out = reply(spec, [], text, (m) => complete(key, spec.config.model, m, CHAT_MAX_TOKENS));
-  return { text: out.text, model: spec.config.model, ms: Date.now() - t0 };
+  const t = runlog.begin('test', { question: text });
+  try {
+    const spec = t.step('resolve_agent', () => loadAgent(folderId), (s) => ({ agent: s.name, folderId, configModel: s.config.model }));
+    const out = reply(spec, [], text, (m) => t.step('llm_call', () => complete(key, spec.config.model, m, CHAT_MAX_TOKENS), llmInfo(spec.config.model, m), true));
+    t.mark('reply');
+    const run = t.end({ answer: out.text });
+    return { text: out.text, model: run.model ?? spec.config.model, ms: run.ms ?? 0, runId: run.id };
+  } catch (err) {
+    t.end({ error: (err as Error).message });
+    throw err;
+  }
 }
 
 export function setRuntimeEnabled(on: boolean) {
   assertOwner();
   store.setEnabled(on);
   return settingsState();
+}
+
+// ---------- Trace do agente: aba Ao vivo e detalhe do run ----------
+export function liveRuns() {
+  assertOwner();
+  return runlog.liveRuns();
+}
+
+export function runDetail(id: string) {
+  assertOwner();
+  return runlog.runDetail(id);
 }
 
 // ---------- POC P1: UrlFetch com resposta longa ----------
@@ -164,4 +219,12 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p1: () => pocUrlFetchTimeout(),
   p6: (step) => pocP6(step, ownerEmail()),
   p10: (step, params) => pocP10(step, params),
+  p14: (step, params = {}) => {
+    if (step !== 'real') return pocP14(step, params);
+    const first = store.listAgents()[0];
+    if (!first) throw new Error('P14 real: cadastre um agente na tela');
+    const r = testAgent(first.folderId, params.q || 'Responda em uma frase curta: o que você faz?');
+    const run = runlog.runDetail(r.runId).run;
+    return { poc: 'P14', step, pass: true, runId: r.runId, spans: run?.spans.map((s) => s.name) ?? [], coverage: run ? coverage(run) : 0, ms: run?.ms, model: run?.model, tokens: run?.tokens, cost: run?.cost };
+  },
 };
