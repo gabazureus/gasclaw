@@ -18,6 +18,9 @@ Na primeira vez guia o setup inicial; depois disso tudo roda sozinho. Outros com
 
 Tudo em [docs/README.md](docs/README.md) — design, decisões (ADRs), runbooks e wiki.
 
+- Guia de uso: [docs/como-usar.md](docs/como-usar.md)
+- Andamento por etapa: [CHANGELOG.md](CHANGELOG.md)
+
 ## Inspirações
 
 [vercel/eve](https://github.com/vercel/eve) (Apache-2.0) · [openclaw/openclaw](https://github.com/openclaw/openclaw) (MIT) ·

@@ -4,6 +4,8 @@ Comece por aqui. Tudo que existe no projeto está indexado nesta página.
 
 | Preciso de… | Vá para |
 |---|---|
+| Usar o gasclaw e acompanhar o desenvolvimento | [como-usar.md](como-usar.md) |
+| Ver o que mudou em cada etapa | [../CHANGELOG.md](../CHANGELOG.md) |
 | Entender o que é e como funciona | [specs/2026-09-14-gasclaw-design.md](specs/2026-09-14-gasclaw-design.md) |
 | Retomar numa nova conversa | [plans/2026-09-14-handoff.md](plans/2026-09-14-handoff.md) |
 | Implementar (passo a passo, com código) | [plans/2026-09-14-gasclaw-f0-plano-implementacao.md](plans/2026-09-14-gasclaw-f0-plano-implementacao.md) |
