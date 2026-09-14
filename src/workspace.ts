@@ -1,3 +1,4 @@
+import { exportProject, fetchTexts, listFolder } from './drive';
 import { TEMPLATES } from './templates';
 
 export type AgentConfig = { model: string; users: string[] };
@@ -121,15 +122,61 @@ export function canUse(config: AgentConfig, email: string, owner: string): boole
   return e === owner.toLowerCase() || config.users.includes(e);
 }
 
-// minimal: produção segue lendo só .md; a leitura híbrida (Doc/Sheets) entra após a POC P6 + ADR-012.
-export function loadAgent(folderId: string): AgentSpec {
-  const folder = DriveApp.getFolderById(folderId);
-  const texts: Partial<Record<Role, string>> = {};
+export type Origin = Source['kind'] | 'missing';
+export type LoadedAgent = AgentSpec & { origem: Record<Role, Origin>; editorError?: string; cached?: boolean };
+
+/** Fontes que precisam ser baixadas do Drive (os papéis do editor já vêm no export do projeto). */
+export function driveSources(sources: Sources): Sources {
+  return Object.fromEntries(Object.entries(sources).filter(([, s]) => s && s.kind !== 'editor')) as Sources;
+}
+
+/** Texto de cada papel a partir da fonte vencedora: editor (texto bruto do export) ou o que veio do Drive. */
+export function roleTexts(sources: Sources, files: ProjectFile[], drive: Partial<Record<Role | 'config', string>>): Partial<Record<Role, string>> {
+  const out: Partial<Record<Role, string>> = {};
   for (const r of ROLES) {
-    const it = folder.getFilesByName(`${r}.md`);
-    if (it.hasNext()) texts[r] = it.next().getBlob().getDataAsString();
+    const s = sources[r];
+    if (!s) continue;
+    const text = s.kind === 'editor' ? files.find((f) => f.name === s.entry.id)?.source : drive[r];
+    if (text !== undefined) out[r] = text;
   }
-  return buildSpec(folderId, folder.getName(), texts);
+  return out;
+}
+
+export function assembleAgent(folderId: string, name: string, sources: Sources, texts: Partial<Record<Role, string>>, configRows?: string[][]): LoadedAgent {
+  const origem = Object.fromEntries(ROLES.map((r) => [r, sources[r]?.kind ?? 'missing'])) as Record<Role, Origin>;
+  return { ...buildSpec(folderId, name, texts, configRows), origem };
+}
+
+const AGENT_TTL = 30; // ADR-012/013: edição no Drive ou no editor aparece em até 30 s
+
+/**
+ * Agente de produção (ADR-013): por papel, editor do Apps Script (`agentes/<nome da pasta>/<PAPEL>.md`, lido pelo
+ * export do HEAD, nunca por getContent) > Google Doc > `.md`. Se o export falhar, segue só com o Drive e devolve
+ * `editorError` (sem cache, para tentar de novo). Sem escopo novo.
+ */
+export function loadAgent(folderId: string, opts: { scriptId?: string; noCache?: boolean } = {}): LoadedAgent {
+  const cache = CacheService.getScriptCache();
+  const key = `agent:${folderId}`;
+  if (!opts.noCache) {
+    const hit = cache.get(key);
+    if (hit) return { ...(JSON.parse(hit) as LoadedAgent), cached: true };
+  }
+  const name = DriveApp.getFolderById(folderId).getName();
+  let files: ProjectFile[] = [];
+  let editorError: string | undefined;
+  try {
+    files = exportProject(opts.scriptId);
+  } catch (err) {
+    editorError = String((err as Error).message ?? err).slice(0, 200);
+    console.warn(`loadAgent: editor indisponível, seguindo com o Drive: ${editorError}`);
+  }
+  const sources = resolveRoles([...editorEntries(files, name, 0), ...listFolder(folderId)]);
+  const drive = fetchTexts(driveSources(sources));
+  const rows = drive.config ? Utilities.parseCsv(drive.config) : undefined;
+  const agent: LoadedAgent = { ...assembleAgent(folderId, name, sources, roleTexts(sources, files, drive), rows), ...(editorError ? { editorError } : {}) };
+  const raw = JSON.stringify(agent);
+  if (!opts.noCache && !editorError && raw.length < 95_000) cache.put(key, raw, AGENT_TTL);
+  return agent;
 }
 
 /** Garante a cadeia de pastas a partir de "Meu Drive", reutilizando a primeira com o mesmo nome (nunca duplica). */

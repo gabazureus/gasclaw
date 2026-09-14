@@ -65,6 +65,11 @@ describe('renderTree e coverage', () => {
     expect(t).toMatch(/├─ llm_call\s+800 ms · m · 10 tokens · \$0\.01/);
     expect(t).toMatch(/└─ reply\s+50 ms/);
   });
+  test('resolve_agent mostra a origem de cada papel e a falha de leitura do editor', () => {
+    const t = renderTree(span(base(), 'resolve_agent', 1_000, 1_200, { origem: { AGENTS: 'editor', SOUL: 'doc' }, editorError: 'export 403' }));
+    expect(t).toContain('origem AGENTS=editor,SOUL=doc');
+    expect(t).toContain('editor falhou: export 403');
+  });
   test('coverage = soma dos passos / duração do run', () => {
     expect(coverage(r)).toBeCloseTo(950 / 1000);
   });

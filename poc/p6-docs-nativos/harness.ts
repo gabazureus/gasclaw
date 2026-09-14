@@ -1,9 +1,9 @@
 // POC P6 (descartável): mede a leitura de agentes em Google Docs/Sheets nativos. Sai do código após o ADR-012.
 // Tudo pela Drive API v3 via UrlFetch com o token do script; o escopo `drive` do manifesto cobre export, list,
 // upload com conversão (markdown → Doc, csv → Sheet) e update de conteúdo. Nada de SpreadsheetApp/DocumentApp.
-import { buildSpec, DOC_MIME, resolveRoles, ROLES, SHEET_MIME, signature, type AgentSpec, type FileEntry, type Role, type Source, type Sources } from '../../src/workspace';
+import { driveOk as ok, downloadUrl as urlFor, listFolder as listV2, multipartBody } from '../../src/drive';
+import { buildSpec, DOC_MIME, resolveRoles, ROLES, SHEET_MIME, signature, type AgentSpec, type FileEntry, type Role, type Sources } from '../../src/workspace';
 
-const API = 'https://www.googleapis.com/drive/v3/files';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files';
 const RUNS = 5;
 const C1_MS = 3000;
@@ -34,13 +34,7 @@ export function checkMarkdown(md: string) {
   return { ...r, pass: r.h1 && r.h2 && r.h3 && r.bullets && r.nested && r.numbered };
 }
 
-/** Corpo multipart/related (metadados JSON + conteúdo) do upload da Drive API. */
-export function multipartBody(meta: object, content: string, mime: string, boundary: string): string {
-  return (
-    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n` +
-    `--${boundary}\r\nContent-Type: ${mime}; charset=UTF-8\r\n\r\n${content}\r\n--${boundary}--`
-  );
-}
+export { listV2, multipartBody }; // movidos para src/drive.ts; reexportados para a P10 e os testes
 
 export type RunLike = {
   c1: { pass: boolean; maxMs: number; runsMs: number[] };
@@ -80,11 +74,6 @@ function timed<T>(fn: () => T): { ms: number; value: T } {
   return { ms: Date.now() - t0, value };
 }
 
-function ok(res: GoogleAppsScript.URL_Fetch.HTTPResponse, what: string): string {
-  const body = res.getContentText('UTF-8');
-  if (res.getResponseCode() !== 200) throw new Error(`Drive ${what} ${res.getResponseCode()}: ${body.slice(0, 200)}`);
-  return body;
-}
 
 /** V1: listagem pelo DriveApp. */
 function listV1(folderId: string): FileEntry[] {
@@ -97,19 +86,6 @@ function listV1(folderId: string): FileEntry[] {
   return out;
 }
 
-/** V2: uma chamada files.list da Drive API v3. */
-export function listV2(folderId: string): FileEntry[] {
-  const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`); // folderId vem do DriveApp ou de extractFolderId
-  const fields = encodeURIComponent('files(id,name,mimeType,modifiedTime)');
-  const body = ok(UrlFetchApp.fetch(`${API}?q=${q}&fields=${fields}&pageSize=1000`, { headers: auth(), muteHttpExceptions: true }), 'files.list');
-  const files: { id: string; name: string; mimeType: string; modifiedTime: string }[] = JSON.parse(body).files ?? [];
-  return files.map((f) => ({ id: f.id, name: f.name, mime: f.mimeType, modified: Date.parse(f.modifiedTime) }));
-}
-
-function urlFor(s: Source): string {
-  if (s.kind === 'md') return `${API}/${s.entry.id}?alt=media`;
-  return `${API}/${s.entry.id}/export?mimeType=${encodeURIComponent(s.kind === 'doc' ? 'text/markdown' : 'text/csv')}`;
-}
 
 /** Lê todas as fontes em paralelo (fetchAll) e monta o AgentSpec. */
 function read(folderId: string, name: string, sources: Sources): { spec: AgentSpec; texts: Partial<Record<Role, string>> } {

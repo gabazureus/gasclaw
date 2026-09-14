@@ -7,7 +7,7 @@ import { complete, type Completion, type Message } from './llm';
 import * as runlog from './runlog';
 import * as store from './store';
 import { coverage } from './trace';
-import { agentFolderPath, ensureFolderPath, extractFolderId, loadAgent, seedAgent, validAgentName } from './workspace';
+import { agentFolderPath, ensureFolderPath, extractFolderId, loadAgent, seedAgent, validAgentName, type LoadedAgent } from './workspace';
 
 const CHAT_MAX_TOKENS = 1000; // resposta síncrona precisa caber em 30 s
 
@@ -28,6 +28,16 @@ function assertOwner(): string {
 function json(o: unknown): GoogleAppsScript.Content.TextOutput {
   return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
 }
+
+/** Dados do span resolve_agent: origem de cada papel (editor, doc, md, missing), cache e falha do editor. */
+const agentInfo = (folderId: string) => (s: LoadedAgent) => ({
+  agent: s.name,
+  folderId,
+  configModel: s.config.model,
+  origem: s.origem,
+  cached: s.cached === true,
+  ...(s.editorError ? { editorError: s.editorError } : {}),
+});
 
 /** Dados do span llm_call: modelo real, tokens, custo e o prompt completo (vai só para o JSON do run). */
 const llmInfo = (requested: string, messages: Message[]) => (c: Completion) => ({
@@ -101,7 +111,7 @@ export function onMessage(e: ChatEvent) {
   const t = runlog.begin('chat', { question: (e.message?.argumentText ?? e.message?.text ?? '').trim(), user: e.user.email });
   const out = handleChat(e, {
     ...d,
-    load: (id) => t.step('resolve_agent', () => d.load(id), (s) => ({ agent: s.name, folderId: id, configModel: s.config.model })),
+    load: (id) => t.step('resolve_agent', () => loadAgent(id), agentInfo(id)),
     llm: (key, model, messages) => t.step('llm_call', () => d.llm(key, model, messages), llmInfo(model, messages), true),
   });
   t.mark('reply');
@@ -167,7 +177,7 @@ export function testAgent(folderId: string, text: string) {
   if (!key) throw new Error('Salve a chave do OpenRouter primeiro.');
   const t = runlog.begin('test', { question: text });
   try {
-    const spec = t.step('resolve_agent', () => loadAgent(folderId), (s) => ({ agent: s.name, folderId, configModel: s.config.model }));
+    const spec = t.step('resolve_agent', () => loadAgent(folderId), agentInfo(folderId));
     const out = reply(spec, [], text, (m) => t.step('llm_call', () => complete(key, spec.config.model, m, CHAT_MAX_TOKENS), llmInfo(spec.config.model, m), true));
     t.mark('reply');
     const run = t.end({ answer: out.text });

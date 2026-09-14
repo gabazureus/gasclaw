@@ -58,7 +58,6 @@
     <div id="running"></div>
     <h3>Últimos 10 runs</h3>
     <div id="recent"></div>
-    <pre id="detail" hidden></pre>
   </section>
 
   <section>
@@ -124,7 +123,7 @@
       $('answer').hidden = false;
       $('answer').textContent = r.text + '\n\n— ' + r.model + ' · ' + r.ms + ' ms';
       $('msg').textContent = 'Resposta recebida.';
-      if (r.runId) showRun(r.runId);
+      if (r.runId) { pendingOpen = r.runId; poll(); }
     });
   };
   $('poc').onclick = () => call('pocUrlFetchTimeout').then((r) => {
@@ -136,26 +135,51 @@
   // ---------- Ao vivo: polling de 5 s só com a aba visível ----------
   const ICON = { running: '⏳', ok: '✅', error: '❌' };
   let liveTimer = null;
+  // Acordeão: um único contêiner de detalhe, reposicionado logo abaixo da linha aberta; um run aberto por vez.
+  let openId = null;
+  let pendingOpen = null;
+  const detail = document.createElement('pre');
+  detail.id = 'runDetail';
+  const rowOf = (id) => document.querySelector('button[data-id="' + CSS.escape(id) + '"]');
   function runButton(r) {
     const time = r.status === 'running' ? Math.round((Date.now() - r.startedAt) / 1000) + ' s' : r.ms + ' ms';
     const label = [ICON[r.status] + ' ' + r.kind, r.agent, r.step, time, r.model, r.tokens ? r.tokens + ' tokens' : '', r.question].filter(Boolean).join(' · ');
-    const b = button(label, () => showRun(r.id));
+    const b = button(label, () => toggleRun(r.id));
+    b.dataset.id = r.id;
+    b.setAttribute('aria-controls', 'runDetail');
+    b.setAttribute('aria-expanded', String(r.id === openId));
     b.style.cssText = 'display:block;width:100%;text-align:left;margin-top:4px';
     return b;
   }
-  function showRun(id) {
+  function placeDetail() { // depois de redesenhar: o detalhe volta para baixo da linha aberta (conteúdo mantido)
+    const row = openId && rowOf(openId);
+    if (row) row.after(detail);
+    else { openId = null; detail.remove(); }
+  }
+  function toggleRun(id) {
+    openId = openId === id ? null : id;
+    document.querySelectorAll('button[data-id]').forEach((b) => b.setAttribute('aria-expanded', String(b.dataset.id === openId)));
+    if (!openId) { detail.remove(); return; }
+    placeDetail();
+    detail.textContent = 'Carregando…';
     google.script.run.withSuccessHandler((d) => {
-      $('detail').hidden = false;
+      if (openId !== id) return;
       const full = d.run ? '\n\npergunta:\n' + (d.run.question || '') + '\n\nresposta:\n' + (d.run.answer || d.run.error || '') : '';
-      $('detail').textContent = d.tree + full;
-    }).withFailureHandler((e) => { $('detail').hidden = false; $('detail').textContent = e.message; }).runDetail(id);
+      detail.textContent = d.tree + full;
+    }).withFailureHandler((e) => { if (openId === id) detail.textContent = e.message; }).runDetail(id);
   }
   function poll() {
     if (document.hidden) return;
     google.script.run.withSuccessHandler((l) => {
       $('liveStatus').textContent = l.running.length + ' em andamento · atualizado ' + new Date().toLocaleTimeString();
+      const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.id : null;
+      const y = window.scrollY;
       $('running').replaceChildren(...l.running.map(runButton));
       $('recent').replaceChildren(...l.recent.map(runButton));
+      if (openId) placeDetail();
+      if (focused && rowOf(focused)) rowOf(focused).focus({ preventScroll: true });
+      window.scrollTo(0, y);
+      if (pendingOpen && rowOf(pendingOpen)) { const id = pendingOpen; pendingOpen = null; if (openId !== id) toggleRun(id); }
       if (l.sheetUrl) { $('sheet').href = l.sheetUrl; $('sheet').hidden = false; }
     }).withFailureHandler((e) => { $('liveStatus').textContent = 'Ao vivo indisponível: ' + e.message; }).liveRuns();
   }

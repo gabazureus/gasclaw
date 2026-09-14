@@ -84,6 +84,7 @@ export function renderTree(run: Run): string {
       d.prompt_tokens !== undefined ? `${num(d.prompt_tokens) + num(d.completion_tokens)} tokens` : '',
       d.cost !== undefined ? `$${d.cost}` : '',
       d.origem ? `origem ${Object.entries(d.origem as Record<string, string>).map(([k, v]) => `${k}=${v}`).join(',')}` : '',
+      d.editorError ? `editor falhou: ${String(d.editorError)}` : '',
       s.status === 'error' ? `ERRO ${String(d.error ?? '')}` : '',
     ].filter(Boolean);
     return `${i === r.spans.length - 1 ? '└─' : '├─'} ${s.name.padEnd(14)} ${s.ms} ms${extra.length ? ` · ${extra.join(' · ')}` : ''}`;

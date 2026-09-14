@@ -1,7 +1,7 @@
 // Trace do agente (ADR-014), borda: cache ao vivo, planilha "gasclaw — execuções" (1 linha por run) e
 // gasclaw/runs/<id>.json (completo, 90 dias). NUNCA lança: falha de gravação vira console.warn e a resposta segue.
 // Sem escopo novo: Sheets API e Drive API via UrlFetch com o escopo `drive` do manifesto.
-import { multipartBody } from '../poc/p6-docs-nativos/harness';
+import { multipartBody } from './drive';
 import { expired, finish, HEADER, redact, renderTree, setStep, span, startRun, summaryRow, type Run, type RunKind, type RunMeta } from './trace';
 import { ensureFolderPath, SHEET_MIME } from './workspace';
 

@@ -1,6 +1,7 @@
 // POC P10 (descartável): arquivos do agente no editor do Apps Script (`agentes/<nome>/<PAPEL>.md.html`, markdown puro).
 // Lado do runtime. O lado do PC (clasp, edição simulada, up) está em pc.sh; o veredito, em summary.ts.
-import { DOC_MIME, editorEntries, ensureFolderPath, parseProjectExport, resolveRoles, ROLES, type ProjectFile } from '../../src/workspace';
+import { exportProject } from '../../src/drive';
+import { DOC_MIME, editorEntries, ensureFolderPath, loadAgent, resolveRoles, ROLES } from '../../src/workspace';
 import { listV2, upsert } from '../p6-docs-nativos/harness';
 
 const AGENT = 'p10';
@@ -15,13 +16,6 @@ function sha256(s: string): string {
     .join('');
 }
 
-/** Conteúdo do HEAD do próprio projeto pela Drive API (escopo `drive`, já no manifesto). */
-export function exportProject(): ProjectFile[] {
-  const url = `https://www.googleapis.com/drive/v3/files/${ScriptApp.getScriptId()}/export?mimeType=${encodeURIComponent('application/vnd.google-apps.script+json')}`;
-  const res = UrlFetchApp.fetch(url, { headers: auth(), muteHttpExceptions: true });
-  if (res.getResponseCode() !== 200) throw new Error(`export do projeto ${res.getResponseCode()}: ${res.getContentText().slice(0, 200)}`);
-  return parseProjectExport(res.getContentText('UTF-8'));
-}
 
 /** Primeira diferença entre dois textos (null se iguais), com 20 caracteres antes e 40 depois. */
 export function firstDiff(a: string, b: string) {
@@ -115,8 +109,17 @@ function read(mark: string | undefined, runs: number) {
   };
 }
 
+/** C7 (gate do ADR-013): o loadAgent de produção lê o agente p10 (editor + Drive); `broken` força o export a falhar. */
+function c7(mark: string | undefined, broken: boolean) {
+  const folderId = ensureFolderPath(DRIVE_PATH).getId();
+  const t0 = Date.now();
+  const a = loadAgent(folderId, broken ? { scriptId: 'script-inexistente-p10', noCache: true } : {});
+  return { poc: 'P10', step: 'c7', pass: true, ms: Date.now() - t0, cached: a.cached === true, origem: a.origem, editorError: a.editorError ?? null, hasMark: mark ? a.system.includes(mark) : null, systemChars: a.system.length };
+}
+
 /** `./gasclaw poc p10` chama setup e read; `mark` e `runs` vêm da querystring. */
 export function pocP10(step: string | undefined, p: Record<string, string> = {}) {
+  if (step === 'c7') return c7(p.mark || undefined, p.broken === '1');
   if (step === 'setup') return setup();
   if (step === 'read' || !step) return read(p.mark || undefined, Math.min(Number(p.runs) || RUNS, RUNS));
   throw new Error(`etapa desconhecida: ${step} (use setup ou read)`);

@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import {
   agentFolderPath,
+  assembleAgent,
   buildSpec,
+  driveSources,
+  roleTexts,
   canUse,
   DEFAULT_MODEL,
   DOC_MIME,
@@ -136,6 +139,40 @@ describe('arquivos do agente no projeto Apps Script', () => {
   });
   test('parseProjectExport lê o JSON do export application/vnd.google-apps.script+json', () => {
     expect(parseProjectExport(JSON.stringify({ files: [{ id: 'u', ...files[0] }] }))).toEqual([files[0]]);
+  });
+});
+
+describe('loadAgent de produção, núcleo puro (ADR-013)', () => {
+  const ed = (name: string, agent = 'a') => f(name, EDITOR_MIME, `agentes/${agent}/${name}`);
+  const F0 = { AGENTS: '---\nusers: [Ana@x.com]\n---\nRegras', SOUL: 'Calmo', IDENTITY: 'gasclaw', USER: 'Gabriel' };
+
+  test('regressão: pasta só com .md gera exatamente o prompt da F0', () => {
+    const sources = resolveRoles(['AGENTS', 'SOUL', 'IDENTITY', 'USER'].map((r) => f(`${r}.md`)));
+    const a = assembleAgent('f', 'A', sources, roleTexts(sources, [], F0));
+    expect({ folderId: a.folderId, name: a.name, config: a.config, system: a.system }).toEqual(buildSpec('f', 'A', F0));
+    expect(a.system).toBe('## AGENTS.md\nRegras\n\n## SOUL.md\nCalmo\n\n## IDENTITY.md\ngasclaw\n\n## USER.md\nGabriel');
+    expect(a.origem).toEqual({ AGENTS: 'md', SOUL: 'md', IDENTITY: 'md', USER: 'md' });
+  });
+
+  test('o texto do editor vence o do Drive no prompt; o resto vem do Drive; ausente vira (missing)', () => {
+    const files: ProjectFile[] = [{ name: 'agentes/a/SOUL.md', type: 'html', source: '# Alma do editor <b> & ${x}' }];
+    const sources = resolveRoles([ed('SOUL.md'), f('SOUL', DOC_MIME, 'doc1'), f('AGENTS.md')]);
+    const a = assembleAgent('f', 'a', sources, roleTexts(sources, files, { SOUL: 'alma do Doc', AGENTS: 'Regras do Drive' }));
+    expect(a.system).toContain('## SOUL.md\n# Alma do editor <b> & ${x}');
+    expect(a.system).not.toContain('alma do Doc');
+    expect(a.system).toContain('## AGENTS.md\nRegras do Drive');
+    expect(a.system).toContain('## USER.md\n(missing)');
+    expect(a.origem).toEqual({ AGENTS: 'md', SOUL: 'editor', IDENTITY: 'missing', USER: 'missing' });
+  });
+
+  test('driveSources: só o que precisa ser baixado do Drive (sem os papéis do editor)', () => {
+    const sources = resolveRoles([ed('SOUL.md'), f('AGENTS', DOC_MIME), f('USER.md'), f('config', SHEET_MIME, 's1')]);
+    expect(Object.keys(driveSources(sources)).sort()).toEqual(['AGENTS', 'USER', 'config']);
+  });
+
+  test('planilha config continua sobrepondo o frontmatter', () => {
+    const sources = resolveRoles([f('AGENTS.md'), f('config', SHEET_MIME, 's1')]);
+    expect(assembleAgent('f', 'A', sources, { AGENTS: '---\nmodel: x/y\n---\nR' }, [['model', 'a/b']]).config.model).toBe('a/b');
   });
 });
 
