@@ -1,6 +1,6 @@
 # Como usar o gasclaw
 
-> **Estado atual:** a F0 ainda não foi publicada no Google, então este guia descreve como vai funcionar assim que o primeiro `./gasclaw up` terminar. Veja o [CHANGELOG](../CHANGELOG.md).
+> **Estado atual:** F0 concluída. Os ambientes dev e prod estão publicados, e este guia descreve o que já funciona. A publicação automática pelo GitHub/CI foi adiada; publique com `./gasclaw`. Veja o [CHANGELOG](../CHANGELOG.md).
 
 ## 1. O que é
 O gasclaw roda agentes de IA dentro do Google Apps Script da sua conta Workspace, sem servidor.

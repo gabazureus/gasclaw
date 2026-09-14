@@ -32,3 +32,10 @@ Proposta do usuário: trocar markdown por Google Docs (texto) e Google Sheets (d
 - `.github/workflows/deploy.yml` criado localmente (CI dev → prod), sem push.
 - Histórico git verificado antes do push planejado: 12 commits sem segredos nem arquivos sensíveis.
 - Decisão do usuário: **não subir para o GitHub agora**. Pendentes: `gh auth login`, repositório privado, secret `CLASPRC_JSON`, push e POC P7 (validade do token do CI).
+
+## [2026-09-14] ops | F0 fechada (Task 11); F1 preparada com a POC P6
+- Task 11: `docs/adr/009-ajustes-f0.md` (itens 1–14 do plano + desvios 15–20), índice de ADRs e `conductor/tracks.md` com F0–F4.
+- F0 marcada ✅ no `CHANGELOG.md`. **Ressalva:** a Task 10 (GitHub/CI, POC P7) segue adiada (`gasclaw-mw8`); também faltam as verificações manuais da Task 9 (haicai sem deploy, histórico no Chat, outra pessoa do domínio) e a chave na tela de prod.
+- Numeração das POCs: P6 = agentes em Docs/Sheets nativos (F1); o Excel da spec passa a ser P8 (ADR-009, item 20).
+- POC P6 desenhada, sem código: `poc/p6-docs-nativos/README.md` (C1 < 3 s sem cache, C2 < 200 ms com cache, C3 invalidação, C4 títulos e listas, C5 pasta mista).
+- Verificação: `npm test` com 28/28 testes verdes; links locais dos docs alterados conferidos.

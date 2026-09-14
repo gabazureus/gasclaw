@@ -10,23 +10,24 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 
 ## [Não publicado]
 
-### F0 — Primeira conversa com um agente do Drive 🔄
+### F0 — Primeira conversa com um agente do Drive ✅
 
-**Hoje:** o ambiente **dev está no ar e já dá para usar**. O agente responde no Google Chat usando a pasta do Drive. A pausa (`down`), a reativação (`up`) e o `rollback` foram testados de verdade, e a POC P1 mostrou que chamadas longas ao OpenRouter, de mais de 2 minutos, funcionam ([ADR-010](docs/adr/010-poc-p1-urlfetch.md)).
-O ambiente **prod** também já está publicado e passa no `./gasclaw doctor --prod`; falta só salvar a chave e o agente na tela de prod.
-Ainda faltam: a publicação automática pelo GitHub (adiada por decisão sua) e o teste com outra pessoa do domínio.
+**Concluída em 2026-09-14.** O ambiente **dev está no ar e já dá para usar**: o agente responde no Google Chat usando a pasta do Drive. A pausa (`down`), a reativação (`up`) e o `rollback` foram testados de verdade, e a POC P1 mostrou que chamadas longas ao OpenRouter, de mais de 2 minutos, funcionam ([ADR-010](docs/adr/010-poc-p1-urlfetch.md)).
+O ambiente **prod** também está publicado e passa no `./gasclaw doctor --prod`; falta salvar a chave e o agente na tela de prod.
 
-Detalhes técnicos: [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementacao.md), Tasks 0–8 concluídas, Task 9 em andamento, Tasks 10–11 pendentes.
+**Pendência explícita:** a **publicação automática pelo GitHub/CI** (repositório privado, secret, push e POC P7) foi adiada por decisão sua. O `deploy.yml` já existe, mas ainda não roda. Até lá, dev e prod são publicados só pelo `./gasclaw`. Também ficaram para o começo da F1 três verificações manuais: editar o `SOUL.md` sem deploy, o histórico no Chat e a conversa de outra pessoa do domínio.
+
+Detalhes técnicos: [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementacao.md) (Tasks 0–9 e 11 concluídas, Task 10 adiada) · ajustes e desvios no [ADR-009](docs/adr/009-ajustes-f0.md).
 
 #### Adicionado
 
-- 🔄 **Um comando para publicar e operar:** `./gasclaw up` instala o que falta, cria o projeto e publica. Nos passos que só dão para fazer clicando, ele pausa e abre a página certa. Depois disso, `down`, `status`, `logs`, `doctor`, `rollback`, `open` e `ship` cuidam do dia a dia.
-- 🔄 **Agente = pasta do Google Drive:** você cola a URL da pasta, e o gasclaw cria `AGENTS.md`, `SOUL.md`, `IDENTITY.md` e `USER.md` a partir de modelos, sem sobrescrever o que já existe. Mudou um arquivo? A próxima mensagem já usa a versão nova, sem publicar de novo.
-- 🔄 **Tela gasclaw** (só o dono acessa): salvar a chave do OpenRouter, adicionar e remover agentes, escolher o agente ⭐, testar uma pergunta e pausar ou reativar tudo.
-- 🔄 **Conversa no Google Chat:** o agente ⭐ responde no Google Chat usando os markdown da pasta do Drive, em DM ou num espaço, e lembra das mensagens recentes.
-- 🔄 **Controle de acesso por agente:** só falam com o agente o dono e os e-mails listados em `users` no `AGENTS.md`.
-- 🔄 **Botão de pânico:** `./gasclaw down` ou "Pausar" na tela; o Chat passa a responder que o gasclaw está pausado.
-- ⏳ **Publicação automática:** repositório privado no GitHub, com publicação em dev e prod a cada push.
+- ✅ **Um comando para publicar e operar:** `./gasclaw up` instala o que falta, cria o projeto e publica. Nos passos que só dão para fazer clicando, ele pausa e abre a página certa. Depois disso, `down`, `status`, `logs`, `doctor`, `rollback`, `open` e `ship` cuidam do dia a dia.
+- ✅ **Agente = pasta do Google Drive:** você cola a URL da pasta, e o gasclaw cria `AGENTS.md`, `SOUL.md`, `IDENTITY.md` e `USER.md` a partir de modelos, sem sobrescrever o que já existe. Mudou um arquivo? A próxima mensagem já usa a versão nova, sem publicar de novo.
+- ✅ **Tela gasclaw** (só o dono acessa): salvar a chave do OpenRouter, adicionar e remover agentes, escolher o agente ⭐, testar uma pergunta e pausar ou reativar tudo.
+- ✅ **Conversa no Google Chat:** o agente ⭐ responde no Google Chat usando os markdown da pasta do Drive, em DM ou num espaço, e lembra das mensagens recentes.
+- ✅ **Controle de acesso por agente:** só falam com o agente o dono e os e-mails listados em `users` no `AGENTS.md`.
+- ✅ **Botão de pânico:** `./gasclaw down` ou "Pausar" na tela; o Chat passa a responder que o gasclaw está pausado.
+- ⏳ **Publicação automática (pendente, adiada):** repositório privado no GitHub, com publicação em dev e prod a cada push. O `deploy.yml` já está pronto.
 
 #### Alterado
 

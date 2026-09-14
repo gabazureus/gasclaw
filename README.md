@@ -5,7 +5,7 @@
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Runtime: Google Apps Script](https://img.shields.io/badge/runtime-Google%20Apps%20Script-4285F4.svg)](https://developers.google.com/apps-script)
 [![Language: TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6.svg)](https://www.typescriptlang.org/)
-[![Status: F0 in progress](https://img.shields.io/badge/status-F0%20in%20progress-orange.svg)](CHANGELOG.md)
+[![Status: F0 done](https://img.shields.io/badge/status-F0%20done-green.svg)](CHANGELOG.md)
 
 English | [Português (Brasil)](README.pt-BR.md)
 
@@ -39,7 +39,7 @@ Design details: [design spec](docs/specs/2026-09-14-gasclaw-design.md) and [arch
 
 ## Status
 
-**gasclaw is in stage F0 and is not ready for production.** The F0 code is written and passes its tests, but it has **not yet been published to Google**, so it cannot be used for real yet. The first publication is in progress. See [CHANGELOG.md](CHANGELOG.md) for exactly what works, what is under construction, and what is planned.
+**Stage F0 is done; gasclaw is not ready for production yet.** Both environments (dev and prod) are published to Google, and the dev agent already answers in Google Chat. Automatic publishing through GitHub/CI is postponed, so for now every publish goes through `./gasclaw`. The next stage, F1, starts with a proof of concept for agents written in native Google Docs and Sheets. See [CHANGELOG.md](CHANGELOG.md) for exactly what works, what is under construction, and what is planned.
 
 ## Quickstart
 
@@ -109,7 +109,7 @@ Every command accepts `--prod`; without it, the command targets dev.
 
 | Stage | Goal | Status |
 |---|---|---|
-| F0 | First conversation with a Drive agent: one-command publish, agent folder, owner screen, Google Chat replies, per-agent access, kill switch | In progress |
+| F0 | First conversation with a Drive agent: one-command publish, agent folder, owner screen, Google Chat replies, per-agent access, kill switch | Done (GitHub/CI postponed) |
 | F1 | Complete agent folder: conversations stored in Drive, daily memory, first-run ritual, skills, multiple agents, Google Groups in `users`, safer publishing | Planned |
 | F2 | Long tasks and approval: background work beyond 30 s, Gmail/Drive/Sheets/Docs/Calendar/HTTP tools, Approve/Deny cards, per-task limits, retries | Planned |
 | F3 | Proactivity and data: `HEARTBEAT.md` checklist, cron-style `jobs.md`, `.xlsx` inbox to Google Sheets, ready-made agent templates | Planned |

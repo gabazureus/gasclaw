@@ -5,7 +5,7 @@
 [![Licença: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Runtime: Google Apps Script](https://img.shields.io/badge/runtime-Google%20Apps%20Script-4285F4.svg)](https://developers.google.com/apps-script)
 [![Linguagem: TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6.svg)](https://www.typescriptlang.org/)
-[![Status: F0 em andamento](https://img.shields.io/badge/status-F0%20in%20progress-orange.svg)](CHANGELOG.md)
+[![Status: F0 concluída](https://img.shields.io/badge/status-F0%20done-green.svg)](CHANGELOG.md)
 
 [English](README.md) | Português (Brasil)
 
@@ -39,7 +39,7 @@ Detalhes do design: [spec de design](docs/specs/2026-09-14-gasclaw-design.md) e 
 
 ## Status
 
-**O gasclaw está na etapa F0 e não está pronto para produção.** O código da F0 está escrito e passa nos testes, mas **ainda não foi publicado no Google**, então ainda não dá para usar de verdade. A primeira publicação está em andamento. Veja no [CHANGELOG.md](CHANGELOG.md) exatamente o que funciona, o que está em construção e o que está planejado.
+**A etapa F0 está concluída, mas o gasclaw ainda não está pronto para produção.** Os dois ambientes (dev e prod) estão publicados no Google, e o agente de dev já responde no Google Chat. A publicação automática pelo GitHub/CI foi adiada; por enquanto, toda publicação passa pelo `./gasclaw`. A próxima etapa, F1, começa com uma prova de conceito de agentes escritos em Google Docs e Sheets nativos. Veja no [CHANGELOG.md](CHANGELOG.md) exatamente o que funciona, o que está em construção e o que está planejado.
 
 ## Início rápido
 
@@ -109,7 +109,7 @@ Todos os comandos aceitam `--prod`; sem a flag, valem para dev.
 
 | Etapa | Objetivo | Status |
 |---|---|---|
-| F0 | Primeira conversa com um agente do Drive: publicação com um comando, pasta do agente, tela do dono, respostas no Google Chat, acesso por agente, botão de pânico | Em andamento |
+| F0 | Primeira conversa com um agente do Drive: publicação com um comando, pasta do agente, tela do dono, respostas no Google Chat, acesso por agente, botão de pânico | Concluída (GitHub/CI adiado) |
 | F1 | Pasta do agente completa: conversas guardadas no Drive, memória diária, ritual de estreia, skills, vários agentes, grupos do Google em `users`, publicação mais segura | Planejado |
 | F2 | Tarefas longas e aprovação: trabalho em segundo plano além de 30 s, ferramentas Gmail/Drive/Sheets/Docs/Agenda/HTTP, cards Aprovar/Negar, limites por tarefa, novas tentativas | Planejado |
 | F3 | Proatividade e dados: checklist `HEARTBEAT.md`, `jobs.md` em formato cron, pasta de entrada `.xlsx` para Google Sheets, modelos prontos de agente | Planejado |
