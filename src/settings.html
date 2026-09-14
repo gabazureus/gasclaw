@@ -35,9 +35,13 @@
 
   <section>
     <h2><label for="url">Agentes</label></h2>
-    <p>Cole a URL de uma pasta do Google Drive. O agente com ⭐ responde no Google Chat.</p>
+    <p>O agente com ⭐ responde no Google Chat.</p>
+    <label for="newName">Novo agente (cria a pasta Meu Drive/gasclaw/agentes/&lt;nome&gt;)</label>
+    <input id="newName" placeholder="assistente" autocomplete="off">
+    <button id="create">Novo agente</button>
+    <label for="url">Usar pasta existente</label>
     <input id="url" placeholder="https://drive.google.com/drive/folders/…">
-    <button id="add">Adicionar e verificar</button>
+    <button id="add" class="sec">Usar pasta existente</button>
     <div id="agents"></div>
   </section>
 
@@ -98,11 +102,13 @@
 
   $('toggle').onclick = () => call('setRuntimeEnabled', !state.enabled).then(render);
   $('saveKey').onclick = () => call('saveKey', $('key').value).then((s) => { $('key').value = ''; render(s); });
-  $('add').onclick = () => call('addAgent', $('url').value).then((r) => {
-    $('url').value = '';
+  const added = (field) => (r) => {
+    $(field).value = '';
     render(r.state);
     $('msg').textContent = r.created.length ? 'Pasta verificada. Criados: ' + r.created.join(', ') : 'Pasta verificada.';
-  });
+  };
+  $('create').onclick = () => call('createAgent', $('newName').value).then(added('newName'));
+  $('add').onclick = () => call('addAgent', $('url').value).then(added('url'));
   $('test').onclick = () => {
     if (!state.agents.length) { $('msg').textContent = 'Adicione um agente primeiro.'; return; }
     call('testAgent', state.agents[0].folderId, $('prompt').value).then((r) => {

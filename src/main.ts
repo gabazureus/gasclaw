@@ -1,9 +1,10 @@
+import { pocP10 } from '../poc/p10-editor/harness';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
 import { reply } from './agent';
 import { handleChat, type ChatDeps, type ChatEvent } from './chat';
 import { complete } from './llm';
 import * as store from './store';
-import { extractFolderId, loadAgent, seedAgent } from './workspace';
+import { agentFolderPath, ensureFolderPath, extractFolderId, loadAgent, seedAgent, validAgentName } from './workspace';
 
 const CHAT_MAX_TOKENS = 1000; // resposta síncrona precisa caber em 30 s
 
@@ -36,9 +37,13 @@ export function doGet(e: GoogleAppsScript.Events.DoGet) {
     assertOwner();
     if (action === 'poc') {
       const run = POCS[e.parameter.id ?? ''];
-      return json(run ? run(e.parameter.step) : { ok: false, pass: false, error: `POC desconhecida: ${e.parameter.id}` });
+      return json(run ? run(e.parameter.step, e.parameter) : { ok: false, pass: false, error: `POC desconhecida: ${e.parameter.id}` });
     }
-    if (action === 'health') return json({ ok: true, enabled: store.isEnabled(), agents: store.listAgents().length, hasKey: !!store.getApiKey() });
+    if (action === 'health') {
+      const agents = store.listAgents();
+      const folders = agents.map((a) => `${a.name}: https://drive.google.com/drive/folders/${a.folderId}`);
+      return json({ ok: true, enabled: store.isEnabled(), agents: agents.length, hasKey: !!store.getApiKey(), folders });
+    }
     if (action === 'disable' || action === 'enable') {
       store.setEnabled(action === 'enable');
       return json({ ok: true, enabled: store.isEnabled() });
@@ -98,6 +103,14 @@ export function addAgent(url: string) {
   return { state: settingsState(), created };
 }
 
+/** "Novo agente": cria (ou reutiliza) Meu Drive/gasclaw/agentes/<nome>/, semeia os arquivos e registra a pasta. */
+export function createAgent(name: string) {
+  assertOwner();
+  const n = name.trim();
+  if (!validAgentName(n)) throw new Error('Nome inválido: use letras minúsculas, números e hífen (ex.: assistente).');
+  return addAgent(ensureFolderPath(agentFolderPath(n)).getId());
+}
+
 export function removeAgent(folderId: string) {
   assertOwner();
   store.saveAgents(store.listAgents().filter((a) => a.folderId !== folderId));
@@ -147,7 +160,8 @@ export function pocUrlFetchTimeout() {
 }
 
 // ---------- POCs automáticas: ./gasclaw poc <id> [etapa] → doGet?action=poc ----------
-const POCS: Record<string, (step?: string) => unknown> = {
+const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {
   p1: () => pocUrlFetchTimeout(),
   p6: (step) => pocP6(step, ownerEmail()),
+  p10: (step, params) => pocP10(step, params),
 };

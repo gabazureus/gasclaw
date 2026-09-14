@@ -98,7 +98,7 @@ function listV1(folderId: string): FileEntry[] {
 }
 
 /** V2: uma chamada files.list da Drive API v3. */
-function listV2(folderId: string): FileEntry[] {
+export function listV2(folderId: string): FileEntry[] {
   const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`); // folderId vem do DriveApp ou de extractFolderId
   const fields = encodeURIComponent('files(id,name,mimeType,modifiedTime)');
   const body = ok(UrlFetchApp.fetch(`${API}?q=${q}&fields=${fields}&pageSize=1000`, { headers: auth(), muteHttpExceptions: true }), 'files.list');
@@ -213,7 +213,7 @@ function childFolder(parent: GoogleAppsScript.Drive.Folder, name: string): Googl
 }
 
 /** Cria (upload com conversão) ou sobrescreve o conteúdo (files.update media) de um arquivo da pasta. */
-function upsert(folderId: string, existing: FileEntry[], name: string, content: string, srcMime: string, targetMime: string): void {
+export function upsert(folderId: string, existing: FileEntry[], name: string, content: string, srcMime: string, targetMime: string): void {
   const found = existing.find((e) => e.name === name && (e.mime === targetMime || (!isGoogle(targetMime) && !isGoogle(e.mime))));
   const headers = auth();
   if (found) {

@@ -1,5 +1,24 @@
 import { describe, expect, test } from 'vitest';
-import { buildSpec, canUse, DEFAULT_MODEL, DOC_MIME, extractFolderId, mergeConfig, parseFrontmatter, resolveRoles, SHEET_MIME, signature, type FileEntry } from '../src/workspace';
+import {
+  agentFolderPath,
+  buildSpec,
+  canUse,
+  DEFAULT_MODEL,
+  DOC_MIME,
+  EDITOR_MIME,
+  editorAgents,
+  editorEntries,
+  extractFolderId,
+  mergeConfig,
+  parseFrontmatter,
+  parseProjectExport,
+  resolveRoles,
+  SHEET_MIME,
+  signature,
+  validAgentName,
+  type FileEntry,
+  type ProjectFile,
+} from '../src/workspace';
 
 describe('extractFolderId', () => {
   test('aceita URL do Drive', () => {
@@ -71,6 +90,60 @@ describe('resolveRoles', () => {
     const r = resolveRoles([f('config', SHEET_MIME, 's1'), f('SOUL.md', 'application/vnd.google-apps.presentation')]);
     expect(r.config).toEqual({ entry: f('config', SHEET_MIME, 's1'), kind: 'sheet' });
     expect(r.SOUL).toBeUndefined();
+  });
+});
+
+describe('resolveRoles com o editor do Apps Script (ADR-013)', () => {
+  const ed = (name: string) => f(name, EDITOR_MIME, `agentes/a/${name}`);
+  test('precedência por papel: editor > Google Doc > .md, com o papel duplicado nos 3 lugares', () => {
+    const r = resolveRoles([f('SOUL.md', 'text/markdown', 'md1'), f('SOUL', DOC_MIME, 'doc1'), ed('SOUL.md')]);
+    expect(r.SOUL).toEqual({ entry: ed('SOUL.md'), kind: 'editor' });
+  });
+  test('editor é opcional por papel: AGENTS e SOUL no editor, o resto vem do Drive', () => {
+    const r = resolveRoles([ed('AGENTS.md'), ed('SOUL.md'), f('AGENTS.md'), f('SOUL', DOC_MIME), f('IDENTITY', DOC_MIME), f('IDENTITY.md'), f('USER.md')]);
+    expect(Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v?.kind]))).toEqual({ AGENTS: 'editor', SOUL: 'editor', IDENTITY: 'doc', USER: 'md' });
+  });
+  test('arquivo do editor não conta como .md do Drive e só vale com o nome <PAPEL>.md', () => {
+    const r = resolveRoles([f('SOUL', EDITOR_MIME), f('USER.md', EDITOR_MIME)]);
+    expect(r.SOUL).toBeUndefined();
+    expect(r.USER?.kind).toBe('editor');
+  });
+  test('signature muda quando o papel passa do Drive para o editor', () => {
+    expect(signature('p', resolveRoles([f('SOUL.md', 'text/markdown', 'x')]))).not.toBe(signature('p', resolveRoles([f('SOUL.md', EDITOR_MIME, 'x')])));
+  });
+});
+
+describe('arquivos do agente no projeto Apps Script', () => {
+  const files: ProjectFile[] = [
+    { name: 'agentes/assistente/SOUL.md', type: 'html', source: '# Alma' },
+    { name: 'agentes/assistente/AGENTS.md', type: 'html', source: '---\nmodel: x/y\n---\nRegras' },
+    { name: 'agentes/outro/USER.md', type: 'html', source: 'u' },
+    { name: 'agentes/assistente/SOUL', type: 'html', source: 'sem .md' },
+    { name: 'agentes/assistente/notas.md', type: 'html', source: 'não é papel' },
+    { name: 'agentes/assistente/sub/SOUL.md', type: 'html', source: 'fundo demais' },
+    { name: 'agentes/assistente/IDENTITY.md', type: 'server_js', source: 'var x' },
+    { name: '_motor', type: 'server_js', source: '// motor' },
+    { name: 'settings', type: 'html', source: '<p>' },
+  ];
+  test('editorAgents lista os agentes pelo prefixo agentes/<nome>/, sem hardcode', () => {
+    expect(editorAgents(files)).toEqual(['assistente', 'outro']);
+  });
+  test('editorEntries devolve só os papéis <PAPEL>.md em HTML daquele agente', () => {
+    expect(editorEntries(files, 'assistente', 7)).toEqual([
+      { id: 'agentes/assistente/SOUL.md', name: 'SOUL.md', mime: EDITOR_MIME, modified: 7 },
+      { id: 'agentes/assistente/AGENTS.md', name: 'AGENTS.md', mime: EDITOR_MIME, modified: 7 },
+    ]);
+  });
+  test('parseProjectExport lê o JSON do export application/vnd.google-apps.script+json', () => {
+    expect(parseProjectExport(JSON.stringify({ files: [{ id: 'u', ...files[0] }] }))).toEqual([files[0]]);
+  });
+});
+
+describe('pasta padrão do agente no Drive', () => {
+  test('agentFolderPath = gasclaw/agentes/<nome>', () => expect(agentFolderPath('assistente')).toEqual(['gasclaw', 'agentes', 'assistente']));
+  test('validAgentName aceita minúsculas, dígitos e hífen; recusa barra, espaço e vazio', () => {
+    expect(['assistente', 'vendas-2'].map(validAgentName)).toEqual([true, true]);
+    expect(['', 'a/b', 'Com Espaço', '-x', 'x'.repeat(41)].map(validAgentName)).toEqual([false, false, false, false, false]);
   });
 });
 

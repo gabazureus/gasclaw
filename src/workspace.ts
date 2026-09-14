@@ -12,9 +12,37 @@ export const SHEET_MIME = 'application/vnd.google-apps.spreadsheet';
 const MAX_FILE = 20_000;
 const MAX_TOTAL = 60_000;
 
-/** Um arquivo da pasta do agente, como a listagem do Drive devolve. */
+/** Arquivo HTML do projeto Apps Script `agentes/<nome>/<PAPEL>.md` (no editor: `<PAPEL>.md.html`), com markdown puro. */
+export const EDITOR_MIME = 'application/x-gasclaw-editor';
+
+/** Um arquivo da pasta do agente, como a listagem do Drive devolve (ou um arquivo do editor, com EDITOR_MIME). */
 export type FileEntry = { id: string; name: string; mime: string; modified: number };
-export type Source = { entry: FileEntry; kind: 'doc' | 'md' | 'sheet' };
+export type Source = { entry: FileEntry; kind: 'editor' | 'doc' | 'md' | 'sheet' };
+/** Arquivo do projeto como o export `application/vnd.google-apps.script+json` devolve (conteúdo do HEAD). */
+export type ProjectFile = { name: string; type: string; source: string };
+
+const ROLE_FILE = /^agentes\/([a-z0-9][a-z0-9-]{0,39})\/(AGENTS|SOUL|IDENTITY|USER)\.md$/;
+export const validAgentName = (name: string): boolean => /^[a-z0-9][a-z0-9-]{0,39}$/.test(name);
+export const agentFolderPath = (name: string): string[] => ['gasclaw', 'agentes', name];
+
+export function parseProjectExport(json: string): ProjectFile[] {
+  return ((JSON.parse(json).files ?? []) as ProjectFile[]).map(({ name, type, source }) => ({ name, type, source }));
+}
+
+const roleFile = (f: ProjectFile) => (f.type === 'html' ? f.name.match(ROLE_FILE) : null);
+
+/** Agentes que têm ao menos um papel no editor, pelo prefixo `agentes/<nome>/`. */
+export function editorAgents(files: ProjectFile[]): string[] {
+  return [...new Set(files.flatMap((f) => roleFile(f)?.[1] ?? []))].sort();
+}
+
+/** Papéis do agente no editor como FileEntry (id = nome do arquivo no projeto). */
+export function editorEntries(files: ProjectFile[], agent: string, modified: number): FileEntry[] {
+  return files.flatMap((f) => {
+    const m = roleFile(f);
+    return m && m[1] === agent ? [{ id: f.name, name: `${m[2]}.md`, mime: EDITOR_MIME, modified }] : [];
+  });
+}
 export type Sources = Partial<Record<Role | 'config', Source>>;
 
 export function extractFolderId(input: string): string | null {
@@ -37,14 +65,16 @@ export function parseFrontmatter(md: string): { data: Record<string, string | st
   return { data, body: md.slice(m[0].length) };
 }
 
-/** Por papel: Google Doc com o nome (com ou sem ".md") > arquivo <PAPEL>.md > ausente. Planilha "config" = config. */
+/** Por papel (ADR-013): editor do Apps Script > Google Doc com o nome (com ou sem ".md") > arquivo <PAPEL>.md > ausente. Planilha "config" = config. */
 export function resolveRoles(entries: FileEntry[]): Sources {
   const out: Sources = {};
   const isGoogle = (e: FileEntry) => e.mime.startsWith('application/vnd.google-apps.');
   for (const r of ROLES) {
+    const editor = entries.find((e) => e.mime === EDITOR_MIME && e.name === `${r}.md`);
     const doc = entries.find((e) => e.mime === DOC_MIME && (e.name === r || e.name === `${r}.md`));
-    const md = entries.find((e) => !isGoogle(e) && e.name === `${r}.md`);
-    if (doc) out[r] = { entry: doc, kind: 'doc' };
+    const md = entries.find((e) => !isGoogle(e) && e.mime !== EDITOR_MIME && e.name === `${r}.md`);
+    if (editor) out[r] = { entry: editor, kind: 'editor' };
+    else if (doc) out[r] = { entry: doc, kind: 'doc' };
     else if (md) out[r] = { entry: md, kind: 'md' };
   }
   const config = entries.find((e) => e.mime === SHEET_MIME && e.name === 'config');
@@ -100,6 +130,14 @@ export function loadAgent(folderId: string): AgentSpec {
     if (it.hasNext()) texts[r] = it.next().getBlob().getDataAsString();
   }
   return buildSpec(folderId, folder.getName(), texts);
+}
+
+/** Garante a cadeia de pastas a partir de "Meu Drive", reutilizando a primeira com o mesmo nome (nunca duplica). */
+export function ensureFolderPath(path: string[]): GoogleAppsScript.Drive.Folder {
+  return path.reduce((dir, name) => {
+    const it = dir.getFoldersByName(name);
+    return it.hasNext() ? it.next() : dir.createFolder(name);
+  }, DriveApp.getRootFolder());
 }
 
 /** Cria apenas os arquivos que faltam; nunca sobrescreve. Retorna os nomes criados. */
