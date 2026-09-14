@@ -12,8 +12,8 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 
 ### F0 — Primeira conversa com um agente do Drive 🔄
 
-**Hoje:** o ambiente **dev está publicado no Google** (versão 1). O `./gasclaw doctor` passa em todos os itens, e o health responde com o gasclaw ativo e a chave do OpenRouter salva.
-Ainda faltam: terminar a configuração do app no Google Chat, adicionar o primeiro agente, fazer o primeiro teste real no Chat e rodar a POC P1. Até lá, considere a etapa em validação.
+**Hoje:** o ambiente **dev está no ar e já dá para usar**. O agente responde no Google Chat usando a pasta do Drive. A pausa (`down`), a reativação (`up`) e o `rollback` foram testados de verdade, e a POC P1 mostrou que chamadas longas ao OpenRouter, de mais de 2 minutos, funcionam ([ADR-010](docs/adr/010-poc-p1-urlfetch.md)).
+Ainda faltam: o ambiente prod, a publicação automática pelo GitHub e o teste com outra pessoa do domínio.
 
 Detalhes técnicos: [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementacao.md), Tasks 0–8 concluídas, Task 9 em andamento, Tasks 10–11 pendentes.
 
@@ -49,6 +49,7 @@ Detalhes técnicos: [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementa
 
 ### F1 — Agente-pasta completo ⏳
 
+- **Primeiro item: agentes em Google Docs e Sheets nativos.** Você vai poder escrever o agente num Google Doc comum, com comentários, histórico e edição pelo celular, e guardar os dados em Google Sheets em vez de CSV. Os arquivos `.md` continuam aceitos. Isso depende da POC P6, que mede tempo e fidelidade da leitura; se passar, a mudança é registrada no ADR-012.
 - Conversas guardadas no Drive, sem o limite de 6 h, com resumo automático quando ficam longas.
 - Memória: o agente anota fatos em `memory/AAAA-MM-DD.md`; `MEMORY.md` só é lido na DM do dono.
 - Ritual de estreia (`BOOTSTRAP.md`): na primeira conversa, o agente pergunta seu nome e estilo.
