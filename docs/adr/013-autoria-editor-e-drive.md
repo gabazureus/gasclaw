@@ -1,6 +1,6 @@
 # ADR-013 — Autoria em ambas as superfícies: editor do Apps Script + pasta do Drive (POC P10)
 
-- **Status:** Aceito (convenção e medição) · 2026-09-14 · complementa o [ADR-002](002-agente-pasta-sem-codigo.md) e o [ADR-012](012-agentes-em-docs-e-sheets.md). Levar a leitura do editor para produção aguarda o gate do usuário.
+- **Status:** Aceito · 2026-09-14 · complementa o [ADR-002](002-agente-pasta-sem-codigo.md) e o [ADR-012](012-agentes-em-docs-e-sheets.md). Gate respondido pelo usuário: leitura pelo export do HEAD com cache de 30 s, **ligada no `loadAgent` do dev** (v14) e medida no C7. Prod ainda não recebeu.
 
 ## Contexto
 O usuário quer, como no Eve, um único arquivo de motor no projeto Apps Script e o resto
@@ -37,6 +37,7 @@ C1, C3 e parte do C4.
 | C4 publicar versão (`create-version` + implantação) | sim, 21,4 s | não rodou (interrompida) | ✅ |
 | C5 editar → `up` → edição continua no editor e no runtime | sim (`up` 34,8 s) | não rodou | ✅ |
 | C6 projeto = `_motor` (server_js, "NÃO EDITE") + `settings` + `appsscript` + `agentes/**` | ok | não rodou | ✅ |
+| **C7 (após o gate)** `loadAgent` de produção: editar `agentes/p10/SOUL.md.html` → o agente usa a edição em ≤ 30 s, sem `up` (`./gasclaw poc p10 c7`, v14) | **12,8 s** (2ª leitura); sem cache 2.052 ms, com cache 28 ms; precedência editor, editor, doc, md | export quebrado (404) → segue com o Drive (md, doc, doc, md) e registra `editorError` | ✅ |
 
 Detalhe do C3: o `HtmlService` trata o arquivo como HTML de saída e escapa parte do texto
 (ex.: `e <?= scriptlet ?>.\n\n- a < b` volta como `e &lt;?= scriptlet ?>.\n\n- a &lt; b`). O
@@ -77,8 +78,11 @@ avaliados como template. A variante `.gs` com `String.raw` foi descartada pelo u
 executaria como código, e um erro de sintaxe no texto do agente derrubaria o projeto inteiro.
 
 ## Consequências
-- F1: ligar no `loadAgent` de produção a leitura do editor (export do HEAD) junto com a
-  leitura híbrida da P6, com cache de 30 s; testar "Novo agente" na tela.
+- Feito no dev: o `loadAgent` de produção lê o editor (export do HEAD) + a leitura híbrida da P6
+  (Doc/`.md`/planilha `config`) com cache de 30 s. Se o editor falhar, segue com o Drive, e o erro
+  aparece no span `resolve_agent` do trace (ADR-014), sem cache, para tentar de novo.
+  Regressão coberta: pasta só com `.md` gera o mesmo prompt da F0. As funções de Drive saíram de
+  `poc/` e foram para `src/drive.ts`. Falta testar "Novo agente" na tela e levar para prod.
 - Alternativas medidas e não escolhidas: apontar o Chat para o `@HEAD` expõe todo push de motor
   ainda sem versão, sem rollback. Publicar uma versão a cada edição custa cerca de 21 s e um
   comando a mais.

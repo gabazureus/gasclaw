@@ -63,3 +63,8 @@ Proposta do usuário: trocar markdown por Google Docs (texto) e Google Sheets (d
 - `./gasclaw poc p14`, 2 execuções: C2–C5 e C7–C10 ✅; C1 ❌ p95 3.893 ms (profile: upload do JSON 1,3–1,6 s; variação de 2–3× nas primitivas do Google entre medições); C6 tela 2,5 s ✅, planilha 5,2 s. A 1ª medição do C6 (12 s) estava contaminada pelo `gcloud` na sonda; corrigida para latência pelo `startedAt` do servidor.
 - Run real: `resolve_agent` 1.932 ms · `llm_call` 1.684 ms (deepseek, 353 tokens, US$ 0,00023892) · `reply` 0 ms; cobertura 0,92.
 - Gate da P10 respondido pelo usuário: ler os arquivos do editor pelo export do HEAD com cache de 30 s; implementação logo em seguida.
+
+## [2026-09-14] ops | Leitura do editor ligada no loadAgent (gate da P10, C7)
+- Gate respondido: ler os arquivos do editor pelo export do HEAD com cache de 30 s. `loadAgent` de produção = editor → Google Doc → `.md` (+ planilha `config`), com fallback para o Drive e `editorError` no span `resolve_agent` do trace. Núcleo puro (TDD): `assembleAgent`, `roleTexts`, `driveSources`; regressão da F0 mantida. Funções de Drive movidas de `poc/` para `src/drive.ts`.
+- `./gasclaw poc p10 c7` (dev v14): edição no editor usada pelo agente em 12,8 s sem `up`; leitura sem cache 2.052 ms, com cache 28 ms; precedência editor, editor, doc, md; export quebrado (404) → md, doc, doc, md com `editorError`.
+- Tela Ao vivo: detalhe do run abre como acordeão logo abaixo da linha (um aberto por vez; o polling preserva o aberto, o foco e a rolagem).
