@@ -6,6 +6,7 @@ Comece por aqui. Tudo que existe no projeto está indexado nesta página.
 |---|---|
 | Usar o gasclaw (publicar, criar agente, conversar no Chat) | [como-usar.md](como-usar.md) |
 | Ver o que o gasclaw faz em cada etapa (F0–F4) | [../CHANGELOG.md](../CHANGELOG.md) |
+| Ver o progresso item a item (%, status, resolvido ou não) | [../PROGRESS.md](../PROGRESS.md) |
 | Entender o que é e como funciona | [specs/2026-09-14-gasclaw-design.md](specs/2026-09-14-gasclaw-design.md) |
 | Retomar numa nova conversa | [plans/2026-09-14-handoff.md](plans/2026-09-14-handoff.md) |
 | Implementar (passo a passo, com código) | [plans/2026-09-14-gasclaw-f0-plano-implementacao.md](plans/2026-09-14-gasclaw-f0-plano-implementacao.md) |
