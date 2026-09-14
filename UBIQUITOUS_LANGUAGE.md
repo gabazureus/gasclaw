@@ -12,7 +12,11 @@
 
 | Term | Definition | In code as | Notes / invariants |
 |------|------------|-----------|--------------------|
-| Agente | Uma pasta do Google Drive registrada na tela gasclaw | `AgentSpec` | Nunca contém código executável (ADR-002) |
+| Agente | Uma pasta do Google Drive registrada na tela gasclaw e/ou os arquivos `agentes/<nome>/` do editor do Apps Script | `AgentSpec` | Nunca contém código executável (ADR-002, ADR-013) |
+| Arquivo do agente no editor | `agentes/<nome>/<PAPEL>.md.html` no editor (no projeto: `agentes/<nome>/<PAPEL>.md`, tipo HTML), só markdown puro | `EDITOR_MIME`, `editorEntries` | Lido pelo texto bruto (export do HEAD ou `getRawContent`), nunca por `getContent` (ADR-013) |
+| Precedência por papel | Para cada papel: editor → Google Doc → `.md` do Drive → `(missing)` | `resolveRoles` | Editor opcional por papel (ADR-013) |
+| Pasta padrão do agente | `Meu Drive/gasclaw/agentes/<nome>/`, criada sem duplicar por "Novo agente" | `agentFolderPath`, `ensureFolderPath` | "Usar pasta existente" continua valendo |
+| Motor | O único arquivo de código do projeto (`_motor.gs`), gerado pelo build | `dist/_motor.js` | "NÃO EDITE": substituído a cada `./gasclaw up` |
 | Pasta do agente | Os markdown AGENTS/SOUL/IDENTITY/USER/MEMORY/HEARTBEAT/BOOTSTRAP, `jobs.md`, `skills/`, `memory/`, `inbox/` | `workspace` | Arquivo ausente = marcador "missing", nunca erro |
 | Frontmatter do agente | Configuração no topo de `AGENTS.md` (model, tools, http_allow, users, heartbeat, limits) | `AgentConfig` | Única fonte de configuração por agente |
 | Dono | Conta que é dona do script e dos triggers; única que recebe `MEMORY.md` | `OWNER_EMAIL` | Hoje = conta do usuário (ADR-008) |

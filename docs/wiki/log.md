@@ -50,3 +50,9 @@ Proposta do usuário: trocar markdown por Google Docs (texto) e Google Sheets (d
 - Fixtures idempotentes em `gasclaw-poc/p6-teste` e `gasclaw-poc/p6-misto` (import markdown → Doc e CSV → Sheet pela Drive API; nada é apagado).
 - Dev versão 4; 2 execuções completas: C1 1.091/1.224 ms; V1 472/608 ms e V2 294/383 ms (acima de 200 ms) → validade de 30 s (54/77 ms); C3, C4, C5 e a config pela planilha ✅. Duração de 66/51 s. Conferido sem duplicatas (5 e 4 arquivos).
 - Decisão: leitura híbrida por papel + cache de 30 s ([ADR-012](../adr/012-agentes-em-docs-e-sheets.md)); implementação em produção na F1.
+
+## [2026-09-14] ops | POC P10 automática: passou (ADR-013)
+- Convenção decidida pelo usuário: `agentes/<nome>/<PAPEL>.md.html` no editor do Apps Script (no projeto: `agentes/<nome>/<PAPEL>.md`, tipo HTML), só markdown puro; precedência por papel editor → Google Doc → `.md`; editor opcional por papel.
+- `./gasclaw poc p10` (etapas no PC em `poc/p10-editor/pc.sh`, veredito puro em `summary.ts`). Execução 1 completa: C1 ✅ (sha256 igual); C3 `getContent()` **não fiel** (escapa `<`), `getRawContent()` fiel (7 ms), export do HEAD pela Drive API fiel (419 ms) e lista sem hardcode; `projects.getContent` 403 (sem escopo novo); precedência editor, editor, doc, md; C4 export do HEAD vê a edição sem deploy, `@HEAD` vê (9 ms), publicar versão 21,4 s; C5 `up` 34,8 s preserva a edição; C6 só `_motor.gs` com "NÃO EDITE". Execução 2 parcial (interrompida por mudança de prioridade) repetiu C1, C3 (export até 1.270 ms) e C4; um 404 isolado no `/dev`.
+- Produto no dev: motor único `_motor.gs`; `up` faz pull de `agentes/**` antes do push; "Novo agente" cria `Meu Drive/gasclaw/agentes/<nome>/`; health lista os links das pastas. Leitura do editor no `loadAgent` aguarda o gate.
+- P14 (trace do agente) entrou na esteira e na F1 (Beads `gasclaw-5rn`).
