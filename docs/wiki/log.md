@@ -26,3 +26,9 @@ Fonte: docs/raw/sources/2026-09-14-pesquisa-referencias.md → wiki/sources/pesq
 
 ## [2026-09-14] decisão | Agentes em Google Docs/Sheets nativos → POC P6 na F1
 Proposta do usuário: trocar markdown por Google Docs (texto) e Google Sheets (dados). Decisão: a F0 fecha com markdown; a F1 começa pela POC P6 (leitura híbrida Doc/.md, config em planilha, latência e fidelidade medidas). Se passar, o ADR-012 complementa o ADR-002.
+
+## [2026-09-14] ops | Ambiente prod criado; GitHub adiado (Task 10 parcial)
+- `./gasclaw up --prod`: projeto `gasclaw-prod-example`, script e web app publicados (versão 1), app do Chat "gasclaw" configurado. Health: ativo, falta salvar a chave na tela de prod.
+- `.github/workflows/deploy.yml` criado localmente (CI dev → prod), sem push.
+- Histórico git verificado antes do push planejado: 12 commits sem segredos nem arquivos sensíveis.
+- Decisão do usuário: **não subir para o GitHub agora**. Pendentes: `gh auth login`, repositório privado, secret `CLASPRC_JSON`, push e POC P7 (validade do token do CI).

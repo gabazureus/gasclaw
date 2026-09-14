@@ -13,7 +13,8 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 ### F0 — Primeira conversa com um agente do Drive 🔄
 
 **Hoje:** o ambiente **dev está no ar e já dá para usar**. O agente responde no Google Chat usando a pasta do Drive. A pausa (`down`), a reativação (`up`) e o `rollback` foram testados de verdade, e a POC P1 mostrou que chamadas longas ao OpenRouter, de mais de 2 minutos, funcionam ([ADR-010](docs/adr/010-poc-p1-urlfetch.md)).
-Ainda faltam: o ambiente prod, a publicação automática pelo GitHub e o teste com outra pessoa do domínio.
+O ambiente **prod** também já está publicado e passa no `./gasclaw doctor --prod`; falta só salvar a chave e o agente na tela de prod.
+Ainda faltam: a publicação automática pelo GitHub (adiada por decisão sua) e o teste com outra pessoa do domínio.
 
 Detalhes técnicos: [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementacao.md), Tasks 0–8 concluídas, Task 9 em andamento, Tasks 10–11 pendentes.
 
