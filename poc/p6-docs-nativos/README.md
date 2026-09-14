@@ -1,6 +1,6 @@
 # POC P6 — Agentes em Google Docs/Sheets nativos
 
-- **Status:** planejada (sem código) · 2026-09-14 · Beads `gasclaw-0ce`
+- **Status:** em teste no dev (versão 3) · 2026-09-14 · Beads `gasclaw-0ce`
 - **Fase:** início da F1 · **Se passar:** ADR-012 (complementa o ADR-002)
 
 ## Pergunta
@@ -36,8 +36,9 @@ escopos OAuth novos.
   exato do endpoint de export deve ser conferido na documentação oficial da Drive API antes
   de codar.
 - **Validação do cache (C2):** (V1) `DriveApp`, com nome, tipo e `getLastUpdated()` dos
-  arquivos da pasta. (V2) uma única chamada à Drive API (serviço avançado `Drive`) listando
-  os filhos da pasta com `modifiedTime`. O cache fica no `CacheService`, com chave =
+  arquivos da pasta. (V2) uma única chamada `files.list` à Drive API v3, feita por UrlFetch com o
+  token do script (sem serviço avançado nem mudança no manifesto), listando os filhos da
+  pasta com `modifiedTime`. O cache fica no `CacheService`, com chave =
   `folderId` + hash de (id, modifiedTime) dos arquivos resolvidos.
 - **Sem cache:** o C1 inclui listar a pasta, resolver os papéis e exportar os 4 Docs.
 

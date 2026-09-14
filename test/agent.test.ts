@@ -3,7 +3,7 @@ import { reply, trimHistory } from '../src/agent';
 import type { Message } from '../src/llm';
 import { buildSpec } from '../src/workspace';
 
-const spec = buildSpec('id', 'A', { 'AGENTS.md': 'Regras' });
+const spec = buildSpec('id', 'A', { AGENTS: 'Regras' });
 
 test('trimHistory mantém as últimas N mensagens', () => {
   const h: Message[] = Array.from({ length: 25 }, (_, i) => ({ role: 'user', content: String(i) }));

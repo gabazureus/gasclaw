@@ -1,3 +1,4 @@
+import { runP6 } from '../poc/p6-docs-nativos/harness';
 import { reply } from './agent';
 import { handleChat, type ChatDeps, type ChatEvent } from './chat';
 import { complete } from './llm';
@@ -139,4 +140,12 @@ export function pocUrlFetchTimeout() {
   } catch (err) {
     return { pass: false, seconds: (Date.now() - t0) / 1000, model, error: (err as Error).message };
   }
+}
+
+// ---------- POC P6: agentes em Google Docs/Sheets nativos (sai após o ADR-012) ----------
+export function pocDocsNativos(url: string) {
+  assertOwner();
+  const id = extractFolderId(url ?? '');
+  if (!id) throw new Error('URL de pasta inválida. Copie a URL da pasta no Google Drive.');
+  return runP6(id);
 }

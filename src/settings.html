@@ -54,6 +54,14 @@
     <button class="sec" id="poc">Rodar POC P1</button>
     <pre id="pocOut" hidden></pre>
   </section>
+
+  <section>
+    <h2><label for="p6url">POC P6 — agentes em Google Docs</label></h2>
+    <p>Cole a URL de uma pasta de teste. Mede leitura sem cache (C1 &lt; 3 s), com cache (C2 &lt; 200 ms), invalidação (C3: rode de novo depois de editar um Doc), títulos e listas (C4) e pasta mista (C5). Leva cerca de 30 s.</p>
+    <input id="p6url" placeholder="https://drive.google.com/drive/folders/…">
+    <button class="sec" id="p6">Rodar POC P6</button>
+    <pre id="p6Out" hidden aria-live="polite"></pre>
+  </section>
 </main>
 <script>
   const $ = (id) => document.getElementById(id);
@@ -114,6 +122,12 @@
     $('pocOut').hidden = false;
     $('pocOut').textContent = JSON.stringify(r, null, 2);
     $('msg').textContent = r.pass ? 'POC P1 aprovada ✅' : 'POC P1 não atingiu o critério';
+  });
+
+  $('p6').onclick = () => call('pocDocsNativos', $('p6url').value).then((r) => {
+    $('p6Out').hidden = false;
+    $('p6Out').textContent = JSON.stringify(r, null, 2);
+    $('msg').textContent = 'POC P6 concluída: copie o resultado abaixo.';
   });
 
   call('settingsState').then(render);

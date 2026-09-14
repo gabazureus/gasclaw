@@ -39,3 +39,8 @@ Proposta do usuário: trocar markdown por Google Docs (texto) e Google Sheets (d
 - Numeração das POCs: P6 = agentes em Docs/Sheets nativos (F1); o Excel da spec passa a ser P8 (ADR-009, item 20).
 - POC P6 desenhada, sem código: `poc/p6-docs-nativos/README.md` (C1 < 3 s sem cache, C2 < 200 ms com cache, C3 invalidação, C4 títulos e listas, C5 pasta mista).
 - Verificação: `npm test` com 28/28 testes verdes; links locais dos docs alterados conferidos.
+
+## [2026-09-14] ops | POC P6 em teste no dev
+- Fonte da verdade conferida: export da Drive API v3 `GET /drive/v3/files/{id}/export?mimeType=text/markdown` (limite de 10 MB; aceita os escopos `drive`, `drive.readonly`, `drive.file` e `drive.meet.readonly`). Sem escopo novo: listagem (V2) e export via UrlFetch com o token do script; planilha `config` exportada como `text/csv`.
+- Núcleo puro (TDD): `resolveRoles`, `signature`, `mergeConfig`, `buildSpec` por papel; regressão `.md` idêntica à F0. Produção segue lendo só `.md` até o ADR-012.
+- Harness `poc/p6-docs-nativos/harness.ts` + botão "Rodar POC P6"; `./gasclaw up` publicou o dev na versão 3 com health ok. Aguardando a medição manual do usuário.
