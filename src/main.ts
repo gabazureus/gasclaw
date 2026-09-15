@@ -109,7 +109,10 @@ export function doPost(e: GoogleAppsScript.Events.DoPost) {
       // primeira vez: o dono grava o segredo gerado no PC; depois, só quem já tem o segredo atual
       if (!validSecret(p.secret ?? '')) return json({ ok: false, status: 400, error: 'segredo inválido: use 64 caracteres hexadecimais (openssl rand -hex 32)' });
       if (stored && !cliAuthorized(stored, p.secret)) return json({ ok: false, status: 403, error: 'segredo da CLI errado' });
-      if (!stored) props.setProperties({ CLI_SECRET: p.secret, CLI_SECRET_AT: new Date().toISOString() }); // a data aparece no painel (ADR-022)
+      if (!stored) {
+        props.setProperty('CLI_SECRET', p.secret);
+        props.setProperty('CLI_SECRET_AT', new Date().toISOString()); // a data aparece no painel (ADR-022)
+      }
       return json({ ok: true });
     }
     if (!cliAuthorized(stored, p.secret)) return json({ ok: false, status: 403, error: 'segredo da CLI ausente ou errado (rode ./gasclaw up)' });
