@@ -18,7 +18,7 @@ export type ChatEvent = {
 };
 export type AgentEntry = { folderId: string; name: string };
 /** Tools do agente neste turno; a memória só é lida quando ownerDm (spec §8). `skills` é só o índice: o corpo vem por read_skill. */
-export type Toolkit = { tools: Tool[]; ctx: ToolCtx; steps: number; skills?: Skill[] };
+export type Toolkit = { tools: Tool[]; ctx: ToolCtx; steps: number; skills?: Skill[]; bootstrap?: { read: () => string | null; consume: () => void } };
 /** `open(sessão)` = token de um `ask` aberto nessa conversa (a próxima mensagem responde). */
 export type Tickets = TicketStore & { open?: (session: string) => string | null };
 export type ChatReply = { text?: string; cardsV2?: unknown[]; actionResponse?: { type: 'UPDATE_MESSAGE' } };
@@ -39,8 +39,6 @@ export type ChatDeps = {
   onTurn?: (turn: TurnResult) => void;
   /** Compacta a sessão depois de salvar, se ela passou do teto (resumo + cauda). Sem isso, o histórico só é cortado. */
   compact?: (key: string, llm: (messages: Message[]) => Completion) => void;
-  /** Ritual de estreia: lê o BOOTSTRAP.md da pasta e o consome quando o ritual cumpre o papel. */
-  bootstrap?: { read: () => string | null; consume: () => void };
 };
 
 const NO_TOOLS: Toolkit = { tools: [], ctx: { now: () => '', ownerDm: false, memory: { read: () => '', write: () => {} } }, steps: DEFAULT_STEPS };
@@ -95,7 +93,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
     const text = ticket?.text ?? typed;
     const history = d.history(hk); // na retomada também: mensagens trocadas enquanto a aprovação esperava não se perdem
     // Ritual de estreia: só na 1ª conversa da DM do dono; entra como conteúdo da pasta, antes da fala do usuário.
-    const bootstrapMd = !resume && d.bootstrap && ownerDm && history.length === 0 ? d.bootstrap.read() : null;
+    const bootstrapMd = !resume && kit.bootstrap && ownerDm && history.length === 0 ? kit.bootstrap.read() : null;
     const ritual = shouldBootstrap(bootstrapMd, history.length, ownerDm) ? [{ role: 'user' as const, content: bootstrapMessage(bootstrapMd ?? '') }] : [];
     const runId = ticket?.runId ?? e.message?.name ?? `${hk}:${start}`;
     const out = runTurn({
@@ -123,7 +121,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
       return reply(out.text, approvalCard(t, out.text));
     }
     // O ritual só é consumido quando cumpriu o papel (o agente gravou algo); senão, fica para a próxima conversa.
-    if (ritual.length && bootstrapDone(out.events.filter((ev) => ev.status === 'ok' || ev.status === 'approved').map((ev) => ev.name))) d.bootstrap?.consume();
+    if (ritual.length && bootstrapDone(out.events.filter((ev) => ev.status === 'ok' || ev.status === 'approved').map((ev) => ev.name))) kit.bootstrap?.consume();
     // Flush de memória antes de compactar: o que for durável vira nota do dia, para não se perder no corte do histórico.
     if (ownerDm && out.history.length >= MAX_HISTORY && kit.ctx.memory.saveDay && kit.ctx.memory.today) flushMemory(out.history, kit.ctx, (m) => d.llm(key, spec.config.model, m));
     d.saveHistory(hk, out.history);

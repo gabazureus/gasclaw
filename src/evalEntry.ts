@@ -124,15 +124,19 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
         history: () => history,
         saveHistory: (_k, h) => void (history = h),
         llm: (_k, _m, m, defs = []) => llm(m, defs),
-        toolkit: (_s, ownerDm) => ({ tools, ctx: { now: env.now, ownerDm, memory: env.memory, google: env.google, skill: env.skill, ...env.zone }, steps }),
-        bootstrap: env.bootstrap && {
-          read: () => {
-            const md = env.bootstrap!.read();
-            if (md?.trim()) spans.push('bootstrap'); // ritual entrou neste turno
-            return md;
+        toolkit: (_s, ownerDm) => ({
+          tools,
+          ctx: { now: env.now, ownerDm, memory: env.memory, google: env.google, skill: env.skill, ...env.zone },
+          steps,
+          bootstrap: env.bootstrap && {
+            read: () => {
+              const md = env.bootstrap!.read();
+              if (md?.trim()) spans.push('bootstrap'); // ritual entrou neste turno
+              return md;
+            },
+            consume: () => env.bootstrap!.consume(),
           },
-          consume: () => env.bootstrap!.consume(),
-        },
+        }),
         tickets,
         newToken: token,
         clock: env.clock,

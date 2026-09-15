@@ -21,8 +21,12 @@ function setup(script: Completion[], opts: { history?: Message[]; file?: string 
     history: () => opts.history ?? [],
     saveHistory: () => {},
     llm: (_k, _m, ms) => (sent.push(structuredClone(ms)), script.shift() ?? { text: 'fim' }),
-    toolkit: (_s, ownerDm) => ({ tools: allowedTools(['memory']), ctx: { now: () => '', ownerDm, isOwner: true, memory }, steps: 4 }),
-    bootstrap: { read: () => (opts.file === undefined ? RITUAL : opts.file), consume: () => void consumed++ },
+    toolkit: (_s, ownerDm) => ({
+      tools: allowedTools(['memory']),
+      ctx: { now: () => '', ownerDm, isOwner: true, memory },
+      steps: 4,
+      bootstrap: { read: () => (opts.file === undefined ? RITUAL : opts.file), consume: () => void consumed++ },
+    }),
     clock: () => 1,
   };
   return { d, sent, files, consumed: () => consumed };
@@ -67,8 +71,21 @@ describe('ritual de estreia no chat', () => {
     expect(consumed()).toBe(0);
   });
 
-  test('deps sem bootstrap (compatibilidade) não quebram', () => {
+  test('toolkit sem bootstrap (compatibilidade) não quebra', () => {
     const { d } = setup([{ text: 'ok' }]);
-    expect(handleChat(dm('oi'), { ...d, bootstrap: undefined }).text).toBe('ok');
+    const semRitual: ChatDeps = { ...d, toolkit: (spec, ownerDm) => ({ ...d.toolkit!(spec, ownerDm), bootstrap: undefined }) };
+    expect(handleChat(dm('oi'), semRitual).text).toBe('ok');
+  });
+
+  test('o ritual vem da pasta do agente do turno, não do primeiro da lista', () => {
+    const lidas: string[] = [];
+    const { d } = setup([{ text: 'ok' }]);
+    const porAgente: ChatDeps = {
+      ...d,
+      load: () => withAccess(buildSpec('f2', 'B', { AGENTS: 'Regras' }), { users: [], tools: [] }),
+      toolkit: (spec, ownerDm) => ({ ...d.toolkit!(spec, ownerDm), bootstrap: { read: () => (lidas.push(spec.folderId), null), consume: () => {} } }),
+    };
+    handleChat(dm('oi'), porAgente);
+    expect(lidas).toEqual(['f2']);
   });
 });
