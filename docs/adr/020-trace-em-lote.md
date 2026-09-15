@@ -53,3 +53,16 @@ O resultado de cada execução fica no retorno de `./gasclaw poc p14` e no Beads
 O [ADR-015](015-escopos-oauth.md) cita "aprovação no fluxo do agente (ADR-005, F2)". A aprovação foi
 decidida e entregue pelo [ADR-017](017-motor-de-tools-evals-e-aprovacao.md) (E5); o ADR-005 continua sendo o
 da execução durável.
+
+## Resposta do web app que se perde no Google: job recuperável (2026-09-15)
+- **Medido no dev (v29–v32):** a resposta de um pedido ao web app vem por um 302 para `script.googleusercontent.com/…/echo`,
+  que exige o token e vale uma vez. Mesmo com o salto manual e o token (`bc56fc9`), o echo às vezes devolve 404 e a
+  resposta some. **Não depende da duração nem da concorrência:** duas chamadas de 3,8 s e 3,6 s, uma perdeu e a outra não;
+  5 em sequência perderam 2; GET de leitura perdeu 1 de 20, POST perdeu 0 de 10 numa rodada e 3 de 5 em outra.
+  O servidor executa normalmente (o run aparece no trace); só a resposta não chega à CLI.
+- **Decisão:** em vez de execução assíncrona com gatilho (que resolveria um limite de tempo, e não é esse o caso):
+  - GET de leitura é idempotente: a CLI tenta até 3 vezes;
+  - POST com efeito leva um `job` aleatório: o servidor marca "em execução", executa **uma vez por job**, guarda o
+    resultado em cache por 6 h e devolve o guardado se o mesmo job chegar de novo;
+  - se a resposta se perder, a CLI lê `GET action=job&id=` a cada 5 s (teto de 6 min; desiste se o job ficar desconhecido por 60 s).
+- Vale para `./gasclaw` (`gfetch`) e `scripts/eval.mjs`.

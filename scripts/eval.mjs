@@ -1,6 +1,7 @@
 // ./gasclaw eval [cenário...|--all] → roda evals/*.md no web app do dev (action=eval) e sai ≠ 0 se algum falhar.
 // Uso direto: node scripts/eval.mjs <url do web app> [cenário...|--all] [--model <id>]
 import { execFileSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 
 const [url, ...rest] = process.argv.slice(2);
@@ -29,28 +30,73 @@ try {
 }
 const secret = process.env.CLI_SECRET ?? '';
 if (!/^[0-9a-f]{64}$/.test(secret)) die('sem CLI_SECRET no .env.local: rode ./gasclaw up (ele gera e registra o segredo)');
+// A resposta vem por 302 para script.googleusercontent.com/…/echo, que exige o token e vale uma vez: o salto é manual,
+// com o token, e só para esse host. Mesmo assim o echo às vezes perde a resposta (404), sem relação com a duração
+// (ADR-020): cada eval leva um job aleatório; o servidor executa uma vez por job e guarda o resultado, que buscamos por GET.
+const W = '\n%{http_code} %{redirect_url}';
+const opts = { encoding: 'utf8', maxBuffer: 10 << 20, stdio: ['pipe', 'pipe', 'pipe'] };
+const tokenCfg = `header = "Authorization: Bearer ${token}"\n`;
+const split = (out) => {
+  const i = out.lastIndexOf('\n');
+  const [code, loc = ''] = out.slice(i + 1).split(' ');
+  return { body: out.slice(0, i), code, loc };
+};
+const hop = (args, input) => {
+  let res = split(execFileSync('curl', args, { ...opts, input }));
+  if (res.code === '302') {
+    if (!res.loc.startsWith('https://script.googleusercontent.com/')) throw Object.assign(new Error('redirect'), { status: 22, stderr: 'redirecionamento para host inesperado recusado' });
+    res = split(execFileSync('curl', ['-sS', '--config', '-', '-o', '-', '-w', W, res.loc], { ...opts, input: tokenCfg }));
+  }
+  return res;
+};
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const readJob = (job) => {
+  const base = url.split('?')[0];
+  const t0 = Date.now();
+  let unknownSince = t0;
+  while (Date.now() - t0 < 360_000) {
+    sleep(5000);
+    let g;
+    try {
+      g = hop(['-sS', '--config', '-', '-o', '-', '-w', W, `${base}?action=job&id=${job}`], tokenCfg);
+    } catch {
+      continue;
+    }
+    if (g.code !== '200') continue;
+    let j;
+    try {
+      j = JSON.parse(g.body);
+    } catch {
+      continue;
+    }
+    if (j.status === 'done') return JSON.stringify(j.result);
+    if (j.status !== 'unknown') unknownSince = Date.now();
+    else if (Date.now() - unknownSince >= 60_000) break;
+  }
+  throw Object.assign(new Error('job'), { status: 22, stderr: `a resposta se perdeu e o job ${job} ficou sem resultado` });
+};
+
 let failed = 0;
 for (const n of names) {
   // M1: eval é ação com efeito → POST. Token e segredo vão pelo stdin (--config -): nunca em `ps`, na URL ou no erro.
-  // A resposta vem por 302 para script.googleusercontent.com/…/echo, que exige o token e vale uma vez (medido na P14):
-  // o salto é manual, com o token, e só para esse host (o curl -L não reenvia o Authorization ao trocar de host).
-  const params = ['-sS', '--config', '-', '-o', '-', '-w', '\n%{http_code} %{redirect_url}', '--data-urlencode', 'action=eval', '--data-urlencode', `md@evals/${n}.md`];
+  const job = randomBytes(8).toString('hex');
+  const params = ['-sS', '--config', '-', '-o', '-', '-w', W, '--data-urlencode', 'action=eval', '--data-urlencode', `md@evals/${n}.md`, '--data-urlencode', `job=${job}`];
   if (model) params.push('--data-urlencode', `model=${model}`);
   let r;
   try {
-    const split = (out) => {
-      const i = out.lastIndexOf('\n');
-      const [code, loc = ''] = out.slice(i + 1).split(' ');
-      return { body: out.slice(0, i), code, loc };
-    };
-    const opts = { encoding: 'utf8', maxBuffer: 10 << 20, stdio: ['pipe', 'pipe', 'pipe'] };
-    let res = split(execFileSync('curl', [...params, url], { ...opts, input: `header = "Authorization: Bearer ${token}"\ndata-urlencode = "secret=${secret}"\n` }));
-    if (res.code === '302') {
-      if (!res.loc.startsWith('https://script.googleusercontent.com/')) throw Object.assign(new Error('redirect'), { status: 22, stderr: 'redirecionamento para host inesperado recusado' });
-      res = split(execFileSync('curl', ['-sS', '--config', '-', '-o', '-', '-w', '\n%{http_code} %{redirect_url}', res.loc], { ...opts, input: `header = "Authorization: Bearer ${token}"\n` }));
+    let body;
+    let first;
+    try {
+      first = hop([...params, url], `${tokenCfg}data-urlencode = "secret=${secret}"\n`);
+    } catch (err) {
+      if (err.stderr === 'redirecionamento para host inesperado recusado') throw err;
+      first = { code: 'erro' };
     }
-    if (res.code !== '200') throw Object.assign(new Error('http'), { status: 22, stderr: `web app respondeu HTTP ${res.code}` });
-    const body = res.body;
+    if (first.code === '200') body = first.body;
+    else {
+      console.error(`   a resposta de ${n} se perdeu no Google (HTTP ${first.code}): buscando o resultado do job ${job}`);
+      body = readJob(job);
+    }
     try {
       r = JSON.parse(body);
     } catch {

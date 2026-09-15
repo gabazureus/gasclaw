@@ -103,6 +103,41 @@ function mutate(action: string, p: Record<string, string>): unknown {
   return { ok: false, status: 400, error: `ação desconhecida: ${action}` };
 }
 
+// ---------- Job da CLI (ADR-020): a resposta do web app às vezes se perde no Google (echo 404), sem relação com a duração ----------
+const JOB_ID = /^[0-9a-f]{16,32}$/;
+const JOB_TTL = 21_600; // 6 h
+const jobKey = (id: string) => `job:${id}`;
+
+/** Executa uma vez por id e guarda o resultado; o mesmo id de novo devolve o guardado (ou "em execução") sem reexecutar. */
+function runJob(id: string, fn: () => unknown): unknown {
+  if (!JOB_ID.test(id)) return { ok: false, status: 400, error: 'job inválido' };
+  const cache = CacheService.getScriptCache();
+  const prev = cache.get(jobKey(id));
+  if (prev) {
+    const j = JSON.parse(prev) as { status: string; result?: unknown };
+    return j.status === 'done' ? j.result : { ok: false, status: 409, error: 'job ainda em execução', job: id };
+  }
+  cache.put(jobKey(id), JSON.stringify({ status: 'running', at: Date.now() }), JOB_TTL);
+  let result: unknown;
+  try {
+    result = fn();
+  } catch (err) {
+    result = { ok: false, error: (err as Error).message };
+  }
+  const raw = JSON.stringify({ status: 'done', result });
+  cache.put(jobKey(id), raw.length < 95_000 ? raw : JSON.stringify({ status: 'done', result: { ok: false, error: 'resultado maior que o cache (100 KB)' } }), JOB_TTL);
+  return result;
+}
+
+/** GET de leitura: estado do job (unknown · running · done com o resultado). */
+function readJob(id: string) {
+  if (!JOB_ID.test(id)) return { ok: false, status: 400, error: 'job inválido' };
+  const raw = CacheService.getScriptCache().get(jobKey(id));
+  if (!raw) return { ok: true, status: 'unknown' };
+  const j = JSON.parse(raw) as { status: string; result?: unknown };
+  return { ok: true, status: j.status, ...(j.status === 'done' ? { result: j.result } : {}) };
+}
+
 /** M1 (CSRF): ações com efeito só por POST do ./gasclaw, com CLI_SECRET no corpo (nunca na URL), comparado em tempo constante. */
 export function doPost(e: GoogleAppsScript.Events.DoPost) {
   const p = (e?.parameter ?? {}) as Record<string, string>;
@@ -123,6 +158,7 @@ export function doPost(e: GoogleAppsScript.Events.DoPost) {
     }
     if (!cliAuthorized(stored, p.secret)) return json({ ok: false, status: 403, error: 'segredo da CLI ausente ou errado (rode ./gasclaw up)' });
     if (!MUTATING.has(action)) return json({ ok: false, status: 400, error: `ação desconhecida: ${action}` });
+    if (p.job !== undefined) return json(runJob(p.job, () => mutate(action, p)));
     return json(mutate(action, p));
   } catch (err) {
     return json({ ok: false, error: (err as Error).message });
@@ -143,6 +179,7 @@ export function doGet(e: GoogleAppsScript.Events.DoGet) {
   try {
     assertOwner();
     if (MUTATING.has(action)) return json({ ok: false, status: 405, error: 'ação com efeito: use POST com o segredo da CLI (./gasclaw)' });
+    if (action === 'job') return json(readJob(e.parameter.id ?? ''));
     if (action === 'health') {
       const agents = store.listAgents();
       const folders = agents.map((a) => `${a.name}: https://drive.google.com/drive/folders/${a.folderId}`);

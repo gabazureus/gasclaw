@@ -77,10 +77,39 @@ clasp_() { # projeto privado por chamada: nenhum comando compartilha (nem reescr
   return "$rc"
 }
 url() { printf 'https://script.google.com/a/macros/%s/s/%s/exec' "${DOMAIN:-}" "$(var "DEPLOY_ID_$UP")"; }
-gfetch() { # $1 token · $2 URL · $3 corpo do POST ("" = GET) · $4 segredo (só no POST). Imprime o corpo; ≠ 0 se não for 200.
-  # Medido (P14, v29): a resposta do web app vem por um 302 para script.googleusercontent.com/…/echo, que EXIGE o token
-  # e vale UMA vez. O curl -L não reenvia o Authorization ao trocar de host: o 1º GET sem token queima a chave (404 ou
-  # redireciona para o /exec, que devolve a tela). Aqui o salto é manual, com o token, e só para o host do echo do Google.
+gfetch() { # $1 token · $2 URL · $3 corpo do POST ("" = GET) · $4 segredo (só no POST). Imprime o corpo; ≠ 0 se falhar.
+  # Medido (ADR-020): mesmo com o token no salto, o echo do Google perde a resposta de vez em quando (404), sem relação
+  # com duração nem concorrência (GET 1/20; POST 0/10 a 3/5 por rodada). GET é idempotente: tenta de novo. POST leva um
+  # job aleatório: o servidor executa uma vez por job e guarda o resultado, que a CLI busca por GET se a resposta se perder.
+  local t="$1" u="$2" d="$3" s="${4:-}" i r job base t0 unknown_since st
+  if [ -z "$d" ]; then
+    for i in 1 2 3; do
+      if r=$(ghop "$t" "$u" "" ""); then printf '%s' "$r"; return 0; fi
+      [ "$i" -lt 3 ] && sleep 2
+    done
+    return 22
+  fi
+  job=$(openssl rand -hex 8)
+  if r=$(ghop "$t" "$u" "$d&job=$job" "$s"); then printf '%s' "$r"; return 0; fi
+  printf 'a resposta do POST se perdeu no Google: buscando o resultado do job %s\n' "$job" >&2
+  base="${u%%\?*}"; t0=$(date +%s); unknown_since=$t0
+  while [ $(( $(date +%s) - t0 )) -lt 360 ]; do
+    sleep 5
+    r=$(ghop "$t" "$base?action=job&id=$job" "" "") || continue
+    st=$(printf '%s' "$r" | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{try{const j=JSON.parse(s);if(j.status==="done"){process.stdout.write(JSON.stringify(j.result));process.exit(0)}console.error(j.status||"?");process.exit(3)}catch{process.exit(4)}})' 2>/dev/null) && { printf '%s' "$st"; return 0; }
+    if printf '%s' "$r" | grep -q '"status":"unknown"'; then
+      [ $(( $(date +%s) - unknown_since )) -ge 60 ] && { printf 'job %s desconhecido no servidor depois de 60 s: o POST não chegou\n' "$job" >&2; return 22; }
+    else
+      unknown_since=$(date +%s)
+    fi
+  done
+  printf 'job %s sem resultado em 6 min\n' "$job" >&2
+  return 22
+}
+
+ghop() { # um único pedido ao web app: $1 token · $2 URL · $3 corpo do POST ("" = GET) · $4 segredo. Imprime o corpo; ≠ 0 se não for 200.
+  # A resposta vem por 302 para script.googleusercontent.com/…/echo, que EXIGE o token e vale UMA vez; o curl -L não
+  # reenvia o Authorization ao trocar de host. Aqui o salto é manual, com o token, e só para o host do echo do Google.
   local t="$1" u="$2" d="$3" s="${4:-}" out meta code loc rc=0
   mkdir -p .tmp
   out=$(mktemp "$PWD/.tmp/resp.XXXXXX")
