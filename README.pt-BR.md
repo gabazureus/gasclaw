@@ -5,7 +5,7 @@
 [![Licença: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Runtime: Google Apps Script](https://img.shields.io/badge/runtime-Google%20Apps%20Script-4285F4.svg)](https://developers.google.com/apps-script)
 [![Linguagem: TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6.svg)](https://www.typescriptlang.org/)
-[![Status: F0 concluída](https://img.shields.io/badge/status-F0%20done-green.svg)](CHANGELOG.md)
+[![Status: F1 em andamento](https://img.shields.io/badge/status-F1%20in%20progress-yellow.svg)](CHANGELOG.md)
 
 [English](README.md) | Português (Brasil)
 
@@ -81,11 +81,15 @@ users: [ana@exemplo.com, joao@exemplo.com]
 - Se não souber, diga que não sabe.
 ```
 
-Frontmatter aceito na F0:
+Frontmatter aceito:
 
-- `model:` id de modelo do OpenRouter. O padrão é `openrouter/auto`.
+- `model:` id de modelo do OpenRouter. O padrão é `openrouter/auto`. Um modelo escolhido para o agente na tela gasclaw tem precedência.
 - `users: [e-mail, e-mail]` numa linha só. O dono sempre tem acesso; lista vazia significa só o dono.
-- Outras chaves são ignoradas nesta etapa, e chaves aninhadas não são aceitas.
+- `tools: [now, memory, ask]` as ferramentas que o agente pode usar (`memory` libera `memory.save`, `memory.read` e `memory.remove`). Sem lista, nenhuma ferramenta.
+- `steps:` máximo de chamadas ao modelo por turno, de 1 a 50 (padrão 10).
+- Outras chaves são ignoradas, e chaves aninhadas não são aceitas.
+
+Os arquivos do agente também podem ser Google Docs (com o nome `AGENTS` ou `AGENTS.md`, e assim por diante), e uma planilha Google chamada `config`, com linhas `chave, valor`, sobrepõe o frontmatter.
 
 Depois, procure o app no Google Chat (`gasclaw dev`, ou `gasclaw` em prod), mande uma DM ou adicione o app a um espaço e mencione-o.
 
@@ -104,14 +108,20 @@ Todos os comandos aceitam `--prod`; sem a flag, valem para dev.
 | `./gasclaw doctor [--prod]` | Diagnostica o setup e diz como corrigir |
 | `./gasclaw rollback [--prod]` | Volta para a versão anterior |
 | `./gasclaw open [--prod]` | Abre a tela gasclaw |
+| `./gasclaw poc <id> [etapa]` | Roda uma POC no dev e mostra o resultado |
+| `./gasclaw trace [id]` | Mostra a árvore de passos de um run do agente (sem id, o mais recente) |
+| `./gasclaw runs` | Abre a planilha "gasclaw — execuções" |
+| `./gasclaw limits [--fresh]` | Painel de limites (Google, OpenRouter e medido pelo gasclaw) |
+| `./gasclaw usage [AAAA-MM-DD]` | Custo por modelo: últimos 7 dias, ou as 24 horas de um dia |
+| `./gasclaw eval <cenário\|--all> [--model id]` | Roda `evals/*.md` no dev (sai com erro se falhar) |
 
 ## Roadmap
 
 | Etapa | Objetivo | Status |
 |---|---|---|
 | F0 | Primeira conversa com um agente do Drive: publicação com um comando, pasta do agente, tela do dono, respostas no Google Chat, acesso por agente, botão de pânico | Concluída (GitHub/CI adiado) |
-| F1 | Pasta do agente completa: conversas guardadas no Drive, memória diária, ritual de estreia, skills, vários agentes, grupos do Google em `users`, publicação mais segura | Planejado |
-| F2 | Tarefas longas e aprovação: trabalho em segundo plano além de 30 s, ferramentas Gmail/Drive/Sheets/Docs/Agenda/HTTP, cards Aprovar/Negar, limites por tarefa, novas tentativas | Planejado |
+| F1 | Pasta do agente completa: conversas guardadas no Drive, memória diária, ritual de estreia, skills, vários agentes, grupos do Google em `users`, publicação mais segura | Em andamento |
+| F2 | Tarefas longas: trabalho em segundo plano além de 30 s, ferramentas Gmail/Drive/Sheets/Docs/Agenda/HTTP (usando os cards Aprovar/Negar que já existem na F1), limites por tarefa, novas tentativas | Planejado |
 | F3 | Proatividade e dados: checklist `HEARTBEAT.md`, `jobs.md` em formato cron, pasta de entrada `.xlsx` para Google Sheets, modelos prontos de agente | Planejado |
 | F4 | Canais extras: threads do Gmail, HTTP com token, MCP/A2A se a POC do GASADK aprovar, `npx gasclaw` | Planejado |
 
@@ -119,9 +129,9 @@ A descrição detalhada de cada etapa, do ponto de vista de quem usa, está no [
 
 ## Limites conhecidos
 
-Limites atuais da F0:
+Limites atuais:
 
-- Só conversa: ainda não envia e-mail, não mexe em planilha e não agenda nada (ferramentas chegam na F2).
+- Poucas ferramentas: o agente só usa `now`, `memory.*` (na DM do dono) e `ask`; ainda não envia e-mail, não mexe em planilha e não agenda nada.
 - Só **um** agente (o padrão) responde no Chat, em todos os espaços.
 - Memória curta: as últimas 20 mensagens por agente e por conversa, por até 6 horas.
 - Cada arquivo do agente é cortado em 20.000 caracteres (60.000 no total).
