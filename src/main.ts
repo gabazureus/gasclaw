@@ -9,6 +9,12 @@ import { handleChat, type ChatDeps, type ChatEvent } from './chat';
 import { cliAuthorized, MUTATING, validSecret } from './cli';
 import { evalAction } from './evalEntry';
 import { pocP11 } from '../poc/p11-free/harness';
+import { pocP18 } from '../poc/p18-sessoes/harness';
+import { sessionMessages } from './session';
+import { compactSession, toSession } from './sessionCompact';
+import { sessionIO } from './sessionStore';
+import { bootstrapIO } from './tools/bootstrapStore';
+import { skillsIO } from './tools/skillsStore';
 import { isFree } from './freeModels';
 import { runFree } from './freeRun';
 import { complete, type Completion, type Message, type ToolDef } from './llm';
@@ -55,6 +61,9 @@ const loadAgentForTurn = (folderId: string) => withAccess(withOverride(loadAgent
 
 /** A3/M16: Chat, tela de conversa e clique de aprovação registram os mesmos passos (resolve_agent, llm_call, tool_call). */
 const traced = (t: runlog.Tracer, d: ChatDeps): ChatDeps => traceDeps(t, d, loadAgentForTurn);
+
+/** A chave da conversa é "<folderId>:<espaço>"; o folderId é a pasta do agente (ADR-024). */
+const folderOf = (key: string): string => key.split(':')[0];
 
 declare const __DEV__: boolean; // embutido pelo build: true só no deploy do dev (POCs)
 const isDev = () => typeof __DEV__ !== 'undefined' && __DEV__ === true;
@@ -213,14 +222,25 @@ function chatDeps(): ChatDeps {
     apiKey: store.getApiKey,
     defaultAgent: () => store.listAgents()[0] ?? null,
     load: loadAgentForTurn,
-    history: store.getHistory,
-    saveHistory: store.saveHistory,
+    // ADR-024: a conversa passa a morar na pasta do agente, com compactação por resumo
+    history: (k) => sessionMessages(sessionIO(folderOf(k)).load(k)),
+    saveHistory: (k, h) => {
+      const io = sessionIO(folderOf(k));
+      io.save(k, toSession(io.load(k), h));
+    },
+    compact: (k, llm) => void compactSession(sessionIO(folderOf(k)), k, llm),
     // ADR-025: `model: free` vira rodízio entre os gratuitos; qualquer outro id continua indo direto ao complete()
     llm: (key, model, messages, tools) => {
       const call = (id: string) => complete(key, id, messages, CHAT_MAX_TOKENS, undefined, tools);
       return isFree(model) ? runFree(call, { tools: (tools ?? []).length > 0, apiKey: key }) : call(model);
     },
-    toolkit: (spec, ownerDm) => ({ tools: allowedTools(spec.access.tools), ctx: { now: nowText, ownerDm, memory: memoryIO(spec.folderId), google: gasGoogle, ...zone() }, steps: spec.config.steps ?? DEFAULT_STEPS }),
+    toolkit: (spec, ownerDm) => ({
+      tools: allowedTools(spec.access.tools),
+      ctx: { now: nowText, ownerDm, memory: memoryIO(spec.folderId, zone().timeZone), skill: (name: string) => skillsIO(spec.folderId).body(name), google: gasGoogle, ...zone() },
+      steps: spec.config.steps ?? DEFAULT_STEPS,
+      skills: skillsIO(spec.folderId).index(),
+      bootstrap: bootstrapIO(spec.folderId),
+    }),
     tickets: cacheTickets(),
     newToken,
   };
@@ -525,6 +545,7 @@ export function pocUrlFetchTimeout() {
 const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {
   p1: () => pocUrlFetchTimeout(),
   p6: (step) => pocP6(step, ownerEmail()),
+  p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),
   p11: (step, params = {}) =>
     pocP11(step, params, {
