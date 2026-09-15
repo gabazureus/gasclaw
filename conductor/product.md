@@ -6,7 +6,8 @@
 ## Vision
 gasclaw roda agentes de IA **100% dentro do Google Apps Script** do seu Workspace, sem
 hospedagem. Um agente é uma **pasta no Google Drive** (estilo Eve/OpenClaw); você cola a URL
-da pasta na tela do gasclaw e conversa com ele pelo **Google Chat**. O resto roda sozinho.
+da pasta na tela do gasclaw e conversa com ele pelo **Google Chat** ou pela tela de conversa de texto do
+gasclaw ([ADR-019](../docs/adr/019-tela-de-chat-e-voz.md)). O resto roda sozinho.
 
 ## Target users & their pain
 Donos de Google Workspace (começando pelo próprio autor) que querem agentes sobre
@@ -17,7 +18,8 @@ Gmail/Drive/Sheets/Docs/Calendar sem pagar VPS/Vercel/Cloud Run nem operar infra
   limite de 6 min; aprovação humana por card; heartbeat e `jobs.md`; Excel → Sheets
   automático; setup único guiado e deploy automático dev→prod com rollback.
 - **Non-goals:** sandbox/execução de código arbitrário; browser automation; modelos locais;
-  compatibilidade 1:1 com o pacote `eve`; 20+ canais; UI de chat web própria (F1–F3).
+  compatibilidade 1:1 com o pacote `eve`; 20+ canais. A tela de conversa de texto deixou de ser
+  não-objetivo por decisão do usuário ([ADR-019](../docs/adr/019-tela-de-chat-e-voz.md): texto aceito, voz adiada).
 
 ## Success
 - Depois do setup inicial (≤ 15 min), nenhum comando manual é necessário para operar.
