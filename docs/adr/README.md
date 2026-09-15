@@ -25,3 +25,4 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [019](019-tela-de-chat-e-voz.md) | Tela de chat no gasclaw e voz com `gpt-live-1` (POC P17) | Proposto; texto no dev, voz adiada pelo usuário |
 | [020](020-trace-em-lote.md) | Trace em lote de 1 min (fila no turno, gatilho e fallback) | Aceito |
 | [021](021-acesso-aprovado-no-painel.md) | Acesso e ferramentas aprovados no painel | Aceito; painel em construção |
+| [022](022-csrf-segredo-da-cli.md) | Ações com efeito só por POST com o segredo da CLI (CSRF) | Aceito; risco residual aceito |
