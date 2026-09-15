@@ -44,10 +44,14 @@ export const nextUtcMidnight = (now: number) => {
 const GOOGLE_DAY = '24 h (cota diária do Google)';
 const PENDING = /autoriza|scope|escopo|permission|permiss|insufficient|401|403/i; // "Você não tem permissão… Permissões necessárias" (Apps Script em pt-BR)
 
+const BILLING = /billing/i; // Cloud Monitoring responde 403 "requires billing to be enabled": não é autorização
+
 function item(id: string, label: string, unit: string, source: Source, r: Read<unknown>, used: number | null, total: number | null, reset: string | null, note?: string): LimitItem {
-  const status: Status = r.ok ? 'ok' : PENDING.test(r.error) ? 'pendente' : 'erro';
+  const err = r.ok ? '' : (r as { error: string }).error;
+  const status: Status = r.ok ? 'ok' : BILLING.test(err) ? 'erro' : PENDING.test(err) ? 'pendente' : 'erro';
   const ok = status === 'ok';
-  return { id, label, used: ok ? used : null, total, unit, level: ok ? level(used, total) : 'sem limite', reset, source, status, ...(ok ? (note ? { note } : {}) : { note: (r as { error: string }).error }) };
+  const errNote = BILLING.test(err) ? `precisa de faturamento ativo no projeto do Google Cloud (decisão sua); ${err.slice(0, 120)}` : err;
+  return { id, label, used: ok ? used : null, total, unit, level: ok ? level(used, total) : 'sem limite', reset, source, status, ...(ok ? (note ? { note } : {}) : { note: errNote }) };
 }
 
 const OK: Read<null> = { ok: true, value: null };

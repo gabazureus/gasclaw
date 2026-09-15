@@ -255,7 +255,9 @@ function authStatus(): { required: boolean; url: string | null; editorFunction: 
  */
 export function authorize() {
   assertOwner();
-  ScriptApp.requireAllScopes(ScriptApp.AuthMode.FULL);
+  // medido na v22: com permissão faltando, requireAllScopes mostra o pedido e ENCERRA a execução, e o gatilho não era criado.
+  // Só chamamos quando falta algo; com tudo concedido, segue direto para o gatilho (rodar de novo resolve o 1º caso).
+  if (authStatus().required) ScriptApp.requireAllScopes(ScriptApp.AuthMode.FULL);
   observe.ensureTrigger(); // a doc recomenda criar o gatilho só depois de garantir o escopo script.scriptapp
   return 'ok';
 }

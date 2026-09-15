@@ -46,3 +46,11 @@ conta do dono; outra conta precisa de uma 2ª pessoa no domínio).
   ferramentas e da tela ficam de fora até o trace contá-las.
 - Com a reautorização, o painel passa a mostrar o tempo real de gatilhos, que é o limite que o
   lote de 1 min consome (ver o C12 da P14).
+
+## Medição depois da reautorização (2026-09-15, dev v22)
+- Execuções dos gatilhos, e-mails restantes e contagem de gatilhos passaram a ler normalmente após o usuário rodar `authorize` no editor (consentimento granular).
+- **Monitoring continua 403, por faturamento, não por escopo nem IAM:** a resposta é *"This API method requires billing to be enabled"*
+  no projeto `gasclaw-dev-example`. A conta já é `roles/owner` do projeto e a API está habilitada, então não concedemos
+  `roles/monitoring.viewer` nem mudamos o `ensure_gcp`. Ativar faturamento é decisão do usuário; até lá, o painel mostra essa
+  fonte como **erro com a nota "precisa de faturamento"**, e não como "pendente" de autorização.
+- O status do gatilho ficava 10 min em cache e a tela mostrou "aguardando autorização" depois de autorizado: agora o cache é de 60 s e "ler de novo agora" relê o gatilho.
