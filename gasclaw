@@ -37,6 +37,27 @@ pause() { # $1 chave de concluído · $2 URL a abrir (ou vazio) · $3 instruçã
   read -r _
   setvar "$1" 1
 }
+lock_dev() { # lock local exclusivo para publicar/medir (duas pistas no mesmo dev); reentrante; liberado no EXIT
+  [ -n "${GASCLAW_LOCKED:-}" ] && return 0
+  local lock=.tmp/dev.lock waited=0 pid
+  mkdir -p .tmp
+  until mkdir "$lock" 2>/dev/null; do
+    pid=$(cat "$lock/pid" 2>/dev/null || true)
+    if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+      warn "lock órfão do PID $pid removido"
+      rm -rf "$lock"
+      continue
+    fi
+    [ "$waited" -ge "${GASCLAW_LOCK_TIMEOUT:-1200}" ] && die "dev ocupado pelo PID ${pid:-?} (esperei ${waited}s; lock em $lock)"
+    [ $((waited % 30)) -eq 0 ] && say "dev ocupado pelo PID ${pid:-?}: aguardando o lock"
+    sleep 5
+    waited=$((waited + 5))
+  done
+  printf '%s\n' "$$" > "$lock/pid"
+  export GASCLAW_LOCKED=1
+  trap 'rm -rf .tmp/dev.lock' EXIT
+}
+
 clasp_() {
   printf '{"scriptId":"%s","rootDir":"%s","projectId":"%s"}\n' "$(var "SCRIPT_ID_$UP")" "${CLASP_ROOT:-dist}" "$(var "GCP_PROJECT_$UP")" > .clasp.json
   npx --no-install clasp "$@"
@@ -123,6 +144,7 @@ keep_editor_agents() { # ADR-013: o push --force troca o HEAD inteiro; antes, tr
 }
 
 deploy() {
+  lock_dev
   say "build + testes"
   npm run build >/dev/null
   npm test >/dev/null
@@ -167,6 +189,7 @@ health() {
 }
 
 cmd_up() {
+  lock_dev
   ensure_tools
   ensure_auth
   ensure_gcp
@@ -232,6 +255,7 @@ cmd_poc() { # POCs automáticas, só no dev: cria fixtures, mede e sai ≠ 0 se 
   [ "$TARGET" = dev ] || die "POCs rodam só no dev"
   printf '%s' "$id" | grep -qE '^p[0-9]+$' || die "uso: ./gasclaw poc <id> [etapa]  (ex.: ./gasclaw poc p6)"
   [ -z "$step" ] || printf '%s' "$step" | grep -qE '^[a-z0-9]+$' || die "etapa inválida: $step"
+  lock_dev # a POC inteira (deploy + medições) sem push de outra pista no meio
   local hook
   hook=$(ls poc/"$id"-*/pc.sh 2>/dev/null | head -1 || true)
   if [ -n "$hook" ]; then # POC com etapas no PC (clasp): pc.sh (tudo) ou <etapa>.sh orquestra e decide o exit
