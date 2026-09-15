@@ -24,3 +24,4 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [018](018-modelos-e-custo.md) | Modelos por agente e custo por modelo (POC P16) | Aceito no código; medição pendente |
 | [019](019-tela-de-chat-e-voz.md) | Tela de chat no gasclaw e voz com `gpt-live-1` (POC P17) | Proposto; texto no dev, voz adiada pelo usuário |
 | [020](020-trace-em-lote.md) | Trace em lote de 1 min (fila no turno, gatilho e fallback) | Aceito |
+| [021](021-acesso-aprovado-no-painel.md) | Acesso e ferramentas aprovados no painel | Aceito; painel em construção |
