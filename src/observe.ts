@@ -69,7 +69,8 @@ function saveUsage(prev: Record<string, string>, u: Usage, runsByDay: Record<str
 
 export type DrainResult = { drained: number; ms: number; rows: boolean; json: number; skipped?: string };
 
-export function drain(max = 200): DrainResult {
+/** `inline`: fallback dentro de um turno ou da tela; menos entradas e sem a limpeza de 90 dias (cabe nos 30 s do Chat). */
+export function drain(max = 200, inline = false): DrainResult {
   const t0 = Date.now();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5_000)) return { drained: 0, ms: Date.now() - t0, rows: false, json: 0, skipped: 'outra drenagem em andamento' };
@@ -112,7 +113,7 @@ export function drain(max = 200): DrainResult {
     for (const e of done.retry) props().setProperty(`${QUEUE_PREFIX}${e.id}`, JSON.stringify(e)); // o JSON volta na próxima drenagem
     cache().removeAll(['obs:props', ...done.remove.map((id) => `qjson:${id}`)]);
     dailyLimitsRow(store.sheetId);
-    cleanupRunsDaily();
+    if (!inline) cleanupRunsDaily(); // até 200 PATCH em série: só no gatilho ou no "Gravar a fila agora"
     return record({ drained: entries.length, ms: Date.now() - t0, rows, json: entries.length - done.retry.length });
   } catch (err) {
     console.warn(`observe drain: ${msg(err)}`);
@@ -178,7 +179,7 @@ export function ensureTrigger(): TriggerStatus {
 export function maybeDrain(): DrainResult | null {
   try {
     if (!shouldDrain(oldestQueued(), Date.now(), triggerStatus() === 'ativo')) return null;
-    return drain();
+    return drain(20, true);
   } catch (err) {
     console.warn(`observe maybeDrain: ${msg(err)}`);
     return null;
@@ -210,12 +211,23 @@ export function usageView(apiKey: string | null, day?: string) {
 
 function processesToday(): { triggerMsToday: number; count: number } {
   const start = new Date(Date.parse(`${dayKey(Date.now())}T00:00:00Z`)).toISOString();
-  const url = `https://script.googleapis.com/v1/processes:listScriptProcesses?scriptId=${ScriptApp.getScriptId()}&scriptProcessFilter.startTime=${encodeURIComponent(start)}&pageSize=200`;
-  const res = UrlFetchApp.fetch(url, { headers: auth(), muteHttpExceptions: true });
-  if (res.getResponseCode() !== 200) throw new Error(`processes ${res.getResponseCode()}: ${res.getContentText().slice(0, 160)}`);
-  const list: { processType?: string; duration?: string }[] = JSON.parse(res.getContentText()).processes ?? [];
+  const base = `https://script.googleapis.com/v1/processes:listScriptProcesses?scriptId=${ScriptApp.getScriptId()}&scriptProcessFilter.startTime=${encodeURIComponent(start)}&pageSize=200`;
   const ms = (d?: string) => Math.round(parseFloat(d ?? '0') * 1000);
-  return { triggerMsToday: list.filter((x) => x.processType === 'TIME_DRIVEN').reduce((t, x) => t + ms(x.duration), 0), count: list.length };
+  let triggerMsToday = 0;
+  let count = 0;
+  let token = '';
+  for (let page = 0; page < 10; page++) {
+    // o gatilho de 1 min gera ~1.440 execuções por dia: sem paginar, só as ~3 primeiras horas contavam
+    const res = UrlFetchApp.fetch(`${base}${token ? `&pageToken=${encodeURIComponent(token)}` : ''}`, { headers: auth(), muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) throw new Error(`processes ${res.getResponseCode()}: ${res.getContentText().slice(0, 160)}`);
+    const body: { processes?: { processType?: string; duration?: string }[]; nextPageToken?: string } = JSON.parse(res.getContentText());
+    const list = body.processes ?? [];
+    triggerMsToday += list.filter((x) => x.processType === 'TIME_DRIVEN').reduce((t, x) => t + ms(x.duration), 0);
+    count += list.length;
+    token = body.nextPageToken ?? '';
+    if (!token) break;
+  }
+  return { triggerMsToday, count };
 }
 
 function monitoringToday(): { requests: number } {
