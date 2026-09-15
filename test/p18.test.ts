@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { P18_TARGET_MS, p18Verdict } from '../poc/p18-sessoes/harness';
 
@@ -38,5 +39,18 @@ describe('P18: custo da sessão no Drive por turno (alvo ≤ 300 ms)', () => {
 
   test('sem amostra não passa (não existe medição vazia aprovada)', () => {
     expect(p18Verdict([])).toMatchObject({ pass: false, turns: 0, avgDeltaMs: 0, p95DeltaMs: 0 });
+  });
+});
+
+describe('P18 no dev: a pasta vem do agente padrão (a CLI passa só id e etapa)', () => {
+  test('o harness não pede folderId por parâmetro', () => {
+    const src = readFileSync('poc/p18-sessoes/harness.ts', 'utf8');
+    expect(src).toContain('store.listAgents()[0]?.folderId');
+    expect(src).not.toContain('params.folderId');
+  });
+  test('sem agente cadastrado, falha com mensagem clara em vez de quebrar', () => {
+    const src = readFileSync('poc/p18-sessoes/harness.ts', 'utf8');
+    expect(src).toContain('nenhum agente cadastrado');
+    expect(src).toMatch(/return \{ poc: 'P18', step: step \?\? '', pass: false, error:/);
   });
 });
