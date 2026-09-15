@@ -2,7 +2,12 @@
 P15=poc/p15-limites
 T=.tmp/p15
 rm -rf "$T"; mkdir -p "$T"
-step() { remote "poc&id=p15&step=$1&trace=0" > "$T/$1.json" || die "P15 $1 falhou"; }
+# A checagem de ok:false veio da P11 na v37: o web app responde 200 com {"ok":false,...}, o step segue
+# e só o veredito quebra — medição que "passa" sem medir.
+step() {
+  remote "poc&id=p15&step=$1&trace=0" > "$T/$1.json" || die "P15 $1 falhou"
+  node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(r&&r.ok===false){console.error("P15 "+process.argv[2]+": o servidor recusou: "+String(r.error).slice(0,300));process.exit(1)}' "$T/$1.json" "$1" || die "P15 $1 não mediu"
+}
 
 say "P15 1/3 publica o dev"
 deploy

@@ -62,6 +62,14 @@ describe('classify: que erro justifica trocar de modelo', () => {
   test('erro do pedido (sem chave, prompt inválido) não troca: trocar não resolveria', () => {
     for (const e of ['OpenRouter 401: no auth', 'OpenRouter 402: insufficient credits', 'OpenRouter: resposta sem conteúdo']) expect(classify(e)).toBe('para');
   });
+  test('403 de modelo restrito a certos usos troca: outro gratuito responde (medido na P11, v37)', () => {
+    // o OpenRouter recusa alguns :free fora de "agentic harnesses"; o rodízio parava no 1º candidato e perdia os 20 turnos
+    expect(classify('OpenRouter 403: {"error":{"message":"thinkingmachines/inkling:free is only available on agentic harnesses. Try plugging it into a coding agent or productivity app listed on https://openrouter.ai/apps","code":403}}')).toBe('troca');
+    expect(classify('OpenRouter 403: this model requires a paid account')).toBe('troca');
+  });
+  test('403 de chave sem permissão não troca: o problema é a chave, não o modelo', () => {
+    expect(classify('OpenRouter 403: forbidden: your key is not allowed to use this endpoint')).toBe('para');
+  });
 });
 
 describe('rotate: troca de modelo registrando o caminho', () => {

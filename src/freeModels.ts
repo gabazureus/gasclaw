@@ -31,9 +31,14 @@ export function freeOrder(list: ModelInfo[], o: OrderOpts): ModelInfo[] {
   return [...byCtx.filter((m) => !punished(m)), ...byCtx.filter(punished)];
 }
 
-/** 429, 5xx e "modelo indisponível" passam para o próximo; erro de autorização ou de conteúdo para na hora. */
-const SWITCH = /\b(429|5\d\d)\b|no endpoints found|not available|model not found/i;
-export const classify = (error: string): 'troca' | 'para' => (SWITCH.test(error) ? 'troca' : 'para');
+/**
+ * 429, 5xx e "este modelo não serve agora" passam para o próximo; erro de autorização ou de conteúdo para na hora.
+ * O 403 é ambíguo e decide pelo texto: medido na P11 (v37), o OpenRouter recusa alguns `:free` com
+ * "only available on agentic harnesses" — trocar resolve. Já um 403 de chave sem permissão não melhora com outro modelo.
+ */
+const SWITCH = /\b(429|5\d\d)\b|no endpoints found|not available|model not found|only available|requires a paid/i;
+const KEY_PROBLEM = /\b(401|402)\b|forbidden|your key|api key|not allowed/i;
+export const classify = (error: string): 'troca' | 'para' => (!KEY_PROBLEM.test(error) && SWITCH.test(error) ? 'troca' : 'para');
 
 export type Attempt = { model: string; error: string };
 export type Rotated<T> = { value: T; model: string; fallback: Attempt[] };
