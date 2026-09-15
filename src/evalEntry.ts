@@ -28,7 +28,7 @@ export type EvalEnv = {
   google?: Google; // ferramentas do Workspace (E6); o runner também usa para apagar os dados de teste
   zone?: { timeZone: string; offset: string };
 };
-export type EvalResult = Report & { replies: string[]; ms: number; errors: string[]; cleanup?: { removed: number; failed: string[] } };
+export type EvalResult = Report & { replies: string[]; ms: number; errors: string[]; cleanup?: { removed: number; missing: number; failed: string[] } };
 
 /** Turnos especiais que simulam o clique no card (Chat) ou no botão (tela): (aprovar), (negar), (repetir clique). */
 const CLICK = /^\((aprovar|negar|repetir clique)\)$/i;
@@ -85,7 +85,7 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
   const turns: TurnOutcome[] = [];
   const convo: { user: string; reply: string }[] = [];
   const events: ToolEvent[] = [];
-  let cleanup: { removed: number; failed: string[] } | undefined;
+  let cleanup: EvalResult['cleanup'];
 
   try {
     for (const text of s.turns) {
@@ -147,7 +147,7 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
     }
   }
   const errors = events.filter((e) => e.status === 'error').map((e) => `${e.name}: ${e.result.slice(0, 200)}`);
-  return { ...evaluate(s, { turns, judge, cleaned: cleanup?.removed ?? 0 }), replies: convo.map((c) => c.reply), ms: env.clock() - t0, errors, ...(cleanup ? { cleanup } : {}) };
+  return { ...evaluate(s, { turns, judge, cleaned: (cleanup?.removed ?? 0) + (cleanup?.missing ?? 0) }), replies: convo.map((c) => c.reply), ms: env.clock() - t0, errors, ...(cleanup ? { cleanup } : {}) };
 }
 
 const EVAL_AGENTS = `---

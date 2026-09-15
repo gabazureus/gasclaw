@@ -31,9 +31,9 @@ describe('limpeza dos dados de teste dos evals', () => {
     let n = 0;
     const out = runCleanup(events, (r) => (reqs.push(r), ++n === 1 ? { code: 204, body: '' } : { code: 500, body: 'boom' }));
     expect(reqs.map((r) => r.url.split('/events/')[1])).toEqual(['ev001?sendUpdates=none', 'ev002?sendUpdates=none']);
-    expect(out).toEqual({ removed: 1, failed: ['calendar.create ev002: Google limpar calendar.create 500: boom'] });
+    expect(out).toEqual({ removed: 1, missing: 0, failed: ['calendar.create ev002: Google limpar calendar.create 500: boom'] });
   });
-  test('410/404 (já apagado) conta como removido', () => {
-    expect(runCleanup([{ name: 'calendar.create', status: 'ok', result: '{"id":"ev001"}' }], () => ({ code: 410, body: 'gone' }))).toEqual({ removed: 1, failed: [] });
+  test('410/404 (já apagado) conta separado como "já não existia"', () => {
+    expect(runCleanup([{ name: 'calendar.create', status: 'ok', result: '{"id":"ev001"}' }], () => ({ code: 410, body: 'gone' }))).toEqual({ removed: 0, missing: 1, failed: [] });
   });
 });

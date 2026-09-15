@@ -20,15 +20,16 @@ export function cleanupRequest(name: string, result: string): GReq | null {
   return null; // gmail.send não tem desfazer: evals nunca enviam para terceiros
 }
 
-export function runCleanup(events: Ev[], g: Google): { removed: number; failed: string[] } {
-  const out = { removed: 0, failed: [] as string[] };
+/** removed = apagado agora; missing = já não existia (404/410); failed = não deu para apagar. */
+export function runCleanup(events: Ev[], g: Google): { removed: number; missing: number; failed: string[] } {
+  const out = { removed: 0, missing: 0, failed: [] as string[] };
   for (const e of events) {
     if (e.status !== 'ok' && e.status !== 'approved') continue;
     const req = cleanupRequest(e.name, e.result);
     if (!req) continue;
     try {
       const res = g(req);
-      if (res.code === 404 || res.code === 410) out.removed++;
+      if (res.code === 404 || res.code === 410) out.missing++;
       else {
         gcall(() => res, req, `limpar ${e.name}`);
         out.removed++;

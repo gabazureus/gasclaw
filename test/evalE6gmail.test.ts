@@ -45,7 +45,7 @@ describe('evals do Gmail (E6) com Google falso', () => {
     expect(r.pass).toBe(true);
     expect(reqs.some((q) => q.url.includes('/messages/send'))).toBe(false);
     expect(r.replies[0]).toContain('aprovação');
-    expect(r.cleanup).toEqual({ removed: 1, failed: [] });
+    expect(r.cleanup).toEqual({ removed: 1, missing: 0, failed: [] });
   });
 
   test('todo e-mail dos evals do Gmail vai só para o dono ({{dono}}) ou fica parado em aprovação', () => {

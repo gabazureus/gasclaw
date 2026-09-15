@@ -36,7 +36,7 @@ describe('evals do Workspace (E6) com Google falso', () => {
     expect(r.pass).toBe(true);
     expect(reqs.map((q) => q.method)).toEqual(['post', 'get', 'delete']);
     expect(reqs[2].url).toContain('/events/evtest01?sendUpdates=none');
-    expect(r.cleanup).toEqual({ removed: 1, failed: [] });
+    expect(r.cleanup).toEqual({ removed: 1, missing: 0, failed: [] });
     expect(r.errors).toEqual([]);
   });
 
@@ -45,7 +45,7 @@ describe('evals do Workspace (E6) com Google falso', () => {
     const r = runEval(readFileSync('evals/e6-freebusy.md', 'utf8'), e);
     expect(r.pass).toBe(true);
     expect((reqs[0].body as { items: unknown }).items).toEqual([{ id: 'dono@x.com' }]);
-    expect(r.cleanup).toEqual({ removed: 0, failed: [] });
+    expect(r.cleanup).toEqual({ removed: 0, missing: 0, failed: [] });
   });
 
   test('erro de tool aparece em errors e reprova noError (ex.: falta escopo)', () => {
