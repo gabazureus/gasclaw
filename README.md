@@ -147,6 +147,7 @@ Current limits:
 - No `eval` and no code loaded from Drive: an agent is markdown only.
 - Only the owner (the account that published) can open the gasclaw screen; each agent answers only the owner and the people the owner approved on that screen.
 - ⚠️ Access change ([ADR-021](docs/adr/021-acesso-aprovado-no-painel.md)): who can talk to an agent and which tools it may use only take effect after being approved in the gasclaw panel. `users:` and `tools:` in the folder, the editor or the `config` sheet are now suggestions. After this version every agent answers only the owner and has no tools until you click **Approve** in the panel. If you used `users:` to give other people access, approve them in the panel.
+- Google tools (Calendar, Gmail, Contacts, Tasks, Drive/Docs/Sheets) work only for the gasclaw owner. People approved in the panel can still talk to the agent, but their requests that would use these tools are refused, and only the owner approves those cards. The approval card shows every field in full (recipients, attendees, ids); only long text is summarized ([ADR-023](docs/adr/023-ferramentas-do-workspace-rest.md)).
 - Actions with side effects (`./gasclaw poc`, `eval`, `down`) are POST requests with a CLI secret created by `./gasclaw up` in `.env.local` ([ADR-022](docs/adr/022-csrf-segredo-da-cli.md)).
 - `./gasclaw down` or "Pause" on the screen stops every agent immediately.
 

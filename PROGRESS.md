@@ -1,7 +1,7 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, com a porcentagem de progresso e se já foi resolvido.
-> **Atualizado em:** 2026-09-15 · auditoria aplicada (M1 CSRF/ADR-022, M2 acesso no painel/ADR-021, travas do deploy), Observabilidade (ADR-016/018/020) · testes 299/299 · dev na versão 20 (v21 a publicar) · prod na versão 1.
+> **Atualizado em:** 2026-09-15 · E6 (ferramentas do Google só para o dono, ADR-023) ligada no `main.ts`, auditoria aplicada (ADR-021/022), gatilho de 1 min ativo, POCs P14/P15/P16 medidas · testes 433/433 · dev na versão 29 (E6 a publicar) · prod na versão 1.
 > **Fontes:** [spec](docs/specs/), [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementacao.md),
 > [ADRs](docs/adr/README.md), [CHANGELOG](CHANGELOG.md), [log da wiki](docs/wiki/log.md),
 > [tracks](conductor/tracks.md), Beads (`bd list`) e `git log`.
@@ -35,13 +35,13 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | Fase | Itens | Progresso | Resolvidos |
 |---|---|---|---|
 | **F0**: fundação e primeira fatia | 18 | ████████░░ **82%** | 11 de 18 |
-| **F1**: agente-pasta completo | 20 | ████░░░░░░ **44%** | 2 de 20 |
+| **F1**: agente-pasta completo | 21 | █████░░░░░ **45%** | 2 de 21 |
 | **F2**: tarefas longas e aprovação | 10 | █░░░░░░░░░ **10%** | 0 de 10 |
 | **F3**: proatividade e dados | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
 | **F4**: canais extras | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
 | **Transversal** (docs, open source, segurança, POCs) | 20 | ███████░░░ **65%** | 10 de 20 |
-| **Produto (F0–F4)** | 56 | █████░░░░░ **45%** | 13 de 56 |
-| **Geral** | 76 | █████░░░░░ **50%** | 23 de 76 |
+| **Produto (F0–F4)** | 57 | █████░░░░░ **46%** | 13 de 57 |
+| **Geral** | 77 | █████░░░░░ **51%** | 23 de 77 |
 
 > Desde o primeiro inventário, a Task 11 e os READMEs foram concluídos, a POC P6 passou de forma automática (`./gasclaw poc p6`, ADR-012) e a POC P10 também (`./gasclaw poc p10`, ADR-013).
 > Entraram dois itens na F1: autoria no editor do Apps Script (85%, leitura ligada no dev) e trace do agente (80%, no dev com 8 de 10 critérios).
@@ -75,7 +75,7 @@ A porcentagem de cada fase é a média simples dos itens dela.
 
 ---
 
-## F1 — Agente-pasta completo (44%)
+## F1 — Agente-pasta completo (45%)
 
 | Elemento | Status | % | Resolvido? | O que falta | Fonte |
 |---|---|---|---|---|---|
@@ -86,6 +86,7 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | E0 harness de evals (`./gasclaw eval`) | ✅ | 100 | ✅ Sim | — (6/6 no dev v16: smoke, e1-now, e1-memoria, e1-limite, e1-injecao, e1-fora-da-lista) | commit `9fa87d7` |
 | E1 motor de tools (allowlist, schema, limite de passos, memória só na DM do dono) | 🟢 | 95 | 🟡 Parcial | toolkit ligado no Chat real (`c9c11c9`) e só com as tools aprovadas no painel (ADR-021); falta confirmar os evals na v21 | `9fa87d7`, `c9c11c9` |
 | E5 aprovação + ask (card de uso único, 10 min) | 🟢 | 90 | 🟡 Parcial | merge na main (`6ad7ef1`), `onCardClick` no `main.ts` (`c9c11c9`), clique na tela com trace (`69f4ac8`); falta rodar os evals `e5-*` e `webchat-*` na v21 | `106f11e`, `7cb6e42`, `69f4ac8` |
+| E6 ferramentas do Workspace por REST (agenda, Gmail, contatos, tarefas, Drive/Docs/Sheets) | 🔄 | 70 | ❌ Não | núcleo, evals `e6-*` e revisão de segurança na `motor` (`d6f1b67`, `fe5a49f`: só o dono, card completo, once por alvo); ligado no toolkit do `main.ts`; falta publicar no dev e rodar os `e6-*` (Pista Motor) | [ADR-023](docs/adr/023-ferramentas-do-workspace-rest.md) |
 | P17 / ADR-019: tela de chat do gasclaw e voz | 🟡 | 50 | ❌ Não | texto no dev (`?page=chat`, link absoluto `97e354e`, trace completo `bb2bc4c`); voz adiada pelo usuário | [ADR-019](docs/adr/019-tela-de-chat-e-voz.md) |
 | **Acesso e ferramentas aprovados no painel** (M2, ADR-021) | 🔄 | 70 | ❌ Não | núcleo (auditoria `a1dbd22`, `b9f8cd8`) e painel com Aprovar/Remover (`e456708`); falta publicar a v21 e aprovar de verdade na tela; todo agente fica só com o dono e sem tools até o clique | [ADR-021](docs/adr/021-acesso-aprovado-no-painel.md) |
 | Rodízio de modelos gratuitos (`model: free`) | ⏳ | 10 | ❌ Não | decidido: logo depois da P6; lista de `GET /api/v1/models` com preço zero e cache diário, troca de modelo em 429/5xx | Beads `gasclaw-v53` |

@@ -12,6 +12,8 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 
 > ⚠️ **Mudança de acesso ([ADR-021](docs/adr/021-acesso-aprovado-no-painel.md)):** quem conversa com o agente e quais ferramentas ele usa passam a valer só depois de aprovados no painel do gasclaw. `users:` e `tools:` na pasta, no editor ou na planilha `config` viram sugestões. Depois desta versão, todo agente responde só ao dono e fica sem ferramentas até você clicar em **Aprovar** no painel. Se você usava `users:` para dar acesso a outras pessoas, aprove essas pessoas no painel.
 >
+> 🔐 **Ferramentas do Google só para o dono ([ADR-023](docs/adr/023-ferramentas-do-workspace-rest.md)):** ferramentas do Google (agenda, Gmail, contatos, tarefas, Drive/Docs/Sheets) funcionam só para o dono do gasclaw. Pessoas aprovadas no painel continuam conversando com o agente, mas pedidos delas que usem essas ferramentas são recusados, e só o dono aprova esses cards. O card de aprovação agora mostra cada campo por inteiro (destinatários, convidados, ids); só o texto longo é resumido.
+>
 > 🔒 **Ações com efeito só pela CLI com segredo ([ADR-022](docs/adr/022-csrf-segredo-da-cli.md)):** `./gasclaw poc`, `eval` e `down` passam a usar POST com um segredo gerado pelo `./gasclaw up` em `.env.local`. Rode `./gasclaw up` uma vez depois de atualizar.
 
 ### F0 — Primeira conversa com um agente do Drive ✅
