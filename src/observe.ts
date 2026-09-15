@@ -1,9 +1,9 @@
 // Observabilidade (ADR-014 lote, ADR-016 limites, ADR-018 uso), borda. Leituras NUNCA lançam: cada fonte vira {ok|erro}.
 // Sem escopo novo nesta etapa: gatilho, processes, MailApp e Monitoring só funcionam depois da reautorização (ADR-015).
 import { multipartBody } from './drive';
-import { drainBody, QUEUE_PREFIX, queueEntry, settle, shouldDrain, splitQueue, type QueueEntry } from './batch';
+import { drainBody, QUEUE_PREFIX, queueEntry, settle, shouldDrain, splitQueue } from './batch';
 import { buildLimits, type LimitItem, type Read } from './limits';
-import { keyInfo, keyCallsLast30min } from './models';
+import { keyInfo } from './models';
 import { cleanupRunsDaily, ensureRunStore } from './runlog';
 import { redact, type Run } from './trace';
 import { chart, dayKey, dayTotals, emptyUsage, fold, freePerMinuteMax, prune, totalCost, totalReq, type Bucket, type Usage } from './usage';
@@ -289,8 +289,6 @@ export function limitsNow(apiKey: string | null, fresh = false): { items: LimitI
   return { ...out, cached: false };
 }
 
-export { keyCallsLast30min };
-
 /** Uma linha por dia na aba "limites" da planilha de runs (idempotente). */
 function dailyLimitsRow(sheetId: string) {
   const today = dayKey(Date.now(), 'sp');
@@ -310,5 +308,3 @@ function dailyLimitsRow(sheetId: string) {
     console.warn(`observe limites: ${msg(err)}`);
   }
 }
-
-export type { QueueEntry };
