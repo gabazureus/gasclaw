@@ -43,6 +43,11 @@ describe('buildLimits', () => {
   test('gasto do dia informado pelo OpenRouter, com o medido ao lado', () => {
     expect(byId(buildLimits(input())).orDaily).toMatchObject({ used: 0.4, total: null, source: 'openrouter', level: 'sem limite', note: 'medido pelo gasclaw: US$ 0.39' });
   });
+  test('gasto do dia sem barra contra o limite total da chave (não é diário); o limite aparece na nota', () => {
+    const l = byId(buildLimits(input({ key: { ok: true, value: { limit: 10, usage: 3.2, usage_daily: 0.4, is_free_tier: false } } })));
+    expect(l.orDaily).toMatchObject({ used: 0.4, total: null, level: 'sem limite' });
+    expect(l.orDaily.note).toContain('limite de crédito');
+  });
   test('fontes que dependem da reautorização aparecem como pendentes, sem quebrar', () => {
     const l = byId(buildLimits(input()));
     for (const id of ['processes', 'mail', 'monitoring', 'triggers']) expect(l[id]).toMatchObject({ status: 'pendente', level: 'sem limite' });

@@ -60,7 +60,7 @@ export function buildLimits(i: LimitsInput): LimitItem[] {
   return [
     item('freeDay', 'OpenRouter: requisições :free hoje', 'req', 'gasclaw', i.key, m.freeToday, freeTier ? 50 : 1000, orReset, 'limite: 50/dia sem créditos, 1000/dia com US$ 10+'),
     item('freeMin', 'OpenRouter: requisições :free por minuto (pico na última hora)', 'req/min', 'gasclaw', OK, m.freePerMinuteMax, 20, null),
-    item('orDaily', 'OpenRouter: gasto hoje (dia UTC)', 'US$', 'openrouter', i.key, i.key.ok ? i.key.value.usage_daily : null, i.key.ok ? i.key.value.limit : null, orReset, `medido pelo gasclaw: US$ ${m.costToday}`),
+    item('orDaily', 'OpenRouter: gasto hoje (dia UTC)', 'US$', 'openrouter', i.key, i.key.ok ? i.key.value.usage_daily : null, null, orReset, `medido pelo gasclaw: US$ ${m.costToday}${i.key.ok && i.key.value.limit !== null ? ` · limite de crédito da chave (total, não diário): US$ ${i.key.value.limit}` : ''}`), // o limit da chave é total: não serve de barra para o dia
     item('drive', 'Drive: armazenamento', 'bytes', 'google', i.drive, i.drive.ok ? i.drive.value.usage : null, i.drive.ok ? i.drive.value.limit : null, null),
     item('urlfetch', 'Apps Script: chamadas UrlFetch hoje (estimado)', 'chamadas', 'gasclaw', OK, m.urlFetchToday, q.urlFetch, GOOGLE_DAY),
     item('runtime', 'Apps Script: maior execução hoje', 'ms', 'gasclaw', OK, m.longestMs, 360_000, null, 'limite: 6 min por execução'),
