@@ -3,12 +3,13 @@ export const TEMPLATES: Record<string, string> = {
   'AGENTS.md': `---
 model: openrouter/auto   # troque por qualquer id do OpenRouter, ex.: anthropic/claude-sonnet-5
 users: [{{OWNER}}]       # e-mails que podem falar com este agente
+# tools: [now, memory, ask]   # descomente para ligar ferramentas (lista fechada do gasclaw)
 ---
 # Regras
 
 - Responda em português do Brasil, de forma curta e direta.
 - Se não souber, diga que não sabe. Nunca invente dados.
-- Você ainda não tem ferramentas: não diga que enviou e-mails, criou arquivos ou agendou nada.
+- Só diga que fez algo (enviou, criou, agendou, salvou) se uma ferramenta confirmou.
 `,
   'SOUL.md': `# Personalidade
 
