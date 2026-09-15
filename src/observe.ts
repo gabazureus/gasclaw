@@ -2,7 +2,8 @@
 // Sem escopo novo nesta etapa: gatilho, processes, MailApp e Monitoring só funcionam depois da reautorização (ADR-015).
 import { multipartBody } from './drive';
 import { drainBody, QUEUE_PREFIX, queueEntry, settle, shouldDrain, splitQueue } from './batch';
-import { buildLimits, type LimitItem, type Read } from './limits';
+import { accountKind, buildLimits, type LimitItem, type Read } from './limits';
+import { getOwner } from './store';
 import { keyInfo } from './models';
 import { cleanupRunsDaily, ensureRunStore } from './runlog';
 import { redact, type Run } from './trace';
@@ -260,6 +261,7 @@ export function limitsNow(apiKey: string | null, fresh = false): { items: LimitI
   const runs = JSON.parse(p[`USAGE:r:${dayKey(now)}`] ?? '{"n":0,"longest":0}') as { n: number; longest: number };
   const items = buildLimits({
     now,
+    account: accountKind(getOwner()), // cotas de Workspace × conta pessoal, pela conta dona do script
     drive: read(() => {
       const r = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/about?fields=storageQuota', { headers: auth(), muteHttpExceptions: true });
       if (r.getResponseCode() !== 200) throw new Error(`Drive about ${r.getResponseCode()}`);
