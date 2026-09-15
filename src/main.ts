@@ -15,6 +15,7 @@ import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
 import { allowedTools } from './tools/registry';
 import { coverage } from './trace';
+import { webClick, webSend } from './webchat';
 import { agentFolderPath, ensureFolderPath, extractFolderId, loadAgent, seedAgent, validAgentName, type LoadedAgent } from './workspace';
 
 const CHAT_MAX_TOKENS = 1000; // resposta síncrona precisa caber em 30 s
@@ -70,6 +71,10 @@ const llmInfo = (requested: string, messages: Message[]) => (c: Completion) => (
 export function doGet(e: GoogleAppsScript.Events.DoGet) {
   const action = e?.parameter?.action;
   if (!action) {
+    if (e?.parameter?.page === 'chat') {
+      assertOwner();
+      return HtmlService.createHtmlOutputFromFile('chat').setTitle('gasclaw · conversa').addMetaTag('viewport', 'width=device-width, initial-scale=1');
+    }
     ownerEmail();
     return HtmlService.createHtmlOutputFromFile('settings').setTitle('gasclaw').addMetaTag('viewport', 'width=device-width, initial-scale=1');
   }
@@ -166,6 +171,36 @@ export function onMessage(e: ChatEvent) {
 
 export function onCardClick(e: ChatEvent) {
   return onMessage({ ...e, type: 'CARD_CLICKED' });
+}
+
+/** Deps do Chat embrulhadas no trace (resolve_agent, llm_call, tool_call), com o override de modelo. */
+function tracedDeps(t: runlog.Tracer, d: ChatDeps): ChatDeps {
+  return {
+    ...d,
+    load: (id) => t.step('resolve_agent', () => loadAgentForTurn(id), agentInfo(id)),
+    llm: (key, model, messages, tools) => t.step('llm_call', () => d.llm(key, model, messages, tools), llmInfo(model, messages), true),
+    toolkit: (spec, ownerDm) => {
+      const k = d.toolkit!(spec, ownerDm);
+      return { ...k, tools: k.tools.map((tool) => ({ ...tool, run: (a, c) => t.step('tool_call', () => tool.run(a, c), () => ({ tool: tool.name })) })) };
+    },
+  };
+}
+
+// ---------- Tela de conversa de texto (?page=chat) ----------
+export function chatSend(text: string) {
+  const me = assertOwner();
+  const t = runlog.begin('webchat', { question: String(text).slice(0, 2000), user: me });
+  const out = webSend(tracedDeps(t, chatDeps()), me, String(text).slice(0, 4000));
+  t.mark('reply');
+  t.end({ answer: out.text });
+  observe.maybeDrain();
+  return out;
+}
+
+export function chatClick(params: Record<string, string>) {
+  const me = assertOwner();
+  const p = params ?? {};
+  return webClick(chatDeps(), me, { token: String(p.token ?? ''), ...(p.decision ? { decision: String(p.decision) } : {}), ...(p.answer ? { answer: String(p.answer) } : {}) });
 }
 
 export function onAddToSpace(e: ChatEvent) {
