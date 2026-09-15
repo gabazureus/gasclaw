@@ -54,3 +54,4 @@ conta do dono; outra conta precisa de uma 2ª pessoa no domínio).
   `roles/monitoring.viewer` nem mudamos o `ensure_gcp`. Ativar faturamento é decisão do usuário; até lá, o painel mostra essa
   fonte como **erro com a nota "precisa de faturamento"**, e não como "pendente" de autorização.
 - O status do gatilho ficava 10 min em cache e a tela mostrou "aguardando autorização" depois de autorizado: agora o cache é de 60 s e "ler de novo agora" relê o gatilho.
+- **Decisão do usuário (2026-09-15): ficar sem Monitoring.** Não habilitamos faturamento no Google Cloud. A fonte "requisições às APIs (Monitoring)" fica indisponível no painel, com a nota de faturamento, e não reprova a POC P15 (C1).
