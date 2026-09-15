@@ -1,6 +1,6 @@
 # ADR-019 — Tela de chat no gasclaw e voz com `gpt-live-1` (POC P17)
 
-- **Status:** Proposto · 2026-09-15 · texto em implementação; **voz adiada pelo usuário** (C2 reprovado por evidência)
+- **Status:** Texto aceito no dev · **Voz adiada pelo usuário** · 2026-09-15 (o `gpt-live-1` exige tier pago da OpenAI; a hipótese do popup ficou sem medição)
 - Relaciona: [ADR-001](001-gas-only-runtime.md) (runtime só GAS), [ADR-003](003-openrouter-unico-provedor.md) (OpenRouter único; exceção pedida só para voz), [ADR-017](017-motor-de-tools-evals-e-aprovacao.md) (motor, aprovação)
 
 ## Contexto
@@ -22,6 +22,18 @@ pela OpenAI `gpt-live-1` (US$ 0,05/min), com as mesmas tools, aprovação e hist
 |---|---|---|
 | A | Página estática de voz fora do HtmlService (ex.: GitHub Pages) com microfone; troca o SDP e delega as tools ao web app do gasclaw | Exceção ao ADR-001 só para uma página estática; autenticação do dono entre a página e o web app (CORS/redirect do Apps Script) a medir |
 | B | Página local servida por `./gasclaw voice` no PC do dono (localhost é contexto seguro para o microfone) | Só funciona com o PC ligado; o PC deixa de ser só build |
+
+## Hipótese do popup (NÃO medida, adiada pelo usuário)
+Ideia: a voz não precisa do microfone no iframe. Uma janela aberta por clique com `window.open('')` pode obtê-lo.
+Fontes primárias verificadas em 2026-09-15:
+- **HTML (WHATWG), "creating a new browsing context":** o `about:blank` inicial de um `window.open` com criador herda o origin do criador ("If url matches about:blank and sourceOrigin is non-null, then return sourceOrigin"). O popup é, portanto, same-origin com a `chat.html`, contexto seguro (https), e o opener pode usar `w.navigator.mediaDevices` direto, sem `blob:`/`data:`, `postMessage` ou outra página do HtmlService.
+- **HTML:** a permissions policy do novo documento é criada do zero ("creating a permissions policy given embedder and origin"). **Permissions Policy §4.3:** num top-level vale o padrão da feature (microphone = `self`), não o `allow` do iframe.
+- **Sandbox:** as flags só propagam para o popup sem `allow-popups-to-escape-sandbox`. O `iframe#sandboxFrame` do HtmlService tem `allow-popups allow-popups-to-escape-sandbox allow-same-origin`.
+- **Referência:** o `joshm21/microphone-bridge` resolve o mesmo problema com popup, mas numa página no GitHub Pages + `postMessage`, não com `about:blank`.
+
+**Desenho previsto:** o clique abre o popup; o `getUserMedia` usa o navigator do popup; o WebRTC fica na `chat.html`, com o SDP trocado no GAS. A delegação `client` vai ao mesmo `handleChat` (tool `now`, aprovação). As transcrições entram no mesmo histórico, e fechar o popup envia `session.close`.
+**Critérios que ficaram por medir:** C1 chave nunca sai do GAS e troca do SDP < 3 s · C2 popup obtém o microfone e abre a sessão · C3 "que horas são?" → `now` → `session.commentary.append` · C4 segundos e custo no trace (`voice`) · C5 transcrições no mesmo histórico · C6 fechar/Parar encerra sem cobrança pendurada.
+**Código parado:** branch local `voice-wip` (núcleo e testes do veredito; `chat.html` do popup não escrito). Não mesclar sem nova decisão.
 
 ## Consequências
 - `OPENAI_API_KEY` só entra se A for escolhida; ficaria em Script Properties, nunca no HTML nem no trace. O `redact` do trace precisa cobrir `sk-proj-…`/`sk-…` antes disso.

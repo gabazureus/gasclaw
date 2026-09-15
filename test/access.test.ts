@@ -20,7 +20,7 @@ describe('acesso e ferramentas aprovados no painel (ADR-021)', () => {
   });
 
   test('tool aprovada que não existe (ou sumiu) do registry é ignorada; grupo e nome exato valem', () => {
-    expect(effectiveAccess({ users: [], tools: ['memory', 'gmail', 'memory.save', 'nada', 'memory'] }).tools).toEqual(['memory', 'memory.save']);
+    expect(effectiveAccess({ users: [], tools: ['memory', 'fax', 'memory.save', 'nada', 'memory'] }).tools).toEqual(['memory', 'memory.save']); // 'fax' não existe no registry (gmail passou a existir na E6)
   });
 
   test('sem aprovação (null ou undefined): fechado', () => {
