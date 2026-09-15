@@ -24,8 +24,9 @@ has_mark() { # $1 arquivo JSON do read · $2 variante
 
 rm -rf "$T"; mkdir -p "$T"
 say "P10 1/6 build, testes e fixture agentes/p10/*.md.html no editor (versão nova no dev)"
-npm run build >/dev/null
-npm test >/dev/null
+npm test > .tmp/test.log 2>&1 || die "testes falharam: veja .tmp/test.log"
+export GCP_NUMBER="$(var "GCP_NUMBER_$UP")" GASCLAW_DEV=1 # B1: o mesmo build do deploy (Monitoring e POCs)
+OUT_DIR=dist npm run build > .tmp/build.log 2>&1 || die "build falhou: veja .tmp/build.log"
 keep_editor_agents
 rm -rf dist/agentes/p10 && mkdir -p dist/agentes/p10 && cp "$P10"/fixture/agentes/p10/*.md.html dist/agentes/p10/
 clasp_ push --force >/dev/null

@@ -42,7 +42,7 @@ export const nextUtcMidnight = (now: number) => {
 };
 
 const GOOGLE_DAY = '24 h (cota diária do Google)';
-const PENDING = /autoriza|scope|escopo|permission|insufficient|401|403/i;
+const PENDING = /autoriza|scope|escopo|permission|permiss|insufficient|401|403/i; // "Você não tem permissão… Permissões necessárias" (Apps Script em pt-BR)
 
 function item(id: string, label: string, unit: string, source: Source, r: Read<unknown>, used: number | null, total: number | null, reset: string | null, note?: string): LimitItem {
   const status: Status = r.ok ? 'ok' : PENDING.test(r.error) ? 'pendente' : 'erro';

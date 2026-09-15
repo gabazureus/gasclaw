@@ -37,15 +37,19 @@ pause() { # $1 chave de concluído · $2 URL a abrir (ou vazio) · $3 instruçã
   read -r _
   setvar "$1" 1
 }
-lock_dev() { # lock local exclusivo para publicar/medir (duas pistas no mesmo dev); reentrante; liberado no EXIT
-  [ -n "${GASCLAW_LOCKED:-}" ] && return 0
-  local lock=.tmp/dev.lock waited=0 pid
-  mkdir -p .tmp
+LOCK_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/gasclaw"
+lock_dev() { # lock POR MÁQUINA (A4): os worktrees usam o mesmo SCRIPT_ID_DEV; reentrante no mesmo shell; liberado no EXIT
+  [ -n "${GASCLAW_LOCKED:-}" ] && return 0 # sem export: nenhum processo filho chama o ./gasclaw (os pc.sh são carregados com ".")
+  local lock="$LOCK_DIR/dev.lock" waited=0 pid stale
+  mkdir -p "$LOCK_DIR"
   until mkdir "$lock" 2>/dev/null; do
     pid=$(cat "$lock/pid" 2>/dev/null || true)
     if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
-      warn "lock órfão do PID $pid removido"
-      rm -rf "$lock"
+      stale="$lock.orfao.$$" # B3: mv atômico; se outro processo já pegou o órfão, o mv falha e seguimos esperando
+      if mv "$lock" "$stale" 2>/dev/null; then
+        warn "lock órfão do PID $pid removido"
+        rm -rf "$stale"
+      fi
       continue
     fi
     [ "$waited" -ge "${GASCLAW_LOCK_TIMEOUT:-1200}" ] && die "dev ocupado pelo PID ${pid:-?} (esperei ${waited}s; lock em $lock)"
@@ -54,13 +58,23 @@ lock_dev() { # lock local exclusivo para publicar/medir (duas pistas no mesmo de
     waited=$((waited + 5))
   done
   printf '%s\n' "$$" > "$lock/pid"
-  export GASCLAW_LOCKED=1
-  trap 'rm -rf .tmp/dev.lock' EXIT
+  GASCLAW_LOCKED=1
+  trap "rm -rf '$lock'" EXIT # caminho absoluto: vale mesmo se o cwd mudar
 }
 
-clasp_() {
-  printf '{"scriptId":"%s","rootDir":"%s","projectId":"%s"}\n' "$(var "SCRIPT_ID_$UP")" "${CLASP_ROOT:-dist}" "$(var "GCP_PROJECT_$UP")" > .clasp.json
-  npx --no-install clasp "$@"
+clasp_() { # projeto privado por chamada: nenhum comando compartilha (nem reescreve) o .clasp.json da raiz
+  # O clasp 3.4 recusa rootDir fora da pasta do .clasp.json ("srcDir escapes project root"): o alvo (CLASP_ROOT, padrão
+  # dist) é COPIADO para $dir/root antes (o push publica essa cópia congelada) e, num pull, copiado de volta depois.
+  local dir target="${CLASP_ROOT:-dist}" rc=0
+  mkdir -p .tmp "$target"
+  dir=$(mktemp -d "$PWD/.tmp/clasp.XXXXXX")
+  mkdir -p "$dir/root"
+  cp -R "$target/." "$dir/root/"
+  printf '{"scriptId":"%s","rootDir":"root","projectId":"%s"}\n' "$(var "SCRIPT_ID_$UP")" "$(var "GCP_PROJECT_$UP")" > "$dir/.clasp.json"
+  (cd "$dir" && npx --no-install clasp "$@") || rc=$?
+  if [ "$rc" -eq 0 ] && [ "${1:-}" = pull ]; then cp -R "$dir/root/." "$target/"; fi
+  rm -rf "$dir"
+  return "$rc"
 }
 url() { printf 'https://script.google.com/a/macros/%s/s/%s/exec' "${DOMAIN:-}" "$(var "DEPLOY_ID_$UP")"; }
 remote() {
@@ -145,11 +159,12 @@ keep_editor_agents() { # ADR-013: o push --force troca o HEAD inteiro; antes, tr
 
 deploy() {
   lock_dev
+  mkdir -p .tmp
   say "testes"
-  npm test >/dev/null # o build.test gera numa pasta temporária: não mexe no dist/
+  npm test > .tmp/test.log 2>&1 || die "testes falharam: veja .tmp/test.log" # o build.test gera numa pasta temporária
   say "build (logo antes do push)"
   export GCP_NUMBER="$(var "GCP_NUMBER_$UP")" # Monitoring (ADR-016)
-  npm run build >/dev/null
+  OUT_DIR=dist npm run build > .tmp/build.log 2>&1 || die "build falhou: veja .tmp/build.log"
   local built
   built=$(shasum -a 256 dist/_motor.js dist/appsscript.json | cut -d' ' -f1 | tr '\n' ' ')
   keep_editor_agents # depois do build: o build.mjs apaga o dist/ inteiro, e os agentes/** do editor precisam ir junto
@@ -160,13 +175,33 @@ deploy() {
   publish
 }
 
-verify_head() { # depois do push e antes da versão: o HEAD remoto (pull isolado) tem exatamente o motor e os escopos do build
-  local dir=".tmp/verify-$$"
+same_as_build() { # $1 pasta baixada → "" se o motor, as telas e o manifesto (escopos ordenados + webapp + chat) batem com o dist/
+  local f bad=""
+  for f in _motor.js settings.html chat.html; do
+    cmp -s "$1/$f" "dist/$f" || bad="$bad $f"
+  done
+  node -e 'const k=(p)=>{const m=JSON.parse(require("fs").readFileSync(p,"utf8"));return JSON.stringify([[...(m.oauthScopes||[])].sort(),m.webapp,m.chat])};process.exit(k(process.argv[1])===k("dist/appsscript.json")?0:1)' "$1/appsscript.json" 2>/dev/null || bad="$bad appsscript.json"
+  printf '%s' "$bad"
+}
+
+verify_head() { # depois do push e antes da versão: o HEAD remoto (pull isolado) é exatamente o build
+  local dir=".tmp/verify-$$" bad
   mkdir -p "$dir"
   pull_into "$dir"
-  [ "$(shasum -a 256 < "$dir/_motor.js")" = "$(shasum -a 256 < dist/_motor.js)" ] || die "HEAD remoto diferente do build depois do push: não crio a versão"
-  node -e 'const f=(p)=>JSON.parse(require("fs").readFileSync(p,"utf8")).oauthScopes.length;if(f(process.argv[1])!==f("dist/appsscript.json"))process.exit(1)' "$dir/appsscript.json" || die "escopos do HEAD remoto diferentes do build: não crio a versão"
-  ok "HEAD remoto conferido: motor idêntico ao build, $(node -p 'JSON.parse(require("fs").readFileSync("dist/appsscript.json","utf8")).oauthScopes.length') escopos"
+  bad=$(same_as_build "$dir")
+  rm -rf "$dir" # B2
+  [ -z "$bad" ] || die "HEAD remoto diferente do build depois do push (${bad# }): não crio a versão"
+  ok "HEAD remoto conferido: motor, telas e manifesto idênticos ao build ($(node -p 'JSON.parse(require("fs").readFileSync("dist/appsscript.json","utf8")).oauthScopes.length') escopos)"
+}
+
+verify_version() { # A5: a VERSÃO criada (imutável) é o build, antes de apontar a implantação para ela
+  local v="$1" dir=".tmp/version-$1-$$" bad
+  mkdir -p "$dir"
+  CLASP_ROOT="$dir" clasp_ pull --versionNumber "$v" >/dev/null || { rm -rf "$dir"; die "não consegui baixar a versão $v: implantação NÃO apontada"; }
+  bad=$(same_as_build "$dir")
+  rm -rf "$dir"
+  [ -z "$bad" ] || die "versão $v diferente do build (${bad# }): implantação NÃO apontada"
+  ok "versão $v conferida: idêntica ao build"
 }
 
 check_bundle() { # $1 sha do build. A v18 saiu com o bundle da v17 porque o dist/ foi regravado entre o build e o push
@@ -189,12 +224,13 @@ version_label() { # SHA do commit, com -dirty se src/ ou o manifesto têm mudan�
 publish() { # versão nova do HEAD + implantação fixa apontando para ela (mesma URL)
   local out v d
   out=$(clasp_ create-version "$(version_label)")
-  v=$(printf '%s' "$out" | grep -oE 'ersion [0-9]+' | grep -oE '[0-9]+' | head -1)
+  v=$(printf '%s' "$out" | grep -oE 'ersion [0-9]+' | grep -oE '[0-9]+' | head -1 || true) # M19: sem || true, o pipefail matava o script calado
   [ -n "$v" ] || die "não consegui ler o número da versão: $out"
+  verify_version "$v"
   d=$(var "DEPLOY_ID_$UP")
   if [ -z "$d" ]; then
     out=$(clasp_ create-deployment -V "$v" -d "gasclaw $TARGET")
-    d=$(printf '%s' "$out" | grep -oE 'AKfy[A-Za-z0-9_-]+' | head -1)
+    d=$(printf '%s' "$out" | grep -oE 'AKfy[A-Za-z0-9_-]+' | head -1 || true)
     [ -n "$d" ] || die "não consegui ler o ID da implantação: $out"
     setvar "DEPLOY_ID_$UP" "$d"
   else
@@ -232,7 +268,9 @@ cmd_up() {
   health
   if [ -n "${OPENROUTER_API_KEY:-}" ]; then
     printf '%s' "$OPENROUTER_API_KEY" | pbcopy
-    say "chave OpenRouter copiada — cole em 'Chave OpenRouter' na tela (só na primeira vez)"
+    # segurança baixa: a chave sai do clipboard em 90 s, se ainda for ela que estiver lá
+    (sleep 90; [ "$(pbpaste 2>/dev/null)" = "$OPENROUTER_API_KEY" ] && printf '' | pbcopy) >/dev/null 2>&1 &
+    say "chave OpenRouter copiada por 90 s — cole em 'Chave OpenRouter' na tela (só na primeira vez)"
   else
     warn "sem OPENROUTER_API_KEY no .env.local — cole a chave direto na tela"
   fi
@@ -251,6 +289,8 @@ cmd_ship() {
   health
 }
 
+# RISCO (auditoria A5, registrado; CI adiado e ADR-008 mantido): o CI publica o prod logo depois do dev, sem ninguém olhar o
+# dev. As travas (check_bundle, verify_head, verify_version) impedem bundle trocado, mas não um bug de comportamento.
 cmd_ci() { # usado pelo GitHub Actions: sem pausas, sem gcloud
   [ -x node_modules/.bin/clasp ] || npm ci
   TARGET=dev; UP=DEV; deploy
@@ -337,10 +377,11 @@ const c=r.check;console.log(`\nconferência (dia UTC ${c.dayUtc}): medido US$ ${
 cmd_eval() { lock_dev; [ "$TARGET" = dev ] || die "evals rodam só no dev"; node scripts/eval.mjs "$(url)" "$@"; }
 
 cmd_rollback() {
+  lock_dev # B4
   local d cur
   d=$(var "DEPLOY_ID_$UP")
   [ -n "$d" ] || die "sem implantação em $TARGET"
-  cur=$(clasp_ list-deployments | grep "$d" | grep -oE '@[0-9]+' | tr -d @ | head -1)
+  cur=$(clasp_ list-deployments | grep "$d" | grep -oE '@[0-9]+' | tr -d @ | head -1 || true)
   { [ -n "$cur" ] && [ "$cur" -gt 1 ]; } || die "sem versão anterior (atual: ${cur:-?})"
   clasp_ create-deployment -i "$d" -V "$((cur - 1))" -d "rollback" >/dev/null
   ok "$TARGET voltou para a versão $((cur - 1))"

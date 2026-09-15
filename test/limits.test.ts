@@ -52,6 +52,10 @@ describe('buildLimits', () => {
     const l = byId(buildLimits(input()));
     for (const id of ['processes', 'mail', 'monitoring', 'triggers']) expect(l[id]).toMatchObject({ status: 'pendente', level: 'sem limite' });
   });
+  test('mensagem do Apps Script em português ("Você não tem permissão…") também é pendente, não erro', () => {
+    const l = byId(buildLimits(input({ mail: { ok: false, error: 'Você não tem permissão para chamar MailApp.getRemainingDailyQuota. Permissões necessárias: https://www.googleapis.com/auth/script.send_mail' } })));
+    expect(l.mail).toMatchObject({ status: 'pendente', level: 'sem limite' });
+  });
   test('falha de uma fonte que já funcionava vira erro só nela', () => {
     const l = byId(buildLimits(input({ drive: { ok: false, error: 'Drive 500' } })));
     expect(l.drive).toMatchObject({ status: 'erro', note: 'Drive 500' });
