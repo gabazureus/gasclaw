@@ -2,6 +2,8 @@ import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, runTurn, withEngineRules, t
 import { flushMemory } from './tools/memoryFlush';
 import { approvalCard, decisionFrom, issue, redeem, type Ticket, type TicketStore } from './approval';
 import type { Completion, Message, ToolDef } from './llm';
+import type { Skill } from './skills';
+import { skillsBlock } from './skills';
 import type { Tool, ToolCtx } from './tools/registry';
 import { redact } from './trace';
 import { canUse, type AgentSpec } from './workspace';
@@ -14,8 +16,8 @@ export type ChatEvent = {
   common?: { parameters?: Record<string, string> }; // CARD_CLICKED
 };
 export type AgentEntry = { folderId: string; name: string };
-/** Tools do agente neste turno; a memória só é lida quando ownerDm (spec §8). */
-export type Toolkit = { tools: Tool[]; ctx: ToolCtx; steps: number };
+/** Tools do agente neste turno; a memória só é lida quando ownerDm (spec §8). `skills` é só o índice: o corpo vem por read_skill. */
+export type Toolkit = { tools: Tool[]; ctx: ToolCtx; steps: number; skills?: Skill[] };
 /** `open(sessão)` = token de um `ask` aberto nessa conversa (a próxima mensagem responde). */
 export type Tickets = TicketStore & { open?: (session: string) => string | null };
 export type ChatReply = { text?: string; cardsV2?: unknown[]; actionResponse?: { type: 'UPDATE_MESSAGE' } };
@@ -81,7 +83,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
           return reply('Resposta inválida para este pedido.');
         }
         ticket = r.ticket;
-        resume = { ...ticket.state, messages: [{ role: 'system', content: withEngineRules(spec.system, kit.tools.length > 0) }, ...ticket.state.messages], decision };
+        resume = { ...ticket.state, messages: [{ role: 'system', content: withEngineRules(spec.system + skillsBlock(kit.skills ?? []), kit.tools.length > 0) }, ...ticket.state.messages], decision };
       } else if (click) return reply(`Não dá para responder: ${r.error}.`);
       // ask aberto de outra pessoa: segue como mensagem comum
     }
@@ -91,7 +93,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
     const history = d.history(hk); // na retomada também: mensagens trocadas enquanto a aprovação esperava não se perdem
     const runId = ticket?.runId ?? e.message?.name ?? `${hk}:${start}`;
     const out = runTurn({
-      system: spec.system,
+      system: spec.system + skillsBlock(kit.skills ?? []), // só nome e descrição das skills entram no prompt
       history,
       text,
       memory: ownerDm && !resume ? (kit.ctx.memory.recall?.() ?? kit.ctx.memory.read()) : undefined, // curada + notas de hoje e ontem

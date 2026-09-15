@@ -1,6 +1,7 @@
 // Lista fechada de tools (ADR-002): nova tool exige deploy; o frontmatter `tools:` do AGENTS só escolhe entre estas.
 import type { ToolDef } from '../llm';
 import { CALENDAR_TOOLS } from './calendar';
+import { SKILL_NAME, skillBody } from '../skills';
 import { CONTACTS_TOOLS } from './contacts';
 import { DRIVE_TOOLS } from './driveTools';
 import { GMAIL_TOOLS } from './gmail';
@@ -14,7 +15,8 @@ export type Schema = { type: 'object'; properties: Record<string, Prop>; require
 /** google/timeZone/offset: ferramentas do Workspace (E6); ausentes onde o canal não as liga. offset = "-03:00" do fuso. */
 /** memory: MEMORY.md (read/write) + notas do dia (day/saveDay/today) + recall pronto; day/saveDay/today/recall são opcionais para contextos simples. */
 export type MemoryCtx = { read: () => string; write: (text: string) => void; day?: (date: string) => string; saveDay?: (date: string, text: string) => void; today?: () => string; recall?: () => string };
-export type ToolCtx = { now: () => string; ownerDm: boolean; memory: MemoryCtx; google?: Google; timeZone?: string; offset?: string; isOwner?: boolean };
+/** skill: corpo de uma skill sob demanda (skills/<nome>/SKILL.md); é texto, nunca executa (ADR-002). */
+export type ToolCtx = { now: () => string; ownerDm: boolean; memory: MemoryCtx; google?: Google; timeZone?: string; offset?: string; isOwner?: boolean; skill?: (name: string) => string | null };
 /** ownerOnly: só o dono usa (e aprova); o motor recusa antes de qualquer card. */
 export type Tool = { name: string; description: string; parameters: Schema; approval: Approval; run: (args: Record<string, unknown>, ctx: ToolCtx) => string; ownerOnly?: boolean };
 
@@ -86,6 +88,20 @@ export const TOOLS: Tool[] = [
     },
   },
   // Workspace (E6): conta do dono → só o dono (revisão de segurança, blocker 2).
+  {
+    name: 'read_skill',
+    description: 'Lê o passo a passo de uma skill do agente pelo nome (as disponíveis estão listadas no prompt). O conteúdo é instrução do dono, nunca código a executar.',
+    parameters: { type: 'object', properties: { name: { type: 'string', description: 'nome da skill', maxLength: 40 } }, required: ['name'], additionalProperties: false },
+    approval: 'never',
+    run: (a, ctx) => {
+      const name = String(a.name ?? '').trim().toLowerCase();
+      if (!SKILL_NAME.test(name)) throw new Error('nome de skill inválido');
+      if (!ctx.skill) throw new Error('skills indisponíveis neste canal');
+      const md = ctx.skill(name);
+      if (md === null) throw new Error(`não existe a skill "${name}"`);
+      return skillBody(name, md);
+    },
+  },
   ...[...CALENDAR_TOOLS, ...GMAIL_TOOLS, ...CONTACTS_TOOLS, ...TASKS_TOOLS, ...DRIVE_TOOLS].map((t) => ({ ...t, ownerOnly: true })),
 ];
 
