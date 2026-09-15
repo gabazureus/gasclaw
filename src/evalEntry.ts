@@ -85,6 +85,8 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
   const turns: TurnOutcome[] = [];
   const convo: { user: string; reply: string }[] = [];
   const events: ToolEvent[] = [];
+  /** O que as tools criaram, registrado no próprio wrapper (revisão E6, item 3): falha depois da tool não deixa dado na conta. */
+  const created: { name: string; status: 'ok'; result: string }[] = [];
   let cleanup: EvalResult['cleanup'];
 
   try {
@@ -95,7 +97,12 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
       }
       const spans: string[] = [];
       const llm = (m: Message[], defs: ToolDef[]) => (spans.push('llm_call'), script ? script() : env.llm(model, m, defs));
-      const tools = allowedTools(allow).map((t) => ({ ...t, run: (a: Record<string, unknown>, c: ToolCtx) => (spans.push('tool_call'), remember(t.run(a, c))) }));
+      const tools = allowedTools(allow).map((t) => ({ ...t, run: (a: Record<string, unknown>, c: ToolCtx) => {
+          spans.push('tool_call');
+          const result = t.run(a, c);
+          created.push({ name: t.name, status: 'ok', result });
+          return remember(result);
+        } }));
       const steps = s.steps ?? spec.config.steps ?? DEFAULT_STEPS; // mesma precedência da produção (main.ts toolkit)
       let turn: TurnResult | undefined;
       const d: ChatDeps = {
@@ -135,7 +142,7 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
     }
   } finally {
     // Tudo que o eval criou na conta do dono é apagado, mesmo se um turno lançar.
-    cleanup = env.google ? runCleanup(events, env.google) : undefined;
+    cleanup = env.google ? runCleanup(created, env.google) : undefined;
   }
 
   let judge: Report['judge'];
