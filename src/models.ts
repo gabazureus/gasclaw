@@ -2,9 +2,8 @@
 import { DEFAULT_MODEL } from './workspace';
 
 export type ModelInfo = { id: string; ctx: number; inM: number; outM: number; tools: boolean; free: boolean };
-export type ModelSource = 'tela' | 'planilha' | 'AGENTS' | 'padrão';
 
-const perM = (x: unknown) => Math.round(Number(x ?? 0) * 1e6 * 1e4) / 1e4 || 0;
+const perM = (x: unknown) => Math.max(0, Math.round(Number(x ?? 0) * 1e6 * 1e4) / 1e4 || 0); // negativo = preço variável (openrouter/auto)
 
 /** `/api/v1/models` reduzido ao que a tela usa (cabe no cache de 100 KB). */
 export function reduceModels(json: { data?: { id: string; context_length?: number; pricing?: { prompt?: string; completion?: string }; supported_parameters?: string[] }[] }): ModelInfo[] {
@@ -15,14 +14,6 @@ export function reduceModels(json: { data?: { id: string; context_length?: numbe
       return { id: m.id, ctx: m.context_length ?? 0, inM, outM, tools: (m.supported_parameters ?? []).includes('tools'), free: m.id.endsWith(':free') };
     })
     .sort((a, b) => a.id.localeCompare(b.id));
-}
-
-/** Precedência do modelo: tela > planilha config > AGENTS > padrão. */
-export function chooseModel(c: { agents?: string; sheet?: string; screen?: string }): { model: string; source: ModelSource } {
-  if (c.screen) return { model: c.screen, source: 'tela' };
-  if (c.sheet) return { model: c.sheet, source: 'planilha' };
-  if (c.agents) return { model: c.agents, source: 'AGENTS' };
-  return { model: DEFAULT_MODEL, source: 'padrão' };
 }
 
 /** C5: null se pode; senão a mensagem de recusa. */

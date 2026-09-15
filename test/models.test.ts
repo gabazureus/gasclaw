@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { chooseModel, reduceModels, validateChoice } from '../src/models';
+import { reduceModels, validateChoice } from '../src/models';
 
 const api = {
   data: [
@@ -18,13 +18,9 @@ describe('reduceModels', () => {
     ]);
   });
   test('resposta sem data vira lista vazia', () => expect(reduceModels({})).toEqual([]));
-});
-
-describe('chooseModel: tela > planilha config > AGENTS > padrão', () => {
-  test('override da tela vence tudo', () => expect(chooseModel({ agents: 'a/1', sheet: 'b/2', screen: 'c/3' })).toEqual({ model: 'c/3', source: 'tela' }));
-  test('sem tela, vale a planilha', () => expect(chooseModel({ agents: 'a/1', sheet: 'b/2' })).toEqual({ model: 'b/2', source: 'planilha' }));
-  test('sem tela e sem planilha, vale o AGENTS', () => expect(chooseModel({ agents: 'a/1' })).toEqual({ model: 'a/1', source: 'AGENTS' }));
-  test('nada definido: padrão', () => expect(chooseModel({})).toEqual({ model: 'openrouter/auto', source: 'padrão' }));
+  test('preço negativo (openrouter/auto: variável) vira 0, nunca −1.000.000 por milhão', () => {
+    expect(reduceModels({ data: [{ id: 'openrouter/auto', pricing: { prompt: '-1', completion: '-1' } }] })[0]).toMatchObject({ inM: 0, outM: 0, free: false });
+  });
 });
 
 describe('validateChoice (C5)', () => {
