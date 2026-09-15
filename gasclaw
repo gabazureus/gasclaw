@@ -104,7 +104,7 @@ ensure_gcp() {
     gcloud projects create "$p" --name="gasclaw $TARGET"
     setvar "GCP_PROJECT_$UP" "$p"
   fi
-  gcloud services enable script.googleapis.com chat.googleapis.com drive.googleapis.com sheets.googleapis.com logging.googleapis.com --project "$p" >/dev/null
+  gcloud services enable script.googleapis.com chat.googleapis.com drive.googleapis.com sheets.googleapis.com logging.googleapis.com monitoring.googleapis.com --project "$p" >/dev/null
   setvar "GCP_NUMBER_$UP" "$(gcloud projects describe "$p" --format='value(projectNumber)')"
   pause "CONSENT_OK_$UP" "https://console.cloud.google.com/auth/branding?project=$p" \
     "Tela de consentimento OAuth: público INTERNO, nome 'gasclaw', e-mail de suporte $ACCOUNT. Salve."

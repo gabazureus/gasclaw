@@ -18,4 +18,4 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [012](012-agentes-em-docs-e-sheets.md) | Agentes em Google Docs e Sheets nativos (POC P6) | Aceito |
 | [013](013-autoria-editor-e-drive.md) | Autoria em ambas as superfícies: editor do Apps Script + pasta do Drive (POC P10) | Aceito (medição); levar a prod aguarda o gate |
 | [014](014-trace-do-agente.md) | Trace do agente dentro do gasclaw (POC P14) | Aceito no dev; C1 e C6 aguardam decisão |
-| [015](015-escopos-oauth.md) | Escopos OAuth mínimos: gatilho de 1 min + Gmail, Agenda, Docs e Sheets | Aceito; reautorização no dev pendente |
+| [015](015-escopos-oauth.md) | Escopos OAuth mínimos: gatilho de 1 min, Gmail, Agenda, Docs, Sheets e painel de limites | Aceito; reautorização no dev pendente |

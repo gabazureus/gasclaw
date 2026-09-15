@@ -1,4 +1,4 @@
-# ADR-015 — Escopos OAuth mínimos: gatilho de 1 min + ferramentas do Workspace
+# ADR-015 — Escopos OAuth mínimos: gatilho de 1 min, ferramentas do Workspace e painel de limites
 
 - **Status:** Aceito · 2026-09-15 · decisão do usuário: uma única reautorização no dev · prod ainda não recebeu
 
@@ -15,6 +15,20 @@ preferiu reautorizar uma vez só. A regra é pedir o menor escopo de cada coisa.
 - Calendar API: `calendar.events` para *"View and edit events on all your calendars"*.
   `CalendarApp` exige `calendar` (inclui configurações e agendas).
 - Docs API (`documents.get`) e Sheets API (`values.append`): aceitam `drive`, que já está no manifesto.
+- Apps Script API `processes.list`: exige `script.processes` (único escopo aceito).
+- `MailApp.getRemainingDailyQuota()`: exige `script.send_mail` (único escopo aceito).
+- Cloud Monitoring `projects.timeSeries.list`: aceita `cloud-platform`, `monitoring` ou `monitoring.read`; o mais restrito é `monitoring.read`.
+- Painel de limites (decisão do usuário, 2026-09-15): fontes = todas (as atuais, mais execuções e e-mails restantes do Google e métricas do Google Cloud); exibição na tela, no terminal e na planilha; cache de 10 min. Os escopos entram nesta mesma reautorização.
+
+## Projeto GCP padrão (sem migração nova)
+A pesquisa apontava que ler métricas do Cloud exigiria migrar o script para um projeto GCP padrão,
+sem volta. **Dev e prod já estão ligados a projetos padrão** desde a Task 9/10. Conferido em
+2026-09-15 com `gcloud projects describe` e com `GCP_LINKED_*=1` no `gasclaw.env`:
+- dev: `gasclaw-dev-example`, número 000000000001, `ACTIVE`;
+- prod: `gasclaw-prod-example`, número 000000000002, `ACTIVE`.
+
+Nos dois, `script.googleapis.com` e `monitoring.googleapis.com` já estão habilitados. O `ensure_gcp` passa a
+habilitar `monitoring.googleapis.com` também em projetos novos (idempotente).
 
 ## Decisão
 | Escopo | Para quê | Por que não um maior/menor |
@@ -26,6 +40,9 @@ preferiu reautorizar uma vez só. A regra é pedir o menor escopo de cada coisa.
 | `gmail.readonly` **(novo)** | ler e buscar mensagens | `gmail.metadata` não traz o corpo; `gmail.modify` e `mail.google.com` dão mais do que precisa |
 | `gmail.compose` **(novo)** | criar rascunho e enviar depois de aprovado | cobre rascunho **e** envio; `gmail.send` sozinho não cria rascunho |
 | `calendar.events` **(novo)** | listar, criar e alterar eventos | `calendar` inteiro inclui configurações; `calendar.events.owned` bloqueia agendas compartilhadas |
+| `script.processes` **(novo)** | painel de limites: duração e contagem das execuções (`processes.list`) | único escopo aceito; só leitura das execuções |
+| `script.send_mail` **(novo)** | painel de limites: e-mails restantes no dia (`MailApp.getRemainingDailyQuota`) | único escopo aceito; o gasclaw não usa o `MailApp` para enviar (envio passa pelo `gmail.compose` com aprovação) |
+| `monitoring.read` **(novo)** | painel de limites: métricas do Google Cloud (`timeSeries.list`) | `cloud-platform` dá acesso a todo o Google Cloud; `monitoring` permite escrever |
 
 **Consequência de desenho:** as ferramentas usam as **APIs REST via UrlFetch** (Gmail, Calendar,
 Docs, Sheets) com o token do script. `GmailApp`, `CalendarApp`, `DocumentApp` e
@@ -37,4 +54,7 @@ Docs, Sheets) com o token do script. `GmailApp`, `CalendarApp`, `DocumentApp` e
 - `gmail.readonly` e `gmail.compose` são escopos **restritos**. Num app interno do Workspace isso
   não exige verificação do Google. Se o app um dia for externo, exige.
 - O envio de e-mail sempre passa por aprovação no fluxo do agente (ADR-005, F2): o escopo permite, a política decide.
+- `script.processes` e `monitoring.read` são chamados pela API REST com `ScriptApp.getOAuthToken()`.
+  Se algum deles recusar esse token na prática, a POC P15 registra o erro e o escopo sai numa próxima
+  revisão. Não é trocado por um escopo maior.
 - Prod só recebe estes escopos quando o usuário decidir levar as ferramentas e o lote para lá.
