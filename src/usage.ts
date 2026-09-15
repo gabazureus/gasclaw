@@ -21,6 +21,49 @@ const dayStart = (day: string, tz: Tz) => Date.parse(`${day}T00:00:00Z`) - offse
 
 export const emptyUsage = (): Usage => ({ h: {}, d: {}, m: {} });
 
+export type RunsOfDay = { n: number; longest: number };
+const PROP_MAX = 8_000; // Script Properties: 9 KB por valor
+
+/** Lê as Properties USAGE:* (inclusive as partes `#n` de um grupo grande). */
+export function loadUsage(p: Record<string, string>): Usage {
+  const u = emptyUsage();
+  for (const [k, v] of Object.entries(p)) {
+    if (k.startsWith('USAGE:h:')) Object.assign(u.h, JSON.parse(v));
+    if (k.startsWith('USAGE:d:')) Object.assign(u.d, JSON.parse(v));
+    if (k === 'USAGE:m') Object.assign(u.m, JSON.parse(v));
+  }
+  return u;
+}
+
+/** Properties do uso: horas por dia UTC, dias por mês (em partes `#n` de até 8 KB) e runs por dia (90 dias, vindos de `prev`). */
+export function usageProps(u: Usage, runsByDay: Record<string, RunsOfDay>, now: number, prev: Record<string, string> = {}): Record<string, string> {
+  const out: Record<string, string> = { 'USAGE:m': JSON.stringify(u.m) };
+  const group = (src: Record<string, Bucket>, prefix: string, cut: number) => {
+    const g: Record<string, [string, Bucket][]> = {};
+    for (const [k, b] of Object.entries(src)) (g[k.slice(0, cut)] ??= []).push([k, b]);
+    for (const [gk, items] of Object.entries(g)) {
+      let part: Record<string, Bucket> = {};
+      let n = 0;
+      const flush = () => {
+        out[`${prefix}${gk}${n ? `#${n}` : ''}`] = JSON.stringify(part);
+        n++;
+        part = {};
+      };
+      for (const [k, b] of items) {
+        if (Object.keys(part).length && JSON.stringify({ ...part, [k]: b }).length > PROP_MAX) flush();
+        part[k] = b;
+      }
+      flush();
+    }
+  };
+  group(u.h, 'USAGE:h:', 10);
+  group(u.d, 'USAGE:d:', 7);
+  const oldest = dayKey(now - 90 * D);
+  for (const [k, v] of Object.entries(prev)) if (k.startsWith('USAGE:r:') && k.slice(8) >= oldest) out[k] = v;
+  for (const [day, r] of Object.entries(runsByDay)) out[`USAGE:r:${day}`] = JSON.stringify(r);
+  return out;
+}
+
 type SpanLike = { name: string; startMs: number; data?: Record<string, unknown> };
 
 /** Um registro por chamada ao modelo (span llm_call) de um run. */

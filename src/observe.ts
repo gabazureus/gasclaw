@@ -6,7 +6,7 @@ import { buildLimits, type LimitItem, type Read } from './limits';
 import { keyInfo } from './models';
 import { cleanupRunsDaily, ensureRunStore } from './runlog';
 import { redact, type Run } from './trace';
-import { chart, dayKey, dayTotals, emptyUsage, fold, freePerMinuteMax, prune, totalCost, totalReq, type Bucket, type Usage } from './usage';
+import { chart, dayKey, dayTotals, fold, freePerMinuteMax, loadUsage, prune, totalCost, totalReq, usageProps, type RunsOfDay, type Usage } from './usage';
 
 declare const __GCP_NUMBER__: string; // embutido pelo build (gasclaw.env → GCP_NUMBER)
 
@@ -55,31 +55,14 @@ function obsProps(fresh = false): Record<string, string> {
   return out;
 }
 
-export function loadUsage(p: Record<string, string>): Usage {
-  const u = emptyUsage();
-  for (const [k, v] of Object.entries(p)) {
-    if (k.startsWith('USAGE:h:')) Object.assign(u.h, JSON.parse(v));
-    if (k.startsWith('USAGE:d:')) Object.assign(u.d, JSON.parse(v));
-    if (k === 'USAGE:m') Object.assign(u.m, JSON.parse(v));
-  }
-  return u;
-}
+export { loadUsage }; // a P16 lê daqui
 
-/** Uma Property por dia UTC (horas) e por mês (dias): cada valor fica bem abaixo dos 9 KB. */
-function saveUsage(u: Usage, runsByDay: Record<string, { n: number; longest: number }>) {
-  const out: Record<string, string> = { 'USAGE:m': JSON.stringify(u.m) };
-  const group = (src: Record<string, Bucket>, prefix: string, cut: number) => {
-    const g: Record<string, Record<string, Bucket>> = {};
-    for (const [k, b] of Object.entries(src)) (g[k.slice(0, cut)] ??= {})[k] = b;
-    for (const [gk, v] of Object.entries(g)) out[`${prefix}${gk}`] = JSON.stringify(v);
-  };
-  group(u.h, 'USAGE:h:', 10);
-  group(u.d, 'USAGE:d:', 7);
-  for (const [day, r] of Object.entries(runsByDay)) out[`USAGE:r:${day}`] = JSON.stringify(r);
-  const p = props();
-  const stale = Object.keys(p.getProperties()).filter((k) => (k.startsWith('USAGE:h:') || k.startsWith('USAGE:d:')) && !(k in out));
-  p.setProperties(out);
-  for (const k of stale) p.deleteProperty(k);
+/** Uso (partes ≤ 8 KB, ver usageProps) e `extra` (fila marcada) numa escrita só; depois apaga as partes que sobraram. */
+function saveUsage(prev: Record<string, string>, u: Usage, runsByDay: Record<string, RunsOfDay>, extra: Record<string, string>) {
+  const out = usageProps(u, runsByDay, Date.now(), prev);
+  const stale = Object.keys(prev).filter((k) => /^USAGE:[hdr]:/.test(k) && !(k in out));
+  props().setProperties({ ...out, ...extra });
+  for (const k of stale) props().deleteProperty(k);
 }
 
 // ---------- drenagem (gatilho de 1 min ou fallback) ----------
@@ -103,25 +86,27 @@ export function drain(max = 200): DrainResult {
       if (rowsRes.getResponseCode() >= 300) throw new Error(`planilha ${rowsRes.getResponseCode()}: ${rowsRes.getContentText().slice(0, 200)}`); // fila fica para a próxima vez
     }
     const rows = true;
-    // 2) JSON completos em paralelo (o do cache; se expirou, a entrada da fila)
+    // 2) uso por modelo e runs por dia, com a fila marcada "linha feita" na MESMA escrita:
+    //    se algo falhar depois daqui, a próxima drenagem não duplica linha nem uso.
+    if (fresh.length) {
+      const p = props().getProperties();
+      const u = prune(fold(loadUsage(p), fresh.flatMap((e) => e.recs)), Date.now());
+      const runs: Record<string, RunsOfDay> = {};
+      for (const e of fresh) {
+        const day = dayKey(e.at);
+        const r = (runs[day] ??= JSON.parse(p[`USAGE:r:${day}`] ?? '{"n":0,"longest":0}'));
+        r.n += 1;
+        r.longest = Math.max(r.longest, Number(e.row[6]) || 0);
+      }
+      saveUsage(p, u, runs, Object.fromEntries(fresh.map((e) => [`${QUEUE_PREFIX}${e.id}`, JSON.stringify({ ...e, rowDone: true, recs: [] })])));
+    }
+    // 3) JSON completos em paralelo (o do cache; se expirou, a entrada da fila)
     const fulls = cache().getAll(entries.map((e) => `qjson:${e.id}`));
     const res = UrlFetchApp.fetchAll(entries.map((e) => {
       const boundary = `gasclaw${e.id}`;
       const body = drainBody(e, fulls[`qjson:${e.id}`]);
       return { url: UPLOAD, method: 'post', contentType: `multipart/related; boundary=${boundary}`, payload: multipartBody({ name: `${e.id}.json`, parents: [store.folderId], mimeType: 'application/json' }, body.replace(/[-￿]/g, (c: string) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`), 'application/json', boundary), headers: auth(), muteHttpExceptions: true };
     }));
-    // 3) uso por modelo + contagem de runs por dia
-    const p = props().getProperties();
-    let u = loadUsage(p);
-    u = prune(fold(u, fresh.flatMap((e) => e.recs)), Date.now());
-    const runs: Record<string, { n: number; longest: number }> = {};
-    for (const e of fresh) {
-      const day = dayKey(e.at);
-      const r = (runs[day] ??= JSON.parse(p[`USAGE:r:${day}`] ?? '{"n":0,"longest":0}'));
-      r.n += 1;
-      r.longest = Math.max(r.longest, Number(e.row[6]) || 0);
-    }
-    saveUsage(u, runs);
     const done = settle(entries, res.map((r) => r.getResponseCode()));
     for (const id of done.remove) props().deleteProperty(`${QUEUE_PREFIX}${id}`);
     for (const e of done.retry) props().setProperty(`${QUEUE_PREFIX}${e.id}`, JSON.stringify(e)); // o JSON volta na próxima drenagem
