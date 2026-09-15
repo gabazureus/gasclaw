@@ -34,6 +34,8 @@ export type ChatDeps = {
   clock?: () => number;
   budgetMs?: number; // padrão: 20 s do evento do Chat; a tela usa 300 s
   onTurn?: (turn: TurnResult) => void;
+  /** Compacta a sessão depois de salvar, se ela passou do teto (resumo + cauda). Sem isso, o histórico só é cortado. */
+  compact?: (key: string, llm: (messages: Message[]) => Completion) => void;
 };
 
 const NO_TOOLS: Toolkit = { tools: [], ctx: { now: () => '', ownerDm: false, memory: { read: () => '', write: () => {} } }, steps: DEFAULT_STEPS };
@@ -115,6 +117,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
     // Flush de memória antes de compactar: o que for durável vira nota do dia, para não se perder no corte do histórico.
     if (ownerDm && out.history.length >= MAX_HISTORY && kit.ctx.memory.saveDay && kit.ctx.memory.today) flushMemory(out.history, kit.ctx, (m) => d.llm(key, spec.config.model, m));
     d.saveHistory(hk, out.history);
+    d.compact?.(hk, (m) => d.llm(key, spec.config.model, m)); // conversa longa vira resumo + cauda (sessões no Drive)
     return reply(out.text);
   } catch (err) {
     console.error('chat', redact(String((err as Error)?.stack ?? err))); // corpo de erro HTTP pode ecoar chave
