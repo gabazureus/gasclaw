@@ -15,6 +15,7 @@ import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
 import { allowedTools } from './tools/registry';
 import { coverage } from './trace';
+import { agentInfo, llmInfo, traceDeps } from './traced';
 import { webClick, webSend } from './webchat';
 import { agentFolderPath, ensureFolderPath, extractFolderId, loadAgent, seedAgent, validAgentName, type LoadedAgent } from './workspace';
 
@@ -45,27 +46,8 @@ function withOverride(spec: LoadedAgent): LoadedAgent & { modelSource: 'tela' | 
 }
 const loadAgentForTurn = (folderId: string) => withOverride(loadAgent(folderId));
 
-/** Dados do span resolve_agent: origem de cada papel (editor, doc, md, missing), cache e falha do editor. */
-const agentInfo = (folderId: string) => (s: LoadedAgent & { modelSource?: string }) => ({
-  agent: s.name,
-  folderId,
-  configModel: s.config.model,
-  modelSource: s.modelSource ?? 'pasta',
-  origem: s.origem,
-  cached: s.cached === true,
-  ...(s.editorError ? { editorError: s.editorError } : {}),
-});
-
-/** Dados do span llm_call: modelo real, tokens, custo e o prompt completo (vai só para o JSON do run). */
-const llmInfo = (requested: string, messages: Message[]) => (c: Completion) => ({
-  model: c.model ?? requested,
-  prompt_tokens: c.usage?.prompt_tokens ?? 0,
-  completion_tokens: c.usage?.completion_tokens ?? 0,
-  cost: c.usage?.cost ?? 0,
-  finish_reason: c.finish_reason,
-  generation: c.id,
-  messages,
-});
+/** A3/M16: Chat, tela de conversa e clique de aprovação registram os mesmos passos (resolve_agent, llm_call, tool_call). */
+const traced = (t: runlog.Tracer, d: ChatDeps): ChatDeps => traceDeps(t, d, loadAgentForTurn);
 
 // ---------- Web app ----------
 export function doGet(e: GoogleAppsScript.Events.DoGet) {
@@ -154,15 +136,7 @@ export function onMessage(e: ChatEvent) {
   const d = chatDeps();
   if (e.type !== 'MESSAGE' && e.type !== 'CARD_CLICKED') return handleChat(e, d);
   const t = runlog.begin('chat', { question: (e.message?.argumentText ?? e.message?.text ?? '').trim(), user: e.user.email });
-  const out = handleChat(e, {
-    ...d,
-    load: (id) => t.step('resolve_agent', () => loadAgentForTurn(id), agentInfo(id)),
-    llm: (key, model, messages, tools) => t.step('llm_call', () => d.llm(key, model, messages, tools), llmInfo(model, messages), true),
-    toolkit: (spec, ownerDm) => {
-      const k = d.toolkit!(spec, ownerDm);
-      return { ...k, tools: k.tools.map((tool) => ({ ...tool, run: (a, c) => t.step('tool_call', () => tool.run(a, c), () => ({ tool: tool.name })) })) };
-    },
-  });
+  const out = handleChat(e, traced(t, d));
   t.mark('reply');
   t.end({ answer: out.text });
   observe.maybeDrain(); // fallback sem gatilho: só grava se a fila tiver mais de 1 min
@@ -173,34 +147,28 @@ export function onCardClick(e: ChatEvent) {
   return onMessage({ ...e, type: 'CARD_CLICKED' });
 }
 
-/** Deps do Chat embrulhadas no trace (resolve_agent, llm_call, tool_call), com o override de modelo. */
-function tracedDeps(t: runlog.Tracer, d: ChatDeps): ChatDeps {
-  return {
-    ...d,
-    load: (id) => t.step('resolve_agent', () => loadAgentForTurn(id), agentInfo(id)),
-    llm: (key, model, messages, tools) => t.step('llm_call', () => d.llm(key, model, messages, tools), llmInfo(model, messages), true),
-    toolkit: (spec, ownerDm) => {
-      const k = d.toolkit!(spec, ownerDm);
-      return { ...k, tools: k.tools.map((tool) => ({ ...tool, run: (a, c) => t.step('tool_call', () => tool.run(a, c), () => ({ tool: tool.name })) })) };
-    },
-  };
-}
-
 // ---------- Tela de conversa de texto (?page=chat) ----------
 export function chatSend(text: string) {
   const me = assertOwner();
   const t = runlog.begin('webchat', { question: String(text).slice(0, 2000), user: me });
-  const out = webSend(tracedDeps(t, chatDeps()), me, String(text).slice(0, 4000));
+  const out = webSend(traced(t, chatDeps()), me, String(text).slice(0, 4000));
   t.mark('reply');
   t.end({ answer: out.text });
   observe.maybeDrain();
   return out;
 }
 
+/** M16: o clique de aprovação ou a resposta de uma pergunta continua o turno; vira um run webchat com os passos e o custo. */
 export function chatClick(params: Record<string, string>) {
   const me = assertOwner();
   const p = params ?? {};
-  return webClick(chatDeps(), me, { token: String(p.token ?? ''), ...(p.decision ? { decision: String(p.decision) } : {}), ...(p.answer ? { answer: String(p.answer) } : {}) });
+  const what = p.decision ? `aprovação: ${String(p.decision)}` : p.answer ? `resposta: ${String(p.answer).slice(0, 200)}` : 'clique';
+  const t = runlog.begin('webchat', { question: what, user: me });
+  const out = webClick(traced(t, chatDeps()), me, { token: String(p.token ?? ''), ...(p.decision ? { decision: String(p.decision) } : {}), ...(p.answer ? { answer: String(p.answer) } : {}) });
+  t.mark('reply');
+  t.end({ answer: out.text });
+  observe.maybeDrain();
+  return out;
 }
 
 export function onAddToSpace(e: ChatEvent) {
