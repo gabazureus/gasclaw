@@ -17,7 +17,10 @@ await esbuild.build({
   target: 'es2020',
   outfile: `${OUT}/_motor.js`,
   banner: { js: BANNER },
-  define: { __GCP_NUMBER__: JSON.stringify(process.env.GCP_NUMBER ?? '') }, // Monitoring (ADR-016); vazio fora do deploy
+  define: {
+    __GCP_NUMBER__: JSON.stringify(process.env.GCP_NUMBER ?? ''), // Monitoring (ADR-016); vazio fora do deploy
+    __DEV__: JSON.stringify(process.env.GASCLAW_DEV === '1'), // POCs só respondem no build do dev (M1)
+  },
   minify: false,
 });
 const names = [...readFileSync('src/main.ts', 'utf8').matchAll(/^export function (\w+)/gm)].map((m) => m[1]);

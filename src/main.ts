@@ -6,6 +6,7 @@ import { pocP6 } from '../poc/p6-docs-nativos/harness';
 import { DEFAULT_STEPS, reply } from './agent';
 import { cacheTickets, newToken } from './approvalStore';
 import { handleChat, type ChatDeps, type ChatEvent } from './chat';
+import { cliAuthorized, MUTATING, validSecret } from './cli';
 import { evalAction } from './evalEntry';
 import { complete, type Completion, type Message } from './llm';
 import { getOverride, listModels as openRouterModels, setOverride, validateChoice } from './models';
@@ -49,6 +50,74 @@ const loadAgentForTurn = (folderId: string) => withOverride(loadAgent(folderId))
 /** A3/M16: Chat, tela de conversa e clique de aprovação registram os mesmos passos (resolve_agent, llm_call, tool_call). */
 const traced = (t: runlog.Tracer, d: ChatDeps): ChatDeps => traceDeps(t, d, loadAgentForTurn);
 
+declare const __DEV__: boolean; // embutido pelo build: true só no deploy do dev (POCs)
+const isDev = () => typeof __DEV__ !== 'undefined' && __DEV__ === true;
+
+/** Ações com efeito (M1): só chegam aqui pelo doPost, com o segredo da CLI já conferido. */
+function mutate(action: string, p: Record<string, string>): unknown {
+  if (action === 'eval') {
+    // o cenário (md) é só dado: nunca vira código (ADR-002); o modelo pedido precisa existir no OpenRouter
+    const model = p.model || undefined;
+    if (model) {
+      const err = validateChoice(openRouterModels(), model, []);
+      if (err) return { ok: false, status: 400, error: err };
+    }
+    const t = runlog.begin('test', { question: 'eval' });
+    try {
+      const r = t.step('eval', () => evalAction(p.md ?? '', ownerEmail(), model));
+      t.end({ answer: JSON.stringify(r).slice(0, 500) });
+      return { ok: true, ...r };
+    } catch (err) {
+      t.end({ error: (err as Error).message });
+      throw err;
+    }
+  }
+  if (action === 'poc') {
+    if (!isDev()) return { ok: false, pass: false, status: 404, error: 'POCs só existem no build do dev' };
+    const run = POCS[p.id ?? ''];
+    if (!run) return { ok: false, pass: false, error: `POC desconhecida: ${p.id}` };
+    if (p.trace === '0') return run(p.step, p); // sondas da P14 não viram run
+    const t = runlog.begin('poc', { question: `poc ${p.id} ${p.step ?? ''}`.trim() });
+    try {
+      const r = t.step(`poc_${p.id}`, () => run(p.step, p));
+      t.end({ answer: JSON.stringify(r).slice(0, 500) });
+      return r;
+    } catch (err) {
+      t.end({ error: (err as Error).message });
+      throw err;
+    }
+  }
+  if (action === 'disable' || action === 'enable') {
+    store.setEnabled(action === 'enable');
+    return { ok: true, enabled: store.isEnabled() };
+  }
+  if (action === 'drain') return { ok: true, trigger: observe.ensureTrigger(), ...observe.drain() };
+  return { ok: false, status: 400, error: `ação desconhecida: ${action}` };
+}
+
+/** M1 (CSRF): ações com efeito só por POST do ./gasclaw, com CLI_SECRET no corpo (nunca na URL), comparado em tempo constante. */
+export function doPost(e: GoogleAppsScript.Events.DoPost) {
+  const p = (e?.parameter ?? {}) as Record<string, string>;
+  const action = p.action ?? '';
+  try {
+    assertOwner();
+    const props = PropertiesService.getScriptProperties();
+    const stored = props.getProperty('CLI_SECRET');
+    if (action === 'setsecret') {
+      // primeira vez: o dono grava o segredo gerado no PC; depois, só quem já tem o segredo atual
+      if (!validSecret(p.secret ?? '')) return json({ ok: false, status: 400, error: 'segredo inválido: use 64 caracteres hexadecimais (openssl rand -hex 32)' });
+      if (stored && !cliAuthorized(stored, p.secret)) return json({ ok: false, status: 403, error: 'segredo da CLI errado' });
+      if (!stored) props.setProperty('CLI_SECRET', p.secret);
+      return json({ ok: true });
+    }
+    if (!cliAuthorized(stored, p.secret)) return json({ ok: false, status: 403, error: 'segredo da CLI ausente ou errado (rode ./gasclaw up)' });
+    if (!MUTATING.has(action)) return json({ ok: false, status: 400, error: `ação desconhecida: ${action}` });
+    return json(mutate(action, p));
+  } catch (err) {
+    return json({ ok: false, error: (err as Error).message });
+  }
+}
+
 // ---------- Web app ----------
 export function doGet(e: GoogleAppsScript.Events.DoGet) {
   const action = e?.parameter?.action;
@@ -62,47 +131,17 @@ export function doGet(e: GoogleAppsScript.Events.DoGet) {
   }
   try {
     assertOwner();
-    if (action === 'eval') {
-      // o cenário (md) é só dado: nunca vira código (ADR-002)
-      const t = runlog.begin('test', { question: 'eval' });
-      try {
-        const r = t.step('eval', () => evalAction(e.parameter.md ?? '', ownerEmail(), e.parameter.model));
-        t.end({ answer: JSON.stringify(r).slice(0, 500) });
-        return json({ ok: true, ...r });
-      } catch (err) {
-        t.end({ error: (err as Error).message });
-        throw err;
-      }
-    }
-    if (action === 'poc') {
-      const run = POCS[e.parameter.id ?? ''];
-      if (!run) return json({ ok: false, pass: false, error: `POC desconhecida: ${e.parameter.id}` });
-      if (e.parameter.trace === '0') return json(run(e.parameter.step, e.parameter)); // sondas da P14 não viram run
-      const t = runlog.begin('poc', { question: `poc ${e.parameter.id} ${e.parameter.step ?? ''}`.trim() });
-      try {
-        const r = t.step(`poc_${e.parameter.id}`, () => run(e.parameter.step, e.parameter));
-        t.end({ answer: JSON.stringify(r).slice(0, 500) });
-        return json(r);
-      } catch (err) {
-        t.end({ error: (err as Error).message });
-        throw err;
-      }
-    }
+    if (MUTATING.has(action)) return json({ ok: false, status: 405, error: 'ação com efeito: use POST com o segredo da CLI (./gasclaw)' });
     if (action === 'health') {
       const agents = store.listAgents();
       const folders = agents.map((a) => `${a.name}: https://drive.google.com/drive/folders/${a.folderId}`);
       return json({ ok: true, enabled: store.isEnabled(), agents: agents.length, hasKey: !!store.getApiKey(), folders, appUrl: appUrl() });
-    }
-    if (action === 'disable' || action === 'enable') {
-      store.setEnabled(action === 'enable');
-      return json({ ok: true, enabled: store.isEnabled() });
     }
     if (action === 'trace') return json({ ok: true, ...runlog.runDetail(e.parameter.run) });
     if (action === 'live') return json({ ok: true, ...runlog.liveRuns() });
     if (action === 'runs') return json({ ok: true, url: runlog.sheetUrl(runlog.ensureRunStore().sheetId) });
     if (action === 'limits') return json({ ok: true, ...observe.limitsNow(store.getApiKey(), e.parameter.fresh === '1') });
     if (action === 'usage') return json({ ok: true, ...observe.usageView(store.getApiKey(), e.parameter.day || undefined) });
-    if (action === 'drain') return json({ ok: true, trigger: observe.ensureTrigger(), ...observe.drain() });
     if (action === 'models') return json({ ok: true, models: openRouterModels() });
     return json({ ok: false, error: `ação desconhecida: ${action}` });
   } catch (err) {

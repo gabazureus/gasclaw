@@ -14,7 +14,7 @@ const all = readdirSync('evals').filter((f) => f.endsWith('.md') && f !== 'READM
 const names = args.includes('--all') ? all : args;
 if (!names.length) die(`diga o cenário ou --all. Cenários: ${all.join(', ')}`);
 for (const n of names) if (!/^[a-z0-9-]+$/.test(n) || !existsSync(`evals/${n}.md`)) die(`cenário desconhecido: ${n} (existem: ${all.join(', ')})`);
-// minimal: o cenário vai na querystring (GET, como as POCs); a URL do Apps Script aceita ~8 KB, então o arquivo tem teto de 2 KB (≈6 KB codificado).
+// o cenário vai no corpo do POST (M1); o teto de 2 KB fica para os cenários continuarem curtos e legíveis.
 const MAX_MD = 2048;
 for (const n of names) if (statSync(`evals/${n}.md`).size > MAX_MD) die(`evals/${n}.md passa de ${MAX_MD} bytes: encurte o cenário`);
 
@@ -24,14 +24,17 @@ try {
 } catch {
   die('login do gcloud expirado: rode `gcloud auth login --enable-gdrive-access` e tente de novo');
 }
+const secret = process.env.CLI_SECRET ?? '';
+if (!/^[0-9a-f]{64}$/.test(secret)) die('sem CLI_SECRET no .env.local: rode ./gasclaw up (ele gera e registra o segredo)');
 let failed = 0;
 for (const n of names) {
-  // o token vai pelo stdin (-H @-): nunca aparece em `ps` nem na mensagem de erro
-  const params = ['-fsSL', '-G', '-H', '@-', '--data-urlencode', 'action=eval', '--data-urlencode', `md@evals/${n}.md`];
+  // M1: eval é ação com efeito → POST. Token e segredo vão pelo stdin (--config -): nunca em `ps`, na URL ou no erro.
+  const params = ['-fsSL', '--config', '-', '--data-urlencode', 'action=eval', '--data-urlencode', `md@evals/${n}.md`];
   if (model) params.push('--data-urlencode', `model=${model}`);
   let r;
   try {
-    const body = execFileSync('curl', [...params, url], { input: `Authorization: Bearer ${token}\n`, encoding: 'utf8', maxBuffer: 10 << 20, stdio: ['pipe', 'pipe', 'pipe'] });
+    const config = `header = "Authorization: Bearer ${token}"\ndata-urlencode = "secret=${secret}"\n`;
+    const body = execFileSync('curl', [...params, url], { input: config, encoding: 'utf8', maxBuffer: 10 << 20, stdio: ['pipe', 'pipe', 'pipe'] });
     try {
       r = JSON.parse(body);
     } catch {
