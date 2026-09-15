@@ -118,7 +118,9 @@ export function runTurn(i: TurnInput): TurnResult {
     const text = (extra.pending ? null : failureNotice(events)) ?? answer;
     return { text, history: trimHistory([...past, { role: 'user', content: i.text }, { role: 'assistant', content: text }]), events, done, granted: [...granted], ...extra };
   };
-  const late = () => (i.clock() >= i.deadlineMs ? finish('Parei por tempo antes de terminar. Tente de novo ou peça algo menor.', { stopped: 'deadline' }) : undefined);
+  /** Prazo estourado: para e devolve ONDE parou (messages, passo e o que falta do lote), para o run poder continuar depois. */
+  const late = (step: number, queue: ToolCall[]) =>
+    i.clock() >= i.deadlineMs ? finish('Parei por tempo antes de terminar. Tente de novo ou peça algo menor.', { stopped: 'deadline', state: { messages: [...messages], step, queue } }) : undefined;
 
   /** Chamadas de um lote; devolve o resultado se o turno precisa parar (pendência ou prazo). */
   const batch = (step: number, calls: ToolCall[], decision?: Decision): TurnResult | undefined => {
@@ -165,7 +167,7 @@ export function runTurn(i: TurnInput): TurnResult {
         ev(status, done[key]);
         continue;
       }
-      const stop = late();
+      const stop = late(step, calls.slice(k));
       if (stop) return stop;
       try {
         done[key] = tool.run(v.args, i.ctx);
@@ -184,7 +186,7 @@ export function runTurn(i: TurnInput): TurnResult {
     first = i.resume.step + 1;
   }
   for (let step = first; step < i.steps; step++) {
-    const stop = late();
+    const stop = late(step, []);
     if (stop) return stop;
     const c = i.llm(messages, defs);
     if (!c.toolCalls?.length) return finish(c.text.trim() || '(sem resposta do modelo)');
@@ -192,5 +194,5 @@ export function runTurn(i: TurnInput): TurnResult {
     const r = batch(step, c.toolCalls);
     if (r) return r;
   }
-  return finish(`Parei: atingi o limite de ${i.steps} passos sem terminar.`, { stopped: 'steps' });
+  return finish(`Parei: atingi o limite de ${i.steps} passos sem terminar.`, { stopped: 'steps', state: { messages: [...messages], step: i.steps, queue: [] } });
 }
