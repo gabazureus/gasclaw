@@ -6,11 +6,11 @@ import { handleChat, type ChatDeps, type ChatEvent, type Tickets } from './chat'
 import { evaluate, judgeMessages, parseJudge, parseScenario, scriptedLlm, type Report, type TurnOutcome } from './eval';
 import { complete, type Completion, type Message, type ToolDef } from './llm';
 import * as store from './store';
-import { runCleanup } from './tools/cleanup';
+import { runCleanup, UNDOABLE } from './tools/cleanup';
 import type { Google } from './tools/google';
 import { gasGoogle, zone } from './tools/googleHttp';
 import { memoryIO } from './tools/memoryStore';
-import { allowedTools, type ToolCtx } from './tools/registry';
+import { allowedTools, findTool, TOOLS, type ToolCtx } from './tools/registry';
 import { webClick, webSend } from './webchat';
 import { agentFolderPath, ensureFolderPath, loadAgent, seedAgent, withAccess, type Access, type AgentSpec } from './workspace';
 
@@ -30,8 +30,13 @@ export type EvalEnv = {
 };
 export type EvalResult = Report & { replies: string[]; ms: number; errors: string[]; cleanup?: { removed: number; missing: number; failed: string[] } };
 
-/** Turnos especiais que simulam o clique no card (Chat) ou no botão (tela): (aprovar), (negar), (repetir clique). */
-const CLICK = /^\((aprovar|negar|repetir clique)\)$/i;
+/** Turnos especiais que simulam o clique no card (Chat) ou no botão (tela): (aprovar), (aprovar <tool>), (negar), (repetir clique). */
+const CLICK = /^\((aprovar|negar|repetir clique)(?:\s+([\w.]+))?\)$/i;
+/**
+ * "(aprovar)" do eval só aprova o que a limpeza desfaz ou o que não mexe na conta do Google (revisão E6, item 4);
+ * qualquer outra tool pendente só com o nome no cenário, ex.: "(aprovar gmail.send)". O resto é negado.
+ */
+export const evalApproves = (pending: string, named?: string): boolean => (named ? named === pending : UNDOABLE.includes(pending) || !findTool(TOOLS, pending)?.ownerOnly);
 const OWNER_EMAIL = /^[^\s@"\\]+@[^\s@"\\]+$/;
 
 function memoryTickets(): Tickets {
@@ -78,7 +83,8 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
   const base = env.tickets ?? memoryTickets();
   let lastToken = '';
   let lastDecision = 'approve';
-  const tickets: Tickets = { ...base, put: (t) => (base.put(t), void (lastToken = t.token)) };
+  let lastPending = '';
+  const tickets: Tickets = { ...base, put: (t) => (base.put(t), (lastToken = t.token), void (lastPending = t.pending.name)) };
   let n = 0;
   const token = env.newToken ?? (() => `eval${String(++n).padStart(28, '0')}`);
   let history: Message[] = [];
@@ -120,8 +126,10 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
         clock: env.clock,
         onTurn: (r) => void (turn = r),
       };
-      const click = text.match(CLICK)?.[1].toLowerCase();
-      if (click && click !== 'repetir clique') lastDecision = click === 'aprovar' ? 'approve' : 'deny';
+      const clicked = text.match(CLICK);
+      const click = clicked?.[1].toLowerCase();
+      if (click === 'aprovar') lastDecision = evalApproves(lastPending, clicked?.[2]) ? 'approve' : 'deny';
+      else if (click === 'negar') lastDecision = 'deny';
       const params = { token: lastToken, decision: lastDecision };
       let reply: string;
       if (s.channel === 'tela') {

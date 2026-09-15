@@ -2,6 +2,8 @@
 import { enc, gcall, type GReq, type Google } from './google';
 
 const ID = /^[a-zA-Z0-9_-]{5,1024}$/;
+/** Tools cuja criação a limpeza dos evals sabe desfazer. */
+export const UNDOABLE = ['calendar.create', 'gmail.draft', 'tasks.create', 'docs.create'];
 type Ev = { name: string; status: string; result: string };
 
 /** Pedido que desfaz o efeito de uma tool, a partir do resultado dela ({"id": ...}). */
