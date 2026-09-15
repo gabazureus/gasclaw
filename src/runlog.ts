@@ -1,14 +1,13 @@
-// Trace do agente (ADR-014), borda: cache ao vivo, planilha "gasclaw — execuções" (1 linha por run) e
-// gasclaw/runs/<id>.json (completo, 90 dias). NUNCA lança: falha de gravação vira console.warn e a resposta segue.
-// Sem escopo novo: Sheets API e Drive API via UrlFetch com o escopo `drive` do manifesto.
-import { multipartBody } from './drive';
-import { expired, finish, HEADER, redact, renderTree, setStep, span, startRun, summaryRow, type Run, type RunKind, type RunMeta } from './trace';
+// Trace do agente (ADR-014), borda: cache ao vivo no turno; a planilha "gasclaw — execuções" (1 linha por run) e
+// gasclaw/runs/<id>.json (completo, 90 dias) são gravados em lote pelo observe.drain (gatilho de 1 min ou fallback).
+// NUNCA lança: falha de gravação vira console.warn e a resposta segue.
+import { enqueue } from './observe';
+import { expired, finish, HEADER, redact, renderTree, setStep, span, startRun, type Run, type RunKind, type RunMeta } from './trace';
 import { ensureFolderPath, SHEET_MIME } from './workspace';
 
 const SHEET_NAME = 'gasclaw — execuções';
 const SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets';
 const DRIVE = 'https://www.googleapis.com/drive/v3/files';
-const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
 const LIVE_KEY = 'runs:ids';
 const LIVE_MAX = 20;
 const SIX_HOURS = 21_600;
@@ -27,8 +26,6 @@ function api(url: string, method: 'get' | 'post' | 'put' | 'patch', body?: unkno
   return JSON.parse(res.getContentText() || '{}');
 }
 
-/** JSON só com ASCII (\uXXXX): o upload não depende do charset do UrlFetch. */
-const asciiJson = (o: unknown) => JSON.stringify(o, null, 1).replace(/[-￿]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 
 // ---------- armazenamento (criado sozinho, ids em Script Properties) ----------
 
@@ -91,7 +88,7 @@ export type Tracer = {
   end(out: { answer?: string; error?: string }): Run;
 };
 
-export type TracerOptions = { sheetId?: string; now?: () => number };
+export type TracerOptions = { now?: () => number; sheetId?: string }; // sheetId: sem uso desde o lote (P14 antiga)
 
 export function newRunId(): string {
   return `${Utilities.formatDate(new Date(), 'America/Sao_Paulo', 'yyyyMMdd-HHmmss')}-${Utilities.getUuid().slice(0, 4)}`;
@@ -100,52 +97,17 @@ export function newRunId(): string {
 export function begin(kind: RunKind, meta: RunMeta, opts: TracerOptions = {}): Tracer {
   const now = opts.now ?? Date.now;
   let run = startRun(newRunId(), kind, now(), meta);
-  let range: string | null = null;
   let lastEnd = run.startedAt;
-  let memo: { sheetId: string; folderId: string } | null | undefined;
   toCache(run, true);
-
-  const store = (): { sheetId: string; folderId: string } | null => {
-    if (memo !== undefined) return memo;
-    try {
-      const s = ensureRunStore();
-      memo = opts.sheetId ? { ...s, sheetId: opts.sheetId } : s;
-    } catch (err) {
-      warn('store', err);
-      memo = null;
-    }
-    return memo;
-  };
-  /** Pedido da linha do run: append na 1ª vez (guarda o range), update depois. */
-  const rowRequest = (sheetId: string): GoogleAppsScript.URL_Fetch.URLFetchRequest => {
-    const payload = JSON.stringify({ values: [summaryRow(run)] });
-    const url = range
-      ? `${SHEETS}/${sheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`
-      : `${SHEETS}/${sheetId}/values/A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
-    return { url, method: range ? 'put' : 'post', contentType: 'application/json', payload, headers: auth(), muteHttpExceptions: true };
-  };
-  const rowResult = (res: GoogleAppsScript.URL_Fetch.HTTPResponse) => {
-    if (res.getResponseCode() >= 300) throw new Error(`planilha ${res.getResponseCode()}: ${res.getContentText().slice(0, 200)}`);
-    if (!range) range = String(JSON.parse(res.getContentText()).updates?.updatedRange ?? '') || null;
-  };
-  const writeRow = () => {
-    try {
-      const s = store();
-      if (s) rowResult(UrlFetchApp.fetch(rowRequest(s.sheetId).url, rowRequest(s.sheetId)));
-    } catch (err) {
-      warn('planilha', err);
-    }
-  };
 
   return {
     get run() {
       return run;
     },
-    step(name, fn, info, slow = false) {
+    step(name, fn, info, _slow = false) {
       const t0 = now();
       run = setStep(run, name);
-      toCache(run); // ao vivo na tela: passo atual
-      if (slow) writeRow(); // ao vivo na planilha antes do passo lento
+      toCache(run); // ao vivo na tela: passo atual (a planilha vem no lote, ≤ 70 s)
       try {
         const v = fn();
         const data = info?.(v);
@@ -168,27 +130,7 @@ export function begin(kind: RunKind, meta: RunMeta, opts: TracerOptions = {}): T
       const failed = run.spans.find((s) => s.status === 'error');
       run = finish(run, now(), failed && !out.error ? { ...out, error: String(failed.data?.error ?? failed.name) } : out);
       toCache(run);
-      try {
-        const s = store();
-        if (s) {
-          // linha da planilha e JSON completo em paralelo (fetchAll): o flush custa a mais lenta, não a soma
-          const boundary = `gasclaw${Date.now()}`;
-          const payload = multipartBody({ name: `${run.id}.json`, parents: [s.folderId], mimeType: 'application/json' }, asciiJson(redact(run)), 'application/json', boundary);
-          const [row, file] = UrlFetchApp.fetchAll([
-            rowRequest(s.sheetId),
-            { url: UPLOAD, method: 'post', contentType: `multipart/related; boundary=${boundary}`, payload, headers: auth(), muteHttpExceptions: true },
-          ]);
-          try {
-            rowResult(row);
-          } catch (err) {
-            warn('planilha', err);
-          }
-          if (file.getResponseCode() >= 300) warn('json', `${file.getResponseCode()}: ${file.getContentText().slice(0, 200)}`);
-          cleanupRunsDaily();
-        }
-      } catch (err) {
-        warn('flush', err);
-      }
+      enqueue(run); // lote: sem planilha e sem JSON dentro do turno
       return run;
     },
   };
@@ -237,7 +179,7 @@ export function cleanupRuns(now = Date.now()): number {
   return old.length;
 }
 
-function cleanupRunsDaily() {
+export function cleanupRunsDaily() {
   try {
     const today = new Date().toISOString().slice(0, 10);
     if (props().getProperty('RUNS_CLEANUP_DAY') === today) return;

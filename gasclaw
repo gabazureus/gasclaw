@@ -146,6 +146,7 @@ keep_editor_agents() { # ADR-013: o push --force troca o HEAD inteiro; antes, tr
 deploy() {
   lock_dev
   say "build + testes"
+  export GCP_NUMBER="$(var "GCP_NUMBER_$UP")" # o teste do build refaz o dist: os dois precisam do número (Monitoring)
   npm run build >/dev/null
   npm test >/dev/null
   keep_editor_agents
@@ -282,6 +283,26 @@ cmd_runs() { # abre a planilha "gasclaw — execuções"
   ok "planilha: $u"
 }
 
+cmd_limits() { # painel de limites no terminal (cache de 10 min; --fresh ignora)
+  local fresh=""
+  for a in "$@"; do [ "$a" = "--fresh" ] && fresh="&fresh=1"; done
+  remote "limits$fresh" | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);if(!r.ok){console.error(r.error);process.exit(1)}
+const C={verde:"\x1b[32m",amarelo:"\x1b[33m",vermelho:"\x1b[31m","sem limite":"\x1b[2m"},Z="\x1b[0m",S={google:"Google",openrouter:"OpenRouter",gasclaw:"medido"};
+for(const i of r.items){const pct=i.total&&i.used!==null?Math.min(100,Math.round(i.used/i.total*100)):null;const bar=pct===null?"          ":"█".repeat(Math.round(pct/10)).padEnd(10,"░");
+console.log(`${C[i.level]}${bar}${Z} ${String(pct===null?"—":pct+"%").padStart(4)}  ${i.label} · ${i.status==="ok"?`${i.used} / ${i.total??"∞"} ${i.unit}`:i.status.toUpperCase()} · [${S[i.source]}]${i.reset?" · reset "+i.reset:""}${i.note?" · "+i.note:""}`)}
+console.log(`\ngatilho: ${r.trigger} · ${r.cached?"do cache (10 min)":"lido agora"} · ${new Date(r.at).toLocaleString("pt-BR")}`)})'
+}
+
+cmd_usage() { # custo por modelo: 7 dias, ou as 24 h de um dia (AAAA-MM-DD, fuso de São Paulo)
+  local day="${1:-}"
+  [ -z "$day" ] || printf '%s' "$day" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || die "dia inválido: $day (use AAAA-MM-DD)"
+  remote "usage${day:+&day=$day}" | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);if(!r.ok){console.error(r.error);process.exit(1)}
+const max=Math.max(...r.chart.bars.map((b)=>b.total),1e-9);
+for(const b of r.chart.bars)console.log(`${b.key.padEnd(10)} ${"█".repeat(Math.round(b.total/max*30)).padEnd(30)} US$ ${b.total}`);
+console.log(`\n${r.day} por modelo:`);for(const t of r.table)console.log(`  ${t.model.padEnd(45)} ${String(t.req).padStart(5)} req ${String(t.tok).padStart(8)} tok  US$ ${t.cost}`);
+const c=r.check;console.log(`\nconferência (dia UTC ${c.dayUtc}): medido US$ ${c.measured} × OpenRouter US$ ${c.informed??"?"}${c.diffPct!==null?` (${c.diffPct}%)`:""} · ${c.nota} · fila: ${r.queue}`)})'
+}
+
 cmd_eval() { lock_dev; [ "$TARGET" = dev ] || die "evals rodam só no dev"; node scripts/eval.mjs "$(url)" "$@"; }
 
 cmd_rollback() {
@@ -295,7 +316,7 @@ cmd_rollback() {
 }
 
 case "$CMD" in
-  up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs|eval) "cmd_$CMD" "$@" ;;
+  up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs|eval|limits|usage) "cmd_$CMD" "$@" ;;
   *) cat <<'TXT'
 gasclaw — agentes do Drive rodando no Google Apps Script
 
@@ -311,6 +332,8 @@ gasclaw — agentes do Drive rodando no Google Apps Script
   ./gasclaw poc <id> [etapa]  roda uma POC no dev e mostra o resultado (ex.: poc p6, poc p10)
   ./gasclaw trace [id]        árvore de passos de um run do agente (sem id: o mais recente)
   ./gasclaw runs              abre a planilha "gasclaw — execuções"
+  ./gasclaw limits [--fresh]  painel de limites (Google, OpenRouter e medido pelo gasclaw)
+  ./gasclaw usage [AAAA-MM-DD]  custo por modelo: 7 dias, ou as 24 h do dia
   ./gasclaw eval <cenário|--all> [--model id]  roda evals/*.md no dev (exit ≠ 0 em falha)
 TXT
   ;;

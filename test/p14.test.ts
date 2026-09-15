@@ -42,5 +42,6 @@ test('a tela para o polling quando a aba fica oculta (C7)', () => {
   const html = readFileSync('src/settings.html', 'utf8');
   expect(html).toContain("addEventListener('visibilitychange'");
   expect(html).toMatch(/if \(document\.hidden\) return;/);
-  expect(html).toContain('setInterval(poll, 5000)');
+  expect(html).toContain('EVERY = { live: 5000, cost: 60000, limits: 60000, batch: 60000 }');
+  expect(html).toContain('if (!document.hidden) LOADERS[tab]()');
 });

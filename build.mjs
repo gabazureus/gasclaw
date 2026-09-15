@@ -15,6 +15,7 @@ await esbuild.build({
   target: 'es2020',
   outfile: 'dist/_motor.js',
   banner: { js: BANNER },
+  define: { __GCP_NUMBER__: JSON.stringify(process.env.GCP_NUMBER ?? '') }, // Monitoring (ADR-016); vazio fora do deploy
   minify: false,
 });
 const names = [...readFileSync('src/main.ts', 'utf8').matchAll(/^export function (\w+)/gm)].map((m) => m[1]);

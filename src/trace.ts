@@ -1,7 +1,7 @@
 // Trace do agente (ADR-014), núcleo puro: um run é uma lista de passos (spans) com ms e dados.
 // A borda (runlog.ts) grava o cache ao vivo, a planilha (1 linha por run) e o JSON completo.
 
-export type RunKind = 'chat' | 'test' | 'poc';
+export type RunKind = 'chat' | 'test' | 'poc' | 'config';
 export type Span = { name: string; startMs: number; ms: number; status: 'ok' | 'error'; data?: Record<string, unknown> };
 export type RunMeta = { question?: string; agent?: string; user?: string };
 export type Run = RunMeta & {

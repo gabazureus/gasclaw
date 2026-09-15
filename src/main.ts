@@ -6,6 +6,8 @@ import { cacheTickets, newToken } from './approvalStore';
 import { handleChat, type ChatDeps, type ChatEvent } from './chat';
 import { evalAction } from './evalEntry';
 import { complete, type Completion, type Message } from './llm';
+import { getOverride, listModels as openRouterModels, setOverride, validateChoice } from './models';
+import * as observe from './observe';
 import * as runlog from './runlog';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
@@ -33,11 +35,19 @@ function json(o: unknown): GoogleAppsScript.Content.TextOutput {
   return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
 }
 
+/** ADR-018: o modelo escolhido na tela (MODEL:<folderId>) vence a planilha config e o AGENTS. */
+function withOverride(spec: LoadedAgent): LoadedAgent & { modelSource: 'tela' | 'pasta' } {
+  const o = getOverride(spec.folderId);
+  return o ? { ...spec, config: { ...spec.config, model: o }, modelSource: 'tela' } : { ...spec, modelSource: 'pasta' };
+}
+const loadAgentForTurn = (folderId: string) => withOverride(loadAgent(folderId));
+
 /** Dados do span resolve_agent: origem de cada papel (editor, doc, md, missing), cache e falha do editor. */
-const agentInfo = (folderId: string) => (s: LoadedAgent) => ({
+const agentInfo = (folderId: string) => (s: LoadedAgent & { modelSource?: string }) => ({
   agent: s.name,
   folderId,
   configModel: s.config.model,
+  modelSource: s.modelSource ?? 'pasta',
   origem: s.origem,
   cached: s.cached === true,
   ...(s.editorError ? { editorError: s.editorError } : {}),
@@ -101,6 +111,10 @@ export function doGet(e: GoogleAppsScript.Events.DoGet) {
     if (action === 'trace') return json({ ok: true, ...runlog.runDetail(e.parameter.run) });
     if (action === 'live') return json({ ok: true, ...runlog.liveRuns() });
     if (action === 'runs') return json({ ok: true, url: runlog.sheetUrl(runlog.ensureRunStore().sheetId) });
+    if (action === 'limits') return json({ ok: true, ...observe.limitsNow(store.getApiKey(), e.parameter.fresh === '1') });
+    if (action === 'usage') return json({ ok: true, ...observe.usageView(store.getApiKey(), e.parameter.day || undefined) });
+    if (action === 'drain') return json({ ok: true, trigger: observe.ensureTrigger(), ...observe.drain() });
+    if (action === 'models') return json({ ok: true, models: openRouterModels() });
     return json({ ok: false, error: `ação desconhecida: ${action}` });
   } catch (err) {
     return json({ ok: false, error: (err as Error).message });
@@ -119,7 +133,7 @@ function chatDeps(): ChatDeps {
     owner: ownerEmail,
     apiKey: store.getApiKey,
     defaultAgent: () => store.listAgents()[0] ?? null,
-    load: loadAgent,
+    load: loadAgentForTurn,
     history: store.getHistory,
     saveHistory: store.saveHistory,
     llm: (key, model, messages, tools) => complete(key, model, messages, CHAT_MAX_TOKENS, undefined, tools),
@@ -135,7 +149,7 @@ export function onMessage(e: ChatEvent) {
   const t = runlog.begin('chat', { question: (e.message?.argumentText ?? e.message?.text ?? '').trim(), user: e.user.email });
   const out = handleChat(e, {
     ...d,
-    load: (id) => t.step('resolve_agent', () => loadAgent(id), agentInfo(id)),
+    load: (id) => t.step('resolve_agent', () => loadAgentForTurn(id), agentInfo(id)),
     llm: (key, model, messages, tools) => t.step('llm_call', () => d.llm(key, model, messages, tools), llmInfo(model, messages), true),
     toolkit: (spec, ownerDm) => {
       const k = d.toolkit!(spec, ownerDm);
@@ -144,6 +158,7 @@ export function onMessage(e: ChatEvent) {
   });
   t.mark('reply');
   t.end({ answer: out.text });
+  observe.maybeDrain(); // fallback sem gatilho: só grava se a fila tiver mais de 1 min
   return out;
 }
 
@@ -162,6 +177,7 @@ export function onRemoveFromSpace() {
 // ---------- Tela gasclaw (google.script.run) ----------
 export function settingsState() {
   const me = assertOwner();
+  observe.maybeDrain(); // fallback sem gatilho ao abrir a tela
   return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents: store.listAgents() };
 }
 
@@ -209,7 +225,7 @@ export function testAgent(folderId: string, text: string) {
   if (!key) throw new Error('Salve a chave do OpenRouter primeiro.');
   const t = runlog.begin('test', { question: text });
   try {
-    const spec = t.step('resolve_agent', () => loadAgent(folderId), agentInfo(folderId));
+    const spec = t.step('resolve_agent', () => loadAgentForTurn(folderId), agentInfo(folderId));
     const out = reply(spec, [], text, (m) => t.step('llm_call', () => complete(key, spec.config.model, m, CHAT_MAX_TOKENS), llmInfo(spec.config.model, m), true));
     t.mark('reply');
     const run = t.end({ answer: out.text });
@@ -235,6 +251,55 @@ export function liveRuns() {
 export function runDetail(id: string) {
   assertOwner();
   return runlog.runDetail(id);
+}
+
+// ---------- Observabilidade: lote, modelos e custo, limites ----------
+
+/** Alvo do gatilho de 1 min (sem assertOwner: o gatilho roda como o dono). */
+export function drainRuns() {
+  return observe.drain();
+}
+
+export function observability() {
+  assertOwner();
+  const trigger = observe.ensureTrigger();
+  const drained = observe.maybeDrain();
+  return { trigger, drained, oldestQueued: observe.oldestQueued(), drains: observe.drainHistory().slice(0, 10) };
+}
+
+export function drainNow() {
+  assertOwner();
+  return { ...observe.drain(), trigger: observe.triggerStatus(true) };
+}
+
+export function agentModel(folderId: string) {
+  assertOwner();
+  const spec = loadAgent(folderId);
+  return { folderId, name: spec.name, fromFolder: spec.config.model, override: getOverride(folderId), tools: spec.config.tools, models: openRouterModels() };
+}
+
+export function setAgentModel(folderId: string, model: string | null) {
+  assertOwner();
+  const spec = loadAgent(folderId);
+  const before = getOverride(folderId);
+  if (model) {
+    const err = validateChoice(openRouterModels(), model.trim(), spec.config.tools);
+    if (err) throw new Error(err);
+  }
+  const t = runlog.begin('config', { question: `modelo de ${spec.name}: ${before ?? spec.config.model} → ${model ?? `${spec.config.model} (do AGENTS)`}`, agent: spec.name });
+  t.step('set_model', () => setOverride(folderId, model ? model.trim() : null), () => ({ folderId, from: before, to: model, fromFolder: spec.config.model }));
+  t.end({ answer: `modelo: ${model ?? spec.config.model}` });
+  return agentModel(folderId);
+}
+
+export function usageChart(day?: string) {
+  assertOwner();
+  return observe.usageView(store.getApiKey(), day || undefined);
+}
+
+export function limitsPanel(fresh?: boolean) {
+  assertOwner();
+  return observe.limitsNow(store.getApiKey(), fresh === true);
 }
 
 // ---------- POC P1: UrlFetch com resposta longa ----------

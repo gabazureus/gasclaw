@@ -15,6 +15,21 @@
     .row { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 4px 0; }
     .err { color: #b3261e; }
     pre { white-space: pre-wrap; background: #f6f5f2; padding: 8px; border-radius: 6px; }
+    select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font: inherit; }
+    .tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+    .tabs button { background: #e3e1db; color: #1d1d1b; margin-top: 0; }
+    .tabs button[aria-selected="true"] { background: #1d1d1b; color: #fff; }
+    .muted { color: #5f5e5a; font-size: 13px; }
+    .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+    .legend i { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 2px; }
+    .limit { padding: 6px 0; border-bottom: 1px solid #eee; }
+    .bar { height: 8px; background: #eee; border-radius: 4px; overflow: hidden; margin: 4px 0; }
+    .bar > span { display: block; height: 100%; }
+    .badge { font-size: 12px; padding: 1px 6px; border-radius: 8px; background: #eef; }
+    .badge.gasclaw { background: #f3eee2; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { text-align: left; padding: 4px; border-bottom: 1px solid #eee; }
+    svg g[role="button"]:focus { outline: 2px solid #1d1d1b; }
   </style>
 </head>
 <body>
@@ -52,12 +67,50 @@
     <pre id="answer" hidden aria-live="polite"></pre>
   </section>
 
-  <section aria-labelledby="liveTitle">
-    <div class="row"><h2 id="liveTitle">Ao vivo</h2><a id="sheet" target="_blank" rel="noopener" hidden>abrir planilha</a></div>
-    <p id="liveStatus" aria-live="polite">Carregando…</p>
-    <div id="running"></div>
-    <h3>Últimos 10 runs</h3>
-    <div id="recent"></div>
+  <section aria-labelledby="obsTitle">
+    <div class="row"><h2 id="obsTitle">Observabilidade</h2><a id="sheet" target="_blank" rel="noopener" hidden>abrir planilha</a></div>
+    <div role="tablist" aria-label="Observabilidade" class="tabs">
+      <button role="tab" id="tab-live" aria-controls="panel-live" aria-selected="true">Ao vivo</button>
+      <button role="tab" id="tab-cost" aria-controls="panel-cost" aria-selected="false" tabindex="-1">Modelos e custo</button>
+      <button role="tab" id="tab-limits" aria-controls="panel-limits" aria-selected="false" tabindex="-1">Limites</button>
+      <button role="tab" id="tab-batch" aria-controls="panel-batch" aria-selected="false" tabindex="-1">Lote</button>
+    </div>
+
+    <div role="tabpanel" id="panel-live" aria-labelledby="tab-live">
+      <p id="liveStatus" aria-live="polite">Carregando…</p>
+      <div id="running"></div>
+      <h3>Últimos 10 runs</h3>
+      <div id="recent"></div>
+    </div>
+
+    <div role="tabpanel" id="panel-cost" aria-labelledby="tab-cost" hidden>
+      <label for="modelAgent">Agente</label>
+      <select id="modelAgent"></select>
+      <p id="modelNow" aria-live="polite"></p>
+      <label for="modelPick">Escolher modelo na tela (preço por 1M tokens: entrada / saída)</label>
+      <input id="modelPick" list="modelList" placeholder="ex.: openai/gpt-4o-mini" autocomplete="off">
+      <datalist id="modelList"></datalist>
+      <button id="modelSave">Usar este modelo</button>
+      <button id="modelReset" class="sec">Voltar ao do AGENTS</button>
+      <h3 id="chartTitle">Custo por modelo · 7 dias</h3>
+      <button id="chartBack" class="sec" hidden>← 7 dias</button>
+      <div id="chart"></div>
+      <div id="legend" class="legend"></div>
+      <details><summary>Ver como tabela</summary><div id="chartTable"></div></details>
+      <p id="costCheck" class="muted"></p>
+    </div>
+
+    <div role="tabpanel" id="panel-limits" aria-labelledby="tab-limits" hidden>
+      <p id="limitsStatus" aria-live="polite">Carregando…</p>
+      <div id="limits"></div>
+      <button id="limitsFresh" class="sec">Ler de novo agora</button>
+    </div>
+
+    <div role="tabpanel" id="panel-batch" aria-labelledby="tab-batch" hidden>
+      <p id="batchStatus" aria-live="polite">Carregando…</p>
+      <button id="drainNow" class="sec">Gravar a fila agora</button>
+      <div id="drains"></div>
+    </div>
   </section>
 
   <section>
@@ -94,6 +147,7 @@
     $('msg').textContent = 'Conectado como ' + s.me;
     $('status').textContent = (s.enabled ? '🟢 Ativo' : '⏸ Pausado') + ' · chave ' + (s.hasKey ? 'salva' : 'faltando') + ' · ' + s.agents.length + ' agente(s)';
     $('toggle').textContent = s.enabled ? 'Pausar' : 'Ativar';
+    if (typeof fillAgents === 'function') fillAgents();
     $('agents').replaceChildren(...s.agents.map((a, i) => {
       const row = document.createElement('div');
       row.className = 'row';
@@ -183,10 +237,143 @@
       if (l.sheetUrl) { $('sheet').href = l.sheetUrl; $('sheet').hidden = false; }
     }).withFailureHandler((e) => { $('liveStatus').textContent = 'Ao vivo indisponível: ' + e.message; }).liveRuns();
   }
-  function startLive() { clearInterval(liveTimer); poll(); liveTimer = setInterval(poll, 5000); }
+  // ---------- Observabilidade: abas; Ao vivo a cada 5 s, as outras a cada 60 s, só a aba visível e a página visível ----------
+  const TABS = ['live', 'cost', 'limits', 'batch'];
+  let tab = 'live';
+  const LOADERS = { live: poll, cost: loadCost, limits: () => loadLimits(false), batch: loadBatch };
+  const EVERY = { live: 5000, cost: 60000, limits: 60000, batch: 60000 };
+  function selectTab(name, focus) {
+    tab = name;
+    TABS.forEach((t) => {
+      const on = t === name;
+      $('tab-' + t).setAttribute('aria-selected', String(on));
+      $('tab-' + t).tabIndex = on ? 0 : -1;
+      $('panel-' + t).hidden = !on;
+    });
+    if (focus) $('tab-' + name).focus();
+    startLive();
+  }
+  TABS.forEach((t, i) => {
+    $('tab-' + t).onclick = () => selectTab(t);
+    $('tab-' + t).onkeydown = (ev) => {
+      const d = ev.key === 'ArrowRight' ? 1 : ev.key === 'ArrowLeft' ? -1 : 0;
+      if (d) { ev.preventDefault(); selectTab(TABS[(i + d + TABS.length) % TABS.length], true); }
+    };
+  });
+  function startLive() { clearInterval(liveTimer); if (document.hidden) return; LOADERS[tab](); liveTimer = setInterval(() => { if (!document.hidden) LOADERS[tab](); }, EVERY[tab]); }
   function stopLive() { clearInterval(liveTimer); liveTimer = null; }
   document.addEventListener('visibilitychange', () => (document.hidden ? stopLive() : startLive()));
   startLive();
+  const quiet = (fn, ...args) => new Promise((ok, fail) => google.script.run.withSuccessHandler(ok).withFailureHandler(fail)[fn](...args));
+  const el = (tag, props, ...kids) => { const e = document.createElement(tag); Object.assign(e, props || {}); e.append(...kids); return e; };
+  const money = (x) => 'US$ ' + (Math.round((x || 0) * 10000) / 10000);
+
+  // ----- Modelos e custo -----
+  const COLORS = ['#2f6fdb', '#d9822b', '#2e9e6b', '#b8457a', '#7a5cc7', '#9a9892'];
+  let chartDay = null;
+  let modelCache = null;
+  function fillAgents() {
+    if (!state) return;
+    const cur = $('modelAgent').value;
+    $('modelAgent').replaceChildren(...state.agents.map((a) => el('option', { value: a.folderId, textContent: a.name })));
+    if (cur) $('modelAgent').value = cur;
+  }
+  function showModel(m) {
+    modelCache = m;
+    $('modelNow').textContent = 'Da pasta (AGENTS/planilha): ' + m.fromFolder + ' · Escolhido na tela: ' + (m.override || '— (usa o da pasta)') + (m.tools.length ? ' · ferramentas: ' + m.tools.join(', ') : '');
+    $('modelReset').disabled = !m.override;
+    if ($('modelList').children.length !== m.models.length) {
+      $('modelList').replaceChildren(...m.models.map((x) => el('option', { value: x.id, label: (x.free ? 'grátis' : 'US$ ' + x.inM + ' / ' + x.outM) + (x.tools ? ' · tools' : '') + ' · ' + Math.round(x.ctx / 1000) + 'k' })));
+    }
+  }
+  function loadModel() { if ($('modelAgent').value) quiet('agentModel', $('modelAgent').value).then(showModel).catch((e) => { $('modelNow').textContent = e.message; }); }
+  $('modelAgent').onchange = loadModel;
+  $('modelSave').onclick = () => call('setAgentModel', $('modelAgent').value, $('modelPick').value).then((m) => { showModel(m); $('modelPick').value = ''; $('msg').textContent = 'Modelo trocado (vale na próxima mensagem).'; });
+  $('modelReset').onclick = () => call('setAgentModel', $('modelAgent').value, null).then((m) => { showModel(m); $('msg').textContent = 'Voltou ao modelo do AGENTS.'; });
+  function loadCost() {
+    fillAgents();
+    if (!modelCache && $('modelAgent').value) loadModel();
+    quiet('usageChart', chartDay || '').then(drawChart).catch((e) => { $('chart').textContent = 'Uso indisponível: ' + e.message; });
+  }
+  function drawChart(u) {
+    const bars = u.chart.bars, series = u.chart.series;
+    const W = 640, H = 200, pad = 28, bw = (W - pad) / bars.length;
+    const max = Math.max(...bars.map((b) => b.total), 1e-9);
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + (H + 24));
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', (chartDay ? 'Custo por hora em ' + chartDay : 'Custo por dia nos últimos 7 dias') + ', empilhado por modelo. Total: ' + money(bars.reduce((t, b) => t + b.total, 0)));
+    const NS = 'http://www.w3.org/2000/svg';
+    bars.forEach((b, i) => {
+      const g = document.createElementNS(NS, 'g');
+      const label = b.key + ': ' + money(b.total) + ' — ' + series.map((s) => s + ' ' + money(b.parts[s])).filter((_, k) => b.parts[series[k]]).join(', ');
+      g.setAttribute('aria-label', label);
+      let y = H;
+      series.forEach((s, k) => {
+        const v = b.parts[s] || 0;
+        if (!v) return;
+        const h = Math.max(1, (v / max) * (H - 10));
+        y -= h;
+        const r = document.createElementNS(NS, 'rect');
+        r.setAttribute('x', String(pad + i * bw + 2)); r.setAttribute('y', String(y)); r.setAttribute('width', String(Math.max(2, bw - 4))); r.setAttribute('height', String(h));
+        r.setAttribute('fill', COLORS[s === 'outros' ? 5 : Math.min(k, 4)]);
+        g.append(r);
+      });
+      const t = document.createElementNS(NS, 'text');
+      t.setAttribute('x', String(pad + i * bw + bw / 2)); t.setAttribute('y', String(H + 16)); t.setAttribute('text-anchor', 'middle'); t.setAttribute('font-size', chartDay ? '9' : '11');
+      t.textContent = chartDay ? (i % 3 === 0 ? b.key : '') : b.key.slice(5);
+      g.append(t);
+      const title = document.createElementNS(NS, 'title'); title.textContent = label; g.append(title);
+      if (!chartDay) {
+        g.setAttribute('role', 'button'); g.setAttribute('tabindex', '0'); g.style.cursor = 'pointer';
+        const zoom = () => { chartDay = b.day; loadCost(); };
+        g.addEventListener('click', zoom);
+        g.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); zoom(); } });
+      }
+      svg.append(g);
+    });
+    $('chart').replaceChildren(svg);
+    $('chartTitle').textContent = chartDay ? 'Custo por hora · ' + chartDay + ' (São Paulo)' : 'Custo por modelo · 7 dias (São Paulo)';
+    $('chartBack').hidden = !chartDay;
+    $('legend').replaceChildren(...series.map((s, k) => el('span', {}, el('i', { style: 'background:' + COLORS[s === 'outros' ? 5 : Math.min(k, 4)] }), s)));
+    const head = el('tr', {}, el('th', { textContent: chartDay ? 'hora' : 'dia' }), ...series.map((s) => el('th', { textContent: s })), el('th', { textContent: 'total' }));
+    const rows = bars.map((b) => el('tr', {}, el('td', { textContent: b.key }), ...series.map((s) => el('td', { textContent: b.parts[s] ? money(b.parts[s]) : '' })), el('td', { textContent: money(b.total) })));
+    $('chartTable').replaceChildren(el('table', {}, el('caption', { textContent: 'Custo por modelo' }), el('thead', {}, head), el('tbody', {}, ...rows)));
+    const c = u.check;
+    $('costCheck').textContent = 'Hoje (dia UTC ' + c.dayUtc + '): medido pelo gasclaw ' + money(c.measured) + ' × informado pelo OpenRouter ' + (c.informed === null ? '(' + (c.error || '?') + ')' : money(c.informed)) + (c.diffPct === null ? '' : ' · diferença ' + c.diffPct + '%') + '. ' + c.nota + '. Fila ainda não gravada: ' + u.queue + '.';
+  }
+  $('chartBack').onclick = () => { chartDay = null; loadCost(); $('chart').focus && $('chart').focus(); };
+
+  // ----- Limites -----
+  const LEVEL = { verde: '#2e9e6b', amarelo: '#d9a52b', vermelho: '#c43b31', 'sem limite': '#c9c7c0' };
+  const SRC = { google: 'informado pelo Google', openrouter: 'informado pelo OpenRouter', gasclaw: 'medido pelo gasclaw' };
+  function loadLimits(fresh) {
+    quiet('limitsPanel', fresh).then((l) => {
+      $('limitsStatus').textContent = 'Gatilho de 1 min: ' + l.trigger + ' · ' + (l.cached ? 'lido há até 10 min' : 'lido agora') + ' (' + new Date(l.at).toLocaleTimeString() + ')';
+      $('limits').replaceChildren(...l.items.map((i) => {
+        const pct = i.total && i.used !== null ? Math.min(100, Math.round((i.used / i.total) * 100)) : null;
+        const value = i.status === 'ok' ? (i.used + ' / ' + (i.total === null ? '∞' : i.total) + ' ' + i.unit + (pct === null ? '' : ' (' + pct + '%)')) : (i.status === 'pendente' ? 'aguardando autorização' : 'erro');
+        const bar = el('div', { className: 'bar', role: 'progressbar' }, el('span', { style: 'width:' + (pct || 0) + '%;background:' + LEVEL[i.level] }));
+        bar.setAttribute('aria-label', i.label); if (pct !== null) { bar.setAttribute('aria-valuenow', String(pct)); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100'); }
+        return el('div', { className: 'limit' },
+          el('div', { className: 'row' }, el('strong', { textContent: i.label }), el('span', { className: 'badge ' + i.source, textContent: SRC[i.source] })),
+          bar,
+          el('div', { className: 'muted', textContent: value + ' · ' + i.level + (i.reset ? ' · reset ' + i.reset : '') + (i.note ? ' · ' + i.note : '') }));
+      }));
+    }).catch((e) => { $('limitsStatus').textContent = 'Limites indisponíveis: ' + e.message; });
+  }
+  $('limitsFresh').onclick = () => loadLimits(true);
+
+  // ----- Lote -----
+  function showBatch(o) {
+    const age = o.oldestQueued ? Math.round((Date.now() - o.oldestQueued) / 1000) + ' s' : '—';
+    $('batchStatus').textContent = 'Gatilho de 1 min: ' + o.trigger + (o.trigger === 'ativo' ? '' : ' (enquanto isso, a fila é gravada ao abrir a tela ou no próximo turno, se tiver mais de 1 min)') + ' · entrada mais antiga na fila: ' + age;
+    $('drains').replaceChildren(el('table', {}, el('thead', {}, el('tr', {}, ...['quando', 'runs', 'ms', 'JSON', 'obs.'].map((h) => el('th', { textContent: h })))),
+      el('tbody', {}, ...(o.drains || []).map((d) => el('tr', {}, el('td', { textContent: new Date(d.at).toLocaleTimeString() }), el('td', { textContent: d.drained }), el('td', { textContent: d.ms }), el('td', { textContent: d.json }), el('td', { textContent: d.skipped || '' }))))));
+  }
+  function loadBatch() { quiet('observability').then(showBatch).catch((e) => { $('batchStatus').textContent = e.message; }); }
+  $('drainNow').onclick = () => call('drainNow').then(() => { $('msg').textContent = 'Fila gravada.'; loadBatch(); });
 
   call('settingsState').then(render);
 </script>
