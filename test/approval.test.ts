@@ -18,7 +18,7 @@ function memStore(): TicketStore & { data: Map<string, Ticket> } {
     },
   };
 }
-const base = { user: 'dono@x.com', session: 'f1:spaces/D', text: 'apague 10h', history: [], state: { messages: [], step: 0, queue: [] }, pending: approval, granted: [], runId: 'r' };
+const base = { user: 'dono@x.com', session: 'f1:spaces/D', text: 'apague 10h', history: [], state: { messages: [], step: 0, queue: [] }, pending: approval, granted: [], done: {}, runId: 'r' };
 
 describe('tickets de aprovação (uso único, 10 min)', () => {
   test('issue grava validade de 10 min; token fraco é recusado', () => {

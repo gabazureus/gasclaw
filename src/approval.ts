@@ -15,6 +15,8 @@ export type Ticket = {
   state: Snapshot;
   pending: Pending;
   granted: string[];
+  /** Tools já executadas neste run (runId:step:callId → resultado): evita reexecutar entre execuções. */
+  done: Record<string, string>;
   runId: string;
   expiresAt: number;
 };

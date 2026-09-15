@@ -109,6 +109,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
       deadlineMs: start + (d.budgetMs ?? CHAT_BUDGET_MS),
       clock,
       granted: ticket?.granted,
+      done: ticket?.done, // o que já rodou antes da aprovação não roda de novo (idempotência entre execuções)
       resume,
     });
     d.onTurn?.(out);
@@ -116,7 +117,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
       if (!d.tickets || !d.newToken) return reply('Esta ação precisa de aprovação, que ainda não está ligada neste gasclaw.');
       // O system prompt fica fora do ticket (tamanho do cache); na retomada vem do agente atual.
       const state = { ...out.state, messages: out.state.messages.slice(1) };
-      const t = issue({ user: e.user.email, session: hk, text, history, state, pending: out.pending, granted: out.granted, runId }, d.newToken(), start);
+      const t = issue({ user: e.user.email, session: hk, text, history, state, pending: out.pending, granted: out.granted, done: out.done, runId }, d.newToken(), start);
       d.tickets.put(t);
       return reply(out.text, approvalCard(t, out.text));
     }

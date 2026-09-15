@@ -19,6 +19,7 @@ const ticket = (kind: 'approval' | 'ask', over: Partial<Ticket> = {}): Ticket =>
   state: { messages: [], step: 0, queue: [] },
   pending: { kind, name: kind === 'ask' ? 'ask' : 'memory.remove', callId: 'c', key: 'k', args: {} },
   granted: [],
+  done: {},
   runId: 'r',
   expiresAt: 1,
   ...over,
