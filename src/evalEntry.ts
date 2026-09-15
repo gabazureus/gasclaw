@@ -1,6 +1,8 @@
 // Execução de um cenário de eval no dev (E0). runEval recebe o ambiente injetado (testável); evalAction liga no GAS.
 import { runTurn, SCREEN_BUDGET_MS, DEFAULT_STEPS, type TurnResult } from './agent';
-import { handleChat } from './chat';
+import type { Ticket } from './approval';
+import { cacheTickets, newToken } from './approvalStore';
+import { handleChat, type ChatEvent, type Tickets } from './chat';
 import { evaluate, judgeMessages, parseJudge, parseScenario, scriptedLlm, type Report, type TurnOutcome } from './eval';
 import { complete, type Completion, type Message, type ToolDef } from './llm';
 import * as store from './store';
@@ -17,8 +19,26 @@ export type EvalEnv = {
   now: () => string;
   llm: (model: string, messages: Message[], tools: ToolDef[]) => Completion;
   clock: () => number;
+  tickets?: Tickets; // padrão: em memória (testes); no dev, o CacheService real
+  newToken?: () => string;
 };
 export type EvalResult = Report & { replies: string[]; ms: number };
+
+/** Turnos especiais que simulam o clique no card: (aprovar), (negar), (repetir clique). */
+const CLICK = /^\((aprovar|negar|repetir clique)\)$/i;
+
+function memoryTickets(): Tickets {
+  const data = new Map<string, Ticket>();
+  return {
+    put: (t) => void data.set(t.token, t),
+    take: (tok) => {
+      const t = data.get(tok) ?? null;
+      data.delete(tok);
+      return t;
+    },
+    open: (s) => [...data.values()].find((t) => t.session === s && t.pending.kind === 'ask')?.token ?? null,
+  };
+}
 
 export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalResult {
   const t0 = env.clock();
@@ -28,7 +48,13 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
   if (s.resetMemory) env.memory.write('');
   const spec = env.agent();
   const model = s.model ?? modelOverride ?? spec.config.model;
-  const allow = s.tools ?? (spec.config as { tools?: string[] }).tools ?? [];
+  const allow = s.tools ?? spec.config.tools;
+  const base = env.tickets ?? memoryTickets();
+  let lastToken = '';
+  let lastDecision = 'approve';
+  const tickets: Tickets = { ...base, put: (t) => (base.put(t), void (lastToken = t.token)) };
+  let n = 0;
+  const token = env.newToken ?? (() => `eval${String(++n).padStart(28, '0')}`);
   let history: Message[] = [];
   const turns: TurnOutcome[] = [];
   const convo: { user: string; reply: string }[] = [];
@@ -46,24 +72,30 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
     let turn: TurnResult | undefined;
     let reply: string;
     if (s.channel === 'chat') {
+      const space = { name: 'spaces/gasclaw-eval', singleUserBotDm: true };
+      const click = text.match(CLICK)?.[1].toLowerCase();
+      if (click && click !== 'repetir clique') lastDecision = click === 'aprovar' ? 'approve' : 'deny';
+      const event: ChatEvent = click
+        ? { type: 'CARD_CLICKED', user: { email: env.owner }, space, common: { parameters: { token: lastToken, decision: lastDecision } } }
+        : { type: 'MESSAGE', message: { text }, user: { email: env.owner }, space };
       reply =
-        handleChat(
-          { type: 'MESSAGE', message: { text }, user: { email: env.owner }, space: { name: 'spaces/gasclaw-eval', singleUserBotDm: true } },
-          {
-            enabled: () => true,
-            owner: () => env.owner,
-            apiKey: () => env.apiKey ?? 'roteiro',
-            defaultAgent: () => ({ folderId: env.folderId, name: spec.name }),
-            load: () => spec,
-            history: () => history,
-            saveHistory: (_k, h) => void (history = h),
-            llm: (_k, _m, m, defs = []) => llm(m, defs),
-            toolkit: (_s, ownerDm) => ({ tools, ctx: ctx(ownerDm), memory: ownerDm ? env.memory.read() : undefined, steps }),
-            clock: env.clock,
-            onTurn: (r) => void (turn = r),
-          },
-        ).text ?? '';
+        handleChat(event, {
+          enabled: () => true,
+          owner: () => env.owner,
+          apiKey: () => env.apiKey ?? 'roteiro',
+          defaultAgent: () => ({ folderId: env.folderId, name: spec.name }),
+          load: () => spec,
+          history: () => history,
+          saveHistory: (_k, h) => void (history = h),
+          llm: (_k, _m, m, defs = []) => llm(m, defs),
+          toolkit: (_s, ownerDm) => ({ tools, ctx: ctx(ownerDm), steps }),
+          tickets,
+          newToken: token,
+          clock: env.clock,
+          onTurn: (r) => void (turn = r),
+        }).text ?? '';
     } else {
+      if (CLICK.test(text)) throw new Error(`${s.name}: cliques de aprovação só no channel chat`);
       const start = env.clock();
       turn = runTurn({ system: spec.system, history, text, memory: env.memory.read(), tools, ctx: ctx(true), llm, runId: `eval:${start}`, steps, deadlineMs: start + SCREEN_BUDGET_MS, clock: env.clock });
       history = turn.history;
@@ -87,7 +119,7 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
 
 const EVAL_AGENTS = `---
 model: openrouter/auto
-tools: [now, memory]
+tools: [now, memory, ask]
 ---
 # Regras (agente de eval do gasclaw, recriado sozinho; não guarde nada importante aqui)
 
@@ -114,6 +146,8 @@ export function evalAction(md: string, owner: string, model?: string): EvalResul
       now: () => Utilities.formatDate(new Date(), tz, "yyyy-MM-dd'T'HH:mm:ssXXX (EEEE)") + ` fuso ${tz}`,
       llm: (m, messages, defs) => complete(key ?? '', m, messages, 1000, undefined, defs),
       clock: Date.now,
+      tickets: cacheTickets(),
+      newToken,
     },
     model,
   );
