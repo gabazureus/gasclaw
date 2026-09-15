@@ -1,7 +1,7 @@
 // Trace do agente (ADR-014), núcleo puro: um run é uma lista de passos (spans) com ms e dados.
 // A borda (runlog.ts) grava o cache ao vivo, a planilha (1 linha por run) e o JSON completo.
 
-export type RunKind = 'chat' | 'test' | 'poc' | 'config';
+export type RunKind = 'chat' | 'test' | 'poc' | 'config' | 'webchat';
 export type Span = { name: string; startMs: number; ms: number; status: 'ok' | 'error'; data?: Record<string, unknown> };
 export type RunMeta = { question?: string; agent?: string; user?: string };
 export type Run = RunMeta & {
@@ -53,6 +53,8 @@ export function finish(run: Run, now: number, out: { answer?: string; error?: st
 
 const SECRETS: [RegExp, string][] = [
   [/sk-or-[\w-]+/g, 'sk-or-***'],
+  [/\bsk-proj-[\w-]{16,}/g, 'sk-proj-***'], // OpenAI (projeto)
+  [/\bsk-[\w-]{16,}/g, 'sk-***'], // OpenAI (antiga); \b evita "desk-top", "risk-free"
   [/ya29\.[\w.-]+/g, 'ya29.***'],
   [/Bearer\s+[\w.~+/-]+=*/g, 'Bearer ***'],
 ];

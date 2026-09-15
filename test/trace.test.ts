@@ -39,6 +39,14 @@ describe('redact (teste canário)', () => {
     expect(clean).toContain('sk-or-***');
     expect(clean).toContain('Bearer ***');
   });
+  test('remove também chaves OpenAI (sk-proj-… e sk-…) sem estragar palavras comuns', () => {
+    const dirty = { a: 'projeto sk-proj-CANARYabc_123-XYZ fim', b: ['antiga sk-CANARY0123456789abcdefXYZ'], c: 'desk-top e risk-free continuam' };
+    const clean = JSON.stringify(redact(dirty));
+    expect(clean).not.toContain('CANARY');
+    expect(clean).toContain('sk-proj-***');
+    expect(clean).toContain('sk-***');
+    expect(clean).toContain('desk-top e risk-free continuam');
+  });
   test('mantém números, null e texto comum', () => {
     expect(redact({ a: 1, b: null, c: 'texto normal' })).toEqual({ a: 1, b: null, c: 'texto normal' });
   });

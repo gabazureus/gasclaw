@@ -1,7 +1,7 @@
 // Observabilidade (ADR-014 lote, ADR-016 limites, ADR-018 uso), borda. Leituras NUNCA lançam: cada fonte vira {ok|erro}.
 // Sem escopo novo nesta etapa: gatilho, processes, MailApp e Monitoring só funcionam depois da reautorização (ADR-015).
 import { multipartBody } from './drive';
-import { QUEUE_PREFIX, queueEntry, shouldDrain, splitQueue, type QueueEntry } from './batch';
+import { drainBody, QUEUE_PREFIX, queueEntry, shouldDrain, splitQueue, type QueueEntry } from './batch';
 import { buildLimits, type LimitItem, type Read } from './limits';
 import { keyInfo, keyCallsLast30min } from './models';
 import { cleanupRunsDaily, ensureRunStore } from './runlog';
@@ -104,7 +104,7 @@ export function drain(max = 200): DrainResult {
     const fulls = cache().getAll(entries.map((e) => `qjson:${e.id}`));
     const res = UrlFetchApp.fetchAll(entries.map((e) => {
       const boundary = `gasclaw${e.id}`;
-      const body = fulls[`qjson:${e.id}`] ?? JSON.stringify({ ...e, nota: 'JSON completo expirou no cache; só a linha e o uso' });
+      const body = drainBody(e, fulls[`qjson:${e.id}`]);
       return { url: UPLOAD, method: 'post', contentType: `multipart/related; boundary=${boundary}`, payload: multipartBody({ name: `${e.id}.json`, parents: [store.folderId], mimeType: 'application/json' }, body.replace(/[-￿]/g, (c: string) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`), 'application/json', boundary), headers: auth(), muteHttpExceptions: true };
     }));
     // 3) uso por modelo + contagem de runs por dia

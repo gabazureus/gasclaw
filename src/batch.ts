@@ -14,6 +14,10 @@ export function queueEntry(run: Run): QueueEntry {
 export const shouldDrain = (oldestAt: number | null, now: number, triggerActive: boolean): boolean =>
   !triggerActive && oldestAt !== null && now - oldestAt > 60_000;
 
+/** Corpo do JSON do run no Drive: o completo do cache; se expirou, a própria entrada da fila (linha e uso não se perdem). */
+export const drainBody = (e: QueueEntry, full: string | undefined): string =>
+  full ?? JSON.stringify({ ...e, nota: 'JSON completo expirou no cache; só a linha e o uso' });
+
 export function splitQueue(props: Record<string, string>): QueueEntry[] {
   return Object.entries(props)
     .filter(([k]) => k.startsWith(QUEUE_PREFIX))

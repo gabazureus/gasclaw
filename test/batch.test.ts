@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { QUEUE_PREFIX, queueEntry, shouldDrain, splitQueue } from '../src/batch';
+import { drainBody, QUEUE_PREFIX, queueEntry, shouldDrain, splitQueue } from '../src/batch';
 import { finish, span, startRun } from '../src/trace';
 
 const T0 = Date.UTC(2026, 8, 15, 12, 0);
@@ -29,6 +29,18 @@ describe('shouldDrain', () => {
     expect(shouldDrain(T0 - 61_000, T0, false)).toBe(true);
     expect(shouldDrain(T0 - 30_000, T0, false)).toBe(false);
     expect(shouldDrain(null, T0, false)).toBe(false);
+  });
+});
+
+describe('drainBody: nenhum run se perde quando o cache expira', () => {
+  test('com o JSON completo no cache, grava o completo', () => {
+    expect(drainBody(queueEntry(run()), '{"completo":true}')).toBe('{"completo":true}');
+  });
+  test('sem o JSON no cache (expirou), grava a entrada da fila: linha e uso continuam, com nota', () => {
+    const e = queueEntry(run());
+    const body = JSON.parse(drainBody(e, undefined));
+    expect(body).toMatchObject({ id: 'r1', row: e.row, recs: e.recs });
+    expect(body.nota).toMatch(/expirou/);
   });
 });
 
