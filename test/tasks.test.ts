@@ -6,7 +6,7 @@ import { allowedTools, findTool, TOOLS, type ToolCtx } from '../src/tools/regist
 const TL = 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks';
 function ctx(responder: (r: GReq) => GRes) {
   const reqs: GReq[] = [];
-  const c: ToolCtx = { now: () => '', ownerDm: true, memory: { read: () => '', write: () => {} }, google: (r) => (reqs.push(r), responder(r)) };
+  const c: ToolCtx = { now: () => '', ownerDm: true, isOwner: true, memory: { read: () => '', write: () => {} }, google: (r) => (reqs.push(r), responder(r)) };
   return { c, reqs };
 }
 const run = (name: string, args: Record<string, unknown>, c: ToolCtx) => findTool(TOOLS, name)!.run(args, c);

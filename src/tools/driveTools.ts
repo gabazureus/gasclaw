@@ -1,5 +1,5 @@
 // Drive, Docs e Sheets (E6): REST com o escopo `drive` já no manifesto (files.list/export/upload; Sheets values.get/append).
-import { asData, enc, gcall, gtext, qs, type Google } from './google';
+import { asData, enc, gcall, type Google, gtext, ownerGoogle, qs } from './google';
 import type { Schema, Tool, ToolCtx } from './registry';
 
 const DRIVE = 'https://www.googleapis.com/drive/v3/files';
@@ -14,10 +14,7 @@ const KIND: Record<string, string> = {
 };
 const MAX_ROWS = 200;
 
-const api = (ctx: ToolCtx): Google => {
-  if (!ctx.google) throw new Error('ferramentas do Google indisponíveis neste canal');
-  return ctx.google;
-};
+const api = ownerGoogle; // só o dono (revisão E6)
 const fileId = (v: unknown) => {
   const id = String(v ?? '');
   if (!FILE_ID.test(id)) throw new Error('"id" de arquivo inválido');

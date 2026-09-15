@@ -1,15 +1,12 @@
 // Contatos (E6): People API por REST. searchContacts (contacts.readonly) + otherContacts.search (contacts.other.readonly).
 // A doc pede um "aquecimento" com query vazia antes de buscar, nos dois endpoints.
-import { asData, gcall, qs, type Google } from './google';
+import { asData, gcall, type Google, ownerGoogle, qs } from './google';
 import type { Tool, ToolCtx } from './registry';
 
 const PEOPLE = 'https://people.googleapis.com/v1';
 const MASK = 'names,emailAddresses';
 
-const api = (ctx: ToolCtx): Google => {
-  if (!ctx.google) throw new Error('ferramentas do Google indisponíveis neste canal');
-  return ctx.google;
-};
+const api = ownerGoogle; // só o dono (revisão E6)
 type Person = { names?: { displayName?: string }[]; emailAddresses?: { value?: string }[] };
 
 function search(g: Google, endpoint: string, query: string): Person[] {

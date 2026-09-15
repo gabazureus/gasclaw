@@ -1,15 +1,12 @@
 // Gmail (E6): Gmail API v1 por REST, escopos gmail.readonly (ler) e gmail.compose (rascunho e envio; doc de messages.send).
-import { asData, base64, enc, fromBase64, gcall, headerValue, parseEmails, qs, type Google } from './google';
+import { asData, base64, enc, fromBase64, gcall, type Google, headerValue, ownerGoogle, parseEmails, qs } from './google';
 import type { Schema, Tool, ToolCtx } from './registry';
 
 const GM = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const MAX_LIST = 10;
 const ID = /^[a-zA-Z0-9_-]{5,200}$/;
 
-const api = (ctx: ToolCtx): Google => {
-  if (!ctx.google) throw new Error('ferramentas do Google indisponíveis neste canal');
-  return ctx.google;
-};
+const api = ownerGoogle; // só o dono (revisão E6)
 type Header = { name: string; value: string };
 type Part = { mimeType?: string; body?: { data?: string }; parts?: Part[]; headers?: Header[] };
 const header = (hs: Header[] | undefined, name: string) => hs?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';

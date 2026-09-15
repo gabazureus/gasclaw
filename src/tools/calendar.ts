@@ -1,15 +1,12 @@
 // Agenda (E6): Google Calendar API v3 por REST, escopos calendar.events e calendar.events.freebusy (ADR-015).
-import { asData, enc, gcall, localDateTime, parseEmails as emails, qs, type Google } from './google';
+import { asData, enc, gcall, type Google, localDateTime, ownerGoogle, parseEmails as emails, qs } from './google';
 import type { Schema, Tool, ToolCtx } from './registry';
 
 const CAL = 'https://www.googleapis.com/calendar/v3';
 const MAX_DAYS = 62;
 const HAS_ZONE = /(Z|[+-]\d{2}:\d{2})$/;
 
-const api = (ctx: ToolCtx): Google => {
-  if (!ctx.google) throw new Error('ferramentas do Google indisponíveis neste canal');
-  return ctx.google;
-};
+const api = ownerGoogle; // só o dono (revisão E6)
 /** Instante absoluto (RFC 3339 com fuso) para timeMin/timeMax. minimal: offset fixo do fuso do gasclaw (sem horário de verão). */
 const instant = (v: unknown, field: string, ctx: ToolCtx) => {
   const dt = localDateTime(String(v), field);

@@ -96,6 +96,10 @@ export function runTurn(i: TurnInput): TurnResult {
         ev('refused', `recusado: ${v.error}`);
         continue;
       }
+      if (tool.ownerOnly && !i.ctx.isOwner) {
+        ev('refused', 'recusado: as ferramentas do Google são só do dono do gasclaw');
+        continue;
+      }
       const d = k === 0 ? decision : undefined;
       if (d && 'answer' in d) {
         ev('ok', `resposta do usuário: ${d.answer}`);

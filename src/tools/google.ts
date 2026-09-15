@@ -6,6 +6,13 @@ export type GReq = { method: 'get' | 'post' | 'patch' | 'put' | 'delete'; url: s
 export type GRes = { code: number; body: string };
 export type Google = (req: GReq) => GRes;
 
+/** Ferramentas do Google são SÓ DO DONO (revisão E6, blocker 2): quem pede precisa ser o e-mail do dono, em qualquer espaço. */
+export function ownerGoogle(ctx: { google?: Google; isOwner?: boolean }): Google {
+  if (!ctx.isOwner) throw new Error('as ferramentas do Google são só do dono do gasclaw');
+  if (!ctx.google) throw new Error('ferramentas do Google indisponíveis neste canal');
+  return ctx.google;
+}
+
 export const MAX_RESULT = 6000;
 export const DATA_END = '[FIM DO DADO EXTERNO]';
 

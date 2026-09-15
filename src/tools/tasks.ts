@@ -1,14 +1,11 @@
 // Tarefas (E6): Google Tasks API v1 por REST, escopo tasks, sempre na lista padrão (@default).
-import { asData, enc, gcall, type Google } from './google';
+import { asData, enc, gcall, type Google, ownerGoogle } from './google';
 import type { Schema, Tool, ToolCtx } from './registry';
 
 export const TASKS_URL = 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks';
 export const TASK_ID = /^[A-Za-z0-9_-]{5,200}$/;
 
-const api = (ctx: ToolCtx): Google => {
-  if (!ctx.google) throw new Error('ferramentas do Google indisponíveis neste canal');
-  return ctx.google;
-};
+const api = ownerGoogle; // só o dono (revisão E6)
 /** Prazo só com data: a doc do Tasks descarta a hora do `due`. */
 function dueDate(v: unknown): string {
   const m = String(v ?? '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);

@@ -7,6 +7,7 @@ function ctx(responses: GRes[]) {
   const c: ToolCtx = {
     now: () => '',
     ownerDm: true,
+    isOwner: true,
     memory: { read: () => '', write: () => {} },
     timeZone: 'America/Sao_Paulo',
     offset: '-03:00',

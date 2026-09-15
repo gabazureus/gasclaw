@@ -4,7 +4,7 @@ import { allowedTools, findTool, TOOLS, type ToolCtx } from '../src/tools/regist
 
 function ctx(responder: (r: GReq) => GRes) {
   const reqs: GReq[] = [];
-  const c: ToolCtx = { now: () => '', ownerDm: true, memory: { read: () => '', write: () => {} }, google: (r) => (reqs.push(r), responder(r)) };
+  const c: ToolCtx = { now: () => '', ownerDm: true, isOwner: true, memory: { read: () => '', write: () => {} }, google: (r) => (reqs.push(r), responder(r)) };
   return { c, reqs };
 }
 const run = (args: Record<string, unknown>, c: ToolCtx) => findTool(TOOLS, 'contacts.find')!.run(args, c);

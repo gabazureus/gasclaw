@@ -12,8 +12,9 @@ export type Approval = 'never' | 'once' | 'always';
 type Prop = { type: 'string' | 'integer' | 'number' | 'boolean'; description?: string; maxLength?: number };
 export type Schema = { type: 'object'; properties: Record<string, Prop>; required?: string[]; additionalProperties?: false };
 /** google/timeZone/offset: ferramentas do Workspace (E6); ausentes onde o canal não as liga. offset = "-03:00" do fuso. */
-export type ToolCtx = { now: () => string; ownerDm: boolean; memory: { read: () => string; write: (text: string) => void }; google?: Google; timeZone?: string; offset?: string };
-export type Tool = { name: string; description: string; parameters: Schema; approval: Approval; run: (args: Record<string, unknown>, ctx: ToolCtx) => string };
+export type ToolCtx = { now: () => string; ownerDm: boolean; memory: { read: () => string; write: (text: string) => void }; google?: Google; timeZone?: string; offset?: string; isOwner?: boolean };
+/** ownerOnly: só o dono usa (e aprova); o motor recusa antes de qualquer card. */
+export type Tool = { name: string; description: string; parameters: Schema; approval: Approval; run: (args: Record<string, unknown>, ctx: ToolCtx) => string; ownerOnly?: boolean };
 
 const ownerOnly = (ctx: ToolCtx) => {
   if (!ctx.ownerDm) throw new Error('memória só está disponível na DM do dono');
@@ -69,11 +70,8 @@ export const TOOLS: Tool[] = [
       throw new Error('ask é tratado pelo motor (pendência), não executa');
     },
   },
-  ...CALENDAR_TOOLS,
-  ...GMAIL_TOOLS,
-  ...CONTACTS_TOOLS,
-  ...TASKS_TOOLS,
-  ...DRIVE_TOOLS,
+  // Workspace (E6): conta do dono → só o dono (revisão de segurança, blocker 2).
+  ...[...CALENDAR_TOOLS, ...GMAIL_TOOLS, ...CONTACTS_TOOLS, ...TASKS_TOOLS, ...DRIVE_TOOLS].map((t) => ({ ...t, ownerOnly: true })),
 ];
 
 /** Grupos da allowlist: o nome antes do ponto; `drive` também cobre Docs e Sheets (arquivos do Drive). */

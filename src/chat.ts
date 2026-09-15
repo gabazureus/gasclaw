@@ -56,7 +56,10 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
     if (!canUse(spec.access, e.user.email, d.owner())) return reply(`Você (${e.user.email}) não tem acesso ao agente ${spec.name}.`); // acesso aprovado no painel (ADR-021)
     const hk = `${entry.folderId}:${e.space.name}`;
     const ownerDm = isOwnerDm(e, d.owner());
-    const kit = d.toolkit?.(spec, ownerDm) ?? NO_TOOLS;
+    const isOwner = e.user.email.toLowerCase() === d.owner().toLowerCase();
+    const base = d.toolkit?.(spec, ownerDm) ?? NO_TOOLS;
+    // O acesso ao Google só entra no contexto de quem é o dono (em qualquer espaço); outro usuário aprovado não o recebe.
+    const kit: Toolkit = { ...base, ctx: { ...base.ctx, isOwner, google: isOwner ? base.ctx.google : undefined } };
     const clock = d.clock ?? Date.now;
     const start = clock();
     const typed = (e.message?.argumentText ?? e.message?.text ?? '').trim();
