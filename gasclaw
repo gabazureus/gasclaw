@@ -268,7 +268,9 @@ cmd_up() {
   health
   if [ -n "${OPENROUTER_API_KEY:-}" ]; then
     printf '%s' "$OPENROUTER_API_KEY" | pbcopy
-    say "chave OpenRouter copiada — cole em 'Chave OpenRouter' na tela (só na primeira vez)"
+    # segurança baixa: a chave sai do clipboard em 90 s, se ainda for ela que estiver lá
+    (sleep 90; [ "$(pbpaste 2>/dev/null)" = "$OPENROUTER_API_KEY" ] && printf '' | pbcopy) >/dev/null 2>&1 &
+    say "chave OpenRouter copiada por 90 s — cole em 'Chave OpenRouter' na tela (só na primeira vez)"
   else
     warn "sem OPENROUTER_API_KEY no .env.local — cole a chave direto na tela"
   fi
