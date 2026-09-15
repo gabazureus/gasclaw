@@ -20,10 +20,11 @@ const fileId = (v: unknown) => {
   if (!FILE_ID.test(id)) throw new Error('"id" de arquivo inválido');
   return id;
 };
-/** Intervalo A1 (com ou sem nome de aba), sem aspas nem barras. */
+/** Intervalo A1: Plan1!A1:C20, A:C ou 'Minha aba'!A1 (aba entre aspas simples, sem aspas nem barras dentro). */
+const A1 = /^(?:'[^'"\\/?#]{1,50}'|[^'"\\/?#!]{1,50})(?:![A-Za-z]{0,3}\d{0,7}(?::[A-Za-z]{0,3}\d{0,7})?)?$/;
 const a1 = (v: unknown) => {
   const r = String(v ?? '').trim();
-  if (!r || r.length > 100 || /['"\\/?#]/.test(r)) throw new Error('"range" precisa ser um intervalo como Plan1!A1:C20');
+  if (!A1.test(r)) throw new Error('"range" precisa ser um intervalo como Plan1!A1:C20');
   return r;
 };
 const str = (description: string, maxLength = 200) => ({ type: 'string' as const, description, maxLength });

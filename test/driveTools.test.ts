@@ -93,6 +93,16 @@ describe('sheets.read e sheets.append', () => {
       body: { values: [['chá', '5'], ['=IMPORTXML("http://x")', '1']] },
     });
   });
+  test("range com nome de aba entre aspas ('Minha aba'!A1:B2) é aceito e codificado", () => {
+    const { c, reqs } = ctx(() => ({ code: 200, body: '{"values":[]}' }));
+    run('sheets.read', { id: DOC_ID, range: "'Minha aba'!A1:B2" }, c);
+    expect(reqs[0].url).toBe(`${SHEETS}/${DOC_ID}/values/'Minha%20aba'!A1%3AB2`);
+  });
+  test.each(["'x'y'!A1", 'Plan1!A1/../x', 'Plan"1!A1', "'Aba'!A1!B2"])('range malicioso %s é recusado', (range) => {
+    const { c, reqs } = ctx(() => ({ code: 200, body: '{}' }));
+    expect(() => run('sheets.read', { id: DOC_ID, range }, c)).toThrow('range');
+    expect(reqs).toHaveLength(0);
+  });
   test.each([
     ['sheets.read', { id: 'curto', range: 'A1' }, 'id'],
     ['sheets.read', { id: DOC_ID, range: '' }, 'range'],
