@@ -58,13 +58,17 @@ lock_dev() { # lock local exclusivo para publicar/medir (duas pistas no mesmo de
   trap 'rm -rf .tmp/dev.lock' EXIT
 }
 
-clasp_() { # diretório de projeto privado por chamada: nenhum comando compartilha (nem reescreve) o .clasp.json da raiz
-  local dir root="${CLASP_ROOT:-dist}" rc=0
-  case "$root" in /*) ;; *) root="$PWD/$root" ;; esac
-  mkdir -p .tmp
+clasp_() { # projeto privado por chamada: nenhum comando compartilha (nem reescreve) o .clasp.json da raiz
+  # O clasp 3.4 recusa rootDir fora da pasta do .clasp.json ("srcDir escapes project root"): o alvo (CLASP_ROOT, padrão
+  # dist) é COPIADO para $dir/root antes (o push publica essa cópia congelada) e, num pull, copiado de volta depois.
+  local dir target="${CLASP_ROOT:-dist}" rc=0
+  mkdir -p .tmp "$target"
   dir=$(mktemp -d "$PWD/.tmp/clasp.XXXXXX")
-  printf '{"scriptId":"%s","rootDir":"%s","projectId":"%s"}\n' "$(var "SCRIPT_ID_$UP")" "$root" "$(var "GCP_PROJECT_$UP")" > "$dir/.clasp.json"
+  mkdir -p "$dir/root"
+  cp -R "$target/." "$dir/root/"
+  printf '{"scriptId":"%s","rootDir":"root","projectId":"%s"}\n' "$(var "SCRIPT_ID_$UP")" "$(var "GCP_PROJECT_$UP")" > "$dir/.clasp.json"
   (cd "$dir" && npx --no-install clasp "$@") || rc=$?
+  if [ "$rc" -eq 0 ] && [ "${1:-}" = pull ]; then cp -R "$dir/root/." "$target/"; fi
   rm -rf "$dir"
   return "$rc"
 }
