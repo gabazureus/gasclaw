@@ -16,7 +16,7 @@ import { memoryIO } from './tools/memoryStore';
 import { allowedTools } from './tools/registry';
 import { coverage } from './trace';
 import { webClick, webSend } from './webchat';
-import { agentFolderPath, ensureFolderPath, extractFolderId, loadAgent, seedAgent, validAgentName, type LoadedAgent } from './workspace';
+import { agentFolderPath, ensureFolderPath, extractFolderId, loadAgent, parseAccess, seedAgent, validAgentName, withAccess, type LoadedAgent } from './workspace';
 
 const CHAT_MAX_TOKENS = 1000; // resposta síncrona precisa caber em 30 s
 
@@ -43,7 +43,9 @@ function withOverride(spec: LoadedAgent): LoadedAgent & { modelSource: 'tela' | 
   const o = getOverride(spec.folderId);
   return o ? { ...spec, config: { ...spec.config, model: o }, modelSource: 'tela' } : { ...spec, modelSource: 'pasta' };
 }
-const loadAgentForTurn = (folderId: string) => withOverride(loadAgent(folderId));
+/** ADR-021: acesso e tools valem só o que o dono aprovou no painel (ACCESS:<folderId>); sem aprovação, fechado. */
+const approvedOf = (folderId: string) => parseAccess(PropertiesService.getScriptProperties().getProperty(`ACCESS:${folderId}`));
+const loadAgentForTurn = (folderId: string) => withAccess(withOverride(loadAgent(folderId)), approvedOf(folderId));
 
 /** Dados do span resolve_agent: origem de cada papel (editor, doc, md, missing), cache e falha do editor. */
 const agentInfo = (folderId: string) => (s: LoadedAgent & { modelSource?: string }) => ({
@@ -144,7 +146,7 @@ function chatDeps(): ChatDeps {
     history: store.getHistory,
     saveHistory: store.saveHistory,
     llm: (key, model, messages, tools) => complete(key, model, messages, CHAT_MAX_TOKENS, undefined, tools),
-    toolkit: (spec, ownerDm) => ({ tools: allowedTools(spec.config.tools), ctx: { now: nowText, ownerDm, memory: memoryIO(spec.folderId) }, steps: spec.config.steps ?? DEFAULT_STEPS }),
+    toolkit: (spec, ownerDm) => ({ tools: allowedTools(spec.access.tools), ctx: { now: nowText, ownerDm, memory: memoryIO(spec.folderId) }, steps: spec.config.steps ?? DEFAULT_STEPS }),
     tickets: cacheTickets(),
     newToken,
   };
@@ -311,16 +313,16 @@ export function drainNow() {
 
 export function agentModel(folderId: string) {
   assertOwner();
-  const spec = loadAgent(folderId);
-  return { folderId, name: spec.name, fromFolder: spec.config.model, override: getOverride(folderId), tools: spec.config.tools, models: openRouterModels() };
+  const spec = withAccess(loadAgent(folderId), approvedOf(folderId));
+  return { folderId, name: spec.name, fromFolder: spec.config.model, override: getOverride(folderId), tools: spec.access.tools, models: openRouterModels() };
 }
 
 export function setAgentModel(folderId: string, model: string | null) {
   assertOwner();
-  const spec = loadAgent(folderId);
+  const spec = withAccess(loadAgent(folderId), approvedOf(folderId));
   const before = getOverride(folderId);
   if (model) {
-    const err = validateChoice(openRouterModels(), model.trim(), spec.config.tools);
+    const err = validateChoice(openRouterModels(), model.trim(), spec.access.tools);
     if (err) throw new Error(err);
   }
   const t = runlog.begin('config', { question: `modelo de ${spec.name}: ${before ?? spec.config.model} → ${model ?? `${spec.config.model} (do AGENTS)`}`, agent: spec.name });
@@ -369,7 +371,7 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
       apiKey: store.getApiKey,
       agent: () => {
         const first = store.listAgents()[0];
-        return first ? { folderId: first.folderId, tools: loadAgent(first.folderId).config.tools } : null;
+        return first ? { folderId: first.folderId, tools: withAccess(loadAgent(first.folderId), approvedOf(first.folderId)).access.tools } : null;
       },
       testAgent: (folderId, q) => {
         const r = testAgent(folderId, q);
