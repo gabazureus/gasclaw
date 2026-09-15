@@ -18,7 +18,7 @@ import { allowedTools } from './tools/registry';
 import { coverage } from './trace';
 import { agentInfo, llmInfo, traceDeps } from './traced';
 import { webClick, webSend } from './webchat';
-import { agentFolderPath, ensureFolderPath, extractFolderId, loadAgent, parseAccess, seedAgent, validAgentName, withAccess, type LoadedAgent } from './workspace';
+import { agentFolderPath, effectiveAccess, ensureFolderPath, extractFolderId, loadAgent, parseAccess, pendingSuggestions, seedAgent, validAgentName, withAccess, type Access, type LoadedAgent } from './workspace';
 
 const CHAT_MAX_TOKENS = 1000; // resposta síncrona precisa caber em 30 s
 
@@ -109,7 +109,7 @@ export function doPost(e: GoogleAppsScript.Events.DoPost) {
       // primeira vez: o dono grava o segredo gerado no PC; depois, só quem já tem o segredo atual
       if (!validSecret(p.secret ?? '')) return json({ ok: false, status: 400, error: 'segredo inválido: use 64 caracteres hexadecimais (openssl rand -hex 32)' });
       if (stored && !cliAuthorized(stored, p.secret)) return json({ ok: false, status: 403, error: 'segredo da CLI errado' });
-      if (!stored) props.setProperty('CLI_SECRET', p.secret);
+      if (!stored) props.setProperties({ CLI_SECRET: p.secret, CLI_SECRET_AT: new Date().toISOString() }); // a data aparece no painel (ADR-022)
       return json({ ok: true });
     }
     if (!cliAuthorized(stored, p.secret)) return json({ ok: false, status: 403, error: 'segredo da CLI ausente ou errado (rode ./gasclaw up)' });
@@ -227,7 +227,17 @@ export const appUrl = (): string => ScriptApp.getService().getUrl() ?? '';
 export function settingsState() {
   const me = assertOwner();
   observe.maybeDrain(); // fallback sem gatilho ao abrir a tela
-  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents: store.listAgents(), appUrl: appUrl() };
+  const cliSecretAt = PropertiesService.getScriptProperties().getProperty('CLI_SECRET_AT');
+  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents: store.listAgents(), appUrl: appUrl(), cliSecretAt };
+}
+
+/** ADR-022: apaga o segredo da CLI (pela tela, via google.script.run, que não é CSRF-ável); o próximo ./gasclaw up registra de novo. */
+export function resetCliSecret() {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  props.deleteProperty('CLI_SECRET');
+  props.deleteProperty('CLI_SECRET_AT');
+  return settingsState();
 }
 
 export function saveKey(key: string) {
@@ -258,6 +268,48 @@ export function createAgent(name: string) {
 export function removeAgent(folderId: string) {
   assertOwner();
   store.saveAgents(store.listAgents().filter((a) => a.folderId !== folderId));
+  PropertiesService.getScriptProperties().deleteProperty(`ACCESS:${folderId}`); // ADR-021: sem sobra de acesso aprovado
+  return settingsState();
+}
+
+// ---------- Acesso e ferramentas aprovados no painel (ADR-021) ----------
+const asAccess = (a: Partial<Access> | null | undefined): Access => ({
+  users: Array.isArray(a?.users) ? a!.users.map(String) : [],
+  tools: Array.isArray(a?.tools) ? a!.tools.map(String) : [],
+});
+const agentName = (folderId: string) => store.listAgents().find((a) => a.folderId === folderId)?.name ?? folderId;
+const describeAccess = (a: Access) => `${a.users.length ? a.users.join(', ') : 'só o dono'} · ${a.tools.length ? a.tools.join(', ') : 'sem ferramentas'}`;
+
+/** O que a pasta sugere, o que está aprovado e o que falta aprovar. */
+export function agentAccess(folderId: string) {
+  assertOwner();
+  const spec = loadAgent(folderId);
+  const approved = approvedOf(folderId);
+  return { folderId, name: spec.name, suggested: spec.config.suggested, approved: effectiveAccess(approved), pending: pendingSuggestions(spec.config.suggested, approved) };
+}
+
+/** Grava o acesso aprovado (normalizado por effectiveAccess) e registra a mudança como run config no trace. */
+export function approveAccess(folderId: string, access: Partial<Access>) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
+  const next = effectiveAccess(asAccess(access));
+  const name = agentName(folderId);
+  const t = runlog.begin('config', { question: `acesso de ${name}: ${describeAccess(before)} → ${describeAccess(next)}`, agent: name });
+  t.step('approve_access', () => props.setProperty(`ACCESS:${folderId}`, JSON.stringify(next)), () => ({ folderId, before, after: next }));
+  t.end({ answer: `aprovado: ${describeAccess(next)}` });
+  return settingsState();
+}
+
+/** Remove a aprovação: o agente volta a responder só ao dono, sem ferramentas. */
+export function removeAccess(folderId: string) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
+  const name = agentName(folderId);
+  const t = runlog.begin('config', { question: `acesso de ${name}: ${describeAccess(before)} → só o dono, sem ferramentas`, agent: name });
+  t.step('remove_access', () => props.deleteProperty(`ACCESS:${folderId}`), () => ({ folderId, before }));
+  t.end({ answer: 'acesso removido' });
   return settingsState();
 }
 
@@ -323,8 +375,19 @@ export function drainNow() {
 
 export function agentModel(folderId: string) {
   assertOwner();
-  const spec = withAccess(loadAgent(folderId), approvedOf(folderId));
-  return { folderId, name: spec.name, fromFolder: spec.config.model, override: getOverride(folderId), tools: spec.access.tools, models: openRouterModels() };
+  const approved = approvedOf(folderId);
+  const spec = withAccess(loadAgent(folderId), approved);
+  return {
+    folderId,
+    name: spec.name,
+    fromFolder: spec.config.model,
+    override: getOverride(folderId),
+    tools: spec.access.tools,
+    models: openRouterModels(),
+    suggested: spec.config.suggested,
+    approved: spec.access,
+    pending: pendingSuggestions(spec.config.suggested, approved),
+  };
 }
 
 export function setAgentModel(folderId: string, model: string | null) {

@@ -41,6 +41,7 @@
   <section>
     <h2>Status</h2>
     <div class="row"><span id="status"></span><button class="sec" id="toggle">…</button></div>
+    <div class="row"><span id="secretInfo" class="muted"></span><button class="sec" id="resetSecret">Redefinir segredo</button></div>
   </section>
 
   <section>
@@ -151,20 +152,55 @@
     $('status').textContent = (s.enabled ? '🟢 Ativo' : '⏸ Pausado') + ' · chave ' + (s.hasKey ? 'salva' : 'faltando') + ' · ' + s.agents.length + ' agente(s)';
     $('toggle').textContent = s.enabled ? 'Pausar' : 'Ativar';
     if (typeof fillAgents === 'function') fillAgents();
+    $('secretInfo').textContent = s.cliSecretAt ? 'Segredo da CLI registrado em ' + new Date(s.cliSecretAt).toLocaleString('pt-BR') : 'Segredo da CLI ainda não registrado (rode ./gasclaw up)';
+    $('resetSecret').disabled = !s.cliSecretAt;
     $('agents').replaceChildren(...s.agents.map((a, i) => {
+      const box = document.createElement('div');
       const row = document.createElement('div');
       row.className = 'row';
       const link = document.createElement('a');
       link.href = 'https://drive.google.com/drive/folders/' + a.folderId;
       link.textContent = (i === 0 ? '⭐ ' : '') + a.name;
       const actions = document.createElement('span');
+      const holder = document.createElement('div');
+      holder.className = 'muted';
+      holder.id = 'access-' + a.folderId;
+      holder.setAttribute('aria-live', 'polite');
+      holder.hidden = true;
+      const accessBtn = button('Acesso', () => {
+        holder.hidden = !holder.hidden;
+        accessBtn.setAttribute('aria-expanded', String(!holder.hidden));
+        if (!holder.hidden) showAccess(a.folderId, holder);
+      });
+      accessBtn.setAttribute('aria-controls', holder.id);
+      accessBtn.setAttribute('aria-expanded', 'false');
+      actions.append(accessBtn, ' ');
       if (i > 0) actions.append(button('Tornar padrão', () => call('makeDefault', a.folderId).then(render)), ' ');
       actions.append(button('Remover', () => call('removeAgent', a.folderId).then(render)));
       row.append(link, actions);
-      return row;
+      box.append(row, holder);
+      return box;
     }));
   }
 
+  // ----- Acesso e ferramentas aprovados no painel (ADR-021): a pasta só sugere -----
+  function showAccess(folderId, holder) {
+    holder.textContent = 'Carregando acesso…';
+    google.script.run.withSuccessHandler((x) => {
+      const fmt = (a) => (a.users.length ? 'pessoas: ' + a.users.join(', ') : 'só o dono') + ' · ' + (a.tools.length ? 'ferramentas: ' + a.tools.join(', ') : 'sem ferramentas');
+      const hasPending = x.pending.users.length > 0 || x.pending.tools.length > 0;
+      const line = (text) => { const d = document.createElement('div'); d.textContent = text; return d; };
+      const approve = button('Aprovar sugestão', () => call('approveAccess', folderId, { users: x.approved.users.concat(x.pending.users), tools: x.approved.tools.concat(x.pending.tools) }).then(() => { $('msg').textContent = 'Acesso aprovado.'; showAccess(folderId, holder); }));
+      approve.disabled = !hasPending;
+      const remove = button('Remover acesso', () => call('removeAccess', folderId).then(() => { $('msg').textContent = 'Acesso removido: só o dono, sem ferramentas.'; showAccess(folderId, holder); }));
+      remove.disabled = x.approved.users.length === 0 && x.approved.tools.length === 0;
+      holder.replaceChildren(line('Sugerido pela pasta (falta aprovar): ' + (hasPending ? fmt(x.pending) : 'nada novo')), line('Aprovado: ' + fmt(x.approved)), approve, document.createTextNode(' '), remove);
+    }).withFailureHandler((e) => { holder.textContent = e.message; }).agentAccess(folderId);
+  }
+  $('resetSecret').onclick = () => {
+    if (!confirm('Apagar o segredo da CLI? Até o próximo ./gasclaw up, poc, eval e down vão falhar.')) return;
+    call('resetCliSecret').then((s) => { render(s); $('msg').textContent = 'Segredo apagado. Rode ./gasclaw up para registrar de novo.'; });
+  };
   $('toggle').onclick = () => call('setRuntimeEnabled', !state.enabled).then(render);
   $('saveKey').onclick = () => call('saveKey', $('key').value).then((s) => { $('key').value = ''; render(s); });
   const added = (field) => (r) => {

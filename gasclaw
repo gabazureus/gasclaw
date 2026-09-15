@@ -290,8 +290,8 @@ cmd_up() {
   ensure_gcp
   ensure_script
   deploy
+  ensure_cli_secret # ADR-022 (a): logo depois do deploy, antes de qualquer outra chamada ao web app
   authorize
-  ensure_cli_secret
   remote enable >/dev/null 2>&1 || true
   health
   if [ -n "${OPENROUTER_API_KEY:-}" ]; then
