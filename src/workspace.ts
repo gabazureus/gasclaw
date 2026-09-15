@@ -1,7 +1,7 @@
 import { exportProject, fetchTexts, listFolder } from './drive';
 import { TEMPLATES } from './templates';
 
-export type AgentConfig = { model: string; users: string[] };
+export type AgentConfig = { model: string; users: string[]; tools: string[]; steps?: number };
 export type AgentSpec = { folderId: string; name: string; config: AgentConfig; system: string };
 
 export const ROLES = ['AGENTS', 'SOUL', 'IDENTITY', 'USER'] as const;
@@ -89,7 +89,7 @@ export function signature(folderId: string, sources: Sources): string {
   return [folderId, ...keys.map((k) => (sources[k] ? `${k}:${sources[k].kind}:${sources[k].entry.id}@${sources[k].entry.modified}` : `${k}:-`))].join('|');
 }
 
-/** Linhas `chave | valor` da planilha config sobrepõem o frontmatter (só model e users). */
+/** Linhas `chave | valor` da planilha config sobrepõem o frontmatter (model, users, tools, steps). */
 export function mergeConfig(frontmatter: Record<string, string | string[]>, rows: string[][] = []): AgentConfig {
   const data = { ...frontmatter };
   for (const [k = '', v = ''] of rows) {
@@ -98,10 +98,15 @@ export function mergeConfig(frontmatter: Record<string, string | string[]>, rows
     if (!val) continue;
     if (key === 'model') data.model = val;
     if (key === 'users') data.users = val.split(/[\s,;]+/).filter(Boolean);
+    if (key === 'tools') data.tools = val.split(',').map((t) => t.trim()).filter(Boolean);
+    if (key === 'steps') data.steps = val;
   }
   const model = typeof data.model === 'string' && data.model ? data.model : DEFAULT_MODEL;
   const users = Array.isArray(data.users) ? data.users.map((u) => u.toLowerCase()) : [];
-  return { model, users };
+  const tools = Array.isArray(data.tools) ? data.tools : []; // padrão seguro: agente sem tools
+  const n = Number(data.steps);
+  const steps = Number.isInteger(n) && n >= 1 && n <= 50 ? n : undefined;
+  return { model, users, tools, ...(steps === undefined ? {} : { steps }) };
 }
 
 export function buildSpec(folderId: string, name: string, texts: Partial<Record<Role, string>>, configRows?: string[][]): AgentSpec {

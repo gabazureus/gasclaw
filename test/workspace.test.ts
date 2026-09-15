@@ -65,7 +65,7 @@ describe('buildSpec', () => {
     expect(spec).toEqual({
       folderId: 'f',
       name: 'A',
-      config: { model: DEFAULT_MODEL, users: ['ana@x.com'] },
+      config: { model: DEFAULT_MODEL, users: ['ana@x.com'], tools: [] },
       system: '## AGENTS.md\nRegras\n\n## SOUL.md\nCalmo\n\n## IDENTITY.md\ngasclaw\n\n## USER.md\nGabriel',
     });
   });
@@ -196,16 +196,35 @@ describe('signature', () => {
   });
 });
 
+describe('tools e steps no config (Pista Motor)', () => {
+  test('frontmatter com tools e steps', () => {
+    const { data } = parseFrontmatter('---\ntools: [now, memory]\nsteps: 5\n---\n');
+    expect(mergeConfig(data)).toEqual({ model: DEFAULT_MODEL, users: [], tools: ['now', 'memory'], steps: 5 });
+  });
+  test('sem as chaves: tools vazio e steps indefinido (agente sem tools)', () => {
+    const c = mergeConfig({});
+    expect(c.tools).toEqual([]);
+    expect(c.steps).toBeUndefined();
+  });
+  test('steps fora de 1..50 ou não inteiro vira indefinido', () => {
+    for (const s of ['0', '99', '2.5', 'x']) expect(mergeConfig({ steps: s }).steps).toBeUndefined();
+    expect(mergeConfig({ steps: '50' }).steps).toBe(50);
+  });
+  test('planilha config com tools separado por vírgula', () => {
+    expect(mergeConfig({}, [['tools', 'now, memory']]).tools).toEqual(['now', 'memory']);
+  });
+});
+
 describe('mergeConfig', () => {
   test('sem planilha usa o frontmatter', () => {
-    expect(mergeConfig({ model: 'x/y', users: ['A@x.com'] })).toEqual({ model: 'x/y', users: ['a@x.com'] });
+    expect(mergeConfig({ model: 'x/y', users: ['A@x.com'] })).toEqual({ model: 'x/y', users: ['a@x.com'], tools: [] });
   });
   test('planilha sobrepõe; users separados por vírgula, ; ou espaço; ignora cabeçalho e chaves desconhecidas', () => {
     const rows = [['chave', 'valor'], ['model', ' a/b '], ['users', 'Ana@x.com, bob@x.com;c@x.com d@x.com'], ['foo', 'bar']];
-    expect(mergeConfig({ model: 'x/y', users: ['z@x.com'] }, rows)).toEqual({ model: 'a/b', users: ['ana@x.com', 'bob@x.com', 'c@x.com', 'd@x.com'] });
+    expect(mergeConfig({ model: 'x/y', users: ['z@x.com'] }, rows)).toEqual({ model: 'a/b', users: ['ana@x.com', 'bob@x.com', 'c@x.com', 'd@x.com'], tools: [] });
   });
   test('valor vazio na planilha não apaga o frontmatter', () => {
-    expect(mergeConfig({ model: 'x/y' }, [['model', '']])).toEqual({ model: 'x/y', users: [] });
+    expect(mergeConfig({ model: 'x/y' }, [['model', '']])).toEqual({ model: 'x/y', users: [], tools: [] });
   });
 });
 
