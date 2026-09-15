@@ -9,10 +9,17 @@ const MASK = 'names,emailAddresses';
 const api = ownerGoogle; // só o dono (revisão E6)
 type Person = { names?: { displayName?: string }[]; emailAddresses?: { value?: string }[] };
 
+/** Aquecimento pedido pela doc (query vazia), no máximo uma vez por execução do GAS por endpoint (revisão E6, item 8). */
+const warmed = new Set<string>();
+export const resetContactsWarmup = (): void => warmed.clear(); // testes
+
 function search(g: Google, endpoint: string, query: string): Person[] {
-  // query vai sempre na URL, mesmo vazia (o qs omite vazios): é o aquecimento pedido pela doc.
+  // query vai sempre na URL, mesmo vazia (o qs omite vazios)
   const url = (q: string) => `${PEOPLE}/${endpoint}?query=${encodeURIComponent(q)}&${qs({ readMask: MASK, pageSize: 10 })}`;
-  gcall(g, { method: 'get', url: url('') }, 'aquecer a busca de contatos');
+  if (!warmed.has(endpoint)) {
+    gcall(g, { method: 'get', url: url('') }, 'aquecer a busca de contatos');
+    warmed.add(endpoint);
+  }
   return ((gcall(g, { method: 'get', url: url(query) }, 'buscar contatos').results ?? []) as { person?: Person }[]).map((r) => r.person ?? {});
 }
 

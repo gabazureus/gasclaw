@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
+import { resetContactsWarmup } from '../src/tools/contacts';
 import { DATA_END, type GReq, type GRes } from '../src/tools/google';
 import { allowedTools, findTool, TOOLS, type ToolCtx } from '../src/tools/registry';
 
@@ -10,6 +11,15 @@ function ctx(responder: (r: GReq) => GRes) {
 const run = (args: Record<string, unknown>, c: ToolCtx) => findTool(TOOLS, 'contacts.find')!.run(args, c);
 
 describe('contacts.find (People API)', () => {
+  beforeEach(resetContactsWarmup);
+
+  test('aquecimento só na primeira busca da execução', () => {
+    const { c, reqs } = ctx(() => ({ code: 200, body: '{}' }));
+    run({ name: 'Ana' }, c);
+    run({ name: 'Bob' }, c);
+    expect(reqs.map((r) => new URL(r.url).searchParams.get('query'))).toEqual(['', 'Ana', '', 'Ana', 'Bob', 'Bob']);
+  });
+
   test('grupo contacts: só leitura, sem aprovação', () => {
     expect(allowedTools(['contacts']).map((t) => [t.name, t.approval])).toEqual([['contacts.find', 'never']]);
   });
