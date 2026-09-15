@@ -97,8 +97,12 @@ export function newRunId(): string {
 export function begin(kind: RunKind, meta: RunMeta, opts: TracerOptions = {}): Tracer {
   const now = opts.now ?? Date.now;
   let run = startRun(newRunId(), kind, now(), meta);
-  let lastEnd = run.startedAt;
   toCache(run, true);
+  // C8 (P14, v25): a trava + o cache da lista ao vivo levaram até 1.087 ms antes do 1º passo, fora de qualquer span;
+  // agora esse custo do próprio trace aparece como o passo trace_begin e a soma dos passos cobre a duração do run
+  const started = now();
+  run = span(run, 'trace_begin', run.startedAt, started);
+  let lastEnd = started;
 
   return {
     get run() {
