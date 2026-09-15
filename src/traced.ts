@@ -18,8 +18,11 @@ export const agentInfo = (folderId: string) => (s: LoadedAgent & { modelSource?:
 });
 
 /** Dados do span llm_call: modelo real, tokens, custo e o prompt completo (vai só para o JSON do run). */
-export const llmInfo = (requested: string, messages: Message[]) => (c: Completion) => ({
+export const llmInfo = (requested: string, messages: Message[]) => (c: Completion & { fallback?: { model: string; error: string }[] }) => ({
   model: c.model ?? requested,
+  // ADR-025: com `model: free`, `requested` é a palavra "free"; estes dois dizem quem respondeu e por onde passou
+  model_used: c.model ?? requested,
+  ...(c.fallback?.length ? { fallback: c.fallback } : {}),
   prompt_tokens: c.usage?.prompt_tokens ?? 0,
   completion_tokens: c.usage?.completion_tokens ?? 0,
   cost: c.usage?.cost ?? 0,

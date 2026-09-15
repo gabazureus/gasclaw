@@ -8,6 +8,9 @@ import { cacheTickets, newToken } from './approvalStore';
 import { handleChat, type ChatDeps, type ChatEvent } from './chat';
 import { cliAuthorized, MUTATING, validSecret } from './cli';
 import { evalAction } from './evalEntry';
+import { pocP11 } from '../poc/p11-free/harness';
+import { isFree } from './freeModels';
+import { runFree } from './freeRun';
 import { complete, type Completion, type Message, type ToolDef } from './llm';
 import { gasGoogle, zone } from './tools/googleHttp';
 import { getOverride, listModels as openRouterModels, setOverride, validateChoice } from './models';
@@ -212,7 +215,11 @@ function chatDeps(): ChatDeps {
     load: loadAgentForTurn,
     history: store.getHistory,
     saveHistory: store.saveHistory,
-    llm: (key, model, messages, tools) => complete(key, model, messages, CHAT_MAX_TOKENS, undefined, tools),
+    // ADR-025: `model: free` vira rodízio entre os gratuitos; qualquer outro id continua indo direto ao complete()
+    llm: (key, model, messages, tools) => {
+      const call = (id: string) => complete(key, id, messages, CHAT_MAX_TOKENS, undefined, tools);
+      return isFree(model) ? runFree(call, { tools: (tools ?? []).length > 0, apiKey: key }) : call(model);
+    },
     toolkit: (spec, ownerDm) => ({ tools: allowedTools(spec.access.tools), ctx: { now: nowText, ownerDm, memory: memoryIO(spec.folderId), google: gasGoogle, ...zone() }, steps: spec.config.steps ?? DEFAULT_STEPS }),
     tickets: cacheTickets(),
     newToken,
@@ -401,7 +408,12 @@ export function testAgent(folderId: string, text: string) {
   const t = runlog.begin('test', { question: text });
   try {
     const spec = t.step('resolve_agent', () => loadAgentForTurn(folderId), agentInfo(folderId));
-    const out = reply(spec, [], text, (m) => t.step('llm_call', () => complete(key, spec.config.model, m, CHAT_MAX_TOKENS), llmInfo(spec.config.model, m), true));
+    // ADR-025: o teste da tela e o burst da POC P11 passam pelo mesmo caminho do Chat, rodízio incluído
+    const model = spec.config.model;
+    const call = (id: string, m: Message[]) => complete(key, id, m, CHAT_MAX_TOKENS);
+    const out = reply(spec, [], text, (m) =>
+      t.step('llm_call', () => (isFree(model) ? runFree((id) => call(id, m), { tools: false, apiKey: key }) : call(model, m)), llmInfo(model, m), true),
+    );
     t.mark('reply');
     const run = t.end({ answer: out.text });
     return { text: out.text, model: run.model ?? spec.config.model, ms: run.ms ?? 0, runId: run.id };
@@ -461,6 +473,8 @@ export function agentModel(folderId: string) {
     suggested: spec.config.suggested,
     approved: spec.access,
     pending: pendingSuggestions(spec.config.suggested, approved),
+    // ADR-025: com o rodízio, saber qual gratuito respondeu por último importa mais que o id configurado
+    lastModel: runlog.liveRuns().recent.find((r) => r.agent === spec.name && r.model)?.model ?? null,
   };
 }
 
@@ -512,6 +526,19 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p1: () => pocUrlFetchTimeout(),
   p6: (step) => pocP6(step, ownerEmail()),
   p10: (step, params) => pocP10(step, params),
+  p11: (step, params = {}) =>
+    pocP11(step, params, {
+      apiKey: store.getApiKey,
+      agent: () => {
+        const first = store.listAgents()[0];
+        return first ? { folderId: first.folderId, tools: withAccess(loadAgent(first.folderId), approvedOf(first.folderId)).access.tools } : null;
+      },
+      testAgent: (folderId, q) => {
+        const r = testAgent(folderId, q);
+        return { runId: r.runId, model: r.model };
+      },
+      llm: (model, prompt) => ({ model: complete(store.getApiKey() ?? '', model, [{ role: 'user', content: prompt }], 100).model ?? model }),
+    }),
   p15: (step, params = {}) => pocP15(step, params, { apiKey: store.getApiKey, owner: ownerEmail }),
   p16: (step, params = {}) =>
     pocP16(step, params, {

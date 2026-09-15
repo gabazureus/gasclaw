@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { ModelInfo } from '../src/models';
+import { validateChoice } from '../src/models';
 import { FREE, classify, freeOrder, isFree, quota, rotate } from '../src/freeModels';
 
 const m = (id: string, ctx: number, tools: boolean, free = true): ModelInfo => ({ id, ctx, inM: 0, outM: 0, tools, free });
@@ -96,6 +97,21 @@ describe('rotate: troca de modelo registrando o caminho', () => {
   });
   test('sem candidato nenhum, o erro diz o que fazer', () => {
     expect(() => rotate([], () => ok('x'), 3)).toThrow(/nenhum modelo gratuito/i);
+  });
+});
+
+describe('validateChoice aceita free como escolha da tela', () => {
+  test('free vale quando existe gratuito que serve ao agente', () => {
+    expect(validateChoice(list, FREE, [])).toBeNull();
+    expect(validateChoice(list, FREE, ['now'])).toBeNull();
+  });
+  test('free é recusado quando nenhum gratuito aceita as ferramentas do agente', () => {
+    const semTools = [m('c/sem-tools:free', 200_000, false), m('e/pago', 128_000, true, false)];
+    expect(validateChoice(semTools, FREE, ['now'])).toMatch(/ferramenta/i);
+    expect(validateChoice(semTools, FREE, [])).toBeNull();
+  });
+  test('free é recusado quando não há nenhum modelo gratuito na lista', () => {
+    expect(validateChoice([m('e/pago', 128_000, true, false)], FREE, [])).toMatch(/gratuito/i);
   });
 });
 
