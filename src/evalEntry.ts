@@ -179,8 +179,14 @@ tools: [now, memory, ask]
 /** Acesso do agente eval, fixo no código: ele é criado pelo gasclaw e só roda por doGet?action=eval (dono). */
 export const EVAL_ACCESS: Access = { users: [], tools: ['now', 'memory', 'ask'] };
 
+/**
+ * Modelo usado pelo eval e pelo juiz. O main.ts passa o `llm` embrulhado pelo trace (cada chamada vira `llm_call` com modelo e
+ * custo, P16); sem ele, cai no `complete` direto e o custo fica fora do trace.
+ */
+export const evalLlm = (key: string | null, traced?: EvalEnv['llm']): EvalEnv['llm'] => traced ?? ((m, messages, defs) => complete(key ?? '', m, messages, 1000, undefined, defs));
+
 /** Liga o runEval no GAS: agente próprio em Meu Drive/gasclaw/agentes/eval (criado/reusado sozinho). */
-export function evalAction(md: string, owner: string, model?: string): EvalResult {
+export function evalAction(md: string, owner: string, model?: string, llm?: EvalEnv['llm']): EvalResult {
   const folder = ensureFolderPath(agentFolderPath('eval'));
   if (!folder.getFilesByName('AGENTS.md').hasNext()) folder.createFile('AGENTS.md', EVAL_AGENTS, 'text/markdown');
   seedAgent(folder.getId(), owner);
@@ -195,7 +201,7 @@ export function evalAction(md: string, owner: string, model?: string): EvalResul
       folderId: folder.getId(),
       memory: memoryIO(folder.getId()),
       now: () => Utilities.formatDate(new Date(), tz, "yyyy-MM-dd'T'HH:mm:ssXXX (EEEE)") + ` fuso ${tz}`,
-      llm: (m, messages, defs) => complete(key ?? '', m, messages, 1000, undefined, defs),
+      llm: evalLlm(key, llm),
       clock: Date.now,
       tickets: cacheTickets(),
       newToken,
