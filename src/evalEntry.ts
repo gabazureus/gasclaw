@@ -9,7 +9,9 @@ import * as store from './store';
 import { runCleanup, UNDOABLE } from './tools/cleanup';
 import type { Google } from './tools/google';
 import { gasGoogle, zone } from './tools/googleHttp';
+import { bootstrapIO } from './tools/bootstrapStore';
 import { memoryIO } from './tools/memoryStore';
+import { skillsIO } from './tools/skillsStore';
 import { allowedTools, findTool, TOOLS, type ToolCtx } from './tools/registry';
 import { webClick, webSend } from './webchat';
 import { agentFolderPath, ensureFolderPath, loadAgent, seedAgent, withAccess, type Access, type AgentSpec } from './workspace';
@@ -25,6 +27,8 @@ export type EvalEnv = {
   clock: () => number;
   tickets?: Tickets; // padrão: em memória (testes); no dev, o CacheService real
   newToken?: () => string;
+  skill?: (name: string) => string | null; // corpo das skills (delivery 3); no dev vem do skillsIO da pasta do agente
+  bootstrap?: { read: () => string | null; consume: () => void }; // ritual de estreia (delivery 4)
   google?: Google; // ferramentas do Workspace (E6); o runner também usa para apagar os dados de teste
   zone?: { timeZone: string; offset: string };
 };
@@ -120,7 +124,19 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
         history: () => history,
         saveHistory: (_k, h) => void (history = h),
         llm: (_k, _m, m, defs = []) => llm(m, defs),
-        toolkit: (_s, ownerDm) => ({ tools, ctx: { now: env.now, ownerDm, memory: env.memory, google: env.google, ...env.zone }, steps }),
+        toolkit: (_s, ownerDm) => ({
+          tools,
+          ctx: { now: env.now, ownerDm, memory: env.memory, google: env.google, skill: env.skill, ...env.zone },
+          steps,
+          bootstrap: env.bootstrap && {
+            read: () => {
+              const md = env.bootstrap!.read();
+              if (md?.trim()) spans.push('bootstrap'); // ritual entrou neste turno
+              return md;
+            },
+            consume: () => env.bootstrap!.consume(),
+          },
+        }),
         tickets,
         newToken: token,
         clock: env.clock,
@@ -176,8 +192,17 @@ tools: [now, memory, ask]
 - Quando o usuário pedir para lembrar algo, salve com a ferramenta de memória.
 `;
 
+/** Cria skills/<nome>/SKILL.md no agente de eval, se faltar (o cenário skill-usa precisa de uma skill real). */
+function seedSkill(folder: GoogleAppsScript.Drive.Folder, name: string, md: string): void {
+  const skills = folder.getFoldersByName('skills');
+  const dir = skills.hasNext() ? skills.next() : folder.createFolder('skills');
+  const sub = dir.getFoldersByName(name);
+  const target = sub.hasNext() ? sub.next() : dir.createFolder(name);
+  if (!target.getFilesByName('SKILL.md').hasNext()) target.createFile('SKILL.md', md, 'text/markdown');
+}
+
 /** Acesso do agente eval, fixo no código: ele é criado pelo gasclaw e só roda por doGet?action=eval (dono). */
-export const EVAL_ACCESS: Access = { users: [], tools: ['now', 'memory', 'ask'] };
+export const EVAL_ACCESS: Access = { users: [], tools: ['now', 'memory', 'ask', 'read_skill'] };
 
 /**
  * Modelo usado pelo eval e pelo juiz. O main.ts passa o `llm` embrulhado pelo trace (cada chamada vira `llm_call` com modelo e
@@ -189,6 +214,8 @@ export const evalLlm = (key: string | null, traced?: EvalEnv['llm']): EvalEnv['l
 export function evalAction(md: string, owner: string, model?: string, llm?: EvalEnv['llm']): EvalResult {
   const folder = ensureFolderPath(agentFolderPath('eval'));
   if (!folder.getFilesByName('AGENTS.md').hasNext()) folder.createFile('AGENTS.md', EVAL_AGENTS, 'text/markdown');
+  if (!folder.getFilesByName('BOOTSTRAP.md').hasNext()) folder.createFile('BOOTSTRAP.md', 'Pergunte como a pessoa prefere ser chamada e que estilo de resposta prefere.\n', 'text/markdown');
+  seedSkill(folder, 'briefing', '---\ndescription: Briefing semanal\n---\n1. abra os números da semana\n2. compare com a semana anterior\n3. escreva 3 linhas\n');
   seedAgent(folder.getId(), owner);
   const key = store.getApiKey();
   const tz = Session.getScriptTimeZone();
@@ -205,6 +232,8 @@ export function evalAction(md: string, owner: string, model?: string, llm?: Eval
       clock: Date.now,
       tickets: cacheTickets(),
       newToken,
+      skill: (name) => skillsIO(folder.getId()).body(name),
+      bootstrap: bootstrapIO(folder.getId()),
       google: gasGoogle,
       zone: zone(),
     },

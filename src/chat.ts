@@ -1,6 +1,10 @@
-import { CHAT_BUDGET_MS, DEFAULT_STEPS, runTurn, withEngineRules, type TurnInput, type TurnResult } from './agent';
+import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, runTurn, withEngineRules, type TurnInput, type TurnResult } from './agent';
+import { bootstrapDone, bootstrapMessage, shouldBootstrap } from './bootstrap';
+import { flushMemory } from './tools/memoryFlush';
 import { approvalCard, decisionFrom, issue, redeem, type Ticket, type TicketStore } from './approval';
 import type { Completion, Message, ToolDef } from './llm';
+import type { Skill } from './skills';
+import { skillsBlock } from './skills';
 import type { Tool, ToolCtx } from './tools/registry';
 import { redact } from './trace';
 import { canUse, type AgentSpec } from './workspace';
@@ -13,8 +17,8 @@ export type ChatEvent = {
   common?: { parameters?: Record<string, string> }; // CARD_CLICKED
 };
 export type AgentEntry = { folderId: string; name: string };
-/** Tools do agente neste turno; a memória só é lida quando ownerDm (spec §8). */
-export type Toolkit = { tools: Tool[]; ctx: ToolCtx; steps: number };
+/** Tools do agente neste turno; a memória só é lida quando ownerDm (spec §8). `skills` é só o índice: o corpo vem por read_skill. */
+export type Toolkit = { tools: Tool[]; ctx: ToolCtx; steps: number; skills?: Skill[]; bootstrap?: { read: () => string | null; consume: () => void } };
 /** `open(sessão)` = token de um `ask` aberto nessa conversa (a próxima mensagem responde). */
 export type Tickets = TicketStore & { open?: (session: string) => string | null };
 export type ChatReply = { text?: string; cardsV2?: unknown[]; actionResponse?: { type: 'UPDATE_MESSAGE' } };
@@ -33,6 +37,8 @@ export type ChatDeps = {
   clock?: () => number;
   budgetMs?: number; // padrão: 20 s do evento do Chat; a tela usa 300 s
   onTurn?: (turn: TurnResult) => void;
+  /** Compacta a sessão depois de salvar, se ela passou do teto (resumo + cauda). Sem isso, o histórico só é cortado. */
+  compact?: (key: string, llm: (messages: Message[]) => Completion) => void;
 };
 
 const NO_TOOLS: Toolkit = { tools: [], ctx: { now: () => '', ownerDm: false, memory: { read: () => '', write: () => {} } }, steps: DEFAULT_STEPS };
@@ -78,7 +84,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
           return reply('Resposta inválida para este pedido.');
         }
         ticket = r.ticket;
-        resume = { ...ticket.state, messages: [{ role: 'system', content: withEngineRules(spec.system, kit.tools.length > 0) }, ...ticket.state.messages], decision };
+        resume = { ...ticket.state, messages: [{ role: 'system', content: withEngineRules(spec.system + skillsBlock(kit.skills ?? []), kit.tools.length > 0) }, ...ticket.state.messages], decision };
       } else if (click) return reply(`Não dá para responder: ${r.error}.`);
       // ask aberto de outra pessoa: segue como mensagem comum
     }
@@ -86,12 +92,15 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
 
     const text = ticket?.text ?? typed;
     const history = d.history(hk); // na retomada também: mensagens trocadas enquanto a aprovação esperava não se perdem
+    // Ritual de estreia: só na 1ª conversa da DM do dono; entra como conteúdo da pasta, antes da fala do usuário.
+    const bootstrapMd = !resume && kit.bootstrap && ownerDm && history.length === 0 ? kit.bootstrap.read() : null;
+    const ritual = shouldBootstrap(bootstrapMd, history.length, ownerDm) ? [{ role: 'user' as const, content: bootstrapMessage(bootstrapMd ?? '') }] : [];
     const runId = ticket?.runId ?? e.message?.name ?? `${hk}:${start}`;
     const out = runTurn({
-      system: spec.system,
-      history,
+      system: spec.system + skillsBlock(kit.skills ?? []), // só nome e descrição das skills entram no prompt
+      history: [...ritual, ...history],
       text,
-      memory: ownerDm && !resume ? kit.ctx.memory.read() : undefined,
+      memory: ownerDm && !resume ? (kit.ctx.memory.recall?.() ?? kit.ctx.memory.read()) : undefined, // curada + notas de hoje e ontem
       tools: kit.tools,
       ctx: kit.ctx,
       llm: (m, defs) => d.llm(key, spec.config.model, m, defs),
@@ -111,7 +120,12 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
       d.tickets.put(t);
       return reply(out.text, approvalCard(t, out.text));
     }
+    // O ritual só é consumido quando cumpriu o papel (o agente gravou algo); senão, fica para a próxima conversa.
+    if (ritual.length && bootstrapDone(out.events.filter((ev) => ev.status === 'ok' || ev.status === 'approved').map((ev) => ev.name))) kit.bootstrap?.consume();
+    // Flush de memória antes de compactar: o que for durável vira nota do dia, para não se perder no corte do histórico.
+    if (ownerDm && out.history.length >= MAX_HISTORY && kit.ctx.memory.saveDay && kit.ctx.memory.today) flushMemory(out.history, kit.ctx, (m) => d.llm(key, spec.config.model, m));
     d.saveHistory(hk, out.history);
+    d.compact?.(hk, (m) => d.llm(key, spec.config.model, m)); // conversa longa vira resumo + cauda (sessões no Drive)
     return reply(out.text);
   } catch (err) {
     console.error('chat', redact(String((err as Error)?.stack ?? err))); // corpo de erro HTTP pode ecoar chave

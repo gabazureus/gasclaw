@@ -89,7 +89,7 @@ describe('memória (limites do Eve)', () => {
 describe('tools', () => {
   const run = (name: string, args: Record<string, unknown>, c = ctx()) => findTool(TOOLS, name)!.run(args, c);
   test('now devolve data e hora do contexto', () => expect(run('now', {})).toContain('2026-09-15T10:00'));
-  test('memory.save / read / remove sobre MEMORY.md', () => {
+  test('memory.save / read / remove sobre MEMORY.md (contexto sem notas do dia)', () => {
     const c = ctx();
     expect(run('memory.save', { text: 'prefiro reuniões às 10h' }, c)).toContain('salvo');
     expect(c.mem.text).toBe('- prefiro reuniões às 10h\n');
