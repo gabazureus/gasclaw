@@ -18,7 +18,12 @@ for (const n of names) if (!/^[a-z0-9-]+$/.test(n) || !existsSync(`evals/${n}.md
 const MAX_MD = 2048;
 for (const n of names) if (statSync(`evals/${n}.md`).size > MAX_MD) die(`evals/${n}.md passa de ${MAX_MD} bytes: encurte o cenário`);
 
-const token = execFileSync('gcloud', ['auth', 'print-access-token'], { encoding: 'utf8' }).trim();
+let token = '';
+try {
+  token = execFileSync('gcloud', ['auth', 'print-access-token'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+} catch {
+  die('login do gcloud expirado: rode `gcloud auth login --enable-gdrive-access` e tente de novo');
+}
 let failed = 0;
 for (const n of names) {
   // o token vai pelo stdin (-H @-): nunca aparece em `ps` nem na mensagem de erro
