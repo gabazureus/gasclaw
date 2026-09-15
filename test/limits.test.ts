@@ -56,6 +56,11 @@ describe('buildLimits', () => {
     const l = byId(buildLimits(input({ mail: { ok: false, error: 'Você não tem permissão para chamar MailApp.getRemainingDailyQuota. Permissões necessárias: https://www.googleapis.com/auth/script.send_mail' } })));
     expect(l.mail).toMatchObject({ status: 'pendente', level: 'sem limite' });
   });
+  test('403 por falta de faturamento no projeto GCP (Monitoring) é erro com nota clara, não "pendente" de autorização', () => {
+    const l = byId(buildLimits(input({ monitoring: { ok: false, error: 'monitoring 403: {"error":{"code":403,"message":"This API method requires billing to be enabled. Please enable billing on project #000000000001"}}' } })));
+    expect(l.monitoring).toMatchObject({ status: 'erro', level: 'sem limite' });
+    expect(l.monitoring.note).toMatch(/faturamento/);
+  });
   test('falha de uma fonte que já funcionava vira erro só nela', () => {
     const l = byId(buildLimits(input({ drive: { ok: false, error: 'Drive 500' } })));
     expect(l.drive).toMatchObject({ status: 'erro', note: 'Drive 500' });

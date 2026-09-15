@@ -56,6 +56,12 @@ describe('consentimento granular: a falta de escopo precisa virar pedido de auto
     expect(calls[0]).toBe('requireAllScopes:FULL');
     expect(calls).toContain('createTrigger');
   });
+  test('authorize com a autorização já concedida cria o gatilho sem chamar requireAllScopes (que encerraria a execução)', async () => {
+    status = 'NOT_REQUIRED';
+    const { authorize } = await main();
+    expect(authorize()).toBe('ok');
+    expect(calls).toEqual(['createTrigger']);
+  });
   test('authorize é só do dono', async () => {
     me = 'outra@x.com';
     const { authorize } = await main();

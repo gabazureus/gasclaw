@@ -161,7 +161,7 @@ export function triggerStatus(fresh = false): TriggerStatus {
   } catch {
     s = 'aguardando autorização';
   }
-  cache().put('obs:trigger', s, 600);
+  cache().put('obs:trigger', s, 60); // 60 s: com 600 s a tela mostrou "aguardando autorização" depois de autorizado
   return s;
 }
 
@@ -289,7 +289,7 @@ export function limitsNow(apiKey: string | null, fresh = false): { items: LimitI
     monitoring: read(monitoringToday),
     triggers: read(() => ScriptApp.getProjectTriggers().length),
   });
-  const out = { items, at: now, trigger: triggerStatus() };
+  const out = { items, at: now, trigger: triggerStatus(fresh) }; // "ler de novo agora" também relê o gatilho
   cache().put('obs:limits', JSON.stringify(out), 600);
   return { ...out, cached: false };
 }
