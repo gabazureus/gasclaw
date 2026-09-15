@@ -2,6 +2,7 @@ import { CHAT_BUDGET_MS, DEFAULT_STEPS, runTurn, type TurnInput, type TurnResult
 import { approvalCard, decisionFrom, issue, redeem, type Ticket, type TicketStore } from './approval';
 import type { Completion, Message, ToolDef } from './llm';
 import type { Tool, ToolCtx } from './tools/registry';
+import { redact } from './trace';
 import { canUse, type AgentSpec } from './workspace';
 
 export type ChatEvent = {
@@ -110,7 +111,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
     d.saveHistory(hk, out.history);
     return reply(out.text);
   } catch (err) {
-    console.error('chat', err);
+    console.error('chat', redact(String((err as Error)?.stack ?? err))); // corpo de erro HTTP pode ecoar chave
     return reply(`Não consegui responder agora: ${(err as Error).message}`);
   }
 }
