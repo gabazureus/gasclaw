@@ -58,9 +58,15 @@ lock_dev() { # lock local exclusivo para publicar/medir (duas pistas no mesmo de
   trap 'rm -rf .tmp/dev.lock' EXIT
 }
 
-clasp_() {
-  printf '{"scriptId":"%s","rootDir":"%s","projectId":"%s"}\n' "$(var "SCRIPT_ID_$UP")" "${CLASP_ROOT:-dist}" "$(var "GCP_PROJECT_$UP")" > .clasp.json
-  npx --no-install clasp "$@"
+clasp_() { # diretório de projeto privado por chamada: nenhum comando compartilha (nem reescreve) o .clasp.json da raiz
+  local dir root="${CLASP_ROOT:-dist}" rc=0
+  case "$root" in /*) ;; *) root="$PWD/$root" ;; esac
+  mkdir -p .tmp
+  dir=$(mktemp -d "$PWD/.tmp/clasp.XXXXXX")
+  printf '{"scriptId":"%s","rootDir":"%s","projectId":"%s"}\n' "$(var "SCRIPT_ID_$UP")" "$root" "$(var "GCP_PROJECT_$UP")" > "$dir/.clasp.json"
+  (cd "$dir" && npx --no-install clasp "$@") || rc=$?
+  rm -rf "$dir"
+  return "$rc"
 }
 url() { printf 'https://script.google.com/a/macros/%s/s/%s/exec' "${DOMAIN:-}" "$(var "DEPLOY_ID_$UP")"; }
 remote() {
