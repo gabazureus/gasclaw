@@ -70,6 +70,19 @@ modelo como resultado de tool e o turno seguiu (nenhuma exceção). Nenhum dado 
 cenários que falharam a criação recebeu 403 antes de criar. **Pendente:** ativar `calendar-json.googleapis.com`
 e `gmail.googleapis.com` no `ensure_gcp` do `./gasclaw` e repetir os 4 cenários.
 
+**2ª execução (após ativar as duas APIs, 2 min de propagação, esperando o lock de outra pista):**
+
+| Eval | Resultado | Tempo | Observação |
+|---|---|---|---|
+| e6-freebusy | ✅ | 2,1 s | a Calendar API responde (o 403 sumiu) |
+| e6-agenda | ❌ transporte | — | a CLI recebeu HTTP 404 do web app; não chegou relatório |
+| e6-gmail-rascunho | ❌ transporte | — | a CLI recebeu HTTP 302; não chegou relatório |
+| e6-injecao | ❌ transporte | — | a CLI recebeu HTTP 404; não chegou relatório |
+
+As 3 falhas não são das ferramentas nem do escopo: a resposta do web app se perdeu no transporte. Pendente:
+repetir só esses 3 com o web app estável e confirmar a limpeza pelo relatório. A limpeza roda no servidor,
+dentro do mesmo eval, então não depende de a resposta chegar à CLI.
+
 ## Consequências
 - **Mudança para quem usa (CHANGELOG):** as ferramentas do Google (agenda, Gmail, contatos, tarefas, Drive/Docs/Sheets) funcionam só para o dono do gasclaw. Pessoas aprovadas no painel continuam conversando com o agente, mas pedidos delas que usem essas ferramentas são recusados.
 - O trace registra cada `tool_call` pelo wrapper do `main.ts` (Pista Observabilidade); o `main.ts` passa `google`, `timeZone` e `offset` no contexto das tools.
