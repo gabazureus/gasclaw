@@ -3,7 +3,7 @@ import type { Ticket } from '../src/approval';
 import { handleChat, type ChatDeps, type ChatEvent, type Tickets } from '../src/chat';
 import type { Completion, Message } from '../src/llm';
 import { allowedTools } from '../src/tools/registry';
-import { buildSpec } from '../src/workspace';
+import { buildSpec, withAccess } from '../src/workspace';
 
 function deps(over: Partial<ChatDeps> = {}): ChatDeps & { saved: Record<string, Message[]> } {
   const saved: Record<string, Message[]> = {};
@@ -13,7 +13,7 @@ function deps(over: Partial<ChatDeps> = {}): ChatDeps & { saved: Record<string, 
     owner: () => 'dono@x.com',
     apiKey: () => 'sk',
     defaultAgent: () => ({ folderId: 'f1', name: 'A' }),
-    load: () => buildSpec('f1', 'A', { AGENTS: '---\nusers: [ana@x.com]\n---\nRegras' }),
+    load: () => withAccess(buildSpec('f1', 'A', { AGENTS: '---\nusers: [ana@x.com]\n---\nRegras' }), { users: ['ana@x.com'], tools: [] }),
     history: () => [],
     saveHistory: (k, h) => {
       saved[k] = h;
@@ -45,6 +45,11 @@ describe('handleChat', () => {
     const r = handleChat(msg('bob@x.com'), deps({ llm: () => ((called = true), { text: 'x' }) }));
     expect(r.text).toContain('não tem acesso');
     expect(called).toBe(false);
+  });
+  test('users só sugerido pela pasta, sem aprovação no painel: recusado (ADR-021)', () => {
+    const r = handleChat(msg('ana@x.com'), deps({ load: () => buildSpec('f1', 'A', { AGENTS: '---\nusers: [ana@x.com]\n---\nRegras' }) }));
+    expect(r.text).toContain('não tem acesso');
+    expect(handleChat(msg('dono@x.com'), deps({ load: () => buildSpec('f1', 'A', { AGENTS: '---\nusers: [ana@x.com]\n---\nRegras' }) })).text).toBe('olá');
   });
   test('kill switch desligado', () => expect(handleChat(msg('ana@x.com'), deps({ enabled: () => false })).text).toContain('pausado'));
   test('sem agente configurado', () => expect(handleChat(msg('dono@x.com'), deps({ defaultAgent: () => null })).text).toContain('Nenhum agente'));

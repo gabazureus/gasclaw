@@ -53,7 +53,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
   if (!key) return reply('Falta a chave do OpenRouter. Cole-a na tela gasclaw.');
   try {
     const spec = d.load(entry.folderId);
-    if (!canUse(spec.config, e.user.email, d.owner())) return reply(`Você (${e.user.email}) não tem acesso ao agente ${spec.name}.`);
+    if (!canUse(spec.access, e.user.email, d.owner())) return reply(`Você (${e.user.email}) não tem acesso ao agente ${spec.name}.`); // acesso aprovado no painel (ADR-021)
     const hk = `${entry.folderId}:${e.space.name}`;
     const ownerDm = isOwnerDm(e, d.owner());
     const kit = d.toolkit?.(spec, ownerDm) ?? NO_TOOLS;

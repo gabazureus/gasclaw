@@ -4,7 +4,7 @@ import type { Ticket } from '../src/approval';
 import type { Tickets } from '../src/chat';
 import { runEval, type EvalEnv } from '../src/evalEntry';
 import type { Completion, Message, ToolDef } from '../src/llm';
-import { buildSpec } from '../src/workspace';
+import { buildSpec, withAccess } from '../src/workspace';
 
 function env(llm: EvalEnv['llm'], over: Partial<EvalEnv> = {}) {
   const mem = { text: '- velho\n' };
@@ -12,7 +12,7 @@ function env(llm: EvalEnv['llm'], over: Partial<EvalEnv> = {}) {
   const e: EvalEnv = {
     owner: 'dono@x.com',
     apiKey: 'sk-or-x',
-    agent: () => buildSpec('f', 'eval', { AGENTS: '---\ntools: [now]\n---\nRegras' }),
+    agent: () => withAccess(buildSpec('f', 'eval', { AGENTS: '---\ntools: [now]\n---\nRegras' }), { users: [], tools: ['now'] }),
     folderId: 'f',
     memory: { read: () => mem.text, write: (x) => void (mem.text = x) },
     now: () => '2026-09-15T10:00',
@@ -61,7 +61,7 @@ describe('runEval', () => {
 
   test('sem steps no cenário, vale o steps do agente (igual à produção)', () => {
     const loop = (): Completion => ({ text: '', toolCalls: [{ id: 'c', type: 'function', function: { name: 'now', arguments: '{}' } }] });
-    const { e } = env(loop, { agent: () => buildSpec('f', 'eval', { AGENTS: '---\ntools: [now]\nsteps: 1\n---\nRegras' }) });
+    const { e } = env(loop, { agent: () => withAccess(buildSpec('f', 'eval', { AGENTS: '---\ntools: [now]\nsteps: 1\n---\nRegras' }), { users: [], tools: ['now'] }) });
     const r = runEval('---\nname: t\n---\n## turnos\n- a\n## verificações\n- includes: limite\n', e);
     expect(r.replies[0]).toContain('limite de 1 passos');
   });

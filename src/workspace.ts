@@ -1,8 +1,21 @@
 import { exportProject, fetchTexts, listFolder } from './drive';
 import { TEMPLATES } from './templates';
+import { allowedTools } from './tools/registry';
 
-export type AgentConfig = { model: string; users: string[]; tools: string[]; steps?: number };
-export type AgentSpec = { folderId: string; name: string; config: AgentConfig; system: string };
+/** Acesso de um agente: e-mails além do dono e entradas da allowlist de tools ('now', 'memory' = memory.*, 'ask'). */
+export type Access = { users: string[]; tools: string[] };
+/** users/tools lidos da pasta, do editor ou da planilha config são SÓ sugestão (ADR-021). */
+export type AgentConfig = {
+  model: string;
+  steps?: number;
+  suggested: Access;
+  /** @deprecated cópia da sugestão, só até o main.ts usar spec.access (ADR-021); nunca use para dar acesso */
+  users: string[];
+  /** @deprecated idem */
+  tools: string[];
+};
+/** access = acesso EFETIVO: nasce fechado (só o dono, zero tools) até withAccess com o que o dono aprovou no painel. */
+export type AgentSpec = { folderId: string; name: string; config: AgentConfig; system: string; access: Access };
 
 export const ROLES = ['AGENTS', 'SOUL', 'IDENTITY', 'USER'] as const;
 export type Role = (typeof ROLES)[number];
@@ -107,7 +120,7 @@ export function mergeConfig(frontmatter: Record<string, string | string[]>, rows
   const tools = Array.isArray(data.tools) ? data.tools : []; // padrão seguro: agente sem tools
   const n = Number(data.steps);
   const steps = Number.isInteger(n) && n >= 1 && n <= 50 ? n : undefined;
-  return { model, users, tools, ...(steps === undefined ? {} : { steps }) };
+  return { model, suggested: { users, tools }, users, tools, ...(steps === undefined ? {} : { steps }) };
 }
 
 export function buildSpec(folderId: string, name: string, texts: Partial<Record<Role, string>>, configRows?: string[][]): AgentSpec {
@@ -120,12 +133,45 @@ export function buildSpec(folderId: string, name: string, texts: Partial<Record<
     total += cut.length;
     return `## ${r}.md\n${cut}`;
   });
-  return { folderId, name, config: mergeConfig(data, configRows), system: parts.join('\n\n') };
+  return { folderId, name, config: mergeConfig(data, configRows), system: parts.join('\n\n'), access: effectiveAccess(null) };
 }
 
-export function canUse(config: AgentConfig, email: string, owner: string): boolean {
+const uniq = (xs: string[]) => [...new Set(xs)];
+
+/** Efetivo = só o que o dono aprovou: users minúsculos sem duplicata; tools que existem no registry (nome ou grupo). Sem aprovação: fechado. */
+export function effectiveAccess(approved: Access | null | undefined): Access {
+  if (!approved) return { users: [], tools: [] };
+  return {
+    users: uniq(approved.users.map((u) => u.trim().toLowerCase()).filter(Boolean)),
+    tools: uniq(approved.tools.filter((t) => allowedTools([t]).length > 0)),
+  };
+}
+
+/** Recalcula o acesso efetivo do agente a partir do aprovado (ACCESS:<folderId>, lido pela borda). */
+export const withAccess = <T extends AgentSpec>(spec: T, approved: Access | null | undefined): T => ({ ...spec, access: effectiveAccess(approved) });
+
+/** Valor de ACCESS:<folderId> (JSON). Ausente, inválido ou com tipo errado → null (fail closed). */
+export function parseAccess(raw: string | null | undefined): Access | null {
+  if (!raw) return null;
+  const strings = (x: unknown): x is string[] => Array.isArray(x) && x.every((s) => typeof s === 'string');
+  try {
+    const o = JSON.parse(raw) as { users?: unknown; tools?: unknown } | null;
+    return o && strings(o.users) && strings(o.tools) ? effectiveAccess({ users: o.users, tools: o.tools }) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** O que a pasta sugere e ainda não foi aprovado (lista "sugerido pela pasta" do painel). */
+export function pendingSuggestions(suggested: Access, approved: Access | null | undefined): Access {
+  const a = effectiveAccess(approved);
+  return { users: suggested.users.filter((u) => !a.users.includes(u)), tools: suggested.tools.filter((t) => !a.tools.includes(t)) };
+}
+
+/** Dono sempre pode; os outros só se estiverem no acesso efetivo. */
+export function canUse(access: Access, email: string, owner: string): boolean {
   const e = email.toLowerCase();
-  return e === owner.toLowerCase() || config.users.includes(e);
+  return e === owner.toLowerCase() || access.users.includes(e);
 }
 
 export type Origin = Source['kind'] | 'missing';
