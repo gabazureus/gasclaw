@@ -1,7 +1,7 @@
 // Observabilidade (ADR-014 lote, ADR-016 limites, ADR-018 uso), borda. Leituras NUNCA lançam: cada fonte vira {ok|erro}.
 // Sem escopo novo nesta etapa: gatilho, processes, MailApp e Monitoring só funcionam depois da reautorização (ADR-015).
 import { multipartBody } from './drive';
-import { drainBody, QUEUE_PREFIX, queueEntry, shouldDrain, splitQueue, type QueueEntry } from './batch';
+import { drainBody, QUEUE_PREFIX, queueEntry, settle, shouldDrain, splitQueue, type QueueEntry } from './batch';
 import { buildLimits, type LimitItem, type Read } from './limits';
 import { keyInfo, keyCallsLast30min } from './models';
 import { cleanupRunsDaily, ensureRunStore } from './runlog';
@@ -94,12 +94,15 @@ export function drain(max = 200): DrainResult {
     const entries = splitQueue(props().getProperties()).slice(0, max);
     if (!entries.length) return record({ drained: 0, ms: Date.now() - t0, rows: true, json: 0 });
     const store = ensureRunStore();
+    const fresh = entries.filter((e) => !e.rowDone); // quem só espera o JSON não repete linha nem uso
     // 1) todas as linhas numa chamada só
-    const rowsRes = UrlFetchApp.fetch(`${SHEETS}/${store.sheetId}/values/A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
-      method: 'post', contentType: 'application/json', payload: JSON.stringify({ values: entries.map((e) => e.row) }), headers: auth(), muteHttpExceptions: true,
-    });
-    const rows = rowsRes.getResponseCode() < 300;
-    if (!rows) throw new Error(`planilha ${rowsRes.getResponseCode()}: ${rowsRes.getContentText().slice(0, 200)}`); // fila fica para a próxima vez
+    if (fresh.length) {
+      const rowsRes = UrlFetchApp.fetch(`${SHEETS}/${store.sheetId}/values/A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
+        method: 'post', contentType: 'application/json', payload: JSON.stringify({ values: fresh.map((e) => e.row) }), headers: auth(), muteHttpExceptions: true,
+      });
+      if (rowsRes.getResponseCode() >= 300) throw new Error(`planilha ${rowsRes.getResponseCode()}: ${rowsRes.getContentText().slice(0, 200)}`); // fila fica para a próxima vez
+    }
+    const rows = true;
     // 2) JSON completos em paralelo (o do cache; se expirou, a entrada da fila)
     const fulls = cache().getAll(entries.map((e) => `qjson:${e.id}`));
     const res = UrlFetchApp.fetchAll(entries.map((e) => {
@@ -110,20 +113,22 @@ export function drain(max = 200): DrainResult {
     // 3) uso por modelo + contagem de runs por dia
     const p = props().getProperties();
     let u = loadUsage(p);
-    u = prune(fold(u, entries.flatMap((e) => e.recs)), Date.now());
+    u = prune(fold(u, fresh.flatMap((e) => e.recs)), Date.now());
     const runs: Record<string, { n: number; longest: number }> = {};
-    for (const e of entries) {
+    for (const e of fresh) {
       const day = dayKey(e.at);
       const r = (runs[day] ??= JSON.parse(p[`USAGE:r:${day}`] ?? '{"n":0,"longest":0}'));
       r.n += 1;
       r.longest = Math.max(r.longest, Number(e.row[6]) || 0);
     }
     saveUsage(u, runs);
-    for (const e of entries) props().deleteProperty(`${QUEUE_PREFIX}${e.id}`);
-    cache().removeAll(['obs:props', ...entries.map((e) => `qjson:${e.id}`)]);
+    const done = settle(entries, res.map((r) => r.getResponseCode()));
+    for (const id of done.remove) props().deleteProperty(`${QUEUE_PREFIX}${id}`);
+    for (const e of done.retry) props().setProperty(`${QUEUE_PREFIX}${e.id}`, JSON.stringify(e)); // o JSON volta na próxima drenagem
+    cache().removeAll(['obs:props', ...done.remove.map((id) => `qjson:${id}`)]);
     dailyLimitsRow(store.sheetId);
     cleanupRunsDaily();
-    return record({ drained: entries.length, ms: Date.now() - t0, rows, json: res.filter((r) => r.getResponseCode() < 300).length });
+    return record({ drained: entries.length, ms: Date.now() - t0, rows, json: entries.length - done.retry.length });
   } catch (err) {
     console.warn(`observe drain: ${msg(err)}`);
     return record({ drained: 0, ms: Date.now() - t0, rows: false, json: 0, skipped: msg(err) });

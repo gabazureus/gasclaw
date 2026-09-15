@@ -4,7 +4,21 @@ import { redact, summaryRow, type Run } from './trace';
 import { recordsOf, type Rec } from './usage';
 
 export const QUEUE_PREFIX = 'Q:';
-export type QueueEntry = { id: string; at: number; row: (string | number)[]; recs: Rec[] };
+/** `rowDone`: linha e uso já gravados; falta só o JSON (tentativa `tries`). */
+export type QueueEntry = { id: string; at: number; row: (string | number)[]; recs: Rec[]; rowDone?: boolean; tries?: number };
+const JSON_TRIES = 3;
+
+/** Depois do lote: sai da fila quem gravou o JSON (ou esgotou as tentativas); o resto volta só para o JSON. */
+export function settle(entries: QueueEntry[], codes: number[]): { remove: string[]; retry: QueueEntry[] } {
+  const remove: string[] = [];
+  const retry: QueueEntry[] = [];
+  entries.forEach((e, i) => {
+    const tries = (e.tries ?? 0) + 1;
+    if (codes[i] < 300 || tries >= JSON_TRIES) remove.push(e.id);
+    else retry.push({ ...e, rowDone: true, recs: [], tries });
+  });
+  return { remove, retry };
+}
 
 export function queueEntry(run: Run): QueueEntry {
   return { id: run.id, at: run.endedAt ?? run.startedAt, row: summaryRow(run), recs: recordsOf(redact(run)) };

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { drainBody, QUEUE_PREFIX, queueEntry, shouldDrain, splitQueue } from '../src/batch';
+import { drainBody, QUEUE_PREFIX, queueEntry, settle, shouldDrain, splitQueue } from '../src/batch';
 import { finish, span, startRun } from '../src/trace';
 
 const T0 = Date.UTC(2026, 8, 15, 12, 0);
@@ -41,6 +41,20 @@ describe('drainBody: nenhum run se perde quando o cache expira', () => {
     const body = JSON.parse(drainBody(e, undefined));
     expect(body).toMatchObject({ id: 'r1', row: e.row, recs: e.recs });
     expect(body.nota).toMatch(/expirou/);
+  });
+});
+
+describe('settle: o JSON que falhou no upload fica na fila, sem duplicar linha nem uso', () => {
+  test('upload ok sai da fila; upload com erro volta só para o JSON (linha e uso já gravados)', () => {
+    const a = { ...queueEntry(run()), id: 'a' };
+    const b = { ...queueEntry(run()), id: 'b' };
+    const s = settle([a, b], [200, 503]);
+    expect(s.remove).toEqual(['a']);
+    expect(s.retry).toEqual([{ ...b, rowDone: true, recs: [], tries: 1 }]);
+  });
+  test('depois de 3 tentativas desiste do JSON (a linha e o uso continuam gravados)', () => {
+    const e = { ...queueEntry(run()), rowDone: true, recs: [], tries: 2 };
+    expect(settle([e], [500])).toEqual({ remove: ['r1'], retry: [] });
   });
 });
 
