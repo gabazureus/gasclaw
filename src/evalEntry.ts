@@ -93,7 +93,7 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
       // O mesmo caminho da tela de chat (chatSend/chatClick).
       reply = (click ? webClick(d, env.owner, params) : webSend(d, env.owner, text)).text ?? '';
     } else {
-      const space = { name: 'spaces/gasclaw-eval', singleUserBotDm: true };
+      const space = { name: `spaces/gasclaw-eval-${t0}`, singleUserBotDm: true }; // um espaço por execução: ask aberto de um eval não vaza para o próximo
       const event: ChatEvent = click
         ? { type: 'CARD_CLICKED', user: { email: env.owner }, space, common: { parameters: params } }
         : { type: 'MESSAGE', message: { text }, user: { email: env.owner }, space };

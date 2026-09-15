@@ -1,5 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
+import type { Ticket } from '../src/approval';
+import type { Tickets } from '../src/chat';
 import { runEval, type EvalEnv } from '../src/evalEntry';
 import type { Completion, Message, ToolDef } from '../src/llm';
 import { buildSpec } from '../src/workspace';
@@ -62,6 +64,26 @@ describe('runEval', () => {
     const { e } = env(loop, { agent: () => buildSpec('f', 'eval', { AGENTS: '---\ntools: [now]\nsteps: 1\n---\nRegras' }) });
     const r = runEval('---\nname: t\n---\n## turnos\n- a\n## verificações\n- includes: limite\n', e);
     expect(r.replies[0]).toContain('limite de 1 passos');
+  });
+
+  test('dois evals seguidos não se misturam: um ask aberto no primeiro não engole o 1º turno do segundo', () => {
+    const data = new Map<string, Ticket>();
+    const tickets: Tickets = {
+      put: (t) => void data.set(t.token, t),
+      take: (k) => {
+        const t = data.get(k) ?? null;
+        data.delete(k);
+        return t;
+      },
+      open: (s) => [...data.values()].find((t) => t.session === s && t.pending.kind === 'ask')?.token ?? null,
+    };
+    const ask = '---\nname: a\ntools: [ask]\n---\n## turnos\n- oi\n## roteiro\n- tool: ask {"question":"cor?","options":"azul,verde"}\n## verificações\n- includes: cor\n';
+    runEval(ask, env(() => ({ text: 'x' }), { apiKey: null, tickets }).e);
+    expect(data.size).toBe(1);
+    let t = 1000;
+    const second = env(() => ({ text: 'x' }), { apiKey: null, tickets, clock: () => (t += 5) }).e;
+    runEval('---\nname: b\n---\n## turnos\n- azul\n## roteiro\n- texto: ok\n## verificações\n- includes: ok\n', second);
+    expect(data.size).toBe(1); // o ask do primeiro eval continua lá, intocado
   });
 
   test('sem chave e sem roteiro: erro claro', () => {
