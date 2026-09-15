@@ -30,7 +30,7 @@ export const shouldDrain = (oldestAt: number | null, now: number, triggerActive:
 
 /** Corpo do JSON do run no Drive: o completo do cache; se expirou, a própria entrada da fila (linha e uso não se perdem). */
 export const drainBody = (e: QueueEntry, full: string | undefined): string =>
-  full ?? JSON.stringify({ ...e, nota: 'JSON completo expirou no cache; só a linha e o uso' });
+  full ?? JSON.stringify({ ...e, kind: e.row[2], status: e.row[4], ms: e.row[6], spans: [], nota: 'JSON completo expirou no cache; só a linha e o uso' }); // formato de Run: o detalhe abre
 
 export function splitQueue(props: Record<string, string>): QueueEntry[] {
   return Object.entries(props)

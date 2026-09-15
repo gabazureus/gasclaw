@@ -79,7 +79,8 @@ export function summaryRow(run: Run): (string | number)[] {
 export function renderTree(run: Run): string {
   const r = redact(run);
   const head = `${r.id} · ${r.kind} · ${r.status} · ${r.ms ?? '…'} ms${r.agent ? ` · ${r.agent}` : ''}`;
-  const lines = r.spans.map((s, i) => {
+  const spans = r.spans ?? []; // JSON de reserva antigo do lote não tem spans
+  const lines = spans.map((s, i) => {
     const d = s.data ?? {};
     const extra = [
       d.model ? String(d.model) : '',
