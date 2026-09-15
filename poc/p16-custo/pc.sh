@@ -2,7 +2,7 @@
 P16=poc/p16-custo
 T=.tmp/p16
 rm -rf "$T"; mkdir -p "$T"
-step() { remote "poc&id=p16&step=$1&trace=0$2" > "$T/$1.json" || die "P16 $1 falhou"; }
+step() { remote "poc&id=p16&step=$1&trace=0${2:-}" > "$T/$1.json" || die "P16 $1 falhou"; } # ${2:-}: com set -u, $2 vazio abortava a POC
 
 say "P16 1/4 publica o dev"
 deploy

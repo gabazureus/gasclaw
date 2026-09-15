@@ -19,6 +19,17 @@ describe('summarizeP15', () => {
     p.read.pendentesForaDaReautorizacao = ['drive'];
     expect(summarizeP15(p).c1.pass).toBe(false);
   });
+  test('C1: Monitoring indisponível por faturamento (decisão do usuário) não reprova; outro erro reprova', () => {
+    const o = obs();
+    o.read.itens = o.read.itens.map((i) => (i.id === 'monitoring' ? { ...i, status: 'erro', note: 'precisa de faturamento ativo no projeto do Google Cloud (decisão sua)' } : i));
+    o.read.erros = ['monitoring'];
+    const s = summarizeP15(o);
+    expect(s.c1.pass).toBe(true);
+    expect(s.c1.indisponiveisPorDecisao).toEqual(['monitoring']);
+    o.read.itens = o.read.itens.map((i) => (i.id === 'drive' ? { ...i, status: 'erro', note: 'Drive 500' } : i));
+    o.read.erros = ['monitoring', 'drive'];
+    expect(summarizeP15(o).c1.pass).toBe(false);
+  });
   test('C2 falha com leitura em cache ≥ 1 s', () => {
     const o = obs();
     o.read.cachedMaxMs = 1000;

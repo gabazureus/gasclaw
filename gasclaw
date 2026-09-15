@@ -363,8 +363,9 @@ cmd_poc() { # POCs automáticas, só no dev: cria fixtures, mede e sai ≠ 0 se 
   local hook
   hook=$(ls poc/"$id"-*/pc.sh 2>/dev/null | head -1 || true)
   if [ -n "$hook" ]; then # POC com etapas no PC (clasp): pc.sh (tudo) ou <etapa>.sh orquestra e decide o exit
-    if [ -z "$step" ]; then . "./$hook"; return; fi
-    if [ -f "${hook%pc.sh}$step.sh" ]; then . "./${hook%pc.sh}$step.sh"; return; fi
+    # subshell + die: no bash 3.2, erro implícito do hook (ex.: set -u) com o trap do lock_dev saía com 0 (a P16 "passou" sem medir)
+    if [ -z "$step" ]; then ( . "./$hook" ) || die "POC $id falhou (veja a saída acima)"; return 0; fi
+    if [ -f "${hook%pc.sh}$step.sh" ]; then ( . "./${hook%pc.sh}$step.sh" ) || die "POC $id $step falhou (veja a saída acima)"; return 0; fi
   fi
   say "POC $id no dev (pode levar alguns minutos)"
   r=$(remote "poc&id=$id${step:+&step=$step}") || die "chamada ao web app falhou (rode ./gasclaw doctor)"
