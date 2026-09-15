@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { loadUsage, usageProps, type Bucket, type Usage } from '../src/usage';
+import { dayKey, loadUsage, usageProps, type Bucket, type Usage } from '../src/usage';
 
 const NOW = Date.UTC(2026, 8, 30, 12);
 const bucket = (n: number): Bucket => Object.fromEntries(Array.from({ length: n }, (_, i) => [`provedor-${i}/modelo-bem-comprido-${i}:free`, { req: 123, tok: 456789, cost: 0.12345678 }]));
@@ -25,4 +25,16 @@ describe('usageProps: uso em Script Properties sem estourar 9 KB por valor', () 
     expect(out['USAGE:r:2026-09-30']).toBe('{"n":2,"longest":9}');
     expect(Object.keys(old).filter((k) => !(k in out))).toEqual(['USAGE:r:2026-01-01', 'USAGE:d:2026-01']);
   });
+
+  test('uma parte corrompida não derruba a leitura do resto do uso', () => {
+    const u = loadUsage({ 'USAGE:h:2026-09-15': '{quebrado', 'USAGE:m': '{"2026-09-15T10:00":2}' });
+    expect(u.m).toEqual({ '2026-09-15T10:00': 2 });
+    expect(u.h).toEqual({});
+  });
+});
+
+test('dia de São Paulo vira às 03:00 UTC (01:30 UTC ainda é o dia anterior em SP)', () => {
+  expect(dayKey(Date.UTC(2026, 8, 15, 1, 30), 'sp')).toBe('2026-09-14');
+  expect(dayKey(Date.UTC(2026, 8, 15, 3, 0), 'sp')).toBe('2026-09-15');
+  expect(dayKey(Date.UTC(2026, 8, 15, 1, 30), 'utc')).toBe('2026-09-15');
 });

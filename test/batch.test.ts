@@ -67,3 +67,8 @@ test('splitQueue: só as Properties da fila, ordenadas da mais antiga para a mai
   };
   expect(splitQueue(props).map((e) => e.id)).toEqual(['a', 'b']);
 });
+
+test('splitQueue: uma entrada corrompida não trava a fila (as outras seguem)', () => {
+  const props = { [`${QUEUE_PREFIX}ruim`]: '{quebrado', [`${QUEUE_PREFIX}a`]: JSON.stringify({ id: 'a', at: 1, row: [], recs: [] }) };
+  expect(splitQueue(props).map((e) => e.id)).toEqual(['a']);
+});

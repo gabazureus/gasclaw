@@ -35,6 +35,13 @@ export const drainBody = (e: QueueEntry, full: string | undefined): string =>
 export function splitQueue(props: Record<string, string>): QueueEntry[] {
   return Object.entries(props)
     .filter(([k]) => k.startsWith(QUEUE_PREFIX))
-    .map(([, v]) => JSON.parse(v) as QueueEntry)
+    .flatMap(([k, v]) => {
+      try {
+        return [JSON.parse(v) as QueueEntry];
+      } catch {
+        console.warn(`fila: entrada ${k} corrompida, ignorada`); // uma entrada ruim não trava a fila inteira
+        return [];
+      }
+    })
     .sort((a, b) => a.at - b.at);
 }

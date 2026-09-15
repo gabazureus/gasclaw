@@ -28,9 +28,13 @@ const PROP_MAX = 8_000; // Script Properties: 9 KB por valor
 export function loadUsage(p: Record<string, string>): Usage {
   const u = emptyUsage();
   for (const [k, v] of Object.entries(p)) {
-    if (k.startsWith('USAGE:h:')) Object.assign(u.h, JSON.parse(v));
-    if (k.startsWith('USAGE:d:')) Object.assign(u.d, JSON.parse(v));
-    if (k === 'USAGE:m') Object.assign(u.m, JSON.parse(v));
+    const target = k.startsWith('USAGE:h:') ? u.h : k.startsWith('USAGE:d:') ? u.d : k === 'USAGE:m' ? u.m : null;
+    if (!target) continue;
+    try {
+      Object.assign(target, JSON.parse(v));
+    } catch {
+      console.warn(`uso: Property ${k} corrompida, ignorada`); // não trava o lote nem o painel
+    }
   }
   return u;
 }
