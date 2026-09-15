@@ -1,7 +1,7 @@
 // ./gasclaw eval [cenário...|--all] → roda evals/*.md no web app do dev (action=eval) e sai ≠ 0 se algum falhar.
 // Uso direto: node scripts/eval.mjs <url do web app> [cenário...|--all] [--model <id>]
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 
 const [url, ...rest] = process.argv.slice(2);
 const die = (m) => (console.error(`✗ ${m}`), process.exit(2));
@@ -11,9 +11,12 @@ const model = mi >= 0 ? rest[mi + 1] : '';
 if (mi >= 0 && !/^[\w./:-]+$/.test(model ?? '')) die('--model inválido');
 const args = mi >= 0 ? rest.filter((_, i) => i !== mi && i !== mi + 1) : rest;
 const all = readdirSync('evals').filter((f) => f.endsWith('.md') && f !== 'README.md').map((f) => f.slice(0, -3)).sort();
-const names = args.includes('--all') ? all : args;
+// cenário com `offline: true` roda só no npm test (ferramenta simulada); fica fora do --all e é recusado por nome
+const offline = (n) => /^offline:\s*true\s*$/m.test(readFileSync(`evals/${n}.md`, 'utf8'));
+const names = args.includes('--all') ? all.filter((n) => !offline(n)) : args;
 if (!names.length) die(`diga o cenário ou --all. Cenários: ${all.join(', ')}`);
 for (const n of names) if (!/^[a-z0-9-]+$/.test(n) || !existsSync(`evals/${n}.md`)) die(`cenário desconhecido: ${n} (existem: ${all.join(', ')})`);
+for (const n of names) if (offline(n)) die(`${n} é offline (ferramenta simulada): roda no npm test, não no dev`);
 // o cenário vai no corpo do POST (M1); o teto de 2 KB fica para os cenários continuarem curtos e legíveis.
 const MAX_MD = 2048;
 for (const n of names) if (statSync(`evals/${n}.md`).size > MAX_MD) die(`evals/${n}.md passa de ${MAX_MD} bytes: encurte o cenário`);

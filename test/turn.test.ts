@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { runTurn, type TurnInput } from '../src/agent';
+import { ENGINE_RULES, runTurn, type TurnInput } from '../src/agent';
 import type { Completion, Message, ToolDef } from '../src/llm';
 import { allowedTools, findTool, TOOLS, type Tool } from '../src/tools/registry';
 
@@ -39,7 +39,7 @@ describe('runTurn', () => {
     expect(r.text).toBe('olá');
     expect(r.events).toEqual([]);
     expect(sent).toHaveLength(1);
-    expect(sent[0].messages).toEqual([{ role: 'system', content: 'SYS' }, { role: 'user', content: 'oi' }]);
+    expect(sent[0].messages).toEqual([{ role: 'system', content: `SYS${ENGINE_RULES}` }, { role: 'user', content: 'oi' }]);
     expect(sent[0].tools.map((d) => d.function.name)).toEqual(['now', 'memory_save', 'memory_remove', 'memory_read']);
     expect(r.history).toEqual([{ role: 'user', content: 'oi' }, { role: 'assistant', content: 'olá' }]);
   });
@@ -81,8 +81,8 @@ describe('runTurn', () => {
     const { i } = input([ask(call('c1', 'memory_read')), say('ok')], { ctx: { now: () => '', ownerDm: false, memory: { read: () => '', write: () => {} } } });
     const r = runTurn(i);
     expect(r.events[0]).toMatchObject({ status: 'error' });
-    expect(r.events[0].result).toContain('DM do dono');
-    expect(r.text).toBe('ok');
+    expect(JSON.parse(r.events[0].result)).toEqual({ ok: false, error: 'memória só está disponível na DM do dono', did_nothing: true });
+    expect(r.text).toBe('⚠️ Não consegui ler memory: memória só está disponível na DM do dono.'); // guarda de falha honesta
   });
 
   test('limite de steps: para com aviso', () => {
