@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  body { font: 15px/1.45 system-ui, sans-serif; margin: 0; background: #f7f7f5; color: #1d1d1b; }
+  main { max-width: 42rem; margin: 0 auto; padding: 1rem; }
+  #log { min-height: 50vh; max-height: 70vh; overflow-y: auto; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: .75rem; }
+  #log p { margin: .4rem 0; white-space: pre-wrap; }
+  .eu { color: #0b4f8a; }
+  form { display: flex; gap: .5rem; margin-top: .75rem; }
+  input { flex: 1; min-width: 0; padding: .5rem; font: inherit; }
+  button { padding: .45rem .9rem; font: inherit; cursor: pointer; }
+  button:focus-visible, input:focus-visible { outline: 3px solid #0b4f8a; outline-offset: 1px; }
+  .sr { position: absolute; left: -9999px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Conversa com o agente</h1>
+  <div id="log" role="log" aria-live="polite" aria-label="Conversa"></div>
+  <form id="form">
+    <label for="texto" class="sr">Mensagem</label>
+    <input id="texto" autocomplete="off" placeholder="Escreva uma mensagem" required>
+    <button type="submit" id="enviar">Enviar</button>
+  </form>
+</main>
+<script>
+// Tudo que vem do modelo entra por textContent: nada é interpretado como HTML ou código (ADR-002).
+const $ = (id) => document.getElementById(id);
+const log = $('log');
+const run = (fn, ...a) => new Promise((ok, ko) => google.script.run.withSuccessHandler(ok).withFailureHandler(ko)[fn](...a));
+const fail = (e) => ({ text: 'Erro: ' + ((e && e.message) || e) });
+
+function add(cls, text) {
+  const p = document.createElement('p');
+  p.className = cls;
+  p.textContent = text;
+  log.append(p);
+  log.scrollTop = log.scrollHeight;
+  return p;
+}
+
+/** Resposta do agente; cards de aprovação e ask viram botões (o clique é de uso único no servidor). */
+function render(r) {
+  const p = add('agente', 'Agente: ' + (r.text || ''));
+  for (const c of r.cardsV2 || []) for (const s of c.card.sections) for (const w of s.widgets) for (const b of (w.buttonList ? w.buttonList.buttons : [])) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = b.text;
+    btn.onclick = async () => {
+      p.querySelectorAll('button').forEach((x) => { x.disabled = true; });
+      const params = Object.fromEntries(b.onClick.action.parameters.map((x) => [x.key, x.value]));
+      render(await run('chatClick', params).catch(fail));
+    };
+    p.append(' ', btn);
+  }
+}
+
+$('form').onsubmit = async (ev) => {
+  ev.preventDefault();
+  const text = $('texto').value.trim();
+  if (!text) return;
+  $('texto').value = '';
+  $('enviar').disabled = true;
+  add('eu', 'Você: ' + text);
+  render(await run('chatSend', text).catch(fail));
+  $('enviar').disabled = false;
+  $('texto').focus();
+};
+</script>
+</body>
+</html>

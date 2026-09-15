@@ -23,4 +23,5 @@ if (names.length === 0) throw new Error('build: nenhum "export function" em src/
 appendFileSync('dist/_motor.js', '\n' + names.map((n) => `function ${n}(...a) { return gasclaw.${n}(...a); }`).join('\n') + '\n');
 copyFileSync('appsscript.json', 'dist/appsscript.json');
 copyFileSync('src/settings.html', 'dist/settings.html');
+copyFileSync('src/chat.html', 'dist/chat.html'); // tela de conversa (doGet?page=chat)
 console.log(`build: dist/_motor.js com ${names.length} funções globais: ${names.join(', ')}`);

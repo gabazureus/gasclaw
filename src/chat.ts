@@ -30,6 +30,7 @@ export type ChatDeps = {
   tickets?: Tickets;
   newToken?: () => string;
   clock?: () => number;
+  budgetMs?: number; // padrão: 20 s do evento do Chat; a tela usa 300 s
   onTurn?: (turn: TurnResult) => void;
 };
 
@@ -92,7 +93,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
       llm: (m, defs) => d.llm(key, spec.config.model, m, defs),
       runId,
       steps: kit.steps,
-      deadlineMs: start + CHAT_BUDGET_MS,
+      deadlineMs: start + (d.budgetMs ?? CHAT_BUDGET_MS),
       clock,
       granted: ticket?.granted,
       resume,

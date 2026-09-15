@@ -1,13 +1,14 @@
 // Execução de um cenário de eval no dev (E0). runEval recebe o ambiente injetado (testável); evalAction liga no GAS.
-import { runTurn, SCREEN_BUDGET_MS, DEFAULT_STEPS, type TurnResult } from './agent';
+import { DEFAULT_STEPS, type TurnResult } from './agent';
 import type { Ticket } from './approval';
 import { cacheTickets, newToken } from './approvalStore';
-import { handleChat, type ChatEvent, type Tickets } from './chat';
+import { handleChat, type ChatDeps, type ChatEvent, type Tickets } from './chat';
 import { evaluate, judgeMessages, parseJudge, parseScenario, scriptedLlm, type Report, type TurnOutcome } from './eval';
 import { complete, type Completion, type Message, type ToolDef } from './llm';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
 import { allowedTools, type ToolCtx } from './tools/registry';
+import { webClick, webSend } from './webchat';
 import { agentFolderPath, ensureFolderPath, loadAgent, seedAgent, type AgentSpec } from './workspace';
 
 export type EvalEnv = {
@@ -24,7 +25,7 @@ export type EvalEnv = {
 };
 export type EvalResult = Report & { replies: string[]; ms: number };
 
-/** Turnos especiais que simulam o clique no card: (aprovar), (negar), (repetir clique). */
+/** Turnos especiais que simulam o clique no card (Chat) ou no botão (tela): (aprovar), (negar), (repetir clique). */
 const CLICK = /^\((aprovar|negar|repetir clique)\)$/i;
 
 function memoryTickets(): Tickets {
@@ -67,39 +68,36 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
     const spans: string[] = [];
     const llm = (m: Message[], defs: ToolDef[]) => (spans.push('llm_call'), script ? script() : env.llm(model, m, defs));
     const tools = allowedTools(allow).map((t) => ({ ...t, run: (a: Record<string, unknown>, c: ToolCtx) => (spans.push('tool_call'), t.run(a, c)) }));
-    const ctx = (ownerDm: boolean): ToolCtx => ({ now: env.now, ownerDm, memory: env.memory });
     const steps = s.steps ?? DEFAULT_STEPS;
     let turn: TurnResult | undefined;
+    const d: ChatDeps = {
+      enabled: () => true,
+      owner: () => env.owner,
+      apiKey: () => env.apiKey ?? 'roteiro',
+      defaultAgent: () => ({ folderId: env.folderId, name: spec.name }),
+      load: () => spec,
+      history: () => history,
+      saveHistory: (_k, h) => void (history = h),
+      llm: (_k, _m, m, defs = []) => llm(m, defs),
+      toolkit: (_s, ownerDm) => ({ tools, ctx: { now: env.now, ownerDm, memory: env.memory }, steps }),
+      tickets,
+      newToken: token,
+      clock: env.clock,
+      onTurn: (r) => void (turn = r),
+    };
+    const click = text.match(CLICK)?.[1].toLowerCase();
+    if (click && click !== 'repetir clique') lastDecision = click === 'aprovar' ? 'approve' : 'deny';
+    const params = { token: lastToken, decision: lastDecision };
     let reply: string;
-    if (s.channel === 'chat') {
-      const space = { name: 'spaces/gasclaw-eval', singleUserBotDm: true };
-      const click = text.match(CLICK)?.[1].toLowerCase();
-      if (click && click !== 'repetir clique') lastDecision = click === 'aprovar' ? 'approve' : 'deny';
-      const event: ChatEvent = click
-        ? { type: 'CARD_CLICKED', user: { email: env.owner }, space, common: { parameters: { token: lastToken, decision: lastDecision } } }
-        : { type: 'MESSAGE', message: { text }, user: { email: env.owner }, space };
-      reply =
-        handleChat(event, {
-          enabled: () => true,
-          owner: () => env.owner,
-          apiKey: () => env.apiKey ?? 'roteiro',
-          defaultAgent: () => ({ folderId: env.folderId, name: spec.name }),
-          load: () => spec,
-          history: () => history,
-          saveHistory: (_k, h) => void (history = h),
-          llm: (_k, _m, m, defs = []) => llm(m, defs),
-          toolkit: (_s, ownerDm) => ({ tools, ctx: ctx(ownerDm), steps }),
-          tickets,
-          newToken: token,
-          clock: env.clock,
-          onTurn: (r) => void (turn = r),
-        }).text ?? '';
+    if (s.channel === 'tela') {
+      // O mesmo caminho da tela de chat (chatSend/chatClick).
+      reply = (click ? webClick(d, env.owner, params) : webSend(d, env.owner, text)).text ?? '';
     } else {
-      if (CLICK.test(text)) throw new Error(`${s.name}: cliques de aprovação só no channel chat`);
-      const start = env.clock();
-      turn = runTurn({ system: spec.system, history, text, memory: env.memory.read(), tools, ctx: ctx(true), llm, runId: `eval:${start}`, steps, deadlineMs: start + SCREEN_BUDGET_MS, clock: env.clock });
-      history = turn.history;
-      reply = turn.text;
+      const space = { name: 'spaces/gasclaw-eval', singleUserBotDm: true };
+      const event: ChatEvent = click
+        ? { type: 'CARD_CLICKED', user: { email: env.owner }, space, common: { parameters: params } }
+        : { type: 'MESSAGE', message: { text }, user: { email: env.owner }, space };
+      reply = handleChat(event, d).text ?? '';
     }
     spans.push('reply');
     turns.push({ reply, spans, tools: turn?.events.map(({ name, status }) => ({ name, status })) ?? [], ...(turn?.stopped ? { stopped: turn.stopped } : {}) });

@@ -16,6 +16,6 @@ test('build gera um único motor _motor.js com stubs globais para triggers do Ch
 
 test('dist tem só o motor, a tela e o manifesto (sem sobras como Code.js)', () => {
   execSync('node build.mjs', { stdio: 'pipe' });
-  expect(readdirSync('dist').sort()).toEqual(['_motor.js', 'appsscript.json', 'settings.html']);
+  expect(readdirSync('dist').sort()).toEqual(['_motor.js', 'appsscript.json', 'chat.html', 'settings.html']);
   expect(existsSync('dist/Code.js')).toBe(false);
 });
