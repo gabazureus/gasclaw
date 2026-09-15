@@ -3,6 +3,7 @@ import { pocP14 } from '../poc/p14-trace/harness';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
 import { reply } from './agent';
 import { handleChat, type ChatDeps, type ChatEvent } from './chat';
+import { evalAction } from './evalEntry';
 import { complete, type Completion, type Message } from './llm';
 import * as runlog from './runlog';
 import * as store from './store';
@@ -59,6 +60,18 @@ export function doGet(e: GoogleAppsScript.Events.DoGet) {
   }
   try {
     assertOwner();
+    if (action === 'eval') {
+      // o cenário (md) é só dado: nunca vira código (ADR-002)
+      const t = runlog.begin('test', { question: 'eval' });
+      try {
+        const r = t.step('eval', () => evalAction(e.parameter.md ?? '', ownerEmail(), e.parameter.model));
+        t.end({ answer: JSON.stringify(r).slice(0, 500) });
+        return json({ ok: true, ...r });
+      } catch (err) {
+        t.end({ error: (err as Error).message });
+        throw err;
+      }
+    }
     if (action === 'poc') {
       const run = POCS[e.parameter.id ?? ''];
       if (!run) return json({ ok: false, pass: false, error: `POC desconhecida: ${e.parameter.id}` });

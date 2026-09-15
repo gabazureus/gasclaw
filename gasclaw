@@ -282,6 +282,8 @@ cmd_runs() { # abre a planilha "gasclaw — execuções"
   ok "planilha: $u"
 }
 
+cmd_eval() { lock_dev; [ "$TARGET" = dev ] || die "evals rodam só no dev"; node scripts/eval.mjs "$(url)" "$@"; }
+
 cmd_rollback() {
   local d cur
   d=$(var "DEPLOY_ID_$UP")
@@ -293,7 +295,7 @@ cmd_rollback() {
 }
 
 case "$CMD" in
-  up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs) "cmd_$CMD" "$@" ;;
+  up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs|eval) "cmd_$CMD" "$@" ;;
   *) cat <<'TXT'
 gasclaw — agentes do Drive rodando no Google Apps Script
 
@@ -309,6 +311,7 @@ gasclaw — agentes do Drive rodando no Google Apps Script
   ./gasclaw poc <id> [etapa]  roda uma POC no dev e mostra o resultado (ex.: poc p6, poc p10)
   ./gasclaw trace [id]        árvore de passos de um run do agente (sem id: o mais recente)
   ./gasclaw runs              abre a planilha "gasclaw — execuções"
+  ./gasclaw eval <cenário|--all> [--model id]  roda evals/*.md no dev (exit ≠ 0 em falha)
 TXT
   ;;
 esac
