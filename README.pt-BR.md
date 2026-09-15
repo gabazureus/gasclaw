@@ -145,7 +145,9 @@ Limites atuais:
 
 - Segredos ficam só em `.env.local` (ignorado pelo git) e na tela gasclaw, que só o dono acessa, guardados nas Script Properties. Nunca no Drive nem no git.
 - Sem `eval` e sem código carregado do Drive: um agente é só markdown.
-- Só o dono (a conta que publicou) abre a tela gasclaw; cada agente responde só ao dono e aos e-mails listados em `users`.
+- Só o dono (a conta que publicou) abre a tela gasclaw; cada agente responde só ao dono e às pessoas que o dono aprovou nessa tela.
+- ⚠️ Mudança de acesso ([ADR-021](docs/adr/021-acesso-aprovado-no-painel.md)): quem conversa com o agente e quais ferramentas ele usa passam a valer só depois de aprovados no painel do gasclaw. `users:` e `tools:` na pasta, no editor ou na planilha `config` viram sugestões. Depois desta versão, todo agente responde só ao dono e fica sem ferramentas até você clicar em **Aprovar** no painel. Se você usava `users:` para dar acesso a outras pessoas, aprove essas pessoas no painel.
+- Ações com efeito (`./gasclaw poc`, `eval`, `down`) usam POST com um segredo da CLI gerado pelo `./gasclaw up` em `.env.local` ([ADR-022](docs/adr/022-csrf-segredo-da-cli.md)).
 - `./gasclaw down` ou "Pausar" na tela param todos os agentes na hora.
 
 **Encontrou uma vulnerabilidade?** Não abra uma issue pública. Mande um e-mail para **gabriel.br@gmail.com**; detalhes em [CONTRIBUTING.md](CONTRIBUTING.md#reporting-security-vulnerabilities) (em inglês).
