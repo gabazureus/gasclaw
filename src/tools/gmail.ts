@@ -76,9 +76,9 @@ export const GMAIL_TOOLS: Tool[] = [
   },
   {
     name: 'gmail.draft',
-    description: 'Cria um rascunho no Gmail do dono (não envia). Prefira isto a enviar.',
+    description: 'Cria um rascunho no Gmail do dono (não envia). Prefira isto a enviar. Pede aprovação uma vez por turno.',
     parameters: compose,
-    approval: 'never',
+    approval: 'once', // revisão E6: e-mail malicioso não cria rascunho para terceiros sem o dono ver
     run: (a, ctx) => JSON.stringify({ id: gcall(api(ctx), { method: 'post', url: `${GM}/drafts`, body: { message: { raw: rfc2822(a) } } }, 'criar o rascunho').id }),
   },
   {

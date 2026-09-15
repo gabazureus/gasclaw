@@ -13,11 +13,11 @@ function ctx(responder: (r: GReq) => GRes) {
 const run = (name: string, args: Record<string, unknown>, c: ToolCtx) => findTool(TOOLS, name)!.run(args, c);
 
 describe('grupo gmail', () => {
-  test('ler e rascunhar sem aprovação; enviar SEMPRE com aprovação', () => {
+  test('ler sem aprovação; rascunhar once; enviar SEMPRE com aprovação', () => {
     expect(allowedTools(['gmail']).map((t) => [t.name, t.approval])).toEqual([
       ['gmail.search', 'never'],
       ['gmail.read', 'never'],
-      ['gmail.draft', 'never'],
+      ['gmail.draft', 'once'],
       ['gmail.send', 'always'],
     ]);
   });
