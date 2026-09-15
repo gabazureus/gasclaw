@@ -42,3 +42,10 @@ C1 medido ±2% do `usage_daily` · C2 leitura da tela < 1 s · C3 soma do dia = 
 - O C1 só fecha se tudo que usa a chave passar pelo trace. Evals e chamadas fora do trace entram
   no `usage_daily` e não no medido: a diferença mostra exatamente isso.
 - O número de modelos com cor é fixo em 5 para a legenda caber em telas pequenas.
+
+## Mudança de método do C1 (2026-09-15, aprovada pelo orquestrador)
+Medido no dev: o custo do dia inteiro ficou −84% (v25) e −75% (v31) contra o `usage_daily`. O `usage_daily` inclui
+chamadas feitas antes de o trace existir e outros usos da mesma chave (evals e juiz fora do trace até `c7efd2e`), então
+não serve para validar o trace. O C1 passa a comparar o **delta do `usage_daily` antes e depois de 10 turnos feitos pelo
+gasclaw** (lido sem cache e relido até estabilizar, teto de 5 min) com a **soma do custo dessas mesmas chamadas no trace**.
+A meta de ±2% continua. A conferência do dia inteiro segue na tela e no `./gasclaw usage`, só como informação.

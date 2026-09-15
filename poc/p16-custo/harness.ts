@@ -1,6 +1,7 @@
 // POC P16 (descartável): custo por modelo e escolha de modelo por agente (ADR-018). Etapas chamadas pelo pc.sh com trace=0.
-import { getOverride, keyCallsLast30min, listModels, setOverride, validateChoice } from '../../src/models';
+import { getOverride, keyCallsLast30min, keyInfo, listModels, setOverride, validateChoice } from '../../src/models';
 import * as observe from '../../src/observe';
+import { runDetail } from '../../src/runlog';
 import { dayKey, dayTotals, fold, hourKey, prune, totalCost, totalReq, type Bucket } from '../../src/usage';
 
 export type P16Deps = {
@@ -101,5 +102,23 @@ export function pocP16(step: string | undefined, p: Record<string, string>, d: P
     for (let i = 0; i < 10; i++) observe.usageView(key);
     return { poc: 'P16', step, pass: true, antes: before, depois: keyCallsLast30min(), leituras: 10 };
   }
-  throw new Error(`etapa desconhecida: ${step} (use check, speed, sum, setmodel, refuse, prune ou keycalls)`);
+  if (step === 'c1read') {
+    // C1 controlado: usage_daily do OpenRouter lido sem cache (o pc.sh chama antes e, depois dos turnos, até estabilizar)
+    if (!key) throw new Error('P16: sem chave do OpenRouter');
+    const k = keyInfo(key, true);
+    return { poc: 'P16', step, pass: true, usageDaily: k.usage_daily, at: Date.now() };
+  }
+  if (step === 'c1turns') {
+    const a = d.agent();
+    if (!a) throw new Error('P16: cadastre um agente na tela');
+    const n = Math.min(Number(p.n) || 10, 10);
+    const runs: { runId: string; cost: number | null }[] = [];
+    for (let i = 0; i < n; i++) {
+      const r = d.testAgent(a.folderId, `Responda apenas com o número ${i + 1}.`);
+      runs.push({ runId: r.runId, cost: runDetail(r.runId).run?.cost ?? null });
+    }
+    const traceSum = Math.round(runs.reduce((t, r) => t + (r.cost ?? 0), 0) * 1e8) / 1e8;
+    return { poc: 'P16', step, pass: true, n, feitos: runs.filter((r) => r.cost !== null).length, traceSum, runs };
+  }
+  throw new Error(`etapa desconhecida: ${step} (use check, speed, sum, setmodel, refuse, prune, keycalls, c1read ou c1turns)`);
 }

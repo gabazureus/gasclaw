@@ -23,3 +23,15 @@ As observações brutas ficam em `.tmp/p16/`.
 
 ## Resultado
 Medição no dev pendente (ADR-018).
+
+## Mudança de método do C1 (2026-09-15)
+A primeira versão comparava o custo medido do dia inteiro (dia UTC) com o `usage_daily` do OpenRouter e deu −84% e −75%.
+A causa foi medida: o `usage_daily` inclui chamadas feitas antes de o trace existir no dia e outros usos da mesma chave
+(os evals e o juiz chamavam o modelo fora do trace até o `c7efd2e`). Essa comparação não mede o trace, mede o resto.
+
+Agora o C1 é um **conjunto controlado**: `c1read` lê o `usage_daily` sem cache, `c1turns` faz 10 turnos reais pelo
+gasclaw e soma o custo que o trace registrou de cada um, e o `pc.sh` relê o `usage_daily` a cada 20 s até ele subir e
+repetir o valor (teto de 5 min, porque o `/key` atualiza com atraso). Passa se a soma do trace ficar a ±2% do delta.
+O C7 roda antes dessas leituras, porque elas também contam como chamadas reais ao `/key`. A comparação do dia inteiro
+continua no resultado, só como informação. Outro uso da chave durante a janela estraga a medição: os evals e as POCs
+passam pelo mesmo lock do dev e não se sobrepõem.

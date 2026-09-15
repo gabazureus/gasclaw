@@ -9,16 +9,32 @@ const obs = (): P16Obs => ({
   refuse: { semTools: { id: 'x:free', erro: 'não aceita ferramentas' }, comTools: { id: 'y', erro: null } },
   prune: { horasAntigas: 0, diasAntigos: 0, dobrouEmDia: true, sumiu91d: true },
   keycalls: { antes: 0, depois: 1 },
+  c1ctrl: { n: 10, feitos: 10, before: 0.1, after: 0.102, traceSum: 0.00199, polls: 3, stableS: 40 },
 });
 
 describe('summarizeP16', () => {
   test('tudo dentro dos critérios passa', () => expect(summarizeP16(obs()).pass).toBe(true));
-  test('C1 falha acima de ±2% ou sem leitura do OpenRouter', () => {
+  test('C1 (método controlado): custo do trace das N chamadas × delta do usage_daily, dentro de ±2%', () => {
+    const s = summarizeP16(obs());
+    expect(s.c1).toMatchObject({ pass: true, deltaOpenRouter: 0.002, somaTrace: 0.00199, diferencaPct: -0.5 });
+  });
+  test('C1 falha acima de ±2%, sem delta (o /key não atualizou) ou com chamadas faltando', () => {
+    const acima = obs();
+    acima.c1ctrl.traceSum = 0.00150;
+    expect(summarizeP16(acima).c1.pass).toBe(false);
+    const semDelta = obs();
+    semDelta.c1ctrl.after = semDelta.c1ctrl.before;
+    expect(summarizeP16(semDelta).c1.pass).toBe(false);
+    const faltando = obs();
+    faltando.c1ctrl.feitos = 9;
+    expect(summarizeP16(faltando).c1.pass).toBe(false);
+  });
+  test('a conferência do dia inteiro (usage_daily × medido) continua visível, mas não decide o C1', () => {
     const o = obs();
-    o.check.diffPct = 2.5;
-    expect(summarizeP16(o).c1.pass).toBe(false);
-    o.check.diffPct = null;
-    expect(summarizeP16(o).c1.pass).toBe(false);
+    o.check.diffPct = -84;
+    const s = summarizeP16(o);
+    expect(s.c1.pass).toBe(true);
+    expect(s.c1.diaInteiro).toMatchObject({ diferencaPct: -84 });
   });
   test('C4 falha se o run não usou o modelo escolhido ou demorou mais de 30 s', () => {
     const o = obs();

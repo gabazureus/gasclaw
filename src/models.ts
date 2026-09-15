@@ -45,8 +45,8 @@ export function listModels(): ModelInfo[] {
 export type KeyInfo = { limit: number | null; usage: number; usage_daily: number; is_free_tier: boolean };
 
 /** `/api/v1/key` com cache de 10 min; conta as chamadas reais (C7). */
-export function keyInfo(apiKey: string): KeyInfo {
-  const hit = cache().get('or:key');
+export function keyInfo(apiKey: string, fresh = false): KeyInfo {
+  const hit = fresh ? null : cache().get('or:key'); // fresh: C1 controlado da P16 lê antes e depois, sem o cache de 10 min
   if (hit) return JSON.parse(hit);
   const res = UrlFetchApp.fetch(KEY_URL, { headers: { Authorization: `Bearer ${apiKey}` }, muteHttpExceptions: true });
   if (res.getResponseCode() !== 200) throw new Error(`OpenRouter key ${res.getResponseCode()}`);
