@@ -13,10 +13,8 @@ edit_soul() { # simula o editor: baixa o HEAD, altera o SOUL e grava o HEAD inte
   printf '\nEditado no editor: %s\n' "$1" >> "$T/edit/agentes/p10/SOUL.md.html"
   CLASP_ROOT="$T/edit" clasp_ push --force >/dev/null
 }
-at() { # $1 URL base (…/exec ou …/dev) · $2 querystring extra
-  local t
-  t=$(gcloud auth print-access-token 2>/dev/null) || return 1
-  curl -fsSL -H "Authorization: Bearer $t" "$1?action=poc&id=p10&step=read$2"
+at() { # $1 URL base (…/exec ou …/dev) · $2 querystring extra (M1: POST com o segredo, pelo remote_to)
+  remote_to "$1" "poc&id=p10&step=read$2"
 }
 has_mark() { # $1 arquivo JSON do read · $2 variante
   node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(r.variants?.[process.argv[2]]?.files?.["agentes/p10/SOUL.md"]?.hasMark?0:1)' "$1" "$2"
@@ -24,8 +22,9 @@ has_mark() { # $1 arquivo JSON do read · $2 variante
 
 rm -rf "$T"; mkdir -p "$T"
 say "P10 1/6 build, testes e fixture agentes/p10/*.md.html no editor (versão nova no dev)"
-npm run build >/dev/null
-npm test >/dev/null
+npm test > .tmp/test.log 2>&1 || die "testes falharam: veja .tmp/test.log"
+export GCP_NUMBER="$(var "GCP_NUMBER_$UP")" GASCLAW_DEV=1 # B1: o mesmo build do deploy (Monitoring e POCs)
+OUT_DIR=dist npm run build > .tmp/build.log 2>&1 || die "build falhou: veja .tmp/build.log"
 keep_editor_agents
 rm -rf dist/agentes/p10 && mkdir -p dist/agentes/p10 && cp "$P10"/fixture/agentes/p10/*.md.html dist/agentes/p10/
 clasp_ push --force >/dev/null

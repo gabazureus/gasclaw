@@ -57,7 +57,7 @@ describe('summaryRow', () => {
     const r = finish(span(base(), 'llm_call', 1_000, 2_000, { model: 'm', prompt_tokens: 1, completion_tokens: 1, cost: 0.5 }), 2_000, { answer: `${'a'.repeat(300)} sk-or-SEGREDO` });
     const row = summaryRow(r);
     expect(row).toHaveLength(HEADER.length);
-    expect(row.slice(0, 3)).toEqual(['r1', new Date(1_000).toISOString(), 'chat']);
+    expect(row.slice(0, 3)).toEqual(['r1', '1969-12-31T21:00:01.000-03:00', 'chat']); // início no fuso de SP, igual ao id do run
     expect(row[HEADER.indexOf('status')]).toBe('ok');
     expect(String(row[HEADER.indexOf('resposta')]).length).toBeLessThanOrEqual(200);
     expect(JSON.stringify(summaryRow({ ...r, question: 'Bearer abc.def' }))).not.toContain('abc.def');

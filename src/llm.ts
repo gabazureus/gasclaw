@@ -42,7 +42,7 @@ export function parseResponse(code: number, body: string): Completion {
 
 // minimal: sem retry/backoff para 429/5xx; entra na F2 junto com a fila durável.
 const gasHttp: Http = (url, init) => {
-  const res = UrlFetchApp.fetch(url, { ...init, timeoutSeconds: 240 } as GoogleAppsScript.URL_Fetch.URLFetchRequestOptions);
+  const res = UrlFetchApp.fetch(url, init); // UrlFetch não tem opção de timeout: o limite é o do Google
   return { code: res.getResponseCode(), body: res.getContentText() };
 };
 

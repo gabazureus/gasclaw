@@ -1,6 +1,6 @@
 # Como usar o gasclaw
 
-> **Estado atual:** F0 concluída. Os ambientes dev e prod estão publicados, e este guia descreve o que já funciona. A publicação automática pelo GitHub/CI foi adiada; publique com `./gasclaw`. Veja o [CHANGELOG](../CHANGELOG.md).
+> **Estado atual:** F0 concluída e F1 em andamento (ferramentas `now`, `memory.*` e `ask`, aprovação, trace e painel de limites no dev). Este guia descreve o que já funciona. A publicação automática pelo GitHub/CI foi adiada; publique com `./gasclaw`. Veja o [CHANGELOG](../CHANGELOG.md).
 
 ## 1. O que é
 O gasclaw roda agentes de IA dentro do Google Apps Script da sua conta Workspace, sem servidor.
@@ -15,7 +15,7 @@ Crie `.env.local` na raiz do projeto com `OPENROUTER_API_KEY=sk-or-...` (a chave
 ./gasclaw up --prod   # ambiente prod (uma vez, depois do dev)
 ```
 
-O `up` instala o que falta (Node, gcloud, gh), cria o projeto e o script e publica. Nos passos abaixo ele **pausa**, abre a página e espera você apertar Enter.
+O `up` instala o que falta (Node e gcloud, pelo Homebrew, que precisa estar instalado), cria o projeto e o script e publica. Nos passos abaixo ele **pausa**, abre a página e espera você apertar Enter.
 Cada passo feito fica anotado em `gasclaw.env`, então rodar de novo não repete nada.
 
 1. **Login no Google Cloud e no clasp:** o navegador abre duas vezes. Escolha sua conta e clique em **Permitir**.
@@ -68,7 +68,11 @@ Gabriel, time de vendas. Prefere respostas em tópicos.
 **Frontmatter aceito** (no começo do `AGENTS.md`, entre linhas `---`):
 - `model:` id do OpenRouter. Sem ele, vale `openrouter/auto`.
 - `users: [e-mail, e-mail]`, numa linha só. O dono sempre tem acesso; lista vazia = só o dono. Grupos ainda não funcionam.
-- Qualquer outra chave é ignorada nesta etapa, e não há chaves aninhadas. Comentários com `#` no fim da linha são permitidos.
+- `tools: [now, memory, ask]`: as ferramentas que o agente pode usar (`memory` libera `memory.save`, `memory.read` e `memory.remove`, este último com aprovação). Sem lista, nenhuma ferramenta.
+- `steps:` máximo de chamadas ao modelo por turno, de 1 a 50 (padrão 10).
+- Qualquer outra chave é ignorada, e não há chaves aninhadas. Comentários com `#` no fim da linha são permitidos.
+
+Os papéis também podem ser Google Docs (nome `AGENTS` ou `AGENTS.md`, e assim por diante) ou arquivos `agentes/<nome>/<PAPEL>.md` no editor do Apps Script; a ordem é editor → Doc → `.md`. Uma planilha `config` com linhas `chave, valor` sobrepõe o frontmatter, e o modelo escolhido na tela vence os dois.
 
 **Limites:** 20.000 caracteres por arquivo e 60.000 no total (o excesso é cortado). Resposta de até 1.000 tokens.
 Editou a pasta? A próxima mensagem já usa o conteúdo novo, sem publicar de novo.
@@ -77,11 +81,13 @@ Editou a pasta? A próxima mensagem já usa o conteúdo novo, sem publicar de no
 Abra com `./gasclaw open`. Só o dono (quem publicou) consegue entrar. No topo aparece "Conectado como <seu e-mail>".
 1. **Status:** mostra 🟢 Ativo ou ⏸ Pausado, se a chave está salva e quantos agentes existem. **Pausar/Ativar** liga e desliga todos os agentes.
 2. **Chave OpenRouter:** cole a chave (começa com `sk-or-`) e clique em **Salvar chave**. O campo se limpa e o status mostra "chave salva".
-3. **Agentes:** cole a URL da pasta (`https://drive.google.com/drive/folders/...`) e clique em **Adicionar e verificar**. A mensagem diz quais arquivos foram criados.
+3. **Agentes:** escreva um nome (letras minúsculas, números e hífen) e clique em **Novo agente**, que cria `Meu Drive/gasclaw/agentes/<nome>/`; ou cole a URL de uma pasta (`https://drive.google.com/drive/folders/...`) e clique em **Usar pasta existente**. A mensagem diz quais arquivos foram criados.
    - ⭐ marca o agente que responde no Chat, que é o primeiro da lista. **Tornar padrão** passa a ⭐ para outro agente.
    - **Remover** tira o agente da lista, mas a pasta continua no Drive.
 4. **Testar:** escreva uma pergunta e clique em **Enviar ao agente ⭐**. A resposta vem com o modelo usado e o tempo em ms. O teste não usa histórico.
-5. **POC P1:** teste técnico de resposta longa. Não é preciso para o uso normal.
+5. **Conversar com o agente:** o link no topo abre a tela de conversa (`?page=chat`), com as mesmas ferramentas, aprovações e perguntas do Chat. Os botões de aprovação valem uma vez só, por 10 min.
+6. **Observabilidade:** as abas **Ao vivo** (runs em andamento e os 10 últimos), **Modelos e custo** (modelo por agente e custo por modelo; **Voltar ao do AGENTS** desfaz a escolha), **Limites** (cotas do Google e do OpenRouter; **Ler de novo agora** ignora o cache) e **Lote** (fila do trace; **Gravar a fila agora** grava na hora).
+7. **POC P1:** teste técnico de resposta longa. Não é preciso para o uso normal.
 
 ## 5. Conversar no Google Chat
 - **Achar o app:** no Google Chat, inicie um novo chat e procure `gasclaw dev` (ou `gasclaw` em prod). Ele só aparece para quem está na visibilidade configurada no passo 6.
@@ -113,6 +119,11 @@ Todos aceitam `--prod`; sem a flag, valem para dev.
 | `./gasclaw status` | ver conta, projeto, URLs, versões publicadas e health |
 | `./gasclaw logs` | acompanhar erros ao vivo enquanto testa no Chat |
 | `./gasclaw poc <id>` | rodar uma POC no dev de forma automática (ex.: `poc p6`); sai com erro se algum critério falhar |
+| `./gasclaw eval <cenário\|--all>` | rodar os cenários de `evals/` no dev; sai com erro se algum falhar |
+| `./gasclaw trace [id]` | ver os passos, o modelo e o custo de um run (sem id, o mais recente) |
+| `./gasclaw runs` | abrir a planilha "gasclaw — execuções" |
+| `./gasclaw limits [--fresh]` | ver o painel de limites (Google, OpenRouter e medido pelo gasclaw) |
+| `./gasclaw usage [AAAA-MM-DD]` | ver o custo por modelo nos últimos 7 dias, ou nas 24 h de um dia |
 | `./gasclaw down` | parar todos os agentes na hora (emergência, custo) |
 | `./gasclaw restart` | `down` + `up`, para recomeçar limpo |
 | `./gasclaw rollback` | a última publicação quebrou: volta para a versão anterior |

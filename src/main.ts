@@ -6,6 +6,7 @@ import { pocP6 } from '../poc/p6-docs-nativos/harness';
 import { DEFAULT_STEPS, reply } from './agent';
 import { cacheTickets, newToken } from './approvalStore';
 import { handleChat, type ChatDeps, type ChatEvent } from './chat';
+import { cliAuthorized, MUTATING, validSecret } from './cli';
 import { evalAction } from './evalEntry';
 import { complete, type Completion, type Message } from './llm';
 import { getOverride, listModels as openRouterModels, setOverride, validateChoice } from './models';
@@ -15,8 +16,9 @@ import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
 import { allowedTools } from './tools/registry';
 import { coverage } from './trace';
+import { agentInfo, llmInfo, traceDeps } from './traced';
 import { webClick, webSend } from './webchat';
-import { agentFolderPath, ensureFolderPath, extractFolderId, loadAgent, seedAgent, validAgentName, type LoadedAgent } from './workspace';
+import { agentFolderPath, effectiveAccess, ensureFolderPath, extractFolderId, loadAgent, parseAccess, pendingSuggestions, seedAgent, validAgentName, withAccess, type Access, type LoadedAgent } from './workspace';
 
 const CHAT_MAX_TOKENS = 1000; // resposta síncrona precisa caber em 30 s
 
@@ -43,29 +45,83 @@ function withOverride(spec: LoadedAgent): LoadedAgent & { modelSource: 'tela' | 
   const o = getOverride(spec.folderId);
   return o ? { ...spec, config: { ...spec.config, model: o }, modelSource: 'tela' } : { ...spec, modelSource: 'pasta' };
 }
-const loadAgentForTurn = (folderId: string) => withOverride(loadAgent(folderId));
+/** ADR-021: acesso e tools valem só o que o dono aprovou no painel (ACCESS:<folderId>); sem aprovação, fechado. */
+const approvedOf = (folderId: string) => parseAccess(PropertiesService.getScriptProperties().getProperty(`ACCESS:${folderId}`));
+const loadAgentForTurn = (folderId: string) => withAccess(withOverride(loadAgent(folderId)), approvedOf(folderId));
 
-/** Dados do span resolve_agent: origem de cada papel (editor, doc, md, missing), cache e falha do editor. */
-const agentInfo = (folderId: string) => (s: LoadedAgent & { modelSource?: string }) => ({
-  agent: s.name,
-  folderId,
-  configModel: s.config.model,
-  modelSource: s.modelSource ?? 'pasta',
-  origem: s.origem,
-  cached: s.cached === true,
-  ...(s.editorError ? { editorError: s.editorError } : {}),
-});
+/** A3/M16: Chat, tela de conversa e clique de aprovação registram os mesmos passos (resolve_agent, llm_call, tool_call). */
+const traced = (t: runlog.Tracer, d: ChatDeps): ChatDeps => traceDeps(t, d, loadAgentForTurn);
 
-/** Dados do span llm_call: modelo real, tokens, custo e o prompt completo (vai só para o JSON do run). */
-const llmInfo = (requested: string, messages: Message[]) => (c: Completion) => ({
-  model: c.model ?? requested,
-  prompt_tokens: c.usage?.prompt_tokens ?? 0,
-  completion_tokens: c.usage?.completion_tokens ?? 0,
-  cost: c.usage?.cost ?? 0,
-  finish_reason: c.finish_reason,
-  generation: c.id,
-  messages,
-});
+declare const __DEV__: boolean; // embutido pelo build: true só no deploy do dev (POCs)
+const isDev = () => typeof __DEV__ !== 'undefined' && __DEV__ === true;
+
+/** Ações com efeito (M1): só chegam aqui pelo doPost, com o segredo da CLI já conferido. */
+function mutate(action: string, p: Record<string, string>): unknown {
+  if (action === 'eval') {
+    // o cenário (md) é só dado: nunca vira código (ADR-002); o modelo pedido precisa existir no OpenRouter
+    const model = p.model || undefined;
+    if (model) {
+      const err = validateChoice(openRouterModels(), model, []);
+      if (err) return { ok: false, status: 400, error: err };
+    }
+    const t = runlog.begin('test', { question: 'eval' });
+    try {
+      const r = t.step('eval', () => evalAction(p.md ?? '', ownerEmail(), model));
+      t.end({ answer: JSON.stringify(r).slice(0, 500) });
+      return { ok: true, ...r };
+    } catch (err) {
+      t.end({ error: (err as Error).message });
+      throw err;
+    }
+  }
+  if (action === 'poc') {
+    if (!isDev()) return { ok: false, pass: false, status: 404, error: 'POCs só existem no build do dev' };
+    const run = POCS[p.id ?? ''];
+    if (!run) return { ok: false, pass: false, error: `POC desconhecida: ${p.id}` };
+    if (p.trace === '0') return run(p.step, p); // sondas da P14 não viram run
+    const t = runlog.begin('poc', { question: `poc ${p.id} ${p.step ?? ''}`.trim() });
+    try {
+      const r = t.step(`poc_${p.id}`, () => run(p.step, p));
+      t.end({ answer: JSON.stringify(r).slice(0, 500) });
+      return r;
+    } catch (err) {
+      t.end({ error: (err as Error).message });
+      throw err;
+    }
+  }
+  if (action === 'disable' || action === 'enable') {
+    store.setEnabled(action === 'enable');
+    return { ok: true, enabled: store.isEnabled() };
+  }
+  if (action === 'drain') return { ok: true, trigger: observe.ensureTrigger(), ...observe.drain() };
+  return { ok: false, status: 400, error: `ação desconhecida: ${action}` };
+}
+
+/** M1 (CSRF): ações com efeito só por POST do ./gasclaw, com CLI_SECRET no corpo (nunca na URL), comparado em tempo constante. */
+export function doPost(e: GoogleAppsScript.Events.DoPost) {
+  const p = (e?.parameter ?? {}) as Record<string, string>;
+  const action = p.action ?? '';
+  try {
+    assertOwner();
+    const props = PropertiesService.getScriptProperties();
+    const stored = props.getProperty('CLI_SECRET');
+    if (action === 'setsecret') {
+      // primeira vez: o dono grava o segredo gerado no PC; depois, só quem já tem o segredo atual
+      if (!validSecret(p.secret ?? '')) return json({ ok: false, status: 400, error: 'segredo inválido: use 64 caracteres hexadecimais (openssl rand -hex 32)' });
+      if (stored && !cliAuthorized(stored, p.secret)) return json({ ok: false, status: 403, error: 'segredo da CLI errado' });
+      if (!stored) {
+        props.setProperty('CLI_SECRET', p.secret);
+        props.setProperty('CLI_SECRET_AT', new Date().toISOString()); // a data aparece no painel (ADR-022)
+      }
+      return json({ ok: true });
+    }
+    if (!cliAuthorized(stored, p.secret)) return json({ ok: false, status: 403, error: 'segredo da CLI ausente ou errado (rode ./gasclaw up)' });
+    if (!MUTATING.has(action)) return json({ ok: false, status: 400, error: `ação desconhecida: ${action}` });
+    return json(mutate(action, p));
+  } catch (err) {
+    return json({ ok: false, error: (err as Error).message });
+  }
+}
 
 // ---------- Web app ----------
 export function doGet(e: GoogleAppsScript.Events.DoGet) {
@@ -80,47 +136,17 @@ export function doGet(e: GoogleAppsScript.Events.DoGet) {
   }
   try {
     assertOwner();
-    if (action === 'eval') {
-      // o cenário (md) é só dado: nunca vira código (ADR-002)
-      const t = runlog.begin('test', { question: 'eval' });
-      try {
-        const r = t.step('eval', () => evalAction(e.parameter.md ?? '', ownerEmail(), e.parameter.model));
-        t.end({ answer: JSON.stringify(r).slice(0, 500) });
-        return json({ ok: true, ...r });
-      } catch (err) {
-        t.end({ error: (err as Error).message });
-        throw err;
-      }
-    }
-    if (action === 'poc') {
-      const run = POCS[e.parameter.id ?? ''];
-      if (!run) return json({ ok: false, pass: false, error: `POC desconhecida: ${e.parameter.id}` });
-      if (e.parameter.trace === '0') return json(run(e.parameter.step, e.parameter)); // sondas da P14 não viram run
-      const t = runlog.begin('poc', { question: `poc ${e.parameter.id} ${e.parameter.step ?? ''}`.trim() });
-      try {
-        const r = t.step(`poc_${e.parameter.id}`, () => run(e.parameter.step, e.parameter));
-        t.end({ answer: JSON.stringify(r).slice(0, 500) });
-        return json(r);
-      } catch (err) {
-        t.end({ error: (err as Error).message });
-        throw err;
-      }
-    }
+    if (MUTATING.has(action)) return json({ ok: false, status: 405, error: 'ação com efeito: use POST com o segredo da CLI (./gasclaw)' });
     if (action === 'health') {
       const agents = store.listAgents();
       const folders = agents.map((a) => `${a.name}: https://drive.google.com/drive/folders/${a.folderId}`);
-      return json({ ok: true, enabled: store.isEnabled(), agents: agents.length, hasKey: !!store.getApiKey(), folders, appUrl: appUrl() });
-    }
-    if (action === 'disable' || action === 'enable') {
-      store.setEnabled(action === 'enable');
-      return json({ ok: true, enabled: store.isEnabled() });
+      return json({ ok: true, enabled: store.isEnabled(), agents: agents.length, hasKey: !!store.getApiKey(), folders, appUrl: appUrl(), auth: authStatus() });
     }
     if (action === 'trace') return json({ ok: true, ...runlog.runDetail(e.parameter.run) });
     if (action === 'live') return json({ ok: true, ...runlog.liveRuns() });
     if (action === 'runs') return json({ ok: true, url: runlog.sheetUrl(runlog.ensureRunStore().sheetId) });
     if (action === 'limits') return json({ ok: true, ...observe.limitsNow(store.getApiKey(), e.parameter.fresh === '1') });
     if (action === 'usage') return json({ ok: true, ...observe.usageView(store.getApiKey(), e.parameter.day || undefined) });
-    if (action === 'drain') return json({ ok: true, trigger: observe.ensureTrigger(), ...observe.drain() });
     if (action === 'models') return json({ ok: true, models: openRouterModels() });
     return json({ ok: false, error: `ação desconhecida: ${action}` });
   } catch (err) {
@@ -144,7 +170,7 @@ function chatDeps(): ChatDeps {
     history: store.getHistory,
     saveHistory: store.saveHistory,
     llm: (key, model, messages, tools) => complete(key, model, messages, CHAT_MAX_TOKENS, undefined, tools),
-    toolkit: (spec, ownerDm) => ({ tools: allowedTools(spec.config.tools), ctx: { now: nowText, ownerDm, memory: memoryIO(spec.folderId) }, steps: spec.config.steps ?? DEFAULT_STEPS }),
+    toolkit: (spec, ownerDm) => ({ tools: allowedTools(spec.access.tools), ctx: { now: nowText, ownerDm, memory: memoryIO(spec.folderId) }, steps: spec.config.steps ?? DEFAULT_STEPS }),
     tickets: cacheTickets(),
     newToken,
   };
@@ -154,15 +180,7 @@ export function onMessage(e: ChatEvent) {
   const d = chatDeps();
   if (e.type !== 'MESSAGE' && e.type !== 'CARD_CLICKED') return handleChat(e, d);
   const t = runlog.begin('chat', { question: (e.message?.argumentText ?? e.message?.text ?? '').trim(), user: e.user.email });
-  const out = handleChat(e, {
-    ...d,
-    load: (id) => t.step('resolve_agent', () => loadAgentForTurn(id), agentInfo(id)),
-    llm: (key, model, messages, tools) => t.step('llm_call', () => d.llm(key, model, messages, tools), llmInfo(model, messages), true),
-    toolkit: (spec, ownerDm) => {
-      const k = d.toolkit!(spec, ownerDm);
-      return { ...k, tools: k.tools.map((tool) => ({ ...tool, run: (a, c) => t.step('tool_call', () => tool.run(a, c), () => ({ tool: tool.name })) })) };
-    },
-  });
+  const out = handleChat(e, traced(t, d));
   t.mark('reply');
   t.end({ answer: out.text });
   observe.maybeDrain(); // fallback sem gatilho: só grava se a fila tiver mais de 1 min
@@ -173,34 +191,28 @@ export function onCardClick(e: ChatEvent) {
   return onMessage({ ...e, type: 'CARD_CLICKED' });
 }
 
-/** Deps do Chat embrulhadas no trace (resolve_agent, llm_call, tool_call), com o override de modelo. */
-function tracedDeps(t: runlog.Tracer, d: ChatDeps): ChatDeps {
-  return {
-    ...d,
-    load: (id) => t.step('resolve_agent', () => loadAgentForTurn(id), agentInfo(id)),
-    llm: (key, model, messages, tools) => t.step('llm_call', () => d.llm(key, model, messages, tools), llmInfo(model, messages), true),
-    toolkit: (spec, ownerDm) => {
-      const k = d.toolkit!(spec, ownerDm);
-      return { ...k, tools: k.tools.map((tool) => ({ ...tool, run: (a, c) => t.step('tool_call', () => tool.run(a, c), () => ({ tool: tool.name })) })) };
-    },
-  };
-}
-
 // ---------- Tela de conversa de texto (?page=chat) ----------
 export function chatSend(text: string) {
   const me = assertOwner();
   const t = runlog.begin('webchat', { question: String(text).slice(0, 2000), user: me });
-  const out = webSend(tracedDeps(t, chatDeps()), me, String(text).slice(0, 4000));
+  const out = webSend(traced(t, chatDeps()), me, String(text).slice(0, 4000));
   t.mark('reply');
   t.end({ answer: out.text });
   observe.maybeDrain();
   return out;
 }
 
+/** M16: o clique de aprovação ou a resposta de uma pergunta continua o turno; vira um run webchat com os passos e o custo. */
 export function chatClick(params: Record<string, string>) {
   const me = assertOwner();
   const p = params ?? {};
-  return webClick(chatDeps(), me, { token: String(p.token ?? ''), ...(p.decision ? { decision: String(p.decision) } : {}), ...(p.answer ? { answer: String(p.answer) } : {}) });
+  const what = p.decision ? `aprovação: ${String(p.decision)}` : p.answer ? `resposta: ${String(p.answer).slice(0, 200)}` : 'clique';
+  const t = runlog.begin('webchat', { question: what, user: me });
+  const out = webClick(traced(t, chatDeps()), me, { token: String(p.token ?? ''), ...(p.decision ? { decision: String(p.decision) } : {}), ...(p.answer ? { answer: String(p.answer) } : {}) });
+  t.mark('reply');
+  t.end({ answer: out.text });
+  observe.maybeDrain();
+  return out;
 }
 
 export function onAddToSpace(e: ChatEvent) {
@@ -218,7 +230,43 @@ export const appUrl = (): string => ScriptApp.getService().getUrl() ?? '';
 export function settingsState() {
   const me = assertOwner();
   observe.maybeDrain(); // fallback sem gatilho ao abrir a tela
-  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents: store.listAgents(), appUrl: appUrl() };
+  const cliSecretAt = PropertiesService.getScriptProperties().getProperty('CLI_SECRET_AT');
+  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents: store.listAgents(), appUrl: appUrl(), cliSecretAt, auth: authStatus() };
+}
+
+/**
+ * Consentimento granular (scopes, doc oficial): escopo sem autorização vira exceção capturável, e o Google não pede
+ * sozinho enquanto o código a captura (o limits capturava). A tela mostra o link; o editor roda `authorize`.
+ * getAuthorizationInfo só consulta, sem pedir; se a leitura falhar, a tela segue sem o aviso.
+ */
+function authStatus(): { required: boolean; url: string | null; editorFunction: string } {
+  try {
+    const info = ScriptApp.getAuthorizationInfo(ScriptApp.AuthMode.FULL);
+    const required = info.getAuthorizationStatus() === ScriptApp.AuthorizationStatus.REQUIRED;
+    return { required, url: required ? info.getAuthorizationUrl() || null : null, editorFunction: 'authorize' };
+  } catch {
+    return { required: false, url: null, editorFunction: 'authorize' };
+  }
+}
+
+/**
+ * Rode no editor (arquivo _motor.gs → função "authorize" → ▶ Executar): requireAllScopes encerra a execução e mostra o
+ * pedido de permissões se faltar alguma (só funciona no editor). Com tudo concedido, cria o gatilho de 1 min e devolve "ok".
+ */
+export function authorize() {
+  assertOwner();
+  ScriptApp.requireAllScopes(ScriptApp.AuthMode.FULL);
+  observe.ensureTrigger(); // a doc recomenda criar o gatilho só depois de garantir o escopo script.scriptapp
+  return 'ok';
+}
+
+/** ADR-022: apaga o segredo da CLI (pela tela, via google.script.run, que não é CSRF-ável); o próximo ./gasclaw up registra de novo. */
+export function resetCliSecret() {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  props.deleteProperty('CLI_SECRET');
+  props.deleteProperty('CLI_SECRET_AT');
+  return settingsState();
 }
 
 export function saveKey(key: string) {
@@ -249,6 +297,48 @@ export function createAgent(name: string) {
 export function removeAgent(folderId: string) {
   assertOwner();
   store.saveAgents(store.listAgents().filter((a) => a.folderId !== folderId));
+  PropertiesService.getScriptProperties().deleteProperty(`ACCESS:${folderId}`); // ADR-021: sem sobra de acesso aprovado
+  return settingsState();
+}
+
+// ---------- Acesso e ferramentas aprovados no painel (ADR-021) ----------
+const asAccess = (a: Partial<Access> | null | undefined): Access => ({
+  users: Array.isArray(a?.users) ? a!.users.map(String) : [],
+  tools: Array.isArray(a?.tools) ? a!.tools.map(String) : [],
+});
+const agentName = (folderId: string) => store.listAgents().find((a) => a.folderId === folderId)?.name ?? folderId;
+const describeAccess = (a: Access) => `${a.users.length ? a.users.join(', ') : 'só o dono'} · ${a.tools.length ? a.tools.join(', ') : 'sem ferramentas'}`;
+
+/** O que a pasta sugere, o que está aprovado e o que falta aprovar. */
+export function agentAccess(folderId: string) {
+  assertOwner();
+  const spec = loadAgent(folderId);
+  const approved = approvedOf(folderId);
+  return { folderId, name: spec.name, suggested: spec.config.suggested, approved: effectiveAccess(approved), pending: pendingSuggestions(spec.config.suggested, approved) };
+}
+
+/** Grava o acesso aprovado (normalizado por effectiveAccess) e registra a mudança como run config no trace. */
+export function approveAccess(folderId: string, access: Partial<Access>) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
+  const next = effectiveAccess(asAccess(access));
+  const name = agentName(folderId);
+  const t = runlog.begin('config', { question: `acesso de ${name}: ${describeAccess(before)} → ${describeAccess(next)}`, agent: name });
+  t.step('approve_access', () => props.setProperty(`ACCESS:${folderId}`, JSON.stringify(next)), () => ({ folderId, before, after: next }));
+  t.end({ answer: `aprovado: ${describeAccess(next)}` });
+  return settingsState();
+}
+
+/** Remove a aprovação: o agente volta a responder só ao dono, sem ferramentas. */
+export function removeAccess(folderId: string) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
+  const name = agentName(folderId);
+  const t = runlog.begin('config', { question: `acesso de ${name}: ${describeAccess(before)} → só o dono, sem ferramentas`, agent: name });
+  t.step('remove_access', () => props.deleteProperty(`ACCESS:${folderId}`), () => ({ folderId, before }));
+  t.end({ answer: 'acesso removido' });
   return settingsState();
 }
 
@@ -314,16 +404,27 @@ export function drainNow() {
 
 export function agentModel(folderId: string) {
   assertOwner();
-  const spec = loadAgent(folderId);
-  return { folderId, name: spec.name, fromFolder: spec.config.model, override: getOverride(folderId), tools: spec.config.tools, models: openRouterModels() };
+  const approved = approvedOf(folderId);
+  const spec = withAccess(loadAgent(folderId), approved);
+  return {
+    folderId,
+    name: spec.name,
+    fromFolder: spec.config.model,
+    override: getOverride(folderId),
+    tools: spec.access.tools,
+    models: openRouterModels(),
+    suggested: spec.config.suggested,
+    approved: spec.access,
+    pending: pendingSuggestions(spec.config.suggested, approved),
+  };
 }
 
 export function setAgentModel(folderId: string, model: string | null) {
   assertOwner();
-  const spec = loadAgent(folderId);
+  const spec = withAccess(loadAgent(folderId), approvedOf(folderId));
   const before = getOverride(folderId);
   if (model) {
-    const err = validateChoice(openRouterModels(), model.trim(), spec.config.tools);
+    const err = validateChoice(openRouterModels(), model.trim(), spec.access.tools);
     if (err) throw new Error(err);
   }
   const t = runlog.begin('config', { question: `modelo de ${spec.name}: ${before ?? spec.config.model} → ${model ?? `${spec.config.model} (do AGENTS)`}`, agent: spec.name });
@@ -372,7 +473,7 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
       apiKey: store.getApiKey,
       agent: () => {
         const first = store.listAgents()[0];
-        return first ? { folderId: first.folderId, tools: loadAgent(first.folderId).config.tools } : null;
+        return first ? { folderId: first.folderId, tools: withAccess(loadAgent(first.folderId), approvedOf(first.folderId)).access.tools } : null;
       },
       testAgent: (folderId, q) => {
         const r = testAgent(folderId, q);

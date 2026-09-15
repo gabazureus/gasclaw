@@ -36,11 +36,19 @@
 <main>
   <h1>🦀 gasclaw</h1>
   <p><a id="chatLink" target="_top" hidden>Conversar com o agente</a></p>
+
+  <section id="authBox" role="alert" hidden>
+    <h2>Faltam permissões do Google</h2>
+    <p>O Google agora pede cada permissão separadamente, e algumas partes do gasclaw (gatilho de 1 min, execuções, e-mails restantes, métricas) só funcionam depois que você autorizar.</p>
+    <p><a id="authLink" target="_blank" rel="noopener">Autorizar permissões</a></p>
+    <p class="muted" id="authHow"></p>
+  </section>
   <p id="msg" role="status" aria-live="polite">Carregando…</p>
 
   <section>
     <h2>Status</h2>
     <div class="row"><span id="status"></span><button class="sec" id="toggle">…</button></div>
+    <div class="row"><span id="secretInfo" class="muted"></span><button class="sec" id="resetSecret">Redefinir segredo</button></div>
   </section>
 
   <section>
@@ -146,25 +154,68 @@
   function render(s) {
     state = s;
     $('msg').textContent = 'Conectado como ' + s.me;
+    // consentimento granular: sem autorização, o Google não pede sozinho; a tela mostra o link e o caminho pelo editor
+    const auth = s.auth || { required: false };
+    $('authBox').hidden = !auth.required;
+    if (auth.required) {
+      $('authLink').hidden = !auth.url;
+      if (auth.url) $('authLink').href = auth.url;
+      $('authHow').textContent = 'Se o link não abrir o pedido: abra o editor do Apps Script → arquivo _motor.gs → no menu de funções escolha "' + auth.editorFunction + '" → ▶ Executar → Permitir.';
+    }
     // link absoluto: a tela roda num iframe em googleusercontent.com, onde "?page=chat" relativo não chega ao web app
     if (s.appUrl) { $('chatLink').href = s.appUrl + '?page=chat'; $('chatLink').hidden = false; }
     $('status').textContent = (s.enabled ? '🟢 Ativo' : '⏸ Pausado') + ' · chave ' + (s.hasKey ? 'salva' : 'faltando') + ' · ' + s.agents.length + ' agente(s)';
     $('toggle').textContent = s.enabled ? 'Pausar' : 'Ativar';
     if (typeof fillAgents === 'function') fillAgents();
+    $('secretInfo').textContent = s.cliSecretAt ? 'Segredo da CLI registrado em ' + new Date(s.cliSecretAt).toLocaleString('pt-BR') : 'Segredo da CLI ainda não registrado (rode ./gasclaw up)';
+    $('resetSecret').disabled = !s.cliSecretAt;
     $('agents').replaceChildren(...s.agents.map((a, i) => {
+      const box = document.createElement('div');
       const row = document.createElement('div');
       row.className = 'row';
       const link = document.createElement('a');
       link.href = 'https://drive.google.com/drive/folders/' + a.folderId;
       link.textContent = (i === 0 ? '⭐ ' : '') + a.name;
       const actions = document.createElement('span');
+      const holder = document.createElement('div');
+      holder.className = 'muted';
+      holder.id = 'access-' + a.folderId;
+      holder.setAttribute('aria-live', 'polite');
+      holder.hidden = true;
+      const accessBtn = button('Acesso', () => {
+        holder.hidden = !holder.hidden;
+        accessBtn.setAttribute('aria-expanded', String(!holder.hidden));
+        if (!holder.hidden) showAccess(a.folderId, holder);
+      });
+      accessBtn.setAttribute('aria-controls', holder.id);
+      accessBtn.setAttribute('aria-expanded', 'false');
+      actions.append(accessBtn, ' ');
       if (i > 0) actions.append(button('Tornar padrão', () => call('makeDefault', a.folderId).then(render)), ' ');
       actions.append(button('Remover', () => call('removeAgent', a.folderId).then(render)));
       row.append(link, actions);
-      return row;
+      box.append(row, holder);
+      return box;
     }));
   }
 
+  // ----- Acesso e ferramentas aprovados no painel (ADR-021): a pasta só sugere -----
+  function showAccess(folderId, holder) {
+    holder.textContent = 'Carregando acesso…';
+    google.script.run.withSuccessHandler((x) => {
+      const fmt = (a) => (a.users.length ? 'pessoas: ' + a.users.join(', ') : 'só o dono') + ' · ' + (a.tools.length ? 'ferramentas: ' + a.tools.join(', ') : 'sem ferramentas');
+      const hasPending = x.pending.users.length > 0 || x.pending.tools.length > 0;
+      const line = (text) => { const d = document.createElement('div'); d.textContent = text; return d; };
+      const approve = button('Aprovar sugestão', () => call('approveAccess', folderId, { users: x.approved.users.concat(x.pending.users), tools: x.approved.tools.concat(x.pending.tools) }).then(() => { $('msg').textContent = 'Acesso aprovado.'; showAccess(folderId, holder); }));
+      approve.disabled = !hasPending;
+      const remove = button('Remover acesso', () => call('removeAccess', folderId).then(() => { $('msg').textContent = 'Acesso removido: só o dono, sem ferramentas.'; showAccess(folderId, holder); }));
+      remove.disabled = x.approved.users.length === 0 && x.approved.tools.length === 0;
+      holder.replaceChildren(line('Sugerido pela pasta (falta aprovar): ' + (hasPending ? fmt(x.pending) : 'nada novo')), line('Aprovado: ' + fmt(x.approved)), approve, document.createTextNode(' '), remove);
+    }).withFailureHandler((e) => { holder.textContent = e.message; }).agentAccess(folderId);
+  }
+  $('resetSecret').onclick = () => {
+    if (!confirm('Apagar o segredo da CLI? Até o próximo ./gasclaw up, poc, eval e down vão falhar.')) return;
+    call('resetCliSecret').then((s) => { render(s); $('msg').textContent = 'Segredo apagado. Rode ./gasclaw up para registrar de novo.'; });
+  };
   $('toggle').onclick = () => call('setRuntimeEnabled', !state.enabled).then(render);
   $('saveKey').onclick = () => call('saveKey', $('key').value).then((s) => { $('key').value = ''; render(s); });
   const added = (field) => (r) => {
@@ -353,7 +404,7 @@
   const SRC = { google: 'informado pelo Google', openrouter: 'informado pelo OpenRouter', gasclaw: 'medido pelo gasclaw' };
   function loadLimits(fresh) {
     quiet('limitsPanel', fresh).then((l) => {
-      $('limitsStatus').textContent = 'Gatilho de 1 min: ' + l.trigger + ' · ' + (l.cached ? 'lido há até 10 min' : 'lido agora') + ' (' + new Date(l.at).toLocaleTimeString() + ')';
+      $('limitsStatus').textContent = 'Gatilho de 1 min: ' + l.trigger + (l.trigger === 'aguardando autorização' ? ' (use "Autorizar permissões" no topo da tela)' : '') + ' · ' + (l.cached ? 'lido há até 10 min' : 'lido agora') + ' (' + new Date(l.at).toLocaleTimeString() + ')';
       $('limits').replaceChildren(...l.items.map((i) => {
         const pct = i.total && i.used !== null ? Math.min(100, Math.round((i.used / i.total) * 100)) : null;
         const value = i.status === 'ok' ? (i.used + ' / ' + (i.total === null ? '∞' : i.total) + ' ' + i.unit + (pct === null ? '' : ' (' + pct + '%)')) : (i.status === 'pendente' ? 'aguardando autorização' : 'erro');
@@ -371,7 +422,7 @@
   // ----- Lote -----
   function showBatch(o) {
     const age = o.oldestQueued ? Math.round((Date.now() - o.oldestQueued) / 1000) + ' s' : '—';
-    $('batchStatus').textContent = 'Gatilho de 1 min: ' + o.trigger + (o.trigger === 'ativo' ? '' : ' (enquanto isso, a fila é gravada ao abrir a tela ou no próximo turno, se tiver mais de 1 min)') + ' · entrada mais antiga na fila: ' + age;
+    $('batchStatus').textContent = 'Gatilho de 1 min: ' + o.trigger + (o.trigger === 'ativo' ? '' : ' (enquanto isso, a fila é gravada ao abrir a tela ou no próximo turno, se tiver mais de 1 min)') + (o.trigger === 'aguardando autorização' ? ' — use "Autorizar permissões" no topo da tela' : '') + ' · entrada mais antiga na fila: ' + age;
     $('drains').replaceChildren(el('table', {}, el('thead', {}, el('tr', {}, ...['quando', 'runs', 'ms', 'JSON', 'obs.'].map((h) => el('th', { textContent: h })))),
       el('tbody', {}, ...(o.drains || []).map((d) => el('tr', {}, el('td', { textContent: new Date(d.at).toLocaleTimeString() }), el('td', { textContent: d.drained }), el('td', { textContent: d.ms }), el('td', { textContent: d.json }), el('td', { textContent: d.skipped || '' }))))));
   }

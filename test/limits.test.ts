@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { buildLimits, level, nextUtcMidnight, type LimitsInput } from '../src/limits';
+import { accountKind, buildLimits, level, nextUtcMidnight, type LimitsInput } from '../src/limits';
 
 const NOW = Date.UTC(2026, 8, 15, 12, 0);
 
@@ -43,6 +43,11 @@ describe('buildLimits', () => {
   test('gasto do dia informado pelo OpenRouter, com o medido ao lado', () => {
     expect(byId(buildLimits(input())).orDaily).toMatchObject({ used: 0.4, total: null, source: 'openrouter', level: 'sem limite', note: 'medido pelo gasclaw: US$ 0.39' });
   });
+  test('gasto do dia sem barra contra o limite total da chave (não é diário); o limite aparece na nota', () => {
+    const l = byId(buildLimits(input({ key: { ok: true, value: { limit: 10, usage: 3.2, usage_daily: 0.4, is_free_tier: false } } })));
+    expect(l.orDaily).toMatchObject({ used: 0.4, total: null, level: 'sem limite' });
+    expect(l.orDaily.note).toContain('limite de crédito');
+  });
   test('fontes que dependem da reautorização aparecem como pendentes, sem quebrar', () => {
     const l = byId(buildLimits(input()));
     for (const id of ['processes', 'mail', 'monitoring', 'triggers']) expect(l[id]).toMatchObject({ status: 'pendente', level: 'sem limite' });
@@ -55,6 +60,23 @@ describe('buildLimits', () => {
     const l = byId(buildLimits(input({ drive: { ok: false, error: 'Drive 500' } })));
     expect(l.drive).toMatchObject({ status: 'erro', note: 'Drive 500' });
     expect(l.urlfetch.status).toBe('ok');
+  });
+  test('cotas pela conta dona do script: Workspace (padrão) × pessoal (gmail.com)', () => {
+    const auth = { processes: { ok: true as const, value: { triggerMsToday: 0, count: 0 } } };
+    const ws = byId(buildLimits(input({ ...auth, mail: { ok: true, value: 1400 } })));
+    expect(ws.mail).toMatchObject({ used: 100, total: 1500 });
+    expect(ws.urlfetch.total).toBe(100_000);
+    expect(ws.processes.total).toBe(21_600_000);
+    const p = byId(buildLimits(input({ ...auth, account: 'pessoal', mail: { ok: true, value: 100 } })));
+    expect(p.mail).toMatchObject({ used: 0, total: 100, level: 'verde' });
+    expect(p.urlfetch.total).toBe(20_000);
+    expect(p.processes.total).toBe(5_400_000);
+  });
+  test('accountKind: gmail.com e googlemail.com são pessoais; outro domínio é Workspace', () => {
+    expect(accountKind('Ana@Gmail.com')).toBe('pessoal');
+    expect(accountKind('x@googlemail.com')).toBe('pessoal');
+    expect(accountKind('owner@example.com')).toBe('workspace');
+    expect(accountKind(null)).toBe('workspace');
   });
   test('e-mails restantes do Google viram usados = 1500 − restantes', () => {
     expect(byId(buildLimits(input({ mail: { ok: true, value: 1400 } }))).mail).toMatchObject({ used: 100, total: 1500, source: 'google', status: 'ok' });

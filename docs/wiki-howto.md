@@ -22,8 +22,8 @@ Open **Claude Code or Codex in this folder** and just talk to it. Good first thi
 That's it. No commands to memorize, no files to touch.
 
 > Prefer to just read? Open this folder in [Obsidian](https://obsidian.md) (it
-> follows the `[[links]]`) and start at [`docs/wiki/overview.md`](docs/wiki/overview.md) and
-> the catalog [`docs/wiki/index.md`](docs/wiki/index.md).
+> follows the `[[links]]`) and start at [`docs/wiki/overview.md`](wiki/overview.md) and
+> the catalog [`docs/wiki/index.md`](wiki/index.md).
 
 ---
 
@@ -96,16 +96,16 @@ for you automatically:
 
 - **`docs/raw/sources/`** — where the raw things you add live (kept unchanged).
 - **`docs/wiki/`** — the curated knowledge the assistant maintains (you read; it writes):
-  a catalog ([`docs/wiki/index.md`](docs/wiki/index.md)), a big-picture page
-  ([`docs/wiki/overview.md`](docs/wiki/overview.md)), and pages grouped by type.
+  a catalog ([`docs/wiki/index.md`](wiki/index.md)), a big-picture page
+  ([`docs/wiki/overview.md`](wiki/overview.md)), and pages grouped by type.
 - **`KARPATHY.md`** — the *schema* that turns the assistant into a disciplined
   maintainer (the page types and the three operations it runs for you: **ingest** a
   new source, **answer** a question, **review** the wiki). `CLAUDE.md` loads it
   automatically in Claude Code; `AGENTS.md` gives Codex the equivalent instruction.
 
 You never have to name these — the assistant handles them. Full detail (page types,
-frontmatter, the operation rules) lives in [`KARPATHY.md`](KARPATHY.md), and the
-drop-zone is described in [`docs/raw/README.md`](docs/raw/README.md).
+frontmatter, the operation rules) lives in [`KARPATHY.md`](../KARPATHY.md), and the
+drop-zone is the folder [`docs/raw/sources/`](raw/sources/).
 
 > This is a git-friendly project — `git commit` after meaningful changes if you want
 > a history.

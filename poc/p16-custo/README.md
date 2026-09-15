@@ -1,0 +1,25 @@
+# POC P16 — Modelos por agente e custo por modelo
+
+- **Status:** 🟡 código pronto, medição no dev pendente · 2026-09-15 · Beads `gasclaw-cmx` · decisão no [ADR-018](../../docs/adr/018-modelos-e-custo.md)
+- **Fase:** F1
+
+## Pergunta
+Dá para escolher o modelo de cada agente na tela e ver o custo por modelo (7 dias e 24 h) com números que
+batem com os do OpenRouter, sem chamar a API a cada leitura?
+
+## Critérios (definição em `summary.ts`)
+C1 custo medido pelo gasclaw a ±2% do `usage_daily` do OpenRouter · C2 leitura do painel < 1 s · C3 o dia é a
+soma das 24 horas, em UTC e em São Paulo · C4 o modelo escolhido na tela é usado no run seguinte em ≤ 30 s ·
+C5 recusa modelo sem suporte a tools para agente com tools e aceita modelo com tools (as tools do agente são as
+aprovadas no painel, ADR-021) · C6 poda: horas com mais de 7 dias viram dia, dias com mais de 90 somem ·
+C7 no máximo 3 chamadas reais a `/api/v1/key` em 30 min (cache).
+
+## Como rodar (100% automático)
+```bash
+./gasclaw poc p16   # deploy no dev → conferência com o OpenRouter (C1) → leitura (C2) → somas (C3) → troca de modelo (C4, C5) → poda (C6) → chamadas à chave (C7)
+```
+O `pc.sh` orquestra, `harness.ts` roda no Apps Script e `summary.ts` decide (testado em `test/p16.test.ts`).
+As observações brutas ficam em `.tmp/p16/`.
+
+## Resultado
+Medição no dev pendente (ADR-018).

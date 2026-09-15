@@ -28,7 +28,7 @@ remote "poc&id=p14&step=verify&tags=${TAGS#,}&trace=0" > "$T/verify.json" || die
 
 say "P14 5/8 C6: tela (run lento ao vivo) e planilha (lote: gatilho ou fallback ao abrir a tela)"
 TOKEN=$(gcloud auth print-access-token 2>/dev/null) # uma vez só: a sonda não pode medir o gcloud
-fast() { curl -fsSL -H "Authorization: Bearer $TOKEN" "$(url)?action=$1"; }
+fast() { remote_to "$(url)" "$1" "$TOKEN"; } # M1: POST com segredo quando a action tem efeito; token pelo stdin
 tag="c6x$(date +%s)"
 remote "poc&id=p14&step=slow&tag=$tag&trace=0" > "$T/slow.json" &
 SLOW=$!

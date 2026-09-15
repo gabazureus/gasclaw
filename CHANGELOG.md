@@ -10,6 +10,10 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 
 ## [Não publicado]
 
+> ⚠️ **Mudança de acesso ([ADR-021](docs/adr/021-acesso-aprovado-no-painel.md)):** quem conversa com o agente e quais ferramentas ele usa passam a valer só depois de aprovados no painel do gasclaw. `users:` e `tools:` na pasta, no editor ou na planilha `config` viram sugestões. Depois desta versão, todo agente responde só ao dono e fica sem ferramentas até você clicar em **Aprovar** no painel. Se você usava `users:` para dar acesso a outras pessoas, aprove essas pessoas no painel.
+>
+> 🔒 **Ações com efeito só pela CLI com segredo ([ADR-022](docs/adr/022-csrf-segredo-da-cli.md)):** `./gasclaw poc`, `eval` e `down` passam a usar POST com um segredo gerado pelo `./gasclaw up` em `.env.local`. Rode `./gasclaw up` uma vez depois de atualizar.
+
 ### F0 — Primeira conversa com um agente do Drive ✅
 
 **Concluída em 2026-09-14.** O ambiente **dev está no ar e já dá para usar**: o agente responde no Google Chat usando a pasta do Drive. A pausa (`down`), a reativação (`up`) e o `rollback` foram testados de verdade, e a POC P1 mostrou que chamadas longas ao OpenRouter, de mais de 2 minutos, funcionam ([ADR-010](docs/adr/010-poc-p1-urlfetch.md)).
@@ -36,6 +40,7 @@ Detalhes técnicos: [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementa
 #### Segurança
 
 - A chave do OpenRouter apareceu parcialmente numa sessão local; `.env` foi adicionado ao `.gitignore`.
+- 🔄 (no dev, depois da auditoria) Ações com efeito só por POST com segredo da CLI, e o painel mostra quando o segredo foi registrado ([ADR-022](docs/adr/022-csrf-segredo-da-cli.md)); acesso e ferramentas só depois de aprovados no painel ([ADR-021](docs/adr/021-acesso-aprovado-no-painel.md)); o trace apaga mais formatos de chave e token (`sk-proj-`, `sk-`, `bearer` minúsculo, `Basic`); a chave do OpenRouter sai do clipboard em 90 s; o deploy confere o bundle, o HEAD e a versão antes de publicar.
 
 #### O que ainda não faz / limites
 

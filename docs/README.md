@@ -13,7 +13,9 @@ Comece por aqui. Tudo que existe no projeto está indexado nesta página.
 | Saber por que decidimos algo | [adr/](adr/README.md) |
 | Fazer o setup inicial (uma vez) | [runbooks/setup-inicial.md](runbooks/setup-inicial.md) |
 | Atualizar o devmode sem quebrar o hub | [runbooks/devmode-update.md](runbooks/devmode-update.md) |
-| Ver fases e andamento | [../conductor/tracks.md](../conductor/tracks.md) |
+| Ver fases e andamento | [../conductor/tracks.md](../conductor/tracks.md) · detalhe em [../PROGRESS.md](../PROGRESS.md) |
+| Rodar ou ler uma POC (critérios e resultados) | [../poc/](../poc/) (`./gasclaw poc <id>`) |
+| Cenários de eval do agente | [../evals/](../evals/) (`./gasclaw eval`) |
 | Produto e stack | [../conductor/product.md](../conductor/product.md) · [../conductor/tech-stack.md](../conductor/tech-stack.md) |
 | Vocabulário e mapa de módulos | [../UBIQUITOUS_LANGUAGE.md](../UBIQUITOUS_LANGUAGE.md) |
 | Base de conhecimento (pesquisa, conceitos) | [wiki/index.md](wiki/index.md) · fontes brutas em [raw/sources/](raw/sources/) |

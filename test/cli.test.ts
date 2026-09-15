@@ -1,0 +1,27 @@
+import { describe, expect, test } from 'vitest';
+import { cliAuthorized, MUTATING, safeEqual, validSecret } from '../src/cli';
+
+const S = 'a'.repeat(64);
+
+describe('segredo da CLI (M1: CSRF)', () => {
+  test('safeEqual compara o conteúdo inteiro e recusa tamanhos diferentes', () => {
+    expect(safeEqual(S, S)).toBe(true);
+    expect(safeEqual(S, `${'a'.repeat(63)}b`)).toBe(false);
+    expect(safeEqual(S, 'a'.repeat(63))).toBe(false);
+  });
+  test('cliAuthorized: sem segredo guardado, sem segredo enviado ou segredo errado = não', () => {
+    expect(cliAuthorized(S, S)).toBe(true);
+    expect(cliAuthorized(null, S)).toBe(false);
+    expect(cliAuthorized(S, undefined)).toBe(false);
+    expect(cliAuthorized(S, '')).toBe(false);
+    expect(cliAuthorized(S, 'b'.repeat(64))).toBe(false);
+  });
+  test('validSecret: 64 caracteres hexadecimais (openssl rand -hex 32)', () => {
+    expect(validSecret('0123456789abcdef'.repeat(4))).toBe(true);
+    expect(validSecret('xyz')).toBe(false);
+    expect(validSecret('G'.repeat(64))).toBe(false);
+  });
+  test('ações com efeito saem do GET', () => {
+    expect([...MUTATING].sort()).toEqual(['disable', 'drain', 'enable', 'eval', 'poc']);
+  });
+});
