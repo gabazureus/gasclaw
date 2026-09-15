@@ -13,10 +13,8 @@ edit_soul() { # simula o editor: baixa o HEAD, altera o SOUL e grava o HEAD inte
   printf '\nEditado no editor: %s\n' "$1" >> "$T/edit/agentes/p10/SOUL.md.html"
   CLASP_ROOT="$T/edit" clasp_ push --force >/dev/null
 }
-at() { # $1 URL base (…/exec ou …/dev) · $2 querystring extra
-  local t
-  t=$(gcloud auth print-access-token 2>/dev/null) || return 1
-  curl -fsSL -H "Authorization: Bearer $t" "$1?action=poc&id=p10&step=read$2"
+at() { # $1 URL base (…/exec ou …/dev) · $2 querystring extra (M1: POST com o segredo, pelo remote_to)
+  remote_to "$1" "poc&id=p10&step=read$2"
 }
 has_mark() { # $1 arquivo JSON do read · $2 variante
   node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(r.variants?.[process.argv[2]]?.files?.["agentes/p10/SOUL.md"]?.hasMark?0:1)' "$1" "$2"

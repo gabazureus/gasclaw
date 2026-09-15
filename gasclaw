@@ -77,10 +77,36 @@ clasp_() { # projeto privado por chamada: nenhum comando compartilha (nem reescr
   return "$rc"
 }
 url() { printf 'https://script.google.com/a/macros/%s/s/%s/exec' "${DOMAIN:-}" "$(var "DEPLOY_ID_$UP")"; }
-remote() {
-  local t
-  t=$(gcloud auth print-access-token 2>/dev/null) || return 1
-  curl -fsSL -H "Authorization: Bearer $t" "$(url)?action=$1"
+remote_to() { # $1 URL base (…/exec ou …/dev) · $2 "acao&a=b" (já no formato de querystring) · $3 token (opcional, reaproveitado)
+  local t="${3:-}" action="${2%%&*}"
+  [ -n "$t" ] || t=$(gcloud auth print-access-token 2>/dev/null) || return 1
+  case " eval poc enable disable drain " in
+    *" $action "*) # M1: ação com efeito → POST; parâmetros no corpo; token e segredo pelo stdin, nunca em argv nem na URL
+      [ -n "${CLI_SECRET:-}" ] || { die "sem CLI_SECRET no .env.local: rode ./gasclaw up (ele gera e registra o segredo)"; return 1; }
+      printf 'header = "Authorization: Bearer %s"\ndata-urlencode = "secret=%s"\n' "$t" "$CLI_SECRET" | curl -fsSL --config - --data "action=$2" "$1" ;;
+    *) # leitura → GET; token pelo stdin
+      printf 'header = "Authorization: Bearer %s"\n' "$t" | curl -fsSL --config - "$1?action=$2" ;;
+  esac
+}
+remote() { remote_to "$(url)" "$1"; }
+
+ensure_cli_secret() { # M1: segredo da CLI gerado no PC (.env.local, gitignored; nunca gasclaw.env) e registrado no web app pelo dono
+  local r t
+  if [ -z "${CLI_SECRET:-}" ]; then
+    CLI_SECRET=$(openssl rand -hex 32)
+    touch .env.local
+    chmod 600 .env.local
+    if [ -s .env.local ] && [ -n "$(tail -c1 .env.local)" ]; then printf '\n' >> .env.local; fi
+    printf 'CLI_SECRET=%s\n' "$CLI_SECRET" >> .env.local
+    export CLI_SECRET
+    ok "segredo da CLI gerado em .env.local"
+  fi
+  t=$(gcloud auth print-access-token 2>/dev/null || true)
+  r=$(printf 'header = "Authorization: Bearer %s"\ndata-urlencode = "secret=%s"\n' "$t" "$CLI_SECRET" | curl -fsSL --config - --data "action=setsecret" "$(url)" 2>/dev/null || true)
+  case "$r" in
+    *'"ok":true'*) ok "segredo da CLI registrado no web app" ;;
+    *) warn "segredo da CLI não registrado (${r:0:120}): as ações com efeito (poc, eval, down) falham até o próximo up" ;;
+  esac
 }
 
 ensure_tools() {
@@ -164,6 +190,7 @@ deploy() {
   npm test > .tmp/test.log 2>&1 || die "testes falharam: veja .tmp/test.log" # o build.test gera numa pasta temporária
   say "build (logo antes do push)"
   export GCP_NUMBER="$(var "GCP_NUMBER_$UP")" # Monitoring (ADR-016)
+  if [ "$TARGET" = dev ]; then export GASCLAW_DEV=1; else export GASCLAW_DEV=0; fi # POCs só no build do dev (M1)
   OUT_DIR=dist npm run build > .tmp/build.log 2>&1 || die "build falhou: veja .tmp/build.log"
   local built
   built=$(shasum -a 256 dist/_motor.js dist/appsscript.json | cut -d' ' -f1 | tr '\n' ' ')
@@ -264,6 +291,7 @@ cmd_up() {
   ensure_script
   deploy
   authorize
+  ensure_cli_secret
   remote enable >/dev/null 2>&1 || true
   health
   if [ -n "${OPENROUTER_API_KEY:-}" ]; then
