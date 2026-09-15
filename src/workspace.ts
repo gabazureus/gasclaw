@@ -53,7 +53,8 @@ export function extractFolderId(input: string): string | null {
 }
 
 // minimal: subconjunto de YAML plano (chave: valor | chave: [a, b]); chaves aninhadas entram quando F2 precisar.
-export function parseFrontmatter(md: string): { data: Record<string, string | string[]>; body: string } {
+export function parseFrontmatter(raw: string): { data: Record<string, string | string[]>; body: string } {
+  const md = raw.replace(/^﻿/, '').replace(/\r\n?/g, '\n'); // BOM e CRLF (Windows) não podem apagar tools/users
   const m = md.match(/^---\n([\s\S]*?)\n---\n?/);
   if (!m) return { data: {}, body: md };
   const data: Record<string, string | string[]> = {};

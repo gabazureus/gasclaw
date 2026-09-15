@@ -41,6 +41,11 @@ describe('parseFrontmatter', () => {
     expect(data).toEqual({ model: 'openai/gpt-5-mini', users: ['a@x.com', 'B@x.com'] });
     expect(body).toBe('# Regras\nSeja breve.');
   });
+  test('aceita CRLF e BOM (arquivo salvo no Windows): não perde tools nem users', () => {
+    const { data, body } = parseFrontmatter('﻿---\r\ntools: [now]\r\nusers: [a@x.com]\r\n---\r\n# Regras\r\n');
+    expect(data).toEqual({ tools: ['now'], users: ['a@x.com'] });
+    expect(body).toBe('# Regras\n');
+  });
   test('sem frontmatter devolve corpo inteiro', () => {
     expect(parseFrontmatter('# oi')).toEqual({ data: {}, body: '# oi' });
   });
