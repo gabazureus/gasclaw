@@ -1,6 +1,7 @@
 // POC P18: quanto a sessão no Drive custa por turno, contra o caminho só de cache. Critério do usuário: ≤ 300 ms a mais.
 // Mede no dev com uma sessão de teste, apagada no fim. Núcleo do veredito é puro (p18Verdict), testável offline.
 import type { Message } from '../../src/llm';
+import * as store from '../../src/store';
 import type { Session } from '../../src/session';
 import { sessionIO } from '../../src/sessionStore';
 
@@ -21,10 +22,13 @@ export function p18Verdict(samples: P18Sample[], target = P18_TARGET_MS): P18Res
 
 const msg = (i: number): Message => ({ role: i % 2 ? 'assistant' : 'user', content: `turno ${i} `.padEnd(200, 'x') });
 
-/** Mede N turnos: cada turno lê e grava a sessão, uma vez só no cache e uma vez no Drive. */
-export function pocP18(step?: string, params: Record<string, string> = {}): P18Result | { poc: 'P18'; step: string; pass: boolean } {
-  const folderId = params.folderId ?? '';
-  if (!folderId) throw new Error('P18 precisa do folderId do agente de teste');
+/**
+ * Mede N turnos: cada turno lê e grava a sessão, uma vez com cache quente e uma vez direto no Drive.
+ * A pasta sai do agente padrão no servidor (a CLI só passa id e etapa, como nas outras POCs).
+ */
+export function pocP18(step?: string, params: Record<string, string> = {}): P18Result | { poc: 'P18'; step: string; pass: boolean; error: string } {
+  const folderId = store.listAgents()[0]?.folderId ?? '';
+  if (!folderId) return { poc: 'P18', step: step ?? '', pass: false, error: 'nenhum agente cadastrado: abra a tela do gasclaw e cadastre um agente antes de rodar a P18' };
   const turns = Math.min(20, Math.max(3, Number(params.turns) || 10));
   const space = `poc-p18-${Date.now()}`;
   const io = sessionIO(folderId);
