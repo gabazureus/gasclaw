@@ -77,15 +77,41 @@ clasp_() { # projeto privado por chamada: nenhum comando compartilha (nem reescr
   return "$rc"
 }
 url() { printf 'https://script.google.com/a/macros/%s/s/%s/exec' "${DOMAIN:-}" "$(var "DEPLOY_ID_$UP")"; }
+gfetch() { # $1 token · $2 URL · $3 corpo do POST ("" = GET) · $4 segredo (só no POST). Imprime o corpo; ≠ 0 se não for 200.
+  # Medido (P14, v29): a resposta do web app vem por um 302 para script.googleusercontent.com/…/echo, que EXIGE o token
+  # e vale UMA vez. O curl -L não reenvia o Authorization ao trocar de host: o 1º GET sem token queima a chave (404 ou
+  # redireciona para o /exec, que devolve a tela). Aqui o salto é manual, com o token, e só para o host do echo do Google.
+  local t="$1" u="$2" d="$3" s="${4:-}" out meta code loc rc=0
+  mkdir -p .tmp
+  out=$(mktemp "$PWD/.tmp/resp.XXXXXX")
+  if [ -n "$d" ]; then
+    meta=$(printf 'header = "Authorization: Bearer %s"\ndata-urlencode = "secret=%s"\n' "$t" "$s" | curl -sS --config - --data "$d" -o "$out" -w '%{http_code} %{redirect_url}' "$u") || rc=$?
+  else
+    meta=$(printf 'header = "Authorization: Bearer %s"\n' "$t" | curl -sS --config - -o "$out" -w '%{http_code} %{redirect_url}' "$u") || rc=$?
+  fi
+  code="${meta%% *}"; loc="${meta#* }"; [ "$loc" = "$meta" ] && loc=""
+  if [ "$rc" -eq 0 ] && [ "$code" = 302 ] && [ -n "$loc" ]; then
+    case "$loc" in
+      https://script.googleusercontent.com/*)
+        meta=$(printf 'header = "Authorization: Bearer %s"\n' "$t" | curl -sS --config - -o "$out" -w '%{http_code} %{redirect_url}' "$loc") || rc=$?
+        code="${meta%% *}" ;;
+      *) rc=22; printf 'redirecionamento para host inesperado recusado (o token não sai do Google)\n' >&2 ;;
+    esac
+  fi
+  if [ "$rc" -eq 0 ] && [ "$code" = 200 ]; then cat "$out"; else rc=${rc/#0/22}; printf 'web app respondeu HTTP %s\n' "${code:-?}" >&2; fi
+  rm -f "$out"
+  return "$rc"
+}
+
 remote_to() { # $1 URL base (…/exec ou …/dev) · $2 "acao&a=b" (já no formato de querystring) · $3 token (opcional, reaproveitado)
   local t="${3:-}" action="${2%%&*}"
   [ -n "$t" ] || t=$(gcloud auth print-access-token 2>/dev/null) || return 1
   case " eval poc enable disable drain " in
     *" $action "*) # M1: ação com efeito → POST; parâmetros no corpo; token e segredo pelo stdin, nunca em argv nem na URL
       [ -n "${CLI_SECRET:-}" ] || { die "sem CLI_SECRET no .env.local: rode ./gasclaw up (ele gera e registra o segredo)"; return 1; }
-      printf 'header = "Authorization: Bearer %s"\ndata-urlencode = "secret=%s"\n' "$t" "$CLI_SECRET" | curl -fsSL --config - --data "action=$2" "$1" ;;
+      gfetch "$t" "$1" "action=$2" "$CLI_SECRET" ;;
     *) # leitura → GET; token pelo stdin
-      printf 'header = "Authorization: Bearer %s"\n' "$t" | curl -fsSL --config - "$1?action=$2" ;;
+      gfetch "$t" "$1?action=$2" "" ;;
   esac
 }
 remote() { remote_to "$(url)" "$1"; }
@@ -102,7 +128,7 @@ ensure_cli_secret() { # M1: segredo da CLI gerado no PC (.env.local, gitignored;
     ok "segredo da CLI gerado em .env.local"
   fi
   t=$(gcloud auth print-access-token 2>/dev/null || true)
-  r=$(printf 'header = "Authorization: Bearer %s"\ndata-urlencode = "secret=%s"\n' "$t" "$CLI_SECRET" | curl -fsSL --config - --data "action=setsecret" "$(url)" 2>/dev/null || true)
+  r=$(gfetch "$t" "$(url)" "action=setsecret" "$CLI_SECRET" 2>/dev/null || true)
   case "$r" in
     *'"ok":true'*) ok "segredo da CLI registrado no web app" ;;
     *) warn "segredo da CLI não registrado (${r:0:120}): as ações com efeito (poc, eval, down) falham até o próximo up" ;;

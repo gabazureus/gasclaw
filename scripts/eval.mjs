@@ -29,12 +29,25 @@ if (!/^[0-9a-f]{64}$/.test(secret)) die('sem CLI_SECRET no .env.local: rode ./ga
 let failed = 0;
 for (const n of names) {
   // M1: eval é ação com efeito → POST. Token e segredo vão pelo stdin (--config -): nunca em `ps`, na URL ou no erro.
-  const params = ['-fsSL', '--config', '-', '--data-urlencode', 'action=eval', '--data-urlencode', `md@evals/${n}.md`];
+  // A resposta vem por 302 para script.googleusercontent.com/…/echo, que exige o token e vale uma vez (medido na P14):
+  // o salto é manual, com o token, e só para esse host (o curl -L não reenvia o Authorization ao trocar de host).
+  const params = ['-sS', '--config', '-', '-o', '-', '-w', '\n%{http_code} %{redirect_url}', '--data-urlencode', 'action=eval', '--data-urlencode', `md@evals/${n}.md`];
   if (model) params.push('--data-urlencode', `model=${model}`);
   let r;
   try {
-    const config = `header = "Authorization: Bearer ${token}"\ndata-urlencode = "secret=${secret}"\n`;
-    const body = execFileSync('curl', [...params, url], { input: config, encoding: 'utf8', maxBuffer: 10 << 20, stdio: ['pipe', 'pipe', 'pipe'] });
+    const split = (out) => {
+      const i = out.lastIndexOf('\n');
+      const [code, loc = ''] = out.slice(i + 1).split(' ');
+      return { body: out.slice(0, i), code, loc };
+    };
+    const opts = { encoding: 'utf8', maxBuffer: 10 << 20, stdio: ['pipe', 'pipe', 'pipe'] };
+    let res = split(execFileSync('curl', [...params, url], { ...opts, input: `header = "Authorization: Bearer ${token}"\ndata-urlencode = "secret=${secret}"\n` }));
+    if (res.code === '302') {
+      if (!res.loc.startsWith('https://script.googleusercontent.com/')) throw Object.assign(new Error('redirect'), { status: 22, stderr: 'redirecionamento para host inesperado recusado' });
+      res = split(execFileSync('curl', ['-sS', '--config', '-', '-o', '-', '-w', '\n%{http_code} %{redirect_url}', res.loc], { ...opts, input: `header = "Authorization: Bearer ${token}"\n` }));
+    }
+    if (res.code !== '200') throw Object.assign(new Error('http'), { status: 22, stderr: `web app respondeu HTTP ${res.code}` });
+    const body = res.body;
     try {
       r = JSON.parse(body);
     } catch {
