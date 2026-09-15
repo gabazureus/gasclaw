@@ -32,11 +32,12 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'memory.remove',
-    description: 'Remove da memória os fatos que contêm o trecho informado.',
-    parameters: text('trecho do fato a remover'),
-    approval: 'never',
+    description: 'Remove da memória os fatos que contêm o trecho informado (pede aprovação do usuário).',
+    parameters: text('trecho do fato a remover (mínimo 3 caracteres)'),
+    approval: 'always', // apaga dados do usuário
     run: (a, ctx) => {
       ownerOnly(ctx);
+      if (String(a.text).trim().length < 3) throw new Error('trecho curto demais (mínimo 3 caracteres)');
       const r = removeEntry(ctx.memory.read(), String(a.text));
       if (r.removed) ctx.memory.write(r.text);
       return `${r.removed} fato(s) removido(s)`;
@@ -50,6 +51,15 @@ export const TOOLS: Tool[] = [
     run: (_a, ctx) => {
       ownerOnly(ctx);
       return ctx.memory.read().slice(0, RECALL_MAX) || '(memória vazia)';
+    },
+  },
+  {
+    name: 'ask',
+    description: 'Faz uma pergunta ao usuário e espera a resposta. Use quando faltar uma informação ou uma escolha.',
+    parameters: { type: 'object', properties: { question: { type: 'string', maxLength: 500 }, options: { type: 'string', description: 'opções separadas por vírgula', maxLength: 300 } }, required: ['question'], additionalProperties: false },
+    approval: 'never',
+    run: () => {
+      throw new Error('ask é tratado pelo motor (pendência), não executa');
     },
   },
 ];
@@ -73,7 +83,7 @@ export function validateArgs(schema: Schema, raw: string): { ok: true; args: Rec
   const obj = args as Record<string, unknown>;
   for (const k of schema.required ?? []) if (obj[k] === undefined) return { ok: false, error: `falta o argumento obrigatório "${k}"` };
   for (const [k, v] of Object.entries(obj)) {
-    const p = schema.properties[k];
+    const p = Object.prototype.hasOwnProperty.call(schema.properties, k) ? schema.properties[k] : undefined;
     if (!p) {
       if (schema.additionalProperties === false) return { ok: false, error: `argumento desconhecido "${k}"` };
       continue;

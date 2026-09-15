@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { runTurn, type TurnInput } from '../src/agent';
 import type { Completion, Message, ToolDef } from '../src/llm';
-import { allowedTools, TOOLS, type Tool } from '../src/tools/registry';
+import { allowedTools, findTool, TOOLS, type Tool } from '../src/tools/registry';
 
 const call = (id: string, name: string, args = '{}') => ({ id, type: 'function' as const, function: { name, arguments: args } });
 const say = (text: string): Completion => ({ text });
@@ -119,5 +119,70 @@ describe('runTurn', () => {
     expect(runs).toBe(0);
     expect(r.pending).toMatchObject({ name: 'gmail.send', callId: 'c1', key: 'r1:0:c1', args: {} });
     expect(r.events[0].status).toBe('pending');
+  });
+});
+
+describe('runTurn: aprovação e ask (E5)', () => {
+  const risky = (approval: Tool['approval'], log: string[]): Tool => ({ ...findTool(TOOLS, 'memory.remove')!, approval, run: (a) => (log.push(String(a.text)), 'removido') });
+
+  test('pendência devolve o estado para retomar; aprovar executa e continua o turno', () => {
+    const log: string[] = [];
+    const first = input([ask(call('c1', 'memory_remove', '{"text":"x"}'))], { tools: [risky('always', log)] });
+    const p = runTurn(first.i);
+    expect(p.pending).toMatchObject({ kind: 'approval', name: 'memory.remove', args: { text: 'x' } });
+    expect(p.state?.step).toBe(0);
+    const again = input([say('Removi.')], { tools: [risky('always', log)], resume: { ...p.state!, decision: { approved: true } } });
+    const r = runTurn(again.i);
+    expect(log).toEqual(['x']);
+    expect(r.text).toBe('Removi.');
+    expect(r.events).toEqual([{ name: 'memory.remove', callId: 'c1', key: 'r1:0:c1', status: 'approved', result: 'removido' }]);
+    expect(again.sent[0].messages.slice(-1)).toEqual([{ role: 'tool', tool_call_id: 'c1', content: 'removido' }]);
+    expect(r.history).toEqual([{ role: 'user', content: 'oi' }, { role: 'assistant', content: 'Removi.' }]);
+  });
+
+  test('negar não executa e o modelo recebe "negado pelo usuário"', () => {
+    const log: string[] = [];
+    const p = runTurn(input([ask(call('c1', 'memory_remove', '{"text":"x"}'))], { tools: [risky('always', log)] }).i);
+    const again = input([say('Ok, não removi.')], { tools: [risky('always', log)], resume: { ...p.state!, decision: { approved: false } } });
+    const r = runTurn(again.i);
+    expect(log).toEqual([]);
+    expect(r.events[0]).toMatchObject({ status: 'denied' });
+    expect(again.sent[0].messages.slice(-1)[0]?.content).toContain('negado pelo usuário');
+  });
+
+  test('once: depois de aprovada no turno, a mesma tool não pede de novo (granted)', () => {
+    const log: string[] = [];
+    const p = runTurn(input([ask(call('c1', 'memory_remove', '{"text":"a"}'))], { tools: [risky('once', log)] }).i);
+    const r = runTurn(input([ask(call('c2', 'memory_remove', '{"text":"b"}')), say('fim')], { tools: [risky('once', log)], resume: { ...p.state!, decision: { approved: true } } }).i);
+    expect(r.granted).toEqual(['memory.remove']);
+    expect(log).toEqual(['a', 'b']);
+    expect(r.pending).toBeUndefined();
+    const next = runTurn(input([ask(call('c3', 'memory_remove', '{"text":"c"}')), say('fim')], { tools: [risky('once', log)], granted: r.granted }).i);
+    expect(next.pending).toBeUndefined();
+  });
+
+  test('always pede toda vez, mesmo com granted', () => {
+    const p = runTurn(input([ask(call('c1', 'memory_remove', '{"text":"a"}'))], { tools: [risky('always', [])], granted: ['memory.remove'] }).i);
+    expect(p.pending?.kind).toBe('approval');
+  });
+
+  test('segunda chamada do mesmo lote que também pede aprovação vira nova pendência', () => {
+    const log: string[] = [];
+    const tools = [risky('always', log)];
+    const p = runTurn(input([ask(call('c1', 'memory_remove', '{"text":"a"}'), call('c2', 'memory_remove', '{"text":"b"}'))], { tools }).i);
+    const r = runTurn(input([], { tools, resume: { ...p.state!, decision: { approved: true } } }).i);
+    expect(log).toEqual(['a']);
+    expect(r.pending).toMatchObject({ callId: 'c2' });
+  });
+
+  test('ask: pergunta ao usuário e a resposta vira o resultado da tool', () => {
+    const tools = allowedTools(['ask']);
+    const p = runTurn(input([ask(call('c1', 'ask', '{"question":"Qual sala?","options":"A, B"}'))], { tools }).i);
+    expect(p.pending).toMatchObject({ kind: 'ask', name: 'ask', args: { question: 'Qual sala?', options: 'A, B' } });
+    expect(p.text).toContain('Qual sala?');
+    const again = input([say('Reservei a B.')], { tools, resume: { ...p.state!, decision: { answer: 'B' } } });
+    const r = runTurn(again.i);
+    expect(again.sent[0].messages.slice(-1)[0]).toEqual({ role: 'tool', tool_call_id: 'c1', content: 'resposta do usuário: B' });
+    expect(r.text).toBe('Reservei a B.');
   });
 });

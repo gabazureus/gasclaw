@@ -43,6 +43,7 @@ describe('parseScenario', () => {
     ['canal inválido', '---\nname: x\nchannel: sms\n---\n## turnos\n- a\n## verificações\n- noTool\n', 'channel'],
     ['sem turnos', '---\nname: x\n---\n## verificações\n- noTool\n', 'turnos'],
     ['sem verificações', '---\nname: x\n---\n## turnos\n- a\n', 'verificações'],
+    ['steps inválido', '---\nname: x\nsteps: abc\n---\n## turnos\n- a\n## verificações\n- noTool\n', 'steps'],
     ['verificação desconhecida', '---\nname: x\n---\n## turnos\n- a\n## verificações\n- eval: 1\n', 'eval'],
   ])('%s → erro', (_n, md, word) => expect(() => parseScenario(md)).toThrow(word));
   test('todos os cenários do repositório parseiam', () => {

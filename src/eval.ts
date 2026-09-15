@@ -50,6 +50,7 @@ export function parseScenario(md: string): Scenario {
     return tool ? { tool: tool[1], args: tool[2] || '{}' } : { text: l.replace(/^texto:\s*/, '') };
   });
   const steps = str('steps') ? Number(str('steps')) : undefined;
+  if (steps !== undefined && !(Number.isInteger(steps) && steps >= 1 && steps <= 50)) throw new Error(`${name}: steps inválido (inteiro de 1 a 50)`);
   return {
     name,
     channel,

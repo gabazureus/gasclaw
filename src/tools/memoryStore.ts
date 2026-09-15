@@ -1,5 +1,5 @@
 // Borda da memória: MEMORY.md na pasta do agente (Google Doc ou .md, ADR-012). Sem escopo novo (drive).
-import { DRIVE_API, driveOk, fetchTexts, listFolder } from '../drive';
+import { fetchTexts, listFolder } from '../drive';
 import { DOC_MIME, type FileEntry, type Source } from '../workspace';
 
 const isGoogle = (e: FileEntry) => e.mime.startsWith('application/vnd.google-apps.');
@@ -30,9 +30,8 @@ export function memoryIO(folderId: string): { read: () => string; write: (text: 
         DriveApp.getFileById(s.entry.id).setContent(text);
         return;
       }
-      // minimal: Doc atualizado por upload de markdown (Drive v3 files.update com conversão); não medido no dev, a E1 mede com .md.
-      const url = `${DRIVE_API.replace('/drive/v3', '/upload/drive/v3')}/${s.entry.id}?uploadType=media`;
-      driveOk(UrlFetchApp.fetch(url, { method: 'patch', contentType: 'text/markdown', payload: text, headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` }, muteHttpExceptions: true }), 'update MEMORY');
+      // minimal: escrever num Google Doc precisa de POC (upload com conversão não medido); até lá, recusa com motivo claro.
+      throw new Error('MEMORY é um Google Doc: a escrita pelo agente ainda não é suportada (use MEMORY.md)');
     },
   };
 }

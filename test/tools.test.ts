@@ -11,7 +11,8 @@ describe('registry', () => {
   test('lista fechada: allowlist por nome exato ou grupo (memory → memory.*)', () => {
     expect(allowedTools(['now']).map((t) => t.name)).toEqual(['now']);
     expect(allowedTools(['memory']).map((t) => t.name)).toEqual(['memory.save', 'memory.remove', 'memory.read']);
-    expect(allowedTools(['http', 'eval', 'mem'])).toEqual([]);
+    expect(allowedTools(['http', 'eval', 'mem', 'as'])).toEqual([]);
+    expect(allowedTools(['ask']).map((t) => t.name)).toEqual(['ask']);
     expect(allowedTools([])).toEqual([]);
   });
   test('toda tool tem descrição, schema de objeto e approval válido', () => {
@@ -42,6 +43,8 @@ describe('validateArgs', () => {
     ['{"text":"123456"}', 'text'],
     ['{"text":"a","n":1.5}', 'n'],
     ['{"text":"a","x":1}', 'x'],
+    ['{"text":"a","__proto__":{"y":1}}', 'desconhecido'],
+    ['{"text":"a","constructor":1}', 'desconhecido'],
   ])('recusa %s', (raw, word) => {
     const r = validateArgs(schema, raw);
     expect(r.ok).toBe(false);
@@ -93,6 +96,13 @@ describe('tools', () => {
     expect(run('memory.read', {}, c)).toContain('10h');
     expect(run('memory.remove', { text: '10h' }, c)).toContain('1');
     expect(c.mem.text).toBe('');
+  });
+  test('memory.remove pede aprovação e recusa trecho curto (não apaga tudo)', () => {
+    expect(findTool(TOOLS, 'memory.remove')?.approval).toBe('always');
+    const c = ctx();
+    c.mem.text = '- a\n- b\n';
+    expect(() => run('memory.remove', { text: ' ' }, c)).toThrow('mínimo 3');
+    expect(c.mem.text).toBe('- a\n- b\n');
   });
   test('memory.* fora da DM do dono lança (vira erro de tool no loop)', () => {
     expect(() => run('memory.read', {}, ctx({ ownerDm: false }))).toThrow('DM do dono');
