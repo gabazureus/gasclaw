@@ -1,6 +1,9 @@
-export type Message = { role: 'system' | 'user' | 'assistant'; content: string };
+export type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
+export type ToolDef = { type: 'function'; function: { name: string; description: string; parameters: object } };
+export type Message = { role: 'system' | 'user' | 'assistant' | 'tool'; content: string; tool_calls?: ToolCall[]; tool_call_id?: string };
 export type Completion = {
   text: string;
+  toolCalls?: ToolCall[];
   usage?: { prompt_tokens: number; completion_tokens: number; cost?: number };
   id?: string;
   model?: string;
@@ -11,14 +14,17 @@ export type Http = (url: string, init: Init) => { code: number; body: string };
 
 export const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
-export function buildRequest(apiKey: string, model: string, messages: Message[], maxTokens: number): { url: string; init: Init } {
+/** Doc OpenRouter (tool calling): o assistente que pede tools vai com `content: null`. */
+const wire = (m: Message) => (m.tool_calls?.length && !m.content ? { ...m, content: null } : m);
+
+export function buildRequest(apiKey: string, model: string, messages: Message[], maxTokens: number, tools: ToolDef[] = []): { url: string; init: Init } {
   return {
     url: OPENROUTER_URL,
     init: {
       method: 'post',
       contentType: 'application/json',
       headers: { Authorization: `Bearer ${apiKey}`, 'X-Title': 'gasclaw' },
-      payload: JSON.stringify({ model, messages, max_tokens: maxTokens }),
+      payload: JSON.stringify({ model, messages: messages.map(wire), max_tokens: maxTokens, ...(tools.length ? { tools } : {}) }),
       muteHttpExceptions: true,
     },
   };
@@ -27,9 +33,11 @@ export function buildRequest(apiKey: string, model: string, messages: Message[],
 export function parseResponse(code: number, body: string): Completion {
   if (code !== 200) throw new Error(`OpenRouter ${code}: ${body.slice(0, 300)}`);
   const json = JSON.parse(body);
-  const text = json.choices?.[0]?.message?.content;
-  if (typeof text !== 'string') throw new Error('OpenRouter: resposta sem conteúdo');
-  return { text, usage: json.usage, id: json.id, model: json.model, finish_reason: json.choices[0].finish_reason }; // usage.cost vem sempre (docs OpenRouter)
+  const msg = json.choices?.[0]?.message;
+  const toolCalls: ToolCall[] | undefined = Array.isArray(msg?.tool_calls) && msg.tool_calls.length ? msg.tool_calls : undefined;
+  if (typeof msg?.content !== 'string' && !toolCalls) throw new Error('OpenRouter: resposta sem conteúdo');
+  const text = typeof msg.content === 'string' ? msg.content : '';
+  return { text, ...(toolCalls ? { toolCalls } : {}), usage: json.usage, id: json.id, model: json.model, finish_reason: json.choices[0].finish_reason }; // usage.cost vem sempre (docs OpenRouter)
 }
 
 // minimal: sem retry/backoff para 429/5xx; entra na F2 junto com a fila durável.
@@ -38,8 +46,8 @@ const gasHttp: Http = (url, init) => {
   return { code: res.getResponseCode(), body: res.getContentText() };
 };
 
-export function complete(apiKey: string, model: string, messages: Message[], maxTokens: number, http: Http = gasHttp): Completion {
-  const { url, init } = buildRequest(apiKey, model, messages, maxTokens);
+export function complete(apiKey: string, model: string, messages: Message[], maxTokens: number, http: Http = gasHttp, tools: ToolDef[] = []): Completion {
+  const { url, init } = buildRequest(apiKey, model, messages, maxTokens, tools);
   const res = http(url, init);
   return parseResponse(res.code, res.body);
 }

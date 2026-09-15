@@ -31,6 +31,31 @@ describe('parseResponse', () => {
   });
 });
 
+describe('tool_calls (OpenRouter, formato OpenAI)', () => {
+  const tools = [{ type: 'function' as const, function: { name: 'now', description: 'hora', parameters: { type: 'object', properties: {} } } }];
+  const call = { id: 'c1', type: 'function' as const, function: { name: 'now', arguments: '{}' } };
+
+  test('tools só entram no payload quando há alguma', () => {
+    expect(JSON.parse(buildRequest('k', 'm', msgs, 10, []).init.payload)).not.toHaveProperty('tools');
+    expect(JSON.parse(buildRequest('k', 'm', msgs, 10, tools).init.payload).tools).toEqual(tools);
+  });
+  test('assistente que repassa tool_calls vai com content null; resultado vai como role tool', () => {
+    const ms = [...msgs, { role: 'assistant' as const, content: '', tool_calls: [call] }, { role: 'tool' as const, content: '"12:00"', tool_call_id: 'c1' }];
+    const sent = JSON.parse(buildRequest('k', 'm', ms, 10, tools).init.payload).messages;
+    expect(sent[1]).toEqual({ role: 'assistant', content: null, tool_calls: [call] });
+    expect(sent[2]).toEqual({ role: 'tool', content: '"12:00"', tool_call_id: 'c1' });
+  });
+  test('content null com tool_calls vira text vazio + toolCalls, preservando id, modelo, finish_reason e custo', () => {
+    const body = JSON.stringify({ id: 'gen-2', model: 'x', choices: [{ message: { content: null, tool_calls: [call] }, finish_reason: 'tool_calls' }], usage: { prompt_tokens: 5, completion_tokens: 2, cost: 0.001 } });
+    expect(parseResponse(200, body)).toEqual({ text: '', toolCalls: [call], id: 'gen-2', model: 'x', finish_reason: 'tool_calls', usage: { prompt_tokens: 5, completion_tokens: 2, cost: 0.001 } });
+  });
+  test('arguments inválidos não quebram o llm (validação é do núcleo)', () => {
+    const bad = { ...call, function: { name: 'now', arguments: '{nao json' } };
+    const body = JSON.stringify({ choices: [{ message: { content: null, tool_calls: [bad] }, finish_reason: 'tool_calls' }] });
+    expect(parseResponse(200, body).toolCalls).toEqual([bad]);
+  });
+});
+
 describe('complete', () => {
   test('usa o http injetado', () => {
     let seen = '';
