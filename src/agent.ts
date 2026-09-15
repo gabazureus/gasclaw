@@ -124,13 +124,15 @@ export function runTurn(i: TurnInput): TurnResult {
         ev('denied', 'negado pelo usuário: não execute e não tente de novo neste turno');
         continue;
       }
-      const needs = tool.name === 'ask' ? 'ask' : tool.approval === 'always' || (tool.approval === 'once' && !granted.has(tool.name)) ? 'approval' : null;
+      // once vale por tool + alvo (revisão E6, item 6): aprovar sheets.append:<id A> não libera <id B> no mesmo turno.
+      const grant = typeof v.args.id === 'string' ? `${tool.name}:${v.args.id}` : tool.name;
+      const needs = tool.name === 'ask' ? 'ask' : tool.approval === 'always' || (tool.approval === 'once' && !granted.has(grant)) ? 'approval' : null;
       if (needs && !d) {
         events.push({ name: tool.name, callId: call.id, key, status: 'pending', result: needs === 'ask' ? 'aguardando resposta' : 'aguardando aprovação' });
         const text = needs === 'ask' ? askText(v.args) : approvalText(tool.name, v.args);
         return finish(text, { pending: { kind: needs, name: tool.name, callId: call.id, key, args: v.args }, state: { messages: [...messages], step, queue: calls.slice(k) } });
       }
-      if (d && tool.approval === 'once') granted.add(tool.name);
+      if (d && tool.approval === 'once') granted.add(grant);
       const status = d ? 'approved' : 'ok';
       if (done[key] !== undefined) {
         ev(status, done[key]);
