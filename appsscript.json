@@ -12,7 +12,11 @@
     "https://www.googleapis.com/auth/calendar.events",
     "https://www.googleapis.com/auth/script.processes",
     "https://www.googleapis.com/auth/script.send_mail",
-    "https://www.googleapis.com/auth/monitoring.read"
+    "https://www.googleapis.com/auth/monitoring.read",
+    "https://www.googleapis.com/auth/tasks",
+    "https://www.googleapis.com/auth/contacts.readonly",
+    "https://www.googleapis.com/auth/contacts.other.readonly",
+    "https://www.googleapis.com/auth/calendar.events.freebusy"
   ],
   "webapp": { "access": "MYSELF", "executeAs": "USER_DEPLOYING" },
   "chat": {}

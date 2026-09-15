@@ -18,6 +18,10 @@ preferiu reautorizar uma vez só. A regra é pedir o menor escopo de cada coisa.
 - Apps Script API `processes.list`: exige `script.processes` (único escopo aceito).
 - `MailApp.getRemainingDailyQuota()`: exige `script.send_mail` (único escopo aceito).
 - Cloud Monitoring `projects.timeSeries.list`: aceita `cloud-platform`, `monitoring` ou `monitoring.read`; o mais restrito é `monitoring.read`.
+- Tasks API `tasks.insert`: só aceita `tasks`.
+- People API `people.searchContacts`: aceita `contacts` ou `contacts.readonly`. `otherContacts.search`: só aceita `contacts.other.readonly`.
+- Calendar API `freebusy.query`: aceita `calendar.readonly`, `calendar`, `calendar.events.freebusy` ou `calendar.freebusy`. O `calendar.events` que já está no manifesto **não** é aceito.
+- Tarefas, Contatos e FreeBusy (aprovados pelo usuário em 2026-09-15) entram na mesma reautorização; as ferramentas vêm na E6 (Pista Motor). O `ensure_gcp` habilita `tasks.googleapis.com` e `people.googleapis.com` (idempotente).
 - Painel de limites (decisão do usuário, 2026-09-15): fontes = todas (as atuais, mais execuções e e-mails restantes do Google e métricas do Google Cloud); exibição na tela, no terminal e na planilha; cache de 10 min. Os escopos entram nesta mesma reautorização.
 
 ## Projeto GCP padrão (sem migração nova)
@@ -43,6 +47,10 @@ habilitar `monitoring.googleapis.com` também em projetos novos (idempotente).
 | `script.processes` **(novo)** | painel de limites: duração e contagem das execuções (`processes.list`) | único escopo aceito; só leitura das execuções |
 | `script.send_mail` **(novo)** | painel de limites: e-mails restantes no dia (`MailApp.getRemainingDailyQuota`) | único escopo aceito; o gasclaw não usa o `MailApp` para enviar (envio passa pelo `gmail.compose` com aprovação) |
 | `monitoring.read` **(novo)** | painel de limites: métricas do Google Cloud (`timeSeries.list`) | `cloud-platform` dá acesso a todo o Google Cloud; `monitoring` permite escrever |
+| `tasks` **(novo)** | Tarefas: listar e criar tarefas (E6, Pista Motor) | `tasks.insert` só aceita `tasks`; `tasks.readonly` não cria |
+| `contacts.readonly` **(novo)** | Contatos: buscar e listar os contatos salvos (`people.searchContacts`, `connections.list`) | `searchContacts` aceita `contacts` ou `contacts.readonly`; o agente não edita contatos |
+| `contacts.other.readonly` **(novo)** | "Outros contatos": achar quem só trocou e-mail com o usuário (`otherContacts.search`) | único escopo aceito; o `contacts.readonly` não cobre outros contatos |
+| `calendar.events.freebusy` **(novo)** | FreeBusy: ver se as pessoas estão livres antes de sugerir horário (`freebusy.query`) | pedido era `calendar.freebusy`, mas ele só vale para *"your calendars"*; `calendar.events.freebusy` cobre *"calendars you have access to"* (outras pessoas) e continua só com livre/ocupado, sem detalhes dos eventos; `calendar.events` não é aceito pelo `freebusy.query` |
 
 **Consequência de desenho:** as ferramentas usam as **APIs REST via UrlFetch** (Gmail, Calendar,
 Docs, Sheets) com o token do script. `GmailApp`, `CalendarApp`, `DocumentApp` e
