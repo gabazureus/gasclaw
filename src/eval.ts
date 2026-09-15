@@ -2,7 +2,7 @@
 import type { Completion, Message } from './llm';
 import { parseFrontmatter } from './workspace';
 
-export const CHECKS = ['span', 'calledTool', 'noTool', 'includes', 'refused', 'approved', 'denied', 'stopped', 'pending', 'noError', 'cleaned'] as const;
+export const CHECKS = ['span', 'calledTool', 'noTool', 'includes', 'refused', 'approved', 'denied', 'stopped', 'pending', 'noError', 'cleaned', 'excludes'] as const;
 export type Check = { kind: (typeof CHECKS)[number]; arg: string };
 export type ScriptItem = { tool: string; args: string } | { text: string };
 export type Scenario = {
@@ -82,6 +82,7 @@ export function evaluate(s: Scenario, o: Outcome): Report {
     pending: (a) => has(a, 'pending'),
     noError: () => !tools.some((t) => t.status === 'error'),
     cleaned: (a) => (o.cleaned ?? 0) === Number(a),
+    excludes: (a) => !last.includes(a.toLowerCase()),
   };
   const checks = s.checks.map((c) => ({ check: c.arg ? `${c.kind}: ${c.arg}` : c.kind, pass: test[c.kind](c.arg) }));
   // Juiz é soft (como no Eve): entra no relatório, não reprova.

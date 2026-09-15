@@ -1,4 +1,4 @@
-import { CHAT_BUDGET_MS, DEFAULT_STEPS, runTurn, type TurnInput, type TurnResult } from './agent';
+import { CHAT_BUDGET_MS, DEFAULT_STEPS, runTurn, withEngineRules, type TurnInput, type TurnResult } from './agent';
 import { approvalCard, decisionFrom, issue, redeem, type Ticket, type TicketStore } from './approval';
 import type { Completion, Message, ToolDef } from './llm';
 import type { Tool, ToolCtx } from './tools/registry';
@@ -78,7 +78,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
           return reply('Resposta inválida para este pedido.');
         }
         ticket = r.ticket;
-        resume = { ...ticket.state, messages: [{ role: 'system', content: spec.system }, ...ticket.state.messages], decision };
+        resume = { ...ticket.state, messages: [{ role: 'system', content: withEngineRules(spec.system, kit.tools.length > 0) }, ...ticket.state.messages], decision };
       } else if (click) return reply(`Não dá para responder: ${r.error}.`);
       // ask aberto de outra pessoa: segue como mensagem comum
     }

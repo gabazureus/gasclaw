@@ -57,6 +57,37 @@ export type TurnResult = {
   stopped?: 'steps' | 'deadline';
 };
 
+/** Regras fixas do motor (não vêm da pasta): honestidade sobre falha de ferramenta. */
+export const ENGINE_RULES = `
+
+## Regras do motor gasclaw (fixas)
+- Se uma ferramenta falhar, diga claramente que não foi possível e o motivo.
+- Nunca afirme que algo foi feito sem resultado de sucesso da ferramenta.
+- Nunca invente dados (agenda livre, e-mails, contatos, arquivos) quando a leitura falhar.`;
+export const withEngineRules = (system: string, hasTools: boolean): string => (hasTools ? `${system}${ENGINE_RULES}` : system);
+
+const EFFECT = /\.(create|update|draft|send|append|complete|save|remove)$/;
+const errorOf = (result: string): string => {
+  try {
+    return String((JSON.parse(result) as { error?: unknown }).error ?? result);
+  } catch {
+    return result;
+  }
+};
+/**
+ * Guarda determinística (falha honesta): tool que falhou e não teve sucesso depois no turno → aviso fixo do motor no lugar da
+ * resposta do modelo, para nenhuma afirmação de sucesso ou dado inventado chegar ao usuário.
+ */
+export function failureNotice(events: ToolEvent[]): string | null {
+  const ok = new Set(events.filter((e) => e.status === 'ok' || e.status === 'approved').map((e) => e.name));
+  const failed = new Map(events.filter((e) => e.status === 'error' && !ok.has(e.name)).map((e) => [e.name, e]));
+  const lines = [...failed.values()].map((e) => {
+    const why = errorOf(e.result).replace(/\s+/g, ' ').slice(0, 160);
+    return EFFECT.test(e.name) ? `⚠️ A ação ${e.name} falhou: ${why}. Nada foi feito.` : `⚠️ Não consegui ler ${e.name.split('.')[0]}: ${why}.`;
+  });
+  return lines.length ? lines.join('\n') : null;
+}
+
 const askText = (a: Record<string, unknown>) => `${String(a.question)}${a.options ? `\nOpções: ${String(a.options)}` : ''}`;
 
 const LONG_FIELDS = ['body', 'description', 'content', 'notes'];
@@ -78,19 +109,15 @@ export function approvalText(name: string, args: Record<string, unknown>): strin
 export function runTurn(i: TurnInput): TurnResult {
   const past = trimHistory(i.history);
   const mem = i.memory ? memoryMessage(i.memory) : null;
-  const messages: Message[] = i.resume ? [...i.resume.messages] : [{ role: 'system', content: i.system }, ...(mem ? [mem] : []), ...past, { role: 'user', content: i.text }];
+  const messages: Message[] = i.resume ? [...i.resume.messages] : [{ role: 'system', content: withEngineRules(i.system, i.tools.length > 0) }, ...(mem ? [mem] : []), ...past, { role: 'user', content: i.text }];
   const defs = toDefs(i.tools);
   const done = { ...i.done };
   const granted = new Set(i.granted);
   const events: ToolEvent[] = [];
-  const finish = (text: string, extra: Partial<TurnResult> = {}): TurnResult => ({
-    text,
-    history: trimHistory([...past, { role: 'user', content: i.text }, { role: 'assistant', content: text }]),
-    events,
-    done,
-    granted: [...granted],
-    ...extra,
-  });
+  const finish = (answer: string, extra: Partial<TurnResult> = {}): TurnResult => {
+    const text = (extra.pending ? null : failureNotice(events)) ?? answer;
+    return { text, history: trimHistory([...past, { role: 'user', content: i.text }, { role: 'assistant', content: text }]), events, done, granted: [...granted], ...extra };
+  };
   const late = () => (i.clock() >= i.deadlineMs ? finish('Parei por tempo antes de terminar. Tente de novo ou peça algo menor.', { stopped: 'deadline' }) : undefined);
 
   /** Chamadas de um lote; devolve o resultado se o turno precisa parar (pendência ou prazo). */
@@ -144,7 +171,7 @@ export function runTurn(i: TurnInput): TurnResult {
         done[key] = tool.run(v.args, i.ctx);
         ev(status, done[key]);
       } catch (err) {
-        ev('error', `erro: ${(err as Error).message}`);
+        ev('error', JSON.stringify({ ok: false, error: (err as Error).message, did_nothing: true })); // inequívoco para o modelo
       }
     }
     return undefined;
