@@ -5,15 +5,7 @@ import { allowedTools } from './tools/registry';
 /** Acesso de um agente: e-mails além do dono e entradas da allowlist de tools ('now', 'memory' = memory.*, 'ask'). */
 export type Access = { users: string[]; tools: string[] };
 /** users/tools lidos da pasta, do editor ou da planilha config são SÓ sugestão (ADR-021). */
-export type AgentConfig = {
-  model: string;
-  steps?: number;
-  suggested: Access;
-  /** @deprecated cópia da sugestão, só até o main.ts usar spec.access (ADR-021); nunca use para dar acesso */
-  users: string[];
-  /** @deprecated idem */
-  tools: string[];
-};
+export type AgentConfig = { model: string; steps?: number; suggested: Access };
 /** access = acesso EFETIVO: nasce fechado (só o dono, zero tools) até withAccess com o que o dono aprovou no painel. */
 export type AgentSpec = { folderId: string; name: string; config: AgentConfig; system: string; access: Access };
 
@@ -120,7 +112,7 @@ export function mergeConfig(frontmatter: Record<string, string | string[]>, rows
   const tools = Array.isArray(data.tools) ? data.tools : []; // padrão seguro: agente sem tools
   const n = Number(data.steps);
   const steps = Number.isInteger(n) && n >= 1 && n <= 50 ? n : undefined;
-  return { model, suggested: { users, tools }, users, tools, ...(steps === undefined ? {} : { steps }) };
+  return { model, suggested: { users, tools }, ...(steps === undefined ? {} : { steps }) };
 }
 
 export function buildSpec(folderId: string, name: string, texts: Partial<Record<Role, string>>, configRows?: string[][]): AgentSpec {
