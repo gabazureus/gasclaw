@@ -229,9 +229,9 @@ describe('mergeConfig', () => {
 });
 
 describe('canUse', () => {
-  const config = { model: 'm', users: ['ana@x.com'] };
+  const config = { model: 'm', users: ['ana@x.com'], tools: [] };
   test('dono sempre pode', () => expect(canUse(config, 'Dono@x.com', 'dono@x.com')).toBe(true));
   test('usuário listado pode (case-insensitive)', () => expect(canUse(config, 'ANA@x.com', 'dono@x.com')).toBe(true));
   test('outros não podem', () => expect(canUse(config, 'bob@x.com', 'dono@x.com')).toBe(false));
-  test('lista vazia = só o dono', () => expect(canUse({ model: 'm', users: [] }, 'ana@x.com', 'dono@x.com')).toBe(false));
+  test('lista vazia = só o dono', () => expect(canUse({ model: 'm', users: [], tools: [] }, 'ana@x.com', 'dono@x.com')).toBe(false));
 });
