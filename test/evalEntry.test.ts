@@ -18,6 +18,8 @@ function env(llm: EvalEnv['llm'], over: Partial<EvalEnv> = {}) {
     now: () => '2026-09-15T10:00',
     llm,
     clock: () => (t += 5),
+    // bootstrap falso: sem ele, o cenário do ritual passaria sem ritual nenhum (nada é injetado)
+    bootstrap: { read: () => 'Pergunte como a pessoa prefere ser chamada e que estilo prefere.', consume: () => {} },
     // provider de skill falso: sem ele, cenários com read_skill passariam pelo motivo errado ("skills indisponíveis")
     skill: (name) => (name === 'briefing' ? '---\ndescription: Briefing semanal\n---\n1. abra os números da semana\n2. compare com a semana anterior' : null),
     ...over,
