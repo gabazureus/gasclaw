@@ -85,6 +85,11 @@ export function drain(max = 200, inline = false): DrainResult {
       const rowsRes = UrlFetchApp.fetch(`${SHEETS}/${store.sheetId}/values/A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
         method: 'post', contentType: 'application/json', payload: JSON.stringify({ values: fresh.map((e) => e.row) }), headers: auth(), muteHttpExceptions: true,
       });
+      if (rowsRes.getResponseCode() === 404) {
+        // planilha (ou pasta) apagada: esquece os ids para ensureRunStore recriar na próxima drenagem, em vez de travar a fila
+        props().deleteProperty('RUNS_SHEET_ID');
+        props().deleteProperty('RUNS_FOLDER_ID');
+      }
       if (rowsRes.getResponseCode() >= 300) throw new Error(`planilha ${rowsRes.getResponseCode()}: ${rowsRes.getContentText().slice(0, 200)}`); // fila fica para a próxima vez
     }
     const rows = true;
@@ -197,6 +202,7 @@ export function usageView(apiKey: string | null, day?: string) {
   const measured = totalCost(dayTotals(u, today, 'utc'));
   const or = apiKey ? read(() => keyInfo(apiKey)) : ({ ok: false, error: 'sem chave do OpenRouter' } as Read<never>);
   const informed = or.ok ? or.value.usage_daily : null;
+  if (day !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('dia inválido: use AAAA-MM-DD');
   const shownDay = day ?? dayKey(now, 'sp');
   const table = Object.entries(dayTotals(u, shownDay, 'sp')).map(([model, c]) => ({ model, ...c })).sort((a, b) => b.cost - a.cost);
   return {
@@ -301,7 +307,8 @@ function dailyLimitsRow(sheetId: string) {
     }
     const { items } = limitsNow(PropertiesService.getScriptProperties().getProperty('OPENROUTER_API_KEY'));
     const values = items.map((i) => [today, i.label, i.used ?? '', i.total ?? '', i.unit, i.level, i.source, i.status, i.note ?? '']);
-    UrlFetchApp.fetch(`${SHEETS}/${sheetId}/values/limites!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ values }), headers: auth(), muteHttpExceptions: true });
+    const res = UrlFetchApp.fetch(`${SHEETS}/${sheetId}/values/limites!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ values }), headers: auth(), muteHttpExceptions: true });
+    if (res.getResponseCode() >= 300) throw new Error(`aba limites ${res.getResponseCode()}: ${res.getContentText().slice(0, 160)}`); // não marca o dia: tenta de novo
     props().setProperty('LIMITS_ROW_DAY', today);
   } catch (err) {
     console.warn(`observe limites: ${msg(err)}`);
