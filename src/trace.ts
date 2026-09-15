@@ -53,17 +53,19 @@ export function finish(run: Run, now: number, out: { answer?: string; error?: st
 
 const SECRETS: [RegExp, string][] = [
   [/sk-or-[\w-]+/g, 'sk-or-***'],
-  [/\bsk-proj-[\w-]{16,}/g, 'sk-proj-***'], // OpenAI (projeto)
-  [/\bsk-[\w-]{16,}/g, 'sk-***'], // OpenAI (antiga); \b evita "desk-top", "risk-free"
+  [/(?<![A-Za-z0-9])sk-proj-[\w-]{16,}/g, 'sk-proj-***'], // OpenAI (projeto); "chave_sk-…" também
+  [/(?<![A-Za-z0-9])sk-[\w-]{16,}/g, 'sk-***'], // OpenAI (antiga); o lookbehind evita "desk-top", "risk-free"
   [/ya29\.[\w.-]+/g, 'ya29.***'],
-  [/Bearer\s+[\w.~+/-]+=*/g, 'Bearer ***'],
+  [/\b1\/\/0[\w-]{20,}/g, '1//***'], // refresh token do Google
+  [/\b(Bearer)(?:\s|%20)+[\w.~+/-]+=*/gi, '$1 ***'],
+  [/\b(Basic)(?:\s|%20)+[A-Za-z0-9+/]{8,}=*/gi, '$1 ***'],
 ];
 
-/** Remove chaves e tokens de qualquer valor, em qualquer profundidade (aplicado antes de toda gravação). */
+/** Remove chaves e tokens de qualquer valor, em qualquer profundidade, inclusive nas chaves de objeto (aplicado antes de toda gravação). */
 export function redact<T>(v: T): T {
   if (typeof v === 'string') return SECRETS.reduce((s, [re, r]) => s.replace(re, r), v as string) as T;
   if (Array.isArray(v)) return v.map(redact) as T;
-  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, redact(x)])) as T;
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [redact(k), redact(x)])) as T;
   return v;
 }
 
@@ -79,7 +81,8 @@ export function summaryRow(run: Run): (string | number)[] {
 export function renderTree(run: Run): string {
   const r = redact(run);
   const head = `${r.id} · ${r.kind} · ${r.status} · ${r.ms ?? '…'} ms${r.agent ? ` · ${r.agent}` : ''}`;
-  const lines = r.spans.map((s, i) => {
+  const spans = r.spans ?? []; // JSON de reserva antigo do lote não tem spans
+  const lines = spans.map((s, i) => {
     const d = s.data ?? {};
     const extra = [
       d.model ? String(d.model) : '',

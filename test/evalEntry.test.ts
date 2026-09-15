@@ -1,8 +1,10 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
+import type { Ticket } from '../src/approval';
+import type { Tickets } from '../src/chat';
 import { runEval, type EvalEnv } from '../src/evalEntry';
 import type { Completion, Message, ToolDef } from '../src/llm';
-import { buildSpec } from '../src/workspace';
+import { buildSpec, withAccess } from '../src/workspace';
 
 function env(llm: EvalEnv['llm'], over: Partial<EvalEnv> = {}) {
   const mem = { text: '- velho\n' };
@@ -10,7 +12,7 @@ function env(llm: EvalEnv['llm'], over: Partial<EvalEnv> = {}) {
   const e: EvalEnv = {
     owner: 'dono@x.com',
     apiKey: 'sk-or-x',
-    agent: () => buildSpec('f', 'eval', { AGENTS: '---\ntools: [now]\n---\nRegras' }),
+    agent: () => withAccess(buildSpec('f', 'eval', { AGENTS: '---\ntools: [now]\n---\nRegras' }), { users: [], tools: ['now'] }),
     folderId: 'f',
     memory: { read: () => mem.text, write: (x) => void (mem.text = x) },
     now: () => '2026-09-15T10:00',
@@ -55,6 +57,33 @@ describe('runEval', () => {
     const { e } = env(() => ({ text: 'x' }));
     const md = '---\nname: t\nchannel: tela\ntools: [now]\n---\n## turnos\n- a\n## roteiro\n- tool: now {}\n- texto: são 10h\n## verificações\n- calledTool: now\n- includes: 10h\n';
     expect(runEval(md, e).pass).toBe(true);
+  });
+
+  test('sem steps no cenário, vale o steps do agente (igual à produção)', () => {
+    const loop = (): Completion => ({ text: '', toolCalls: [{ id: 'c', type: 'function', function: { name: 'now', arguments: '{}' } }] });
+    const { e } = env(loop, { agent: () => withAccess(buildSpec('f', 'eval', { AGENTS: '---\ntools: [now]\nsteps: 1\n---\nRegras' }), { users: [], tools: ['now'] }) });
+    const r = runEval('---\nname: t\n---\n## turnos\n- a\n## verificações\n- includes: limite\n', e);
+    expect(r.replies[0]).toContain('limite de 1 passos');
+  });
+
+  test('dois evals seguidos não se misturam: um ask aberto no primeiro não engole o 1º turno do segundo', () => {
+    const data = new Map<string, Ticket>();
+    const tickets: Tickets = {
+      put: (t) => void data.set(t.token, t),
+      take: (k) => {
+        const t = data.get(k) ?? null;
+        data.delete(k);
+        return t;
+      },
+      open: (s) => [...data.values()].find((t) => t.session === s && t.pending.kind === 'ask')?.token ?? null,
+    };
+    const ask = '---\nname: a\ntools: [ask]\n---\n## turnos\n- oi\n## roteiro\n- tool: ask {"question":"cor?","options":"azul,verde"}\n## verificações\n- includes: cor\n';
+    runEval(ask, env(() => ({ text: 'x' }), { apiKey: null, tickets }).e);
+    expect(data.size).toBe(1);
+    let t = 1000;
+    const second = env(() => ({ text: 'x' }), { apiKey: null, tickets, clock: () => (t += 5) }).e;
+    runEval('---\nname: b\n---\n## turnos\n- azul\n## roteiro\n- texto: ok\n## verificações\n- includes: ok\n', second);
+    expect(data.size).toBe(1); // o ask do primeiro eval continua lá, intocado
   });
 
   test('sem chave e sem roteiro: erro claro', () => {

@@ -2,6 +2,7 @@ import { CHAT_BUDGET_MS, DEFAULT_STEPS, runTurn, type TurnInput, type TurnResult
 import { approvalCard, decisionFrom, issue, redeem, type Ticket, type TicketStore } from './approval';
 import type { Completion, Message, ToolDef } from './llm';
 import type { Tool, ToolCtx } from './tools/registry';
+import { redact } from './trace';
 import { canUse, type AgentSpec } from './workspace';
 
 export type ChatEvent = {
@@ -52,7 +53,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
   if (!key) return reply('Falta a chave do OpenRouter. Cole-a na tela gasclaw.');
   try {
     const spec = d.load(entry.folderId);
-    if (!canUse(spec.config, e.user.email, d.owner())) return reply(`Você (${e.user.email}) não tem acesso ao agente ${spec.name}.`);
+    if (!canUse(spec.access, e.user.email, d.owner())) return reply(`Você (${e.user.email}) não tem acesso ao agente ${spec.name}.`); // acesso aprovado no painel (ADR-021)
     const hk = `${entry.folderId}:${e.space.name}`;
     const ownerDm = isOwnerDm(e, d.owner());
     const kit = d.toolkit?.(spec, ownerDm) ?? NO_TOOLS;
@@ -81,7 +82,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
     if (!ticket && !typed) return reply('Mande um texto para eu responder.');
 
     const text = ticket?.text ?? typed;
-    const history = ticket?.history ?? d.history(hk);
+    const history = d.history(hk); // na retomada também: mensagens trocadas enquanto a aprovação esperava não se perdem
     const runId = ticket?.runId ?? e.message?.name ?? `${hk}:${start}`;
     const out = runTurn({
       system: spec.system,
@@ -110,7 +111,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
     d.saveHistory(hk, out.history);
     return reply(out.text);
   } catch (err) {
-    console.error('chat', err);
-    return reply(`Não consegui responder agora: ${(err as Error).message}`);
+    console.error('chat', redact(String((err as Error)?.stack ?? err))); // corpo de erro HTTP pode ecoar chave
+    return reply(`Não consegui responder agora: ${redact(String((err as Error)?.message ?? err))}`); // chega a qualquer usuário do agente
   }
 }

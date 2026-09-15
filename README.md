@@ -5,7 +5,7 @@
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Runtime: Google Apps Script](https://img.shields.io/badge/runtime-Google%20Apps%20Script-4285F4.svg)](https://developers.google.com/apps-script)
 [![Language: TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6.svg)](https://www.typescriptlang.org/)
-[![Status: F0 done](https://img.shields.io/badge/status-F0%20done-green.svg)](CHANGELOG.md)
+[![Status: F1 in progress](https://img.shields.io/badge/status-F1%20in%20progress-yellow.svg)](CHANGELOG.md)
 
 English | [Português (Brasil)](README.pt-BR.md)
 
@@ -81,11 +81,15 @@ users: [ana@example.com, joao@example.com]
 - If you don't know, say so.
 ```
 
-Supported frontmatter in F0:
+Supported frontmatter:
 
-- `model:` an OpenRouter model id. Defaults to `openrouter/auto`.
+- `model:` an OpenRouter model id. Defaults to `openrouter/auto`. A model chosen for the agent on the gasclaw screen takes precedence.
 - `users: [email, email]` on a single line. The owner always has access; an empty list means owner only.
-- Other keys are ignored in this stage, and nested keys are not supported.
+- `tools: [now, memory, ask]` the tools the agent may use (`memory` enables `memory.save`, `memory.read`, and `memory.remove`). No list means no tools.
+- `steps:` maximum model calls per turn, from 1 to 50 (default 10).
+- Other keys are ignored, and nested keys are not supported.
+
+Agent files can also be Google Docs (named `AGENTS` or `AGENTS.md`, and so on), and a Google Sheet named `config` with `key, value` rows overrides the frontmatter.
 
 Then find the app in Google Chat (`gasclaw dev`, or `gasclaw` in prod), send a DM, or add it to a space and mention it.
 
@@ -104,14 +108,20 @@ Every command accepts `--prod`; without it, the command targets dev.
 | `./gasclaw doctor [--prod]` | Diagnoses the setup and tells you how to fix it |
 | `./gasclaw rollback [--prod]` | Returns to the previous version |
 | `./gasclaw open [--prod]` | Opens the gasclaw screen |
+| `./gasclaw poc <id> [step]` | Runs a proof of concept in dev and shows the result |
+| `./gasclaw trace [id]` | Shows the step tree of an agent run (the latest one without an id) |
+| `./gasclaw runs` | Opens the "gasclaw — execuções" spreadsheet |
+| `./gasclaw limits [--fresh]` | Limits panel (Google, OpenRouter, and measured by gasclaw) |
+| `./gasclaw usage [YYYY-MM-DD]` | Cost per model: last 7 days, or the 24 hours of one day |
+| `./gasclaw eval <scenario\|--all> [--model id]` | Runs `evals/*.md` in dev (non-zero exit on failure) |
 
 ## Roadmap
 
 | Stage | Goal | Status |
 |---|---|---|
 | F0 | First conversation with a Drive agent: one-command publish, agent folder, owner screen, Google Chat replies, per-agent access, kill switch | Done (GitHub/CI postponed) |
-| F1 | Complete agent folder: conversations stored in Drive, daily memory, first-run ritual, skills, multiple agents, Google Groups in `users`, safer publishing | Planned |
-| F2 | Long tasks and approval: background work beyond 30 s, Gmail/Drive/Sheets/Docs/Calendar/HTTP tools, Approve/Deny cards, per-task limits, retries | Planned |
+| F1 | Complete agent folder: conversations stored in Drive, daily memory, first-run ritual, skills, multiple agents, Google Groups in `users`, safer publishing | In progress |
+| F2 | Long tasks: background work beyond 30 s, Gmail/Drive/Sheets/Docs/Calendar/HTTP tools (using the Approve/Deny cards that already exist in F1), per-task limits, retries | Planned |
 | F3 | Proactivity and data: `HEARTBEAT.md` checklist, cron-style `jobs.md`, `.xlsx` inbox to Google Sheets, ready-made agent templates | Planned |
 | F4 | Extra channels: Gmail threads, HTTP with token, MCP/A2A if the GASADK proof of concept passes, `npx gasclaw` | Planned |
 
@@ -119,9 +129,9 @@ The detailed, user-facing description of each stage is in [CHANGELOG.md](CHANGEL
 
 ## Known limitations
 
-Current F0 limits:
+Current limits:
 
-- Chat only: no e-mail, spreadsheets, or scheduling yet (tools arrive in F2).
+- Few tools: the agent can only use `now`, `memory.*` (in the owner's DM), and `ask`; it cannot send e-mail, edit spreadsheets, or schedule anything yet.
 - Only **one** agent (the default one) answers in Chat, in every space.
 - Short memory: the last 20 messages per agent and conversation, for up to 6 hours.
 - Each agent file is truncated at 20,000 characters (60,000 in total).

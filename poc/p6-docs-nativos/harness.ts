@@ -176,7 +176,7 @@ export function runP6(folderId: string) {
     c3,
     c4: soul === null ? { pass: false, skipped: 'SOUL não é Google Doc nesta pasta' } : checkMarkdown(soul),
     c5: { origem, mixed: kinds.includes('doc') && kinds.includes('md') },
-    config: { ...run.spec.config, source: run.sources.config ? 'planilha config' : 'frontmatter' },
+    config: { model: run.spec.config.model, users: run.spec.config.suggested.users, source: run.sources.config ? 'planilha config' : 'frontmatter' }, // users lidos da pasta = sugestão (ADR-021)
     soulMarkdown: soul?.slice(0, 1500) ?? null,
   };
 }

@@ -9,7 +9,7 @@ import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
 import { allowedTools, type ToolCtx } from './tools/registry';
 import { webClick, webSend } from './webchat';
-import { agentFolderPath, ensureFolderPath, loadAgent, seedAgent, type AgentSpec } from './workspace';
+import { agentFolderPath, ensureFolderPath, loadAgent, seedAgent, withAccess, type Access, type AgentSpec } from './workspace';
 
 export type EvalEnv = {
   owner: string;
@@ -49,7 +49,7 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
   if (s.resetMemory) env.memory.write('');
   const spec = env.agent();
   const model = s.model ?? modelOverride ?? spec.config.model;
-  const allow = s.tools ?? spec.config.tools;
+  const allow = s.tools ?? spec.access.tools; // sem tools: no cenário, vale o acesso efetivo do agente (ADR-021)
   const base = env.tickets ?? memoryTickets();
   let lastToken = '';
   let lastDecision = 'approve';
@@ -68,7 +68,7 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
     const spans: string[] = [];
     const llm = (m: Message[], defs: ToolDef[]) => (spans.push('llm_call'), script ? script() : env.llm(model, m, defs));
     const tools = allowedTools(allow).map((t) => ({ ...t, run: (a: Record<string, unknown>, c: ToolCtx) => (spans.push('tool_call'), t.run(a, c)) }));
-    const steps = s.steps ?? DEFAULT_STEPS;
+    const steps = s.steps ?? spec.config.steps ?? DEFAULT_STEPS; // mesma precedência da produção (main.ts toolkit)
     let turn: TurnResult | undefined;
     const d: ChatDeps = {
       enabled: () => true,
@@ -93,7 +93,7 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
       // O mesmo caminho da tela de chat (chatSend/chatClick).
       reply = (click ? webClick(d, env.owner, params) : webSend(d, env.owner, text)).text ?? '';
     } else {
-      const space = { name: 'spaces/gasclaw-eval', singleUserBotDm: true };
+      const space = { name: `spaces/gasclaw-eval-${t0}`, singleUserBotDm: true }; // um espaço por execução: ask aberto de um eval não vaza para o próximo
       const event: ChatEvent = click
         ? { type: 'CARD_CLICKED', user: { email: env.owner }, space, common: { parameters: params } }
         : { type: 'MESSAGE', message: { text }, user: { email: env.owner }, space };
@@ -126,6 +126,9 @@ tools: [now, memory, ask]
 - Quando o usuário pedir para lembrar algo, salve com a ferramenta de memória.
 `;
 
+/** Acesso do agente eval, fixo no código: ele é criado pelo gasclaw e só roda por doGet?action=eval (dono). */
+export const EVAL_ACCESS: Access = { users: [], tools: ['now', 'memory', 'ask'] };
+
 /** Liga o runEval no GAS: agente próprio em Meu Drive/gasclaw/agentes/eval (criado/reusado sozinho). */
 export function evalAction(md: string, owner: string, model?: string): EvalResult {
   const folder = ensureFolderPath(agentFolderPath('eval'));
@@ -138,7 +141,7 @@ export function evalAction(md: string, owner: string, model?: string): EvalResul
     {
       owner,
       apiKey: key,
-      agent: () => loadAgent(folder.getId()),
+      agent: () => withAccess(loadAgent(folder.getId()), EVAL_ACCESS),
       folderId: folder.getId(),
       memory: memoryIO(folder.getId()),
       now: () => Utilities.formatDate(new Date(), tz, "yyyy-MM-dd'T'HH:mm:ssXXX (EEEE)") + ` fuso ${tz}`,

@@ -1,12 +1,13 @@
 // Observabilidade (ADR-014 lote, ADR-016 limites, ADR-018 uso), borda. Leituras NUNCA lançam: cada fonte vira {ok|erro}.
 // Sem escopo novo nesta etapa: gatilho, processes, MailApp e Monitoring só funcionam depois da reautorização (ADR-015).
 import { multipartBody } from './drive';
-import { drainBody, QUEUE_PREFIX, queueEntry, shouldDrain, splitQueue, type QueueEntry } from './batch';
-import { buildLimits, type LimitItem, type Read } from './limits';
-import { keyInfo, keyCallsLast30min } from './models';
+import { drainBody, QUEUE_PREFIX, queueEntry, settle, shouldDrain, splitQueue } from './batch';
+import { accountKind, buildLimits, type LimitItem, type Read } from './limits';
+import { getOwner } from './store';
+import { keyInfo } from './models';
 import { cleanupRunsDaily, ensureRunStore } from './runlog';
 import { redact, type Run } from './trace';
-import { chart, dayKey, dayTotals, emptyUsage, fold, freePerMinuteMax, prune, totalCost, totalReq, type Bucket, type Usage } from './usage';
+import { chart, dayKey, dayTotals, fold, freePerMinuteMax, loadUsage, prune, totalCost, totalReq, usageProps, type RunsOfDay, type Usage } from './usage';
 
 declare const __GCP_NUMBER__: string; // embutido pelo build (gasclaw.env → GCP_NUMBER)
 
@@ -55,38 +56,22 @@ function obsProps(fresh = false): Record<string, string> {
   return out;
 }
 
-export function loadUsage(p: Record<string, string>): Usage {
-  const u = emptyUsage();
-  for (const [k, v] of Object.entries(p)) {
-    if (k.startsWith('USAGE:h:')) Object.assign(u.h, JSON.parse(v));
-    if (k.startsWith('USAGE:d:')) Object.assign(u.d, JSON.parse(v));
-    if (k === 'USAGE:m') Object.assign(u.m, JSON.parse(v));
-  }
-  return u;
-}
+export { loadUsage }; // a P16 lê daqui
 
-/** Uma Property por dia UTC (horas) e por mês (dias): cada valor fica bem abaixo dos 9 KB. */
-function saveUsage(u: Usage, runsByDay: Record<string, { n: number; longest: number }>) {
-  const out: Record<string, string> = { 'USAGE:m': JSON.stringify(u.m) };
-  const group = (src: Record<string, Bucket>, prefix: string, cut: number) => {
-    const g: Record<string, Record<string, Bucket>> = {};
-    for (const [k, b] of Object.entries(src)) (g[k.slice(0, cut)] ??= {})[k] = b;
-    for (const [gk, v] of Object.entries(g)) out[`${prefix}${gk}`] = JSON.stringify(v);
-  };
-  group(u.h, 'USAGE:h:', 10);
-  group(u.d, 'USAGE:d:', 7);
-  for (const [day, r] of Object.entries(runsByDay)) out[`USAGE:r:${day}`] = JSON.stringify(r);
-  const p = props();
-  const stale = Object.keys(p.getProperties()).filter((k) => (k.startsWith('USAGE:h:') || k.startsWith('USAGE:d:')) && !(k in out));
-  p.setProperties(out);
-  for (const k of stale) p.deleteProperty(k);
+/** Uso (partes ≤ 8 KB, ver usageProps) e `extra` (fila marcada) numa escrita só; depois apaga as partes que sobraram. */
+function saveUsage(prev: Record<string, string>, u: Usage, runsByDay: Record<string, RunsOfDay>, extra: Record<string, string>) {
+  const out = usageProps(u, runsByDay, Date.now(), prev);
+  const stale = Object.keys(prev).filter((k) => /^USAGE:[hdr]:/.test(k) && !(k in out));
+  props().setProperties({ ...out, ...extra });
+  for (const k of stale) props().deleteProperty(k);
 }
 
 // ---------- drenagem (gatilho de 1 min ou fallback) ----------
 
 export type DrainResult = { drained: number; ms: number; rows: boolean; json: number; skipped?: string };
 
-export function drain(max = 200): DrainResult {
+/** `inline`: fallback dentro de um turno ou da tela; menos entradas e sem a limpeza de 90 dias (cabe nos 30 s do Chat). */
+export function drain(max = 200, inline = false): DrainResult {
   const t0 = Date.now();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5_000)) return { drained: 0, ms: Date.now() - t0, rows: false, json: 0, skipped: 'outra drenagem em andamento' };
@@ -94,36 +79,48 @@ export function drain(max = 200): DrainResult {
     const entries = splitQueue(props().getProperties()).slice(0, max);
     if (!entries.length) return record({ drained: 0, ms: Date.now() - t0, rows: true, json: 0 });
     const store = ensureRunStore();
+    const fresh = entries.filter((e) => !e.rowDone); // quem só espera o JSON não repete linha nem uso
     // 1) todas as linhas numa chamada só
-    const rowsRes = UrlFetchApp.fetch(`${SHEETS}/${store.sheetId}/values/A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
-      method: 'post', contentType: 'application/json', payload: JSON.stringify({ values: entries.map((e) => e.row) }), headers: auth(), muteHttpExceptions: true,
-    });
-    const rows = rowsRes.getResponseCode() < 300;
-    if (!rows) throw new Error(`planilha ${rowsRes.getResponseCode()}: ${rowsRes.getContentText().slice(0, 200)}`); // fila fica para a próxima vez
-    // 2) JSON completos em paralelo (o do cache; se expirou, a entrada da fila)
+    if (fresh.length) {
+      const rowsRes = UrlFetchApp.fetch(`${SHEETS}/${store.sheetId}/values/A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
+        method: 'post', contentType: 'application/json', payload: JSON.stringify({ values: fresh.map((e) => e.row) }), headers: auth(), muteHttpExceptions: true,
+      });
+      if (rowsRes.getResponseCode() === 404) {
+        // planilha (ou pasta) apagada: esquece os ids para ensureRunStore recriar na próxima drenagem, em vez de travar a fila
+        props().deleteProperty('RUNS_SHEET_ID');
+        props().deleteProperty('RUNS_FOLDER_ID');
+      }
+      if (rowsRes.getResponseCode() >= 300) throw new Error(`planilha ${rowsRes.getResponseCode()}: ${rowsRes.getContentText().slice(0, 200)}`); // fila fica para a próxima vez
+    }
+    const rows = true;
+    // 2) uso por modelo e runs por dia, com a fila marcada "linha feita" na MESMA escrita:
+    //    se algo falhar depois daqui, a próxima drenagem não duplica linha nem uso.
+    if (fresh.length) {
+      const p = props().getProperties();
+      const u = prune(fold(loadUsage(p), fresh.flatMap((e) => e.recs)), Date.now());
+      const runs: Record<string, RunsOfDay> = {};
+      for (const e of fresh) {
+        const day = dayKey(e.at);
+        const r = (runs[day] ??= JSON.parse(p[`USAGE:r:${day}`] ?? '{"n":0,"longest":0}'));
+        r.n += 1;
+        r.longest = Math.max(r.longest, Number(e.row[6]) || 0);
+      }
+      saveUsage(p, u, runs, Object.fromEntries(fresh.map((e) => [`${QUEUE_PREFIX}${e.id}`, JSON.stringify({ ...e, rowDone: true, recs: [] })])));
+    }
+    // 3) JSON completos em paralelo (o do cache; se expirou, a entrada da fila)
     const fulls = cache().getAll(entries.map((e) => `qjson:${e.id}`));
     const res = UrlFetchApp.fetchAll(entries.map((e) => {
       const boundary = `gasclaw${e.id}`;
       const body = drainBody(e, fulls[`qjson:${e.id}`]);
       return { url: UPLOAD, method: 'post', contentType: `multipart/related; boundary=${boundary}`, payload: multipartBody({ name: `${e.id}.json`, parents: [store.folderId], mimeType: 'application/json' }, body.replace(/[-￿]/g, (c: string) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`), 'application/json', boundary), headers: auth(), muteHttpExceptions: true };
     }));
-    // 3) uso por modelo + contagem de runs por dia
-    const p = props().getProperties();
-    let u = loadUsage(p);
-    u = prune(fold(u, entries.flatMap((e) => e.recs)), Date.now());
-    const runs: Record<string, { n: number; longest: number }> = {};
-    for (const e of entries) {
-      const day = dayKey(e.at);
-      const r = (runs[day] ??= JSON.parse(p[`USAGE:r:${day}`] ?? '{"n":0,"longest":0}'));
-      r.n += 1;
-      r.longest = Math.max(r.longest, Number(e.row[6]) || 0);
-    }
-    saveUsage(u, runs);
-    for (const e of entries) props().deleteProperty(`${QUEUE_PREFIX}${e.id}`);
-    cache().removeAll(['obs:props', ...entries.map((e) => `qjson:${e.id}`)]);
+    const done = settle(entries, res.map((r) => r.getResponseCode()));
+    for (const id of done.remove) props().deleteProperty(`${QUEUE_PREFIX}${id}`);
+    for (const e of done.retry) props().setProperty(`${QUEUE_PREFIX}${e.id}`, JSON.stringify(e)); // o JSON volta na próxima drenagem
+    cache().removeAll(['obs:props', ...done.remove.map((id) => `qjson:${id}`)]);
     dailyLimitsRow(store.sheetId);
-    cleanupRunsDaily();
-    return record({ drained: entries.length, ms: Date.now() - t0, rows, json: res.filter((r) => r.getResponseCode() < 300).length });
+    if (!inline) cleanupRunsDaily(); // até 200 PATCH em série: só no gatilho ou no "Gravar a fila agora"
+    return record({ drained: entries.length, ms: Date.now() - t0, rows, json: entries.length - done.retry.length });
   } catch (err) {
     console.warn(`observe drain: ${msg(err)}`);
     return record({ drained: 0, ms: Date.now() - t0, rows: false, json: 0, skipped: msg(err) });
@@ -188,7 +185,7 @@ export function ensureTrigger(): TriggerStatus {
 export function maybeDrain(): DrainResult | null {
   try {
     if (!shouldDrain(oldestQueued(), Date.now(), triggerStatus() === 'ativo')) return null;
-    return drain();
+    return drain(20, true);
   } catch (err) {
     console.warn(`observe maybeDrain: ${msg(err)}`);
     return null;
@@ -205,6 +202,7 @@ export function usageView(apiKey: string | null, day?: string) {
   const measured = totalCost(dayTotals(u, today, 'utc'));
   const or = apiKey ? read(() => keyInfo(apiKey)) : ({ ok: false, error: 'sem chave do OpenRouter' } as Read<never>);
   const informed = or.ok ? or.value.usage_daily : null;
+  if (day !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('dia inválido: use AAAA-MM-DD');
   const shownDay = day ?? dayKey(now, 'sp');
   const table = Object.entries(dayTotals(u, shownDay, 'sp')).map(([model, c]) => ({ model, ...c })).sort((a, b) => b.cost - a.cost);
   return {
@@ -220,12 +218,23 @@ export function usageView(apiKey: string | null, day?: string) {
 
 function processesToday(): { triggerMsToday: number; count: number } {
   const start = new Date(Date.parse(`${dayKey(Date.now())}T00:00:00Z`)).toISOString();
-  const url = `https://script.googleapis.com/v1/processes:listScriptProcesses?scriptId=${ScriptApp.getScriptId()}&scriptProcessFilter.startTime=${encodeURIComponent(start)}&pageSize=200`;
-  const res = UrlFetchApp.fetch(url, { headers: auth(), muteHttpExceptions: true });
-  if (res.getResponseCode() !== 200) throw new Error(`processes ${res.getResponseCode()}: ${res.getContentText().slice(0, 160)}`);
-  const list: { processType?: string; duration?: string }[] = JSON.parse(res.getContentText()).processes ?? [];
+  const base = `https://script.googleapis.com/v1/processes:listScriptProcesses?scriptId=${ScriptApp.getScriptId()}&scriptProcessFilter.startTime=${encodeURIComponent(start)}&pageSize=200`;
   const ms = (d?: string) => Math.round(parseFloat(d ?? '0') * 1000);
-  return { triggerMsToday: list.filter((x) => x.processType === 'TIME_DRIVEN').reduce((t, x) => t + ms(x.duration), 0), count: list.length };
+  let triggerMsToday = 0;
+  let count = 0;
+  let token = '';
+  for (let page = 0; page < 10; page++) {
+    // o gatilho de 1 min gera ~1.440 execuções por dia: sem paginar, só as ~3 primeiras horas contavam
+    const res = UrlFetchApp.fetch(`${base}${token ? `&pageToken=${encodeURIComponent(token)}` : ''}`, { headers: auth(), muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) throw new Error(`processes ${res.getResponseCode()}: ${res.getContentText().slice(0, 160)}`);
+    const body: { processes?: { processType?: string; duration?: string }[]; nextPageToken?: string } = JSON.parse(res.getContentText());
+    const list = body.processes ?? [];
+    triggerMsToday += list.filter((x) => x.processType === 'TIME_DRIVEN').reduce((t, x) => t + ms(x.duration), 0);
+    count += list.length;
+    token = body.nextPageToken ?? '';
+    if (!token) break;
+  }
+  return { triggerMsToday, count };
 }
 
 function monitoringToday(): { requests: number } {
@@ -258,6 +267,7 @@ export function limitsNow(apiKey: string | null, fresh = false): { items: LimitI
   const runs = JSON.parse(p[`USAGE:r:${dayKey(now)}`] ?? '{"n":0,"longest":0}') as { n: number; longest: number };
   const items = buildLimits({
     now,
+    account: accountKind(getOwner()), // cotas de Workspace × conta pessoal, pela conta dona do script
     drive: read(() => {
       const r = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/about?fields=storageQuota', { headers: auth(), muteHttpExceptions: true });
       if (r.getResponseCode() !== 200) throw new Error(`Drive about ${r.getResponseCode()}`);
@@ -284,8 +294,6 @@ export function limitsNow(apiKey: string | null, fresh = false): { items: LimitI
   return { ...out, cached: false };
 }
 
-export { keyCallsLast30min };
-
 /** Uma linha por dia na aba "limites" da planilha de runs (idempotente). */
 function dailyLimitsRow(sheetId: string) {
   const today = dayKey(Date.now(), 'sp');
@@ -299,11 +307,10 @@ function dailyLimitsRow(sheetId: string) {
     }
     const { items } = limitsNow(PropertiesService.getScriptProperties().getProperty('OPENROUTER_API_KEY'));
     const values = items.map((i) => [today, i.label, i.used ?? '', i.total ?? '', i.unit, i.level, i.source, i.status, i.note ?? '']);
-    UrlFetchApp.fetch(`${SHEETS}/${sheetId}/values/limites!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ values }), headers: auth(), muteHttpExceptions: true });
+    const res = UrlFetchApp.fetch(`${SHEETS}/${sheetId}/values/limites!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ values }), headers: auth(), muteHttpExceptions: true });
+    if (res.getResponseCode() >= 300) throw new Error(`aba limites ${res.getResponseCode()}: ${res.getContentText().slice(0, 160)}`); // não marca o dia: tenta de novo
     props().setProperty('LIMITS_ROW_DAY', today);
   } catch (err) {
     console.warn(`observe limites: ${msg(err)}`);
   }
 }
-
-export type { QueueEntry };

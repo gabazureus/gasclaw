@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { drainBody, QUEUE_PREFIX, queueEntry, shouldDrain, splitQueue } from '../src/batch';
+import { drainBody, QUEUE_PREFIX, queueEntry, settle, shouldDrain, splitQueue } from '../src/batch';
 import { finish, span, startRun } from '../src/trace';
 
 const T0 = Date.UTC(2026, 8, 15, 12, 0);
@@ -44,6 +44,20 @@ describe('drainBody: nenhum run se perde quando o cache expira', () => {
   });
 });
 
+describe('settle: o JSON que falhou no upload fica na fila, sem duplicar linha nem uso', () => {
+  test('upload ok sai da fila; upload com erro volta só para o JSON (linha e uso já gravados)', () => {
+    const a = { ...queueEntry(run()), id: 'a' };
+    const b = { ...queueEntry(run()), id: 'b' };
+    const s = settle([a, b], [200, 503]);
+    expect(s.remove).toEqual(['a']);
+    expect(s.retry).toEqual([{ ...b, rowDone: true, recs: [], tries: 1 }]);
+  });
+  test('depois de 3 tentativas desiste do JSON (a linha e o uso continuam gravados)', () => {
+    const e = { ...queueEntry(run()), rowDone: true, recs: [], tries: 2 };
+    expect(settle([e], [500])).toEqual({ remove: ['r1'], retry: [] });
+  });
+});
+
 test('splitQueue: só as Properties da fila, ordenadas da mais antiga para a mais nova', () => {
   const props = {
     OPENROUTER_API_KEY: 'sk-or-x',
@@ -52,4 +66,9 @@ test('splitQueue: só as Properties da fila, ordenadas da mais antiga para a mai
     'USAGE:h:2026-09-15': '{}',
   };
   expect(splitQueue(props).map((e) => e.id)).toEqual(['a', 'b']);
+});
+
+test('splitQueue: uma entrada corrompida não trava a fila (as outras seguem)', () => {
+  const props = { [`${QUEUE_PREFIX}ruim`]: '{quebrado', [`${QUEUE_PREFIX}a`]: JSON.stringify({ id: 'a', at: 1, row: [], recs: [] }) };
+  expect(splitQueue(props).map((e) => e.id)).toEqual(['a']);
 });

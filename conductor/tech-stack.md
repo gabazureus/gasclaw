@@ -6,27 +6,32 @@
 
 ## Languages & runtimes
 - **Produção:** Google Apps Script (V8), JavaScript gerado. Nenhum servidor.
-- **Desenvolvimento:** TypeScript (strict), Node ≥ 20, esbuild → bundle IIFE + stubs globais.
+- **Desenvolvimento:** TypeScript (strict), Node 22.12+ (instalado pelo `./gasclaw up` via Homebrew), esbuild → bundle IIFE + stubs globais.
 
 ## Frameworks & key libraries
 - `@google/clasp` 3.4.1 (pinado) — push, versões, deployments, logs.
 - `gcloud` — projeto GCP padrão, APIs, IAM (token do app do Chat sem chave).
-- GASADK (`tanaikech/adk-gas`, MIT) — vendorizado **somente se a POC P-GASADK passar** (ADR-004).
+- GASADK (`tanaikech/adk-gas`, MIT) — vendorizado **somente se a POC P5 passar** (ADR-004).
 - OpenRouter (API compatível com OpenAI) — único provedor de LLM (ADR-003).
-- Serviços GAS: DriveApp/Drive v3 avançado, SpreadsheetApp, GmailApp, CalendarApp,
-  DocumentApp, Chat avançado, LockService, PropertiesService, CacheService, UrlFetchApp.
+- Serviços GAS em uso: DriveApp, Drive v3 e Sheets v4 via UrlFetchApp, HtmlService, ContentService,
+  LockService, PropertiesService, CacheService, ScriptApp (gatilho de 1 min), MailApp (só a cota),
+  Session. Gmail, Agenda, Tasks e Contatos já têm escopo (ADR-015), mas ainda nenhuma tool.
 
 ## Feedback-loop tooling (devmode-critical)
 - **Static types:** TypeScript strict + `@types/google-apps-script`.
 - **Compiler / linter:** `npm run build` (tsc --noEmit + esbuild).
 - **Test runner:** `npm test` (Vitest, fakes dos serviços GAS nas bordas; LLM com fixtures).
-- **Runtime access:** `./gasclaw logs` (Cloud Logging) e `?action=selftest` no web app após deploy.
+- **Runtime access:** `./gasclaw logs` (Cloud Logging), `./gasclaw status` (`?action=health`), `./gasclaw trace`,
+  `./gasclaw eval` e `./gasclaw poc` no dev.
 
 ## Data & persistence
-- **Drive (pasta do agente):** fonte da verdade do agente (markdown), memória, inbox Excel.
-- **Drive `.gasclaw/`:** sessões (`sessions/<space>.jsonl`) e checkpoints de runs (`runs/<id>.json`).
-- **Script Properties:** segredos (OpenRouter), lista de agentes, kill switch, leases curtos.
-- **Sheets:** índice de runs/log resumido (1 flush por execução).
+- **Drive (pasta do agente):** fonte da verdade do agente (markdown, Docs, planilha `config`) e `MEMORY.md`.
+- **Drive `Meu Drive/gasclaw/runs/`:** JSON completo de cada run do trace (90 dias).
+- **CacheService:** sessões (6 h), tickets de aprovação (10 min), runs ao vivo, agente carregado (30 s).
+- **Script Properties:** chave do OpenRouter, dono, lista de agentes, kill switch, override de modelo,
+  fila do lote (`Q:`) e uso por modelo (`USAGE:`).
+- **Sheets:** planilha "gasclaw — execuções" (1 linha por run, gravada em lote) e aba "limites".
+- **(planejado, F2)** checkpoints e leases da execução durável (ADR-005).
 
 ## Conventions
 - Module layout: deep modules with functional core / imperative shell split

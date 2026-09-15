@@ -4,7 +4,21 @@ import { redact, summaryRow, type Run } from './trace';
 import { recordsOf, type Rec } from './usage';
 
 export const QUEUE_PREFIX = 'Q:';
-export type QueueEntry = { id: string; at: number; row: (string | number)[]; recs: Rec[] };
+/** `rowDone`: linha e uso já gravados; falta só o JSON (tentativa `tries`). */
+export type QueueEntry = { id: string; at: number; row: (string | number)[]; recs: Rec[]; rowDone?: boolean; tries?: number };
+const JSON_TRIES = 3;
+
+/** Depois do lote: sai da fila quem gravou o JSON (ou esgotou as tentativas); o resto volta só para o JSON. */
+export function settle(entries: QueueEntry[], codes: number[]): { remove: string[]; retry: QueueEntry[] } {
+  const remove: string[] = [];
+  const retry: QueueEntry[] = [];
+  entries.forEach((e, i) => {
+    const tries = (e.tries ?? 0) + 1;
+    if (codes[i] < 300 || tries >= JSON_TRIES) remove.push(e.id);
+    else retry.push({ ...e, rowDone: true, recs: [], tries });
+  });
+  return { remove, retry };
+}
 
 export function queueEntry(run: Run): QueueEntry {
   return { id: run.id, at: run.endedAt ?? run.startedAt, row: summaryRow(run), recs: recordsOf(redact(run)) };
@@ -16,11 +30,18 @@ export const shouldDrain = (oldestAt: number | null, now: number, triggerActive:
 
 /** Corpo do JSON do run no Drive: o completo do cache; se expirou, a própria entrada da fila (linha e uso não se perdem). */
 export const drainBody = (e: QueueEntry, full: string | undefined): string =>
-  full ?? JSON.stringify({ ...e, nota: 'JSON completo expirou no cache; só a linha e o uso' });
+  full ?? JSON.stringify({ ...e, kind: e.row[2], status: e.row[4], ms: e.row[6], spans: [], nota: 'JSON completo expirou no cache; só a linha e o uso' }); // formato de Run: o detalhe abre
 
 export function splitQueue(props: Record<string, string>): QueueEntry[] {
   return Object.entries(props)
     .filter(([k]) => k.startsWith(QUEUE_PREFIX))
-    .map(([, v]) => JSON.parse(v) as QueueEntry)
+    .flatMap(([k, v]) => {
+      try {
+        return [JSON.parse(v) as QueueEntry];
+      } catch {
+        console.warn(`fila: entrada ${k} corrompida, ignorada`); // uma entrada ruim não trava a fila inteira
+        return [];
+      }
+    })
     .sort((a, b) => a.at - b.at);
 }

@@ -41,6 +41,11 @@ describe('parseFrontmatter', () => {
     expect(data).toEqual({ model: 'openai/gpt-5-mini', users: ['a@x.com', 'B@x.com'] });
     expect(body).toBe('# Regras\nSeja breve.');
   });
+  test('aceita CRLF e BOM (arquivo salvo no Windows): não perde tools nem users', () => {
+    const { data, body } = parseFrontmatter('﻿---\r\ntools: [now]\r\nusers: [a@x.com]\r\n---\r\n# Regras\r\n');
+    expect(data).toEqual({ tools: ['now'], users: ['a@x.com'] });
+    expect(body).toBe('# Regras\n');
+  });
   test('sem frontmatter devolve corpo inteiro', () => {
     expect(parseFrontmatter('# oi')).toEqual({ data: {}, body: '# oi' });
   });
@@ -62,11 +67,12 @@ describe('buildSpec', () => {
   });
   test('regressão: pasta só com .md gera exatamente o prompt da F0', () => {
     const spec = buildSpec('f', 'A', { AGENTS: '---\nusers: [Ana@x.com]\n---\nRegras', SOUL: 'Calmo', IDENTITY: 'gasclaw', USER: 'Gabriel' });
-    expect(spec).toEqual({
+    expect(spec).toMatchObject({
       folderId: 'f',
       name: 'A',
-      config: { model: DEFAULT_MODEL, users: ['ana@x.com'], tools: [] },
+      config: { model: DEFAULT_MODEL, suggested: { users: ['ana@x.com'], tools: [] } },
       system: '## AGENTS.md\nRegras\n\n## SOUL.md\nCalmo\n\n## IDENTITY.md\ngasclaw\n\n## USER.md\nGabriel',
+      access: { users: [], tools: [] },
     });
   });
   test('linhas da planilha config sobrepõem o frontmatter', () => {
@@ -149,7 +155,7 @@ describe('loadAgent de produção, núcleo puro (ADR-013)', () => {
   test('regressão: pasta só com .md gera exatamente o prompt da F0', () => {
     const sources = resolveRoles(['AGENTS', 'SOUL', 'IDENTITY', 'USER'].map((r) => f(`${r}.md`)));
     const a = assembleAgent('f', 'A', sources, roleTexts(sources, [], F0));
-    expect({ folderId: a.folderId, name: a.name, config: a.config, system: a.system }).toEqual(buildSpec('f', 'A', F0));
+    expect({ folderId: a.folderId, name: a.name, config: a.config, system: a.system, access: a.access }).toEqual(buildSpec('f', 'A', F0));
     expect(a.system).toBe('## AGENTS.md\nRegras\n\n## SOUL.md\nCalmo\n\n## IDENTITY.md\ngasclaw\n\n## USER.md\nGabriel');
     expect(a.origem).toEqual({ AGENTS: 'md', SOUL: 'md', IDENTITY: 'md', USER: 'md' });
   });
@@ -199,11 +205,11 @@ describe('signature', () => {
 describe('tools e steps no config (Pista Motor)', () => {
   test('frontmatter com tools e steps', () => {
     const { data } = parseFrontmatter('---\ntools: [now, memory]\nsteps: 5\n---\n');
-    expect(mergeConfig(data)).toEqual({ model: DEFAULT_MODEL, users: [], tools: ['now', 'memory'], steps: 5 });
+    expect(mergeConfig(data)).toMatchObject({ model: DEFAULT_MODEL, suggested: { users: [], tools: ['now', 'memory'] }, steps: 5 });
   });
   test('sem as chaves: tools vazio e steps indefinido (agente sem tools)', () => {
     const c = mergeConfig({});
-    expect(c.tools).toEqual([]);
+    expect(c.suggested.tools).toEqual([]);
     expect(c.steps).toBeUndefined();
   });
   test('steps fora de 1..50 ou não inteiro vira indefinido', () => {
@@ -211,27 +217,27 @@ describe('tools e steps no config (Pista Motor)', () => {
     expect(mergeConfig({ steps: '50' }).steps).toBe(50);
   });
   test('planilha config com tools separado por vírgula', () => {
-    expect(mergeConfig({}, [['tools', 'now, memory']]).tools).toEqual(['now', 'memory']);
+    expect(mergeConfig({}, [['tools', 'now, memory']]).suggested.tools).toEqual(['now', 'memory']);
   });
 });
 
 describe('mergeConfig', () => {
   test('sem planilha usa o frontmatter', () => {
-    expect(mergeConfig({ model: 'x/y', users: ['A@x.com'] })).toEqual({ model: 'x/y', users: ['a@x.com'], tools: [] });
+    expect(mergeConfig({ model: 'x/y', users: ['A@x.com'] })).toMatchObject({ model: 'x/y', suggested: { users: ['a@x.com'], tools: [] } });
   });
   test('planilha sobrepõe; users separados por vírgula, ; ou espaço; ignora cabeçalho e chaves desconhecidas', () => {
     const rows = [['chave', 'valor'], ['model', ' a/b '], ['users', 'Ana@x.com, bob@x.com;c@x.com d@x.com'], ['foo', 'bar']];
-    expect(mergeConfig({ model: 'x/y', users: ['z@x.com'] }, rows)).toEqual({ model: 'a/b', users: ['ana@x.com', 'bob@x.com', 'c@x.com', 'd@x.com'], tools: [] });
+    expect(mergeConfig({ model: 'x/y', users: ['z@x.com'] }, rows)).toMatchObject({ model: 'a/b', suggested: { users: ['ana@x.com', 'bob@x.com', 'c@x.com', 'd@x.com'], tools: [] } });
   });
   test('valor vazio na planilha não apaga o frontmatter', () => {
-    expect(mergeConfig({ model: 'x/y' }, [['model', '']])).toEqual({ model: 'x/y', users: [], tools: [] });
+    expect(mergeConfig({ model: 'x/y' }, [['model', '']])).toMatchObject({ model: 'x/y', suggested: { users: [], tools: [] } });
   });
 });
 
 describe('canUse', () => {
-  const config = { model: 'm', users: ['ana@x.com'], tools: [] };
+  const config = { users: ['ana@x.com'], tools: [] }; // acesso efetivo (ADR-021)
   test('dono sempre pode', () => expect(canUse(config, 'Dono@x.com', 'dono@x.com')).toBe(true));
   test('usuário listado pode (case-insensitive)', () => expect(canUse(config, 'ANA@x.com', 'dono@x.com')).toBe(true));
   test('outros não podem', () => expect(canUse(config, 'bob@x.com', 'dono@x.com')).toBe(false));
-  test('lista vazia = só o dono', () => expect(canUse({ model: 'm', users: [], tools: [] }, 'ana@x.com', 'dono@x.com')).toBe(false));
+  test('lista vazia = só o dono', () => expect(canUse({ users: [], tools: [] }, 'ana@x.com', 'dono@x.com')).toBe(false));
 });

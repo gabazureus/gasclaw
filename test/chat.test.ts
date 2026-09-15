@@ -3,7 +3,7 @@ import type { Ticket } from '../src/approval';
 import { handleChat, type ChatDeps, type ChatEvent, type Tickets } from '../src/chat';
 import type { Completion, Message } from '../src/llm';
 import { allowedTools } from '../src/tools/registry';
-import { buildSpec } from '../src/workspace';
+import { buildSpec, withAccess } from '../src/workspace';
 
 function deps(over: Partial<ChatDeps> = {}): ChatDeps & { saved: Record<string, Message[]> } {
   const saved: Record<string, Message[]> = {};
@@ -13,7 +13,7 @@ function deps(over: Partial<ChatDeps> = {}): ChatDeps & { saved: Record<string, 
     owner: () => 'dono@x.com',
     apiKey: () => 'sk',
     defaultAgent: () => ({ folderId: 'f1', name: 'A' }),
-    load: () => buildSpec('f1', 'A', { AGENTS: '---\nusers: [ana@x.com]\n---\nRegras' }),
+    load: () => withAccess(buildSpec('f1', 'A', { AGENTS: '---\nusers: [ana@x.com]\n---\nRegras' }), { users: ['ana@x.com'], tools: [] }),
     history: () => [],
     saveHistory: (k, h) => {
       saved[k] = h;
@@ -45,6 +45,11 @@ describe('handleChat', () => {
     const r = handleChat(msg('bob@x.com'), deps({ llm: () => ((called = true), { text: 'x' }) }));
     expect(r.text).toContain('não tem acesso');
     expect(called).toBe(false);
+  });
+  test('users só sugerido pela pasta, sem aprovação no painel: recusado (ADR-021)', () => {
+    const r = handleChat(msg('ana@x.com'), deps({ load: () => buildSpec('f1', 'A', { AGENTS: '---\nusers: [ana@x.com]\n---\nRegras' }) }));
+    expect(r.text).toContain('não tem acesso');
+    expect(handleChat(msg('dono@x.com'), deps({ load: () => buildSpec('f1', 'A', { AGENTS: '---\nusers: [ana@x.com]\n---\nRegras' }) })).text).toBe('olá');
   });
   test('kill switch desligado', () => expect(handleChat(msg('ana@x.com'), deps({ enabled: () => false })).text).toContain('pausado'));
   test('sem agente configurado', () => expect(handleChat(msg('dono@x.com'), deps({ defaultAgent: () => null })).text).toContain('Nenhum agente'));
@@ -84,6 +89,11 @@ describe('handleChat', () => {
   test('erro do LLM vira mensagem amigável', () => {
     const r = handleChat(msg('dono@x.com'), deps({ llm: () => { throw new Error('OpenRouter 500: boom'); } }));
     expect(r.text).toContain('OpenRouter 500');
+  });
+  test('erro que ecoa a chave não vaza no Chat (a mensagem chega a qualquer usuário do agente)', () => {
+    const r = handleChat(msg('ana@x.com'), deps({ llm: () => { throw new Error('OpenRouter 401: {"error":"Incorrect key sk-or-v1-CANARYabcdefgh"}'); } }));
+    expect(r.text).toContain('OpenRouter 401');
+    expect(r.text).not.toContain('CANARY');
   });
 });
 
@@ -158,6 +168,15 @@ describe('handleChat: aprovação e ask (E5)', () => {
     expect(handleChat(click(token, { decision: 'deny' }), d).text).toBe('Ok, mantive.');
     expect(mem.text).toBe('- prefiro café\n');
     expect(sent[1][sent[1].length - 1].content).toContain('negado');
+  });
+
+  test('retomada não apaga mensagens trocadas enquanto a aprovação esperava', () => {
+    const { d } = setup([call('memory_remove', '{"text":"café"}'), { text: 'olá' }, { text: 'Removi.' }]);
+    d.history = (k) => d.saved[k] ?? [];
+    const token = tokenOf(handleChat(dm('apague o café'), d));
+    expect(handleChat(dm('oi'), d).text).toBe('olá');
+    expect(handleChat(click(token, { decision: 'approve' }), d).text).toBe('Removi.');
+    expect(d.saved['f1:spaces/D'].map((m) => m.content)).toEqual(['oi', 'olá', 'apague o café', 'Removi.']);
   });
 
   test('clique de outra pessoa é recusado sem consumir o pedido', () => {
