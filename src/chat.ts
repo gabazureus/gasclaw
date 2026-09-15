@@ -82,7 +82,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
     if (!ticket && !typed) return reply('Mande um texto para eu responder.');
 
     const text = ticket?.text ?? typed;
-    const history = ticket?.history ?? d.history(hk);
+    const history = d.history(hk); // na retomada também: mensagens trocadas enquanto a aprovação esperava não se perdem
     const runId = ticket?.runId ?? e.message?.name ?? `${hk}:${start}`;
     const out = runTurn({
       system: spec.system,
@@ -112,6 +112,6 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
     return reply(out.text);
   } catch (err) {
     console.error('chat', redact(String((err as Error)?.stack ?? err))); // corpo de erro HTTP pode ecoar chave
-    return reply(`Não consegui responder agora: ${(err as Error).message}`);
+    return reply(`Não consegui responder agora: ${redact(String((err as Error)?.message ?? err))}`); // chega a qualquer usuário do agente
   }
 }

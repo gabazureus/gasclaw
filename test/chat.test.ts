@@ -85,6 +85,11 @@ describe('handleChat', () => {
     const r = handleChat(msg('dono@x.com'), deps({ llm: () => { throw new Error('OpenRouter 500: boom'); } }));
     expect(r.text).toContain('OpenRouter 500');
   });
+  test('erro que ecoa a chave não vaza no Chat (a mensagem chega a qualquer usuário do agente)', () => {
+    const r = handleChat(msg('ana@x.com'), deps({ llm: () => { throw new Error('OpenRouter 401: {"error":"Incorrect key sk-or-v1-CANARYabcdefgh"}'); } }));
+    expect(r.text).toContain('OpenRouter 401');
+    expect(r.text).not.toContain('CANARY');
+  });
 });
 
 describe('handleChat: aprovação e ask (E5)', () => {
@@ -158,6 +163,15 @@ describe('handleChat: aprovação e ask (E5)', () => {
     expect(handleChat(click(token, { decision: 'deny' }), d).text).toBe('Ok, mantive.');
     expect(mem.text).toBe('- prefiro café\n');
     expect(sent[1][sent[1].length - 1].content).toContain('negado');
+  });
+
+  test('retomada não apaga mensagens trocadas enquanto a aprovação esperava', () => {
+    const { d } = setup([call('memory_remove', '{"text":"café"}'), { text: 'olá' }, { text: 'Removi.' }]);
+    d.history = (k) => d.saved[k] ?? [];
+    const token = tokenOf(handleChat(dm('apague o café'), d));
+    expect(handleChat(dm('oi'), d).text).toBe('olá');
+    expect(handleChat(click(token, { decision: 'approve' }), d).text).toBe('Removi.');
+    expect(d.saved['f1:spaces/D'].map((m) => m.content)).toEqual(['oi', 'olá', 'apague o café', 'Removi.']);
   });
 
   test('clique de outra pessoa é recusado sem consumir o pedido', () => {
