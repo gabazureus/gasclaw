@@ -95,6 +95,7 @@ describe('runEval', () => {
     for (const f of readdirSync('evals').filter((x) => x.endsWith('.md'))) {
       const md = readFileSync(`evals/${f}`, 'utf8');
       if (!md.includes('## roteiro')) continue;
+      if (/^tools:.*\b(calendar|gmail|contacts|tasks|drive|docs|sheets)\b/m.test(md)) continue; // E6: com Google falso em evalE6.test.ts
       const { e } = env(() => ({ text: 'nunca' }), { apiKey: null });
       const r = runEval(md, e);
       expect(r, f).toMatchObject({ pass: true });

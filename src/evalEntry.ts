@@ -1,11 +1,14 @@
 // Execução de um cenário de eval no dev (E0). runEval recebe o ambiente injetado (testável); evalAction liga no GAS.
-import { DEFAULT_STEPS, type TurnResult } from './agent';
+import { DEFAULT_STEPS, type ToolEvent, type TurnResult } from './agent';
 import type { Ticket } from './approval';
 import { cacheTickets, newToken } from './approvalStore';
 import { handleChat, type ChatDeps, type ChatEvent, type Tickets } from './chat';
 import { evaluate, judgeMessages, parseJudge, parseScenario, scriptedLlm, type Report, type TurnOutcome } from './eval';
 import { complete, type Completion, type Message, type ToolDef } from './llm';
 import * as store from './store';
+import { runCleanup } from './tools/cleanup';
+import type { Google } from './tools/google';
+import { gasGoogle, zone } from './tools/googleHttp';
 import { memoryIO } from './tools/memoryStore';
 import { allowedTools, type ToolCtx } from './tools/registry';
 import { webClick, webSend } from './webchat';
@@ -22,11 +25,14 @@ export type EvalEnv = {
   clock: () => number;
   tickets?: Tickets; // padrão: em memória (testes); no dev, o CacheService real
   newToken?: () => string;
+  google?: Google; // ferramentas do Workspace (E6); o runner também usa para apagar os dados de teste
+  zone?: { timeZone: string; offset: string };
 };
-export type EvalResult = Report & { replies: string[]; ms: number };
+export type EvalResult = Report & { replies: string[]; ms: number; errors: string[]; cleanup?: { removed: number; failed: string[] } };
 
 /** Turnos especiais que simulam o clique no card (Chat) ou no botão (tela): (aprovar), (negar), (repetir clique). */
 const CLICK = /^\((aprovar|negar|repetir clique)\)$/i;
+const OWNER_EMAIL = /^[^\s@"\\]+@[^\s@"\\]+$/;
 
 function memoryTickets(): Tickets {
   const data = new Map<string, Ticket>();
@@ -44,7 +50,26 @@ function memoryTickets(): Tickets {
 export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalResult {
   const t0 = env.clock();
   const s = parseScenario(md);
-  const script = s.script.length ? scriptedLlm(s.script) : null;
+  if (!OWNER_EMAIL.test(env.owner)) throw new Error('e-mail do dono inválido para o eval');
+  // {{dono}} no roteiro = e-mail do dono (nunca um terceiro nos evals do Workspace).
+  // {{id}} = id do último recurso criado por uma tool (ex.: docs.create → docs.read), resolvido na hora da chamada.
+  let lastId = '';
+  const scripted = s.script.length ? scriptedLlm(s.script.map((i) => ('tool' in i ? { ...i, args: i.args.split('{{dono}}').join(env.owner) } : i))) : null;
+  const script = scripted
+    ? () => {
+        const c = scripted();
+        return c.toolCalls ? { ...c, toolCalls: c.toolCalls.map((t) => ({ ...t, function: { ...t.function, arguments: t.function.arguments.split('{{id}}').join(lastId) } })) } : c;
+      }
+    : null;
+  const remember = (result: string) => {
+    try {
+      const id = (JSON.parse(result) as { id?: unknown }).id;
+      if (typeof id === 'string' && /^[A-Za-z0-9_-]{5,200}$/.test(id)) lastId = id;
+    } catch {
+      /* resultado não é JSON: nada a lembrar */
+    }
+    return result;
+  };
   if (!script && !env.apiKey) throw new Error('falta a chave do OpenRouter para rodar evals com modelo');
   if (s.resetMemory) env.memory.write('');
   const spec = env.agent();
@@ -59,49 +84,58 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
   let history: Message[] = [];
   const turns: TurnOutcome[] = [];
   const convo: { user: string; reply: string }[] = [];
+  const events: ToolEvent[] = [];
+  let cleanup: { removed: number; failed: string[] } | undefined;
 
-  for (const text of s.turns) {
-    if (text === null) {
-      history = [];
-      continue;
+  try {
+    for (const text of s.turns) {
+      if (text === null) {
+        history = [];
+        continue;
+      }
+      const spans: string[] = [];
+      const llm = (m: Message[], defs: ToolDef[]) => (spans.push('llm_call'), script ? script() : env.llm(model, m, defs));
+      const tools = allowedTools(allow).map((t) => ({ ...t, run: (a: Record<string, unknown>, c: ToolCtx) => (spans.push('tool_call'), remember(t.run(a, c))) }));
+      const steps = s.steps ?? spec.config.steps ?? DEFAULT_STEPS; // mesma precedência da produção (main.ts toolkit)
+      let turn: TurnResult | undefined;
+      const d: ChatDeps = {
+        enabled: () => true,
+        owner: () => env.owner,
+        apiKey: () => env.apiKey ?? 'roteiro',
+        defaultAgent: () => ({ folderId: env.folderId, name: spec.name }),
+        load: () => spec,
+        history: () => history,
+        saveHistory: (_k, h) => void (history = h),
+        llm: (_k, _m, m, defs = []) => llm(m, defs),
+        toolkit: (_s, ownerDm) => ({ tools, ctx: { now: env.now, ownerDm, memory: env.memory, google: env.google, ...env.zone }, steps }),
+        tickets,
+        newToken: token,
+        clock: env.clock,
+        onTurn: (r) => void (turn = r),
+      };
+      const click = text.match(CLICK)?.[1].toLowerCase();
+      if (click && click !== 'repetir clique') lastDecision = click === 'aprovar' ? 'approve' : 'deny';
+      const params = { token: lastToken, decision: lastDecision };
+      let reply: string;
+      if (s.channel === 'tela') {
+        // O mesmo caminho da tela de chat (chatSend/chatClick).
+        reply = (click ? webClick(d, env.owner, params) : webSend(d, env.owner, text)).text ?? '';
+      } else {
+        const space = { name: `spaces/gasclaw-eval-${t0}`, singleUserBotDm: true }; // um espaço por execução: ask aberto de um eval não vaza para o próximo
+        const event: ChatEvent = click
+          ? { type: 'CARD_CLICKED', user: { email: env.owner }, space, common: { parameters: params } }
+          : { type: 'MESSAGE', message: { text }, user: { email: env.owner }, space };
+        reply = handleChat(event, d).text ?? '';
+      }
+      const got = (turn as TurnResult | undefined)?.events ?? [];
+      events.push(...got);
+      spans.push('reply');
+      turns.push({ reply, spans, tools: got.map(({ name, status }) => ({ name, status })), ...(turn?.stopped ? { stopped: turn.stopped } : {}) });
+      convo.push({ user: text, reply });
     }
-    const spans: string[] = [];
-    const llm = (m: Message[], defs: ToolDef[]) => (spans.push('llm_call'), script ? script() : env.llm(model, m, defs));
-    const tools = allowedTools(allow).map((t) => ({ ...t, run: (a: Record<string, unknown>, c: ToolCtx) => (spans.push('tool_call'), t.run(a, c)) }));
-    const steps = s.steps ?? spec.config.steps ?? DEFAULT_STEPS; // mesma precedência da produção (main.ts toolkit)
-    let turn: TurnResult | undefined;
-    const d: ChatDeps = {
-      enabled: () => true,
-      owner: () => env.owner,
-      apiKey: () => env.apiKey ?? 'roteiro',
-      defaultAgent: () => ({ folderId: env.folderId, name: spec.name }),
-      load: () => spec,
-      history: () => history,
-      saveHistory: (_k, h) => void (history = h),
-      llm: (_k, _m, m, defs = []) => llm(m, defs),
-      toolkit: (_s, ownerDm) => ({ tools, ctx: { now: env.now, ownerDm, memory: env.memory }, steps }),
-      tickets,
-      newToken: token,
-      clock: env.clock,
-      onTurn: (r) => void (turn = r),
-    };
-    const click = text.match(CLICK)?.[1].toLowerCase();
-    if (click && click !== 'repetir clique') lastDecision = click === 'aprovar' ? 'approve' : 'deny';
-    const params = { token: lastToken, decision: lastDecision };
-    let reply: string;
-    if (s.channel === 'tela') {
-      // O mesmo caminho da tela de chat (chatSend/chatClick).
-      reply = (click ? webClick(d, env.owner, params) : webSend(d, env.owner, text)).text ?? '';
-    } else {
-      const space = { name: `spaces/gasclaw-eval-${t0}`, singleUserBotDm: true }; // um espaço por execução: ask aberto de um eval não vaza para o próximo
-      const event: ChatEvent = click
-        ? { type: 'CARD_CLICKED', user: { email: env.owner }, space, common: { parameters: params } }
-        : { type: 'MESSAGE', message: { text }, user: { email: env.owner }, space };
-      reply = handleChat(event, d).text ?? '';
-    }
-    spans.push('reply');
-    turns.push({ reply, spans, tools: turn?.events.map(({ name, status }) => ({ name, status })) ?? [], ...(turn?.stopped ? { stopped: turn.stopped } : {}) });
-    convo.push({ user: text, reply });
+  } finally {
+    // Tudo que o eval criou na conta do dono é apagado, mesmo se um turno lançar.
+    cleanup = env.google ? runCleanup(events, env.google) : undefined;
   }
 
   let judge: Report['judge'];
@@ -112,7 +146,8 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
       judge = { pass: false, reason: `juiz falhou: ${(err as Error).message}` };
     }
   }
-  return { ...evaluate(s, { turns, judge }), replies: convo.map((c) => c.reply), ms: env.clock() - t0 };
+  const errors = events.filter((e) => e.status === 'error').map((e) => `${e.name}: ${e.result.slice(0, 200)}`);
+  return { ...evaluate(s, { turns, judge, cleaned: cleanup?.removed ?? 0 }), replies: convo.map((c) => c.reply), ms: env.clock() - t0, errors, ...(cleanup ? { cleanup } : {}) };
 }
 
 const EVAL_AGENTS = `---
@@ -149,6 +184,8 @@ export function evalAction(md: string, owner: string, model?: string): EvalResul
       clock: Date.now,
       tickets: cacheTickets(),
       newToken,
+      google: gasGoogle,
+      zone: zone(),
     },
     model,
   );

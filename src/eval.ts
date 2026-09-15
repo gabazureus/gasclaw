@@ -2,7 +2,7 @@
 import type { Completion, Message } from './llm';
 import { parseFrontmatter } from './workspace';
 
-export const CHECKS = ['span', 'calledTool', 'noTool', 'includes', 'refused', 'approved', 'denied', 'stopped'] as const;
+export const CHECKS = ['span', 'calledTool', 'noTool', 'includes', 'refused', 'approved', 'denied', 'stopped', 'pending', 'noError', 'cleaned'] as const;
 export type Check = { kind: (typeof CHECKS)[number]; arg: string };
 export type ScriptItem = { tool: string; args: string } | { text: string };
 export type Scenario = {
@@ -18,7 +18,8 @@ export type Scenario = {
   checks: Check[];
 };
 export type TurnOutcome = { reply: string; spans: string[]; tools: { name: string; status: string }[]; stopped?: string };
-export type Outcome = { turns: TurnOutcome[]; judge?: { pass: boolean; reason: string } };
+/** cleaned = dados de teste criados na conta do dono e apagados pelo runner no fim (E6). */
+export type Outcome = { turns: TurnOutcome[]; judge?: { pass: boolean; reason: string }; cleaned?: number };
 export type Report = { name: string; pass: boolean; checks: { check: string; pass: boolean }[]; judge?: Outcome['judge'] };
 
 function sections(body: string): Record<string, string[]> {
@@ -78,6 +79,9 @@ export function evaluate(s: Scenario, o: Outcome): Report {
     approved: (a) => has(a, 'approved'),
     denied: (a) => has(a, 'denied'),
     stopped: (a) => o.turns.some((t) => t.stopped === a),
+    pending: (a) => has(a, 'pending'),
+    noError: () => !tools.some((t) => t.status === 'error'),
+    cleaned: (a) => (o.cleaned ?? 0) === Number(a),
   };
   const checks = s.checks.map((c) => ({ check: c.arg ? `${c.kind}: ${c.arg}` : c.kind, pass: test[c.kind](c.arg) }));
   // Juiz é soft (como no Eve): entra no relatório, não reprova.

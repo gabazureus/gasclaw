@@ -51,6 +51,8 @@ for (const n of names) {
   console.log(`${r.pass ? '\x1b[32m✓' : '\x1b[31m✗'} ${n}\x1b[0m · ${r.ms} ms`);
   for (const c of r.checks) console.log(`   ${c.pass ? '✓' : '✗'} ${c.check}`);
   if (r.judge) console.log(`   ${r.judge.pass ? '✓' : '~'} juiz (soft): ${r.judge.reason}`);
+  for (const e of r.errors ?? []) console.log(`   erro de tool: ${e}`);
+  if (r.cleanup) console.log(`   limpeza: ${r.cleanup.removed} apagado(s)${r.cleanup.failed.length ? `; FALHOU: ${r.cleanup.failed.join(' | ')}` : ''}`);
   for (const t of r.replies) console.log(`   resposta: ${t.replace(/\s+/g, ' ').slice(0, 160)}`);
 }
 console.log(failed ? `\x1b[31m${failed} de ${names.length} falharam\x1b[0m` : `\x1b[32m${names.length} de ${names.length} passaram\x1b[0m`);

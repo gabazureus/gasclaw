@@ -1,11 +1,18 @@
 // Lista fechada de tools (ADR-002): nova tool exige deploy; o frontmatter `tools:` do AGENTS só escolhe entre estas.
 import type { ToolDef } from '../llm';
+import { CALENDAR_TOOLS } from './calendar';
+import { CONTACTS_TOOLS } from './contacts';
+import { DRIVE_TOOLS } from './driveTools';
+import { GMAIL_TOOLS } from './gmail';
+import { TASKS_TOOLS } from './tasks';
+import type { Google } from './google';
 import { addEntry, RECALL_MAX, removeEntry } from './memory';
 
 export type Approval = 'never' | 'once' | 'always';
 type Prop = { type: 'string' | 'integer' | 'number' | 'boolean'; description?: string; maxLength?: number };
 export type Schema = { type: 'object'; properties: Record<string, Prop>; required?: string[]; additionalProperties?: false };
-export type ToolCtx = { now: () => string; ownerDm: boolean; memory: { read: () => string; write: (text: string) => void } };
+/** google/timeZone/offset: ferramentas do Workspace (E6); ausentes onde o canal não as liga. offset = "-03:00" do fuso. */
+export type ToolCtx = { now: () => string; ownerDm: boolean; memory: { read: () => string; write: (text: string) => void }; google?: Google; timeZone?: string; offset?: string };
 export type Tool = { name: string; description: string; parameters: Schema; approval: Approval; run: (args: Record<string, unknown>, ctx: ToolCtx) => string };
 
 const ownerOnly = (ctx: ToolCtx) => {
@@ -62,9 +69,17 @@ export const TOOLS: Tool[] = [
       throw new Error('ask é tratado pelo motor (pendência), não executa');
     },
   },
+  ...CALENDAR_TOOLS,
+  ...GMAIL_TOOLS,
+  ...CONTACTS_TOOLS,
+  ...TASKS_TOOLS,
+  ...DRIVE_TOOLS,
 ];
 
-export const allowedTools = (list: string[], tools = TOOLS): Tool[] => tools.filter((t) => list.some((e) => t.name === e || t.name.startsWith(`${e}.`)));
+/** Grupos da allowlist: o nome antes do ponto; `drive` também cobre Docs e Sheets (arquivos do Drive). */
+const GROUP_ALIASES: Record<string, string[]> = { drive: ['drive', 'docs', 'sheets'] };
+export const allowedTools = (list: string[], tools = TOOLS): Tool[] =>
+  tools.filter((t) => list.some((e) => t.name === e || (GROUP_ALIASES[e] ?? [e]).some((g) => t.name.startsWith(`${g}.`))));
 
 /** O OpenRouter aceita só [a-zA-Z0-9_-] no nome da função. */
 export const wireName = (name: string) => name.replace(/\./g, '_');
