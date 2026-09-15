@@ -70,11 +70,13 @@ export function redact<T>(v: T): T {
 }
 
 const cut = (s?: string) => (s ?? '').slice(0, CUT);
+/** Horário de São Paulo (UTC−3, sem horário de verão desde 2019), o mesmo fuso do id do run. */
+const spTime = (ms: number) => new Date(ms - 3 * 3_600_000).toISOString().replace('Z', '-03:00');
 
 /** Linha da planilha "gasclaw — execuções", na ordem de HEADER. */
 export function summaryRow(run: Run): (string | number)[] {
   const r = redact(run);
-  return [r.id, new Date(r.startedAt).toISOString(), r.kind, r.agent ?? '', r.status, r.step, r.ms ?? '', r.model ?? '', r.tokens ?? '', r.cost ?? '', cut(r.question), cut(r.answer), cut(r.error)];
+  return [r.id, spTime(r.startedAt), r.kind, r.agent ?? '', r.status, r.step, r.ms ?? '', r.model ?? '', r.tokens ?? '', r.cost ?? '', cut(r.question), cut(r.answer), cut(r.error)];
 }
 
 /** Árvore legível do run (terminal e tela). */
