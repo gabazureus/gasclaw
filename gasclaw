@@ -145,19 +145,50 @@ keep_editor_agents() { # ADR-013: o push --force troca o HEAD inteiro; antes, tr
 
 deploy() {
   lock_dev
-  say "build + testes"
-  export GCP_NUMBER="$(var "GCP_NUMBER_$UP")" # o teste do build refaz o dist: os dois precisam do número (Monitoring)
+  say "testes"
+  npm test >/dev/null # o build.test gera numa pasta temporária: não mexe no dist/
+  say "build (logo antes do push)"
+  export GCP_NUMBER="$(var "GCP_NUMBER_$UP")" # Monitoring (ADR-016)
   npm run build >/dev/null
-  npm test >/dev/null
-  keep_editor_agents
+  local built
+  built=$(shasum -a 256 dist/_motor.js dist/appsscript.json | cut -d' ' -f1 | tr '\n' ' ')
+  keep_editor_agents # depois do build: o build.mjs apaga o dist/ inteiro, e os agentes/** do editor precisam ir junto
+  check_bundle "$built"
   say "push ($TARGET)"
   clasp_ push --force >/dev/null
+  verify_head
   publish
+}
+
+verify_head() { # depois do push e antes da versão: o HEAD remoto (pull isolado) tem exatamente o motor e os escopos do build
+  local dir=".tmp/verify-$$"
+  mkdir -p "$dir"
+  pull_into "$dir"
+  [ "$(shasum -a 256 < "$dir/_motor.js")" = "$(shasum -a 256 < dist/_motor.js)" ] || die "HEAD remoto diferente do build depois do push: não crio a versão"
+  node -e 'const f=(p)=>JSON.parse(require("fs").readFileSync(p,"utf8")).oauthScopes.length;if(f(process.argv[1])!==f("dist/appsscript.json"))process.exit(1)' "$dir/appsscript.json" || die "escopos do HEAD remoto diferentes do build: não crio a versão"
+  ok "HEAD remoto conferido: motor idêntico ao build, $(node -p 'JSON.parse(require("fs").readFileSync("dist/appsscript.json","utf8")).oauthScopes.length') escopos"
+}
+
+check_bundle() { # $1 sha do build. A v18 saiu com o bundle da v17 porque o dist/ foi regravado entre o build e o push
+  local n missing=""
+  for n in $(grep -oE '^export function [A-Za-z0-9_]+' src/main.ts | awk '{print $3}'); do
+    grep -q "^function $n(" dist/_motor.js || missing="$missing $n"
+  done
+  [ -z "$missing" ] || die "bundle desatualizado: faltam em dist/_motor.js:$missing"
+  [ "$(shasum -a 256 dist/_motor.js dist/appsscript.json | cut -d' ' -f1 | tr '\n' ' ')" = "$1" ] || die "dist/ mudou entre o build e o push (npm test, build ou clasp rodando em paralelo?): não publico"
+  ok "bundle conferido: $(grep -c '^export function' src/main.ts) funções globais, $(wc -c < dist/_motor.js | tr -d ' ') bytes"
+}
+
+version_label() { # SHA do commit, com -dirty se src/ ou o manifesto têm mudança não commitada
+  local sha dirty=""
+  sha=$(git rev-parse --short HEAD 2>/dev/null || echo local)
+  [ -z "$(git status --porcelain -- src appsscript.json build.mjs 2>/dev/null)" ] || dirty="-dirty"
+  printf 'gasclaw %s%s' "$sha" "$dirty"
 }
 
 publish() { # versão nova do HEAD + implantação fixa apontando para ela (mesma URL)
   local out v d
-  out=$(clasp_ create-version "gasclaw $(git rev-parse --short HEAD 2>/dev/null || echo local)")
+  out=$(clasp_ create-version "$(version_label)")
   v=$(printf '%s' "$out" | grep -oE 'ersion [0-9]+' | grep -oE '[0-9]+' | head -1)
   [ -n "$v" ] || die "não consegui ler o número da versão: $out"
   d=$(var "DEPLOY_ID_$UP")
