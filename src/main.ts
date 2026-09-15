@@ -109,7 +109,7 @@ export function doGet(e: GoogleAppsScript.Events.DoGet) {
     if (action === 'health') {
       const agents = store.listAgents();
       const folders = agents.map((a) => `${a.name}: https://drive.google.com/drive/folders/${a.folderId}`);
-      return json({ ok: true, enabled: store.isEnabled(), agents: agents.length, hasKey: !!store.getApiKey(), folders });
+      return json({ ok: true, enabled: store.isEnabled(), agents: agents.length, hasKey: !!store.getApiKey(), folders, appUrl: appUrl() });
     }
     if (action === 'disable' || action === 'enable') {
       store.setEnabled(action === 'enable');
@@ -212,10 +212,13 @@ export function onRemoveFromSpace() {
 }
 
 // ---------- Tela gasclaw (google.script.run) ----------
+/** URL absoluta do web app (/exec, ou /dev no modo de teste): a tela roda num iframe em googleusercontent.com e link relativo não funciona. */
+export const appUrl = (): string => ScriptApp.getService().getUrl() ?? '';
+
 export function settingsState() {
   const me = assertOwner();
   observe.maybeDrain(); // fallback sem gatilho ao abrir a tela
-  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents: store.listAgents() };
+  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents: store.listAgents(), appUrl: appUrl() };
 }
 
 export function saveKey(key: string) {

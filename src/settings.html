@@ -35,7 +35,7 @@
 <body>
 <main>
   <h1>🦀 gasclaw</h1>
-  <p><a href="?page=chat" target="_top">Conversar com o agente</a></p>
+  <p><a id="chatLink" target="_top" hidden>Conversar com o agente</a></p>
   <p id="msg" role="status" aria-live="polite">Carregando…</p>
 
   <section>
@@ -146,6 +146,8 @@
   function render(s) {
     state = s;
     $('msg').textContent = 'Conectado como ' + s.me;
+    // link absoluto: a tela roda num iframe em googleusercontent.com, onde "?page=chat" relativo não chega ao web app
+    if (s.appUrl) { $('chatLink').href = s.appUrl + '?page=chat'; $('chatLink').hidden = false; }
     $('status').textContent = (s.enabled ? '🟢 Ativo' : '⏸ Pausado') + ' · chave ' + (s.hasKey ? 'salva' : 'faltando') + ' · ' + s.agents.length + ' agente(s)';
     $('toggle').textContent = s.enabled ? 'Pausar' : 'Ativar';
     if (typeof fillAgents === 'function') fillAgents();
