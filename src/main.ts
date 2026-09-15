@@ -1,5 +1,7 @@
 import { pocP10 } from '../poc/p10-editor/harness';
 import { pocP14 } from '../poc/p14-trace/harness';
+import { pocP15 } from '../poc/p15-limites/harness';
+import { pocP16 } from '../poc/p16-custo/harness';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
 import { DEFAULT_STEPS, reply } from './agent';
 import { cacheTickets, newToken } from './approvalStore';
@@ -326,6 +328,19 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p1: () => pocUrlFetchTimeout(),
   p6: (step) => pocP6(step, ownerEmail()),
   p10: (step, params) => pocP10(step, params),
+  p15: (step, params = {}) => pocP15(step, params, { apiKey: store.getApiKey, owner: ownerEmail }),
+  p16: (step, params = {}) =>
+    pocP16(step, params, {
+      apiKey: store.getApiKey,
+      agent: () => {
+        const first = store.listAgents()[0];
+        return first ? { folderId: first.folderId, tools: loadAgent(first.folderId).config.tools } : null;
+      },
+      testAgent: (folderId, q) => {
+        const r = testAgent(folderId, q);
+        return { runId: r.runId, model: r.model };
+      },
+    }),
   p14: (step, params = {}) => {
     if (step !== 'real') return pocP14(step, params);
     const first = store.listAgents()[0];
