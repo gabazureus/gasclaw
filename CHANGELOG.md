@@ -40,6 +40,7 @@ Detalhes técnicos: [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementa
 #### Segurança
 
 - A chave do OpenRouter apareceu parcialmente numa sessão local; `.env` foi adicionado ao `.gitignore`.
+- 🔄 (no dev, depois da auditoria) Ações com efeito só por POST com segredo da CLI, e o painel mostra quando o segredo foi registrado ([ADR-022](docs/adr/022-csrf-segredo-da-cli.md)); acesso e ferramentas só depois de aprovados no painel ([ADR-021](docs/adr/021-acesso-aprovado-no-painel.md)); o trace apaga mais formatos de chave e token (`sk-proj-`, `sk-`, `bearer` minúsculo, `Basic`); a chave do OpenRouter sai do clipboard em 90 s; o deploy confere o bundle, o HEAD e a versão antes de publicar.
 
 #### O que ainda não faz / limites
 

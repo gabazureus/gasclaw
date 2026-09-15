@@ -1,7 +1,7 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, com a porcentagem de progresso e se já foi resolvido.
-> **Atualizado em:** 2026-09-14 · POC P10 + C7 (leitura do editor ligada, ADR-013) e trace do agente P14 (ADR-014) · testes 87/87 · dev na versão 14 · prod na versão 1.
+> **Atualizado em:** 2026-09-15 · auditoria aplicada (M1 CSRF/ADR-022, M2 acesso no painel/ADR-021, travas do deploy), Observabilidade (ADR-016/018/020) · testes 299/299 · dev na versão 20 (v21 a publicar) · prod na versão 1.
 > **Fontes:** [spec](docs/specs/), [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementacao.md),
 > [ADRs](docs/adr/README.md), [CHANGELOG](CHANGELOG.md), [log da wiki](docs/wiki/log.md),
 > [tracks](conductor/tracks.md), Beads (`bd list`) e `git log`.
@@ -35,13 +35,13 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | Fase | Itens | Progresso | Resolvidos |
 |---|---|---|---|
 | **F0**: fundação e primeira fatia | 18 | ████████░░ **82%** | 11 de 18 |
-| **F1**: agente-pasta completo | 18 | ████░░░░░░ **41%** | 2 de 18 |
+| **F1**: agente-pasta completo | 20 | ████░░░░░░ **44%** | 2 de 20 |
 | **F2**: tarefas longas e aprovação | 10 | █░░░░░░░░░ **10%** | 0 de 10 |
 | **F3**: proatividade e dados | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
 | **F4**: canais extras | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
-| **Transversal** (docs, open source, segurança, POCs) | 18 | ███████░░░ **67%** | 10 de 18 |
-| **Produto (F0–F4)** | 54 | ████░░░░░░ **44%** | 13 de 54 |
-| **Geral** | 72 | █████░░░░░ **50%** | 23 de 72 |
+| **Transversal** (docs, open source, segurança, POCs) | 20 | ███████░░░ **65%** | 10 de 20 |
+| **Produto (F0–F4)** | 56 | █████░░░░░ **45%** | 13 de 56 |
+| **Geral** | 76 | █████░░░░░ **50%** | 23 de 76 |
 
 > Desde o primeiro inventário, a Task 11 e os READMEs foram concluídos, a POC P6 passou de forma automática (`./gasclaw poc p6`, ADR-012) e a POC P10 também (`./gasclaw poc p10`, ADR-013).
 > Entraram dois itens na F1: autoria no editor do Apps Script (85%, leitura ligada no dev) e trace do agente (80%, no dev com 8 de 10 critérios).
@@ -75,7 +75,7 @@ A porcentagem de cada fase é a média simples dos itens dela.
 
 ---
 
-## F1 — Agente-pasta completo (41%)
+## F1 — Agente-pasta completo (44%)
 
 | Elemento | Status | % | Resolvido? | O que falta | Fonte |
 |---|---|---|---|---|---|
@@ -84,8 +84,10 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | Trace do agente: cada run com os passos (arquivos lidos e origem, prompt, chamadas ao modelo com tokens/custo, ferramentas, memória, resposta) · aba Ao vivo + detalhe do run na tela · planilha com 1 linha por run · JSON completo em `gasclaw/runs/<id>.json` guardado por 90 dias e depois para a lixeira · `./gasclaw trace <id>` | 🟡 | 80 | 🟡 Parcial | no dev (v13) e medido pela POC P14: 8 de 10 critérios ✅; falta decidir o C1 (o trace custa de 3 a 4 s por run, só o JSON síncrono leva 1,3–1,6 s) e o C6 da planilha (5,2 s); a origem de cada papel entra no `resolve_agent` quando a leitura do editor for ligada | [ADR-014](docs/adr/014-trace-do-agente.md); [poc/p14-trace](poc/p14-trace/README.md) |
 | **Observabilidade na tela** (lote de 1 min, modelos e custo por modelo, limites) | 🟡 | 70 | ❌ Não | código e testes prontos (`ae22cd0`): abas Ao vivo, Modelos e custo (gráfico 7 dias → 24 h, modelo por agente), Limites e Lote; `./gasclaw limits` e `usage`; falta publicar no dev (gcloud expirado), reautorizar (gatilho) e medir P14/P15/P16 | [ADR-016](docs/adr/016-painel-de-limites.md); [ADR-018](docs/adr/018-modelos-e-custo.md); Beads `gasclaw-cmx` |
 | E0 harness de evals (`./gasclaw eval`) | ✅ | 100 | ✅ Sim | — (6/6 no dev v16: smoke, e1-now, e1-memoria, e1-limite, e1-injecao, e1-fora-da-lista) | commit `9fa87d7` |
-| E1 motor de tools (allowlist, schema, limite de passos, memória só na DM do dono) | 🟡 | 90 | ❌ Não | falta ligar o toolkit no chat real (`main.ts`) | `9fa87d7` |
-| E5 aprovação + ask (card de uso único, 10 min) | 🟡 | 70 | ❌ Não | núcleo e Chat no worktree; falta merge, `onCardClick` no `main.ts` e evals no dev | `106f11e`, `7cb6e42` |
+| E1 motor de tools (allowlist, schema, limite de passos, memória só na DM do dono) | 🟢 | 95 | 🟡 Parcial | toolkit ligado no Chat real (`c9c11c9`) e só com as tools aprovadas no painel (ADR-021); falta confirmar os evals na v21 | `9fa87d7`, `c9c11c9` |
+| E5 aprovação + ask (card de uso único, 10 min) | 🟢 | 90 | 🟡 Parcial | merge na main (`6ad7ef1`), `onCardClick` no `main.ts` (`c9c11c9`), clique na tela com trace (`69f4ac8`); falta rodar os evals `e5-*` e `webchat-*` na v21 | `106f11e`, `7cb6e42`, `69f4ac8` |
+| P17 / ADR-019: tela de chat do gasclaw e voz | 🟡 | 50 | ❌ Não | texto no dev (`?page=chat`, link absoluto `97e354e`, trace completo `bb2bc4c`); voz adiada pelo usuário | [ADR-019](docs/adr/019-tela-de-chat-e-voz.md) |
+| **Acesso e ferramentas aprovados no painel** (M2, ADR-021) | 🔄 | 70 | ❌ Não | núcleo (auditoria `a1dbd22`, `b9f8cd8`) e painel com Aprovar/Remover (`e456708`); falta publicar a v21 e aprovar de verdade na tela; todo agente fica só com o dono e sem tools até o clique | [ADR-021](docs/adr/021-acesso-aprovado-no-painel.md) |
 | Rodízio de modelos gratuitos (`model: free`) | ⏳ | 10 | ❌ Não | decidido: logo depois da P6; lista de `GET /api/v1/models` com preço zero e cache diário, troca de modelo em 429/5xx | Beads `gasclaw-v53` |
 | Chat na tela gasclaw (para quem usa Gmail pessoal) | ⏳ | 10 | ❌ Não | decidido: aba de conversa no web app, com instalação e cota próprias da pessoa; exige ADR (a spec §2 deixava o chat web fora do MVP) | Beads `gasclaw-v53` |
 | `./gasclaw up` detecta Gmail pessoal e pula o Chat | ⏳ | 10 | ❌ Não | decidido: conta `@gmail.com` → pula consentimento Interno e app do Chat; verificar consentimento "Externo/Teste" | Beads `gasclaw-v53` |
@@ -139,14 +141,16 @@ A porcentagem de cada fase é a média simples dos itens dela.
 
 ---
 
-## Transversal (67%)
+## Transversal (65%)
 
 | Elemento | Status | % | Resolvido? | O que falta | Fonte |
 |---|---|---|---|---|---|
 | Hub `docs/` | ✅ | 100 | ✅ Sim | — | ADR-007 |
 | Spec e ADRs 001–011 | ✅ | 100 | ✅ Sim | — (004, 005 e 006 seguem "Proposto" até as POCs) | [ADRs](docs/adr/README.md) |
 | CHANGELOG | ✅ | 100 | ✅ Sim | — | [CHANGELOG](CHANGELOG.md) |
-| `como-usar.md` e READMEs (EN e pt-BR) | ✅ | 100 | ✅ Sim | — (atualizados para "F0 concluída" no `2d22645`) | [como-usar](docs/como-usar.md) |
+| `como-usar.md` e READMEs (EN e pt-BR) | ✅ | 100 | ✅ Sim | — (conferidos com o estado real da F1 pela auditoria em `f7a8fec`; avisos dos ADR-021 e 022 em `c098b41`) | [como-usar](docs/como-usar.md) |
+| Auditoria completa (0 críticos · 12 altos · 25 médios · 18 baixos) | 🟡 | 80 | 🟡 Parcial | corrigidos: A3, A4, A5, M1 (CSRF, ADR-022), M2 (acesso no painel, ADR-021), M16, M19, B1–B4, redact de mais formatos, lote e limites (branch `audit`); pendentes no Beads: M13, M18, clique de terceiro no ticket, `INTEGRATION.md` do devmode | branch `audit`; ADR-020, 021, 022 |
+| POCs fora do bundle de prod | ⏳ | 10 | ❌ Não | hoje o código das POCs vai no bundle de prod, só desligado por `__DEV__` (ADR-022); tirar do bundle | ADR-022 |
 | `product.md`, `tech-stack.md`, `UBIQUITOUS_LANGUAGE.md` | ✅ | 100 | ✅ Sim | — | plano#A.4 |
 | Runbooks `setup-inicial` e `devmode-update` | ✅ | 100 | ✅ Sim | — | plano#A.4 |
 | Arquivos open source (LICENSE Apache-2.0, NOTICE, LICENSING, CoC, CONTRIBUTING) | ✅ | 100 | ✅ Sim | — (conferir o texto do CoC 2.1 no site oficial antes de abrir o repo) | ADR-011 |
