@@ -12,14 +12,16 @@ export type Approval = 'never' | 'once' | 'always';
 type Prop = { type: 'string' | 'integer' | 'number' | 'boolean'; description?: string; maxLength?: number };
 export type Schema = { type: 'object'; properties: Record<string, Prop>; required?: string[]; additionalProperties?: false };
 /** google/timeZone/offset: ferramentas do Workspace (E6); ausentes onde o canal não as liga. offset = "-03:00" do fuso. */
-export type ToolCtx = { now: () => string; ownerDm: boolean; memory: { read: () => string; write: (text: string) => void }; google?: Google; timeZone?: string; offset?: string; isOwner?: boolean };
+/** memory: MEMORY.md (read/write) + notas do dia (day/saveDay/today) + recall pronto; day/saveDay/today/recall são opcionais para contextos simples. */
+export type MemoryCtx = { read: () => string; write: (text: string) => void; day?: (date: string) => string; saveDay?: (date: string, text: string) => void; today?: () => string; recall?: () => string };
+export type ToolCtx = { now: () => string; ownerDm: boolean; memory: MemoryCtx; google?: Google; timeZone?: string; offset?: string; isOwner?: boolean };
 /** ownerOnly: só o dono usa (e aprova); o motor recusa antes de qualquer card. */
 export type Tool = { name: string; description: string; parameters: Schema; approval: Approval; run: (args: Record<string, unknown>, ctx: ToolCtx) => string; ownerOnly?: boolean };
 
 const ownerOnly = (ctx: ToolCtx) => {
   if (!ctx.ownerDm) throw new Error('memória só está disponível na DM do dono');
 };
-const text = (description: string): Schema => ({ type: 'object', properties: { text: { type: 'string', description } }, required: ['text'], additionalProperties: false });
+const text = (description: string, maxLength = 4000): Schema => ({ type: 'object', properties: { text: { type: 'string', description, maxLength } }, required: ['text'], additionalProperties: false });
 const none: Schema = { type: 'object', properties: {}, additionalProperties: false };
 
 // Efeito só dentro da pasta do agente → never. Tool com efeito externo (E6) nasce com approval ≠ never.
@@ -27,14 +29,20 @@ export const TOOLS: Tool[] = [
   { name: 'now', description: 'Data, hora e dia da semana atuais no fuso do gasclaw.', parameters: none, approval: 'never', run: (_a, ctx) => ctx.now() },
   {
     name: 'memory.save',
-    description: 'Salva um fato durável sobre o usuário (preferência, contexto) na memória do agente.',
+    description: 'Anota um fato sobre o usuário (preferência, decisão, contexto) na memória do agente. Vira nota do dia; hoje e ontem voltam no contexto.',
     parameters: text('o fato, em uma frase curta'),
     approval: 'never',
     run: (a, ctx) => {
       ownerOnly(ctx);
-      const r = addEntry(ctx.memory.read(), String(a.text));
+      const day = ctx.memory.today?.();
+      const before = day && ctx.memory.day ? ctx.memory.day(day) : ctx.memory.read();
+      const r = addEntry(before, String(a.text));
       if (!r.ok) throw new Error(r.error);
-      ctx.memory.write(r.text);
+      if (day && ctx.memory.saveDay) {
+        ctx.memory.saveDay(day, r.text);
+        return `fato anotado na memória de ${day}`;
+      }
+      ctx.memory.write(r.text); // contexto sem notas do dia: cai na memória curada
       return 'fato salvo na memória';
     },
   },
@@ -46,19 +54,26 @@ export const TOOLS: Tool[] = [
     run: (a, ctx) => {
       ownerOnly(ctx);
       if (String(a.text).trim().length < 3) throw new Error('trecho curto demais (mínimo 3 caracteres)');
-      const r = removeEntry(ctx.memory.read(), String(a.text));
-      if (r.removed) ctx.memory.write(r.text);
-      return `${r.removed} fato(s) removido(s)`;
+      const curated = removeEntry(ctx.memory.read(), String(a.text));
+      if (curated.removed) ctx.memory.write(curated.text);
+      const day = ctx.memory.today?.();
+      let removed = curated.removed;
+      if (day && ctx.memory.day && ctx.memory.saveDay) {
+        const note = removeEntry(ctx.memory.day(day), String(a.text));
+        if (note.removed) ctx.memory.saveDay(day, note.text);
+        removed += note.removed;
+      }
+      return `${removed} fato(s) removido(s)`;
     },
   },
   {
     name: 'memory.read',
-    description: 'Lê a memória salva sobre o usuário.',
+    description: 'Lê a memória salva sobre o usuário: a curada (MEMORY.md) e as notas de hoje e de ontem.',
     parameters: none,
     approval: 'never',
     run: (_a, ctx) => {
       ownerOnly(ctx);
-      return ctx.memory.read().slice(0, RECALL_MAX) || '(memória vazia)';
+      return (ctx.memory.recall?.() ?? ctx.memory.read()).slice(0, RECALL_MAX) || '(memória vazia)';
     },
   },
   {

@@ -1,4 +1,5 @@
-import { CHAT_BUDGET_MS, DEFAULT_STEPS, runTurn, withEngineRules, type TurnInput, type TurnResult } from './agent';
+import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, runTurn, withEngineRules, type TurnInput, type TurnResult } from './agent';
+import { flushMemory } from './tools/memoryFlush';
 import { approvalCard, decisionFrom, issue, redeem, type Ticket, type TicketStore } from './approval';
 import type { Completion, Message, ToolDef } from './llm';
 import type { Tool, ToolCtx } from './tools/registry';
@@ -91,7 +92,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
       system: spec.system,
       history,
       text,
-      memory: ownerDm && !resume ? kit.ctx.memory.read() : undefined,
+      memory: ownerDm && !resume ? (kit.ctx.memory.recall?.() ?? kit.ctx.memory.read()) : undefined, // curada + notas de hoje e ontem
       tools: kit.tools,
       ctx: kit.ctx,
       llm: (m, defs) => d.llm(key, spec.config.model, m, defs),
@@ -111,6 +112,8 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
       d.tickets.put(t);
       return reply(out.text, approvalCard(t, out.text));
     }
+    // Flush de memória antes de compactar: o que for durável vira nota do dia, para não se perder no corte do histórico.
+    if (ownerDm && out.history.length >= MAX_HISTORY && kit.ctx.memory.saveDay && kit.ctx.memory.today) flushMemory(out.history, kit.ctx, (m) => d.llm(key, spec.config.model, m));
     d.saveHistory(hk, out.history);
     return reply(out.text);
   } catch (err) {
