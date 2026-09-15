@@ -8,6 +8,15 @@ import { cacheTickets, newToken } from './approvalStore';
 import { handleChat, type ChatDeps, type ChatEvent } from './chat';
 import { cliAuthorized, MUTATING, validSecret } from './cli';
 import { evalAction } from './evalEntry';
+import { pocP11 } from '../poc/p11-free/harness';
+import { pocP18 } from '../poc/p18-sessoes/harness';
+import { sessionMessages } from './session';
+import { compactSession, toSession } from './sessionCompact';
+import { sessionIO } from './sessionStore';
+import { bootstrapIO } from './tools/bootstrapStore';
+import { skillsIO } from './tools/skillsStore';
+import { isFree } from './freeModels';
+import { runFree } from './freeRun';
 import { complete, type Completion, type Message, type ToolDef } from './llm';
 import { gasGoogle, zone } from './tools/googleHttp';
 import { getOverride, listModels as openRouterModels, setOverride, validateChoice } from './models';
@@ -52,6 +61,9 @@ const loadAgentForTurn = (folderId: string) => withAccess(withOverride(loadAgent
 
 /** A3/M16: Chat, tela de conversa e clique de aprovação registram os mesmos passos (resolve_agent, llm_call, tool_call). */
 const traced = (t: runlog.Tracer, d: ChatDeps): ChatDeps => traceDeps(t, d, loadAgentForTurn);
+
+/** A chave da conversa é "<folderId>:<espaço>"; o folderId é a pasta do agente (ADR-024). */
+const folderOf = (key: string): string => key.split(':')[0];
 
 declare const __DEV__: boolean; // embutido pelo build: true só no deploy do dev (POCs)
 const isDev = () => typeof __DEV__ !== 'undefined' && __DEV__ === true;
@@ -210,10 +222,25 @@ function chatDeps(): ChatDeps {
     apiKey: store.getApiKey,
     defaultAgent: () => store.listAgents()[0] ?? null,
     load: loadAgentForTurn,
-    history: store.getHistory,
-    saveHistory: store.saveHistory,
-    llm: (key, model, messages, tools) => complete(key, model, messages, CHAT_MAX_TOKENS, undefined, tools),
-    toolkit: (spec, ownerDm) => ({ tools: allowedTools(spec.access.tools), ctx: { now: nowText, ownerDm, memory: memoryIO(spec.folderId), google: gasGoogle, ...zone() }, steps: spec.config.steps ?? DEFAULT_STEPS }),
+    // ADR-024: a conversa passa a morar na pasta do agente, com compactação por resumo
+    history: (k) => sessionMessages(sessionIO(folderOf(k)).load(k)),
+    saveHistory: (k, h) => {
+      const io = sessionIO(folderOf(k));
+      io.save(k, toSession(io.load(k), h));
+    },
+    compact: (k, llm) => void compactSession(sessionIO(folderOf(k)), k, llm),
+    // ADR-025: `model: free` vira rodízio entre os gratuitos; qualquer outro id continua indo direto ao complete()
+    llm: (key, model, messages, tools) => {
+      const call = (id: string) => complete(key, id, messages, CHAT_MAX_TOKENS, undefined, tools);
+      return isFree(model) ? runFree(call, { tools: (tools ?? []).length > 0, apiKey: key }) : call(model);
+    },
+    toolkit: (spec, ownerDm) => ({
+      tools: allowedTools(spec.access.tools),
+      ctx: { now: nowText, ownerDm, memory: memoryIO(spec.folderId, zone().timeZone), skill: (name: string) => skillsIO(spec.folderId).body(name), google: gasGoogle, ...zone() },
+      steps: spec.config.steps ?? DEFAULT_STEPS,
+      skills: skillsIO(spec.folderId).index(),
+      bootstrap: bootstrapIO(spec.folderId),
+    }),
     tickets: cacheTickets(),
     newToken,
   };
@@ -401,7 +428,12 @@ export function testAgent(folderId: string, text: string) {
   const t = runlog.begin('test', { question: text });
   try {
     const spec = t.step('resolve_agent', () => loadAgentForTurn(folderId), agentInfo(folderId));
-    const out = reply(spec, [], text, (m) => t.step('llm_call', () => complete(key, spec.config.model, m, CHAT_MAX_TOKENS), llmInfo(spec.config.model, m), true));
+    // ADR-025: o teste da tela e o burst da POC P11 passam pelo mesmo caminho do Chat, rodízio incluído
+    const model = spec.config.model;
+    const call = (id: string, m: Message[]) => complete(key, id, m, CHAT_MAX_TOKENS);
+    const out = reply(spec, [], text, (m) =>
+      t.step('llm_call', () => (isFree(model) ? runFree((id) => call(id, m), { tools: false, apiKey: key }) : call(model, m)), llmInfo(model, m), true),
+    );
     t.mark('reply');
     const run = t.end({ answer: out.text });
     return { text: out.text, model: run.model ?? spec.config.model, ms: run.ms ?? 0, runId: run.id };
@@ -461,6 +493,8 @@ export function agentModel(folderId: string) {
     suggested: spec.config.suggested,
     approved: spec.access,
     pending: pendingSuggestions(spec.config.suggested, approved),
+    // ADR-025: com o rodízio, saber qual gratuito respondeu por último importa mais que o id configurado
+    lastModel: runlog.liveRuns().recent.find((r) => r.agent === spec.name && r.model)?.model ?? null,
   };
 }
 
@@ -511,7 +545,21 @@ export function pocUrlFetchTimeout() {
 const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {
   p1: () => pocUrlFetchTimeout(),
   p6: (step) => pocP6(step, ownerEmail()),
+  p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),
+  p11: (step, params = {}) =>
+    pocP11(step, params, {
+      apiKey: store.getApiKey,
+      agent: () => {
+        const first = store.listAgents()[0];
+        return first ? { folderId: first.folderId, tools: withAccess(loadAgent(first.folderId), approvedOf(first.folderId)).access.tools } : null;
+      },
+      testAgent: (folderId, q) => {
+        const r = testAgent(folderId, q);
+        return { runId: r.runId, model: r.model };
+      },
+      llm: (model, prompt) => ({ model: complete(store.getApiKey() ?? '', model, [{ role: 'user', content: prompt }], 100).model ?? model }),
+    }),
   p15: (step, params = {}) => pocP15(step, params, { apiKey: store.getApiKey, owner: ownerEmail }),
   p16: (step, params = {}) =>
     pocP16(step, params, {

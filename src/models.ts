@@ -1,4 +1,5 @@
 // Modelos e escolha por agente (ADR-018). Núcleo puro no topo; borda (OpenRouter + Properties + cache) embaixo.
+import { isFree, PENALTY_MS } from './freeModels';
 import { DEFAULT_MODEL } from './workspace';
 
 export type ModelInfo = { id: string; ctx: number; inM: number; outM: number; tools: boolean; free: boolean };
@@ -19,6 +20,13 @@ export function reduceModels(json: { data?: { id: string; context_length?: numbe
 /** C5: null se pode; senão a mensagem de recusa. */
 export function validateChoice(list: ModelInfo[], id: string, agentTools: string[]): string | null {
   if (id === DEFAULT_MODEL) return null;
+  if (isFree(id)) {
+    // ADR-025: `free` não é um id, é o rodízio; vale se existir gratuito que sirva ao agente
+    const free = list.filter((x) => x.free);
+    if (!free.length) return 'Nenhum modelo gratuito na lista do OpenRouter agora.';
+    if (agentTools.length && !free.some((x) => x.tools)) return `Nenhum modelo gratuito aceita ferramentas, e este agente usa: ${agentTools.join(', ')}.`;
+    return null;
+  }
   const m = list.find((x) => x.id === id);
   if (!m) return `Modelo ${id} não encontrado na lista do OpenRouter.`;
   if (agentTools.length && !m.tools) return `O modelo ${id} não aceita ferramentas, e este agente usa: ${agentTools.join(', ')}.`;
@@ -59,6 +67,16 @@ export function keyInfo(apiKey: string, fresh = false): KeyInfo {
 }
 
 export const keyCallsLast30min = (): number => (JSON.parse(cache().get('or:keycalls') ?? '[]') as number[]).filter((t) => t > Date.now() - 1_800_000).length;
+
+// ADR-025: memória curta de falhas do rodízio (id → quando falhou). Fica no cache: some sozinha e não suja as Properties.
+const FAILED = 'or:freefail';
+export const freeFailures = (): Record<string, number> => JSON.parse(cache().get(FAILED) ?? '{}');
+export function noteFreeFailure(id: string, now = Date.now()): void {
+  const f = freeFailures();
+  f[id] = now;
+  for (const k of Object.keys(f)) if (now - f[k] >= PENALTY_MS) delete f[k];
+  cache().put(FAILED, JSON.stringify(f), Math.round(PENALTY_MS / 1000));
+}
 
 const OVERRIDE = (folderId: string) => `MODEL:${folderId}`;
 export const getOverride = (folderId: string): string | null => PropertiesService.getScriptProperties().getProperty(OVERRIDE(folderId));

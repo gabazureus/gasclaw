@@ -3,7 +3,12 @@ P16=poc/p16-custo
 T=.tmp/p16
 N=10
 rm -rf "$T"; mkdir -p "$T"
-step() { remote "poc&id=p16&step=$1&trace=0${2:-}" > "$T/${3:-$1}.json" || die "P16 $1 falhou"; } # ${2:-}: com set -u, $2 vazio abortava a POC
+# ${2:-}: com set -u, $2 vazio abortava a POC. A checagem de ok:false veio da P11 na v37: o web app responde 200 com
+# {"ok":false,...}, o step segue e só o veredito quebra — medição que "passa" sem medir.
+step() {
+  remote "poc&id=p16&step=$1&trace=0${2:-}" > "$T/${3:-$1}.json" || die "P16 $1 falhou"
+  node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(r&&r.ok===false){console.error("P16 "+process.argv[2]+": o servidor recusou: "+String(r.error).slice(0,300));process.exit(1)}' "$T/${3:-$1}.json" "$1" || die "P16 $1 não mediu"
+}
 num() { node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(r[process.argv[2]])' "$1" "$2"; }
 
 say "P16 1/5 publica o dev"
@@ -17,7 +22,18 @@ step sum
 step prune
 step keycalls
 say "P16 4/5 C1 controlado: usage_daily antes → $N turnos → usage_daily depois (até estabilizar, teto de 5 min)"
-step c1read "" c1-before
+# O C4 faz um turno real 25 s antes desta leitura e o OpenRouter contabiliza com atraso: na v36 o custo dele (US$ 0,0000250)
+# caiu dentro da janela do C1 e derrubou o critério (−8,7%). Espera a leitura inicial parar de subir antes de começar.
+say "   esperando o usage_daily estabilizar antes de abrir a janela (as etapas anteriores também gastam)"
+t0=$(date +%s); PREV=""
+while [ $(( $(date +%s) - t0 )) -lt 180 ]; do
+  step c1read "" c1-before
+  ATUAL=$(num "$T/c1-before.json" usageDaily)
+  [ "$ATUAL" = "$PREV" ] && break
+  PREV="$ATUAL"
+  sleep 20
+done
+say "   janela aberta com usage_daily estável em $ATUAL"
 step c1turns "&n=$N"
 BEFORE=$(num "$T/c1-before.json" usageDaily)
 t0=$(date +%s); POLLS=0; PREV=""; AFTER="$BEFORE"; STABLE_S=null

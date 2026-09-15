@@ -97,7 +97,8 @@
       <select id="modelAgent"></select>
       <p id="modelNow" aria-live="polite"></p>
       <label for="modelPick">Escolher modelo na tela (preço por 1M tokens: entrada / saída)</label>
-      <input id="modelPick" list="modelList" placeholder="ex.: openai/gpt-4o-mini" autocomplete="off">
+      <input id="modelPick" list="modelList" placeholder="ex.: openai/gpt-4o-mini · ou free" autocomplete="off">
+      <p class="hint">Escreva <code>free</code> para o rodízio: o gasclaw usa o melhor modelo gratuito que servir e passa para o próximo se ele falhar.</p>
       <datalist id="modelList"></datalist>
       <button id="modelSave">Usar este modelo</button>
       <button id="modelReset" class="sec">Voltar ao do AGENTS</button>
@@ -334,10 +335,15 @@
   }
   function showModel(m) {
     modelCache = m;
-    $('modelNow').textContent = 'Da pasta (AGENTS/planilha): ' + m.fromFolder + ' · Escolhido na tela: ' + (m.override || '— (usa o da pasta)') + (m.tools.length ? ' · ferramentas: ' + m.tools.join(', ') : '');
+    $('modelNow').textContent = 'Da pasta (AGENTS/planilha): ' + m.fromFolder + ' · Escolhido na tela: ' + (m.override || '— (usa o da pasta)')
+      + (m.tools.length ? ' · ferramentas: ' + m.tools.join(', ') : '')
+      + (m.lastModel ? ' · último run: ' + m.lastModel : '');
     $('modelReset').disabled = !m.override;
-    if ($('modelList').children.length !== m.models.length) {
-      $('modelList').replaceChildren(...m.models.map((x) => el('option', { value: x.id, label: (x.free ? 'grátis' : 'US$ ' + x.inM + ' / ' + x.outM) + (x.tools ? ' · tools' : '') + ' · ' + Math.round(x.ctx / 1000) + 'k' })));
+    if ($('modelList').children.length !== m.models.length + 1) {
+      $('modelList').replaceChildren(
+        el('option', { value: 'free', label: 'rodízio entre os gratuitos (troca sozinho se um falhar)' }),
+        ...m.models.map((x) => el('option', { value: x.id, label: (x.free ? 'grátis' : 'US$ ' + x.inM + ' / ' + x.outM) + (x.tools ? ' · tools' : '') + ' · ' + Math.round(x.ctx / 1000) + 'k' })),
+      );
     }
   }
   function loadModel() { if ($('modelAgent').value) quiet('agentModel', $('modelAgent').value).then(showModel).catch((e) => { $('modelNow').textContent = e.message; }); }
