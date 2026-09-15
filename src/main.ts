@@ -8,7 +8,8 @@ import { cacheTickets, newToken } from './approvalStore';
 import { handleChat, type ChatDeps, type ChatEvent } from './chat';
 import { cliAuthorized, MUTATING, validSecret } from './cli';
 import { evalAction } from './evalEntry';
-import { complete, type Completion, type Message } from './llm';
+import { complete, type Completion, type Message, type ToolDef } from './llm';
+import { gasGoogle, zone } from './tools/googleHttp';
 import { getOverride, listModels as openRouterModels, setOverride, validateChoice } from './models';
 import * as observe from './observe';
 import * as runlog from './runlog';
@@ -66,7 +67,12 @@ function mutate(action: string, p: Record<string, string>): unknown {
     }
     const t = runlog.begin('test', { question: 'eval' });
     try {
-      const r = t.step('eval', () => evalAction(p.md ?? '', ownerEmail(), model));
+      // C1 da P16: o eval e o juiz chamam o modelo pelo trace (llm_call), para o custo entrar no medido
+      const r = t.step('eval', () =>
+        evalAction(p.md ?? '', ownerEmail(), model, (m: string, messages: Message[], tools: ToolDef[]) =>
+          t.step('llm_call', () => complete(store.getApiKey() ?? '', m, messages, 1000, undefined, tools), llmInfo(m, messages), true),
+        ),
+      );
       t.end({ answer: JSON.stringify(r).slice(0, 500) });
       return { ok: true, ...r };
     } catch (err) {
@@ -170,7 +176,7 @@ function chatDeps(): ChatDeps {
     history: store.getHistory,
     saveHistory: store.saveHistory,
     llm: (key, model, messages, tools) => complete(key, model, messages, CHAT_MAX_TOKENS, undefined, tools),
-    toolkit: (spec, ownerDm) => ({ tools: allowedTools(spec.access.tools), ctx: { now: nowText, ownerDm, memory: memoryIO(spec.folderId) }, steps: spec.config.steps ?? DEFAULT_STEPS }),
+    toolkit: (spec, ownerDm) => ({ tools: allowedTools(spec.access.tools), ctx: { now: nowText, ownerDm, memory: memoryIO(spec.folderId), google: gasGoogle, ...zone() }, steps: spec.config.steps ?? DEFAULT_STEPS }),
     tickets: cacheTickets(),
     newToken,
   };
