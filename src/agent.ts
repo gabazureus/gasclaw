@@ -59,6 +59,21 @@ export type TurnResult = {
 
 const askText = (a: Record<string, unknown>) => `${String(a.question)}${a.options ? `\nOpções: ${String(a.options)}` : ''}`;
 
+const LONG_FIELDS = ['body', 'description', 'content', 'notes'];
+const PREVIEW = 300;
+/**
+ * Texto do card de aprovação (revisão E6, blocker 1): um campo por linha, TODOS por inteiro (to, cc, attendees, subject, ids,
+ * range…); só corpo/descrição/conteúdo/notas são cortados, com "(+N chars)". Quebra de linha no valor vira ⏎, para que um
+ * corpo não finja outra linha de campo.
+ */
+export function approvalText(name: string, args: Record<string, unknown>): string {
+  const lines = Object.entries(args).map(([k, v]) => {
+    const s = (typeof v === 'string' ? v : JSON.stringify(v)).replace(/\r?\n/g, ' ⏎ ');
+    return LONG_FIELDS.includes(k) && s.length > PREVIEW ? `${k}: ${s.slice(0, PREVIEW)}… (+${s.length - PREVIEW} chars)` : `${k}: ${s}`;
+  });
+  return [`Posso usar ${name}? Preciso da sua aprovação.`, ...lines].join('\n');
+}
+
 /** Um turno: LLM com tools → valida → executa `never` (ou aprovada) → devolve ao modelo → repete até a resposta, a pendência ou o limite. */
 export function runTurn(i: TurnInput): TurnResult {
   const past = trimHistory(i.history);
@@ -112,7 +127,7 @@ export function runTurn(i: TurnInput): TurnResult {
       const needs = tool.name === 'ask' ? 'ask' : tool.approval === 'always' || (tool.approval === 'once' && !granted.has(tool.name)) ? 'approval' : null;
       if (needs && !d) {
         events.push({ name: tool.name, callId: call.id, key, status: 'pending', result: needs === 'ask' ? 'aguardando resposta' : 'aguardando aprovação' });
-        const text = needs === 'ask' ? askText(v.args) : `Posso usar ${tool.name} com ${JSON.stringify(v.args).slice(0, 300)}? Preciso da sua aprovação.`;
+        const text = needs === 'ask' ? askText(v.args) : approvalText(tool.name, v.args);
         return finish(text, { pending: { kind: needs, name: tool.name, callId: call.id, key, args: v.args }, state: { messages: [...messages], step, queue: calls.slice(k) } });
       }
       if (d && tool.approval === 'once') granted.add(tool.name);
