@@ -35,13 +35,13 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | Fase | Itens | Progresso | Resolvidos |
 |---|---|---|---|
 | **F0**: fundação e primeira fatia | 18 | ████████░░ **82%** | 11 de 18 |
-| **F1**: agente-pasta completo | 14 | ███░░░░░░░ **29%** | 1 de 14 |
+| **F1**: agente-pasta completo | 18 | ████░░░░░░ **41%** | 2 de 18 |
 | **F2**: tarefas longas e aprovação | 10 | █░░░░░░░░░ **10%** | 0 de 10 |
 | **F3**: proatividade e dados | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
 | **F4**: canais extras | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
 | **Transversal** (docs, open source, segurança, POCs) | 18 | ███████░░░ **67%** | 10 de 18 |
-| **Produto (F0–F4)** | 50 | ████░░░░░░ **41%** | 12 de 50 |
-| **Geral** | 68 | █████░░░░░ **48%** | 22 de 68 |
+| **Produto (F0–F4)** | 54 | ████░░░░░░ **44%** | 13 de 54 |
+| **Geral** | 72 | █████░░░░░ **50%** | 23 de 72 |
 
 > Desde o primeiro inventário, a Task 11 e os READMEs foram concluídos, a POC P6 passou de forma automática (`./gasclaw poc p6`, ADR-012) e a POC P10 também (`./gasclaw poc p10`, ADR-013).
 > Entraram dois itens na F1: autoria no editor do Apps Script (85%, leitura ligada no dev) e trace do agente (80%, no dev com 8 de 10 critérios).
@@ -75,13 +75,17 @@ A porcentagem de cada fase é a média simples dos itens dela.
 
 ---
 
-## F1 — Agente-pasta completo (29%)
+## F1 — Agente-pasta completo (41%)
 
 | Elemento | Status | % | Resolvido? | O que falta | Fonte |
 |---|---|---|---|---|---|
 | **POC P6: agentes em Google Docs/Sheets nativos (com `.md` também)** | ✅ | 100 | ✅ Sim | — (passou em 2 execuções automáticas; a leitura híbrida em produção e a opção "Criar como Docs \| Markdown" entram nos itens seguintes da F1) | [ADR-012](docs/adr/012-agentes-em-docs-e-sheets.md); [poc/p6-docs-nativos](poc/p6-docs-nativos/README.md) |
 | **Autoria no editor do Apps Script** (`agentes/<nome>/<PAPEL>.md.html` + pasta do Drive criada sozinha) | 🟢 | 85 | 🟡 Parcial | no dev (v14): `loadAgent` lê editor → Google Doc → `.md` (+ planilha `config`) com cache de 30 s; edição no editor chega ao agente em 12,8 s sem `up` (C7); se o editor falhar, segue com o Drive e registra no trace; motor em 1 arquivo; `up` preserva o editor; falta usar "Novo agente" de verdade na tela e levar para prod | [ADR-013](docs/adr/013-autoria-editor-e-drive.md); [poc/p10-editor](poc/p10-editor/README.md) |
 | Trace do agente: cada run com os passos (arquivos lidos e origem, prompt, chamadas ao modelo com tokens/custo, ferramentas, memória, resposta) · aba Ao vivo + detalhe do run na tela · planilha com 1 linha por run · JSON completo em `gasclaw/runs/<id>.json` guardado por 90 dias e depois para a lixeira · `./gasclaw trace <id>` | 🟡 | 80 | 🟡 Parcial | no dev (v13) e medido pela POC P14: 8 de 10 critérios ✅; falta decidir o C1 (o trace custa de 3 a 4 s por run, só o JSON síncrono leva 1,3–1,6 s) e o C6 da planilha (5,2 s); a origem de cada papel entra no `resolve_agent` quando a leitura do editor for ligada | [ADR-014](docs/adr/014-trace-do-agente.md); [poc/p14-trace](poc/p14-trace/README.md) |
+| **Observabilidade na tela** (lote de 1 min, modelos e custo por modelo, limites) | 🟡 | 70 | ❌ Não | código e testes prontos (`ae22cd0`): abas Ao vivo, Modelos e custo (gráfico 7 dias → 24 h, modelo por agente), Limites e Lote; `./gasclaw limits` e `usage`; falta publicar no dev (gcloud expirado), reautorizar (gatilho) e medir P14/P15/P16 | [ADR-016](docs/adr/016-painel-de-limites.md); [ADR-018](docs/adr/018-modelos-e-custo.md); Beads `gasclaw-cmx` |
+| E0 harness de evals (`./gasclaw eval`) | ✅ | 100 | ✅ Sim | — (6/6 no dev v16: smoke, e1-now, e1-memoria, e1-limite, e1-injecao, e1-fora-da-lista) | commit `9fa87d7` |
+| E1 motor de tools (allowlist, schema, limite de passos, memória só na DM do dono) | 🟡 | 90 | ❌ Não | falta ligar o toolkit no chat real (`main.ts`) | `9fa87d7` |
+| E5 aprovação + ask (card de uso único, 10 min) | 🟡 | 70 | ❌ Não | núcleo e Chat no worktree; falta merge, `onCardClick` no `main.ts` e evals no dev | `106f11e`, `7cb6e42` |
 | Rodízio de modelos gratuitos (`model: free`) | ⏳ | 10 | ❌ Não | decidido: logo depois da P6; lista de `GET /api/v1/models` com preço zero e cache diário, troca de modelo em 429/5xx | Beads `gasclaw-v53` |
 | Chat na tela gasclaw (para quem usa Gmail pessoal) | ⏳ | 10 | ❌ Não | decidido: aba de conversa no web app, com instalação e cota próprias da pessoa; exige ADR (a spec §2 deixava o chat web fora do MVP) | Beads `gasclaw-v53` |
 | `./gasclaw up` detecta Gmail pessoal e pula o Chat | ⏳ | 10 | ❌ Não | decidido: conta `@gmail.com` → pula consentimento Interno e app do Chat; verificar consentimento "Externo/Teste" | Beads `gasclaw-v53` |
@@ -172,6 +176,8 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | **P6: Docs/Sheets nativos** | F1 | ✅ | ✅ Sim | C1: 4 Docs < 3 s · C2: < 200 ms com cache (V1, V2 ou validade de 30 s) · C3: editar invalida o cache · C4: títulos e listas preservados · C5: pasta mista resolve cada papel | C1 1,1–1,2 s; V1 472–608 ms e V2 294–383 ms → validade de 30 s (54–77 ms); C3, C4 e C5 ✅ ([ADR-012](docs/adr/012-agentes-em-docs-e-sheets.md)) |
 | P7: token do CI | F0 | ⏸️ | ⏸️ Adiado | deploy verde 8+ dias depois do login | — |
 | **P10: editor do Apps Script** | F1 | ✅ | ✅ Sim | C1 nomes `.md.html` preservados · C3 leitura fiel byte a byte, listagem sem hardcode, < 3 s, precedência editor → Doc → `.md` · C4 edição chega sem `up` · C5 `up` preserva o editor · C6 motor em 1 arquivo | ver a linha da P10 na Esteira e o [ADR-013](docs/adr/013-autoria-editor-e-drive.md) |
+| P15: painel de limites | F1 | ⏳ | ❌ Não | C1 11 fontes ok/pendente · C2 cache < 1 s · C3 selos · C4 linha diária · C5 `./gasclaw limits` · C6 de quem é a cota | código pronto; medição aguarda gcloud e reautorização ([ADR-016](docs/adr/016-painel-de-limites.md)) |
+| P16: modelos e custo | F1 | ⏳ | ❌ Não | C1 ±2% do `usage_daily` · C2 < 1 s · C3 dia = soma das horas · C4 troca ≤ 30 s · C5 recusa sem tools · C6 `prune` · C7 ≤ 3 `/key` em 30 min | código pronto; medição aguarda gcloud ([ADR-018](docs/adr/018-modelos-e-custo.md)) |
 | **P14: trace do agente** | F1 | 🟡 | 🟡 Parcial | C1–C10 na Esteira | 2 execuções automáticas: C2–C5 e C7–C10 ✅; C1 ❌ p95 3.893 ms; C6 tela 2,5 s ✅ e planilha 5,2 s ([ADR-014](docs/adr/014-trace-do-agente.md)) |
 | P8: Excel → Sheets | F3 | ⏳ | ❌ Não | xlsx de 5 MB lido em < 60 s | — |
 | P9: papéis responder/validar/redigir | F2 | ⏳ | ❌ Não | a definir: tempo da cadeia com modelos gratuitos e ganho de qualidade medido | — |
