@@ -294,6 +294,10 @@ cmd_up() {
   authorize
   remote enable >/dev/null 2>&1 || true
   health
+  # consentimento granular: escopo sem autorização vira exceção capturada, e o Google não pede sozinho
+  if remote "limits&fresh=1" 2>/dev/null | grep -q '"status":"pendente"'; then
+    warn "faltam permissões do Google: abra https://script.google.com/home/projects/$(var "SCRIPT_ID_$UP")/edit → arquivo _motor.gs → no menu de funções escolha \"authorize\" → ▶ Executar → Permitir (ou use \"Autorizar permissões\" no topo da tela)"
+  fi
   if [ -n "${OPENROUTER_API_KEY:-}" ]; then
     printf '%s' "$OPENROUTER_API_KEY" | pbcopy
     # segurança baixa: a chave sai do clipboard em 90 s, se ainda for ela que estiver lá

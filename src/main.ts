@@ -140,7 +140,7 @@ export function doGet(e: GoogleAppsScript.Events.DoGet) {
     if (action === 'health') {
       const agents = store.listAgents();
       const folders = agents.map((a) => `${a.name}: https://drive.google.com/drive/folders/${a.folderId}`);
-      return json({ ok: true, enabled: store.isEnabled(), agents: agents.length, hasKey: !!store.getApiKey(), folders, appUrl: appUrl() });
+      return json({ ok: true, enabled: store.isEnabled(), agents: agents.length, hasKey: !!store.getApiKey(), folders, appUrl: appUrl(), auth: authStatus() });
     }
     if (action === 'trace') return json({ ok: true, ...runlog.runDetail(e.parameter.run) });
     if (action === 'live') return json({ ok: true, ...runlog.liveRuns() });
@@ -231,7 +231,33 @@ export function settingsState() {
   const me = assertOwner();
   observe.maybeDrain(); // fallback sem gatilho ao abrir a tela
   const cliSecretAt = PropertiesService.getScriptProperties().getProperty('CLI_SECRET_AT');
-  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents: store.listAgents(), appUrl: appUrl(), cliSecretAt };
+  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents: store.listAgents(), appUrl: appUrl(), cliSecretAt, auth: authStatus() };
+}
+
+/**
+ * Consentimento granular (scopes, doc oficial): escopo sem autorização vira exceção capturável, e o Google não pede
+ * sozinho enquanto o código a captura (o limits capturava). A tela mostra o link; o editor roda `authorize`.
+ * getAuthorizationInfo só consulta, sem pedir; se a leitura falhar, a tela segue sem o aviso.
+ */
+function authStatus(): { required: boolean; url: string | null; editorFunction: string } {
+  try {
+    const info = ScriptApp.getAuthorizationInfo(ScriptApp.AuthMode.FULL);
+    const required = info.getAuthorizationStatus() === ScriptApp.AuthorizationStatus.REQUIRED;
+    return { required, url: required ? info.getAuthorizationUrl() || null : null, editorFunction: 'authorize' };
+  } catch {
+    return { required: false, url: null, editorFunction: 'authorize' };
+  }
+}
+
+/**
+ * Rode no editor (arquivo _motor.gs → função "authorize" → ▶ Executar): requireAllScopes encerra a execução e mostra o
+ * pedido de permissões se faltar alguma (só funciona no editor). Com tudo concedido, cria o gatilho de 1 min e devolve "ok".
+ */
+export function authorize() {
+  assertOwner();
+  ScriptApp.requireAllScopes(ScriptApp.AuthMode.FULL);
+  observe.ensureTrigger(); // a doc recomenda criar o gatilho só depois de garantir o escopo script.scriptapp
+  return 'ok';
 }
 
 /** ADR-022: apaga o segredo da CLI (pela tela, via google.script.run, que não é CSRF-ável); o próximo ./gasclaw up registra de novo. */
