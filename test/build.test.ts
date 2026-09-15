@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 
-const GLOBALS = ['doGet', 'onMessage', 'onAddToSpace', 'onRemoveFromSpace', 'settingsState', 'saveKey', 'addAgent', 'createAgent', 'removeAgent', 'makeDefault', 'testAgent', 'setRuntimeEnabled', 'pocUrlFetchTimeout'];
+const GLOBALS = ['doGet', 'onMessage', 'onCardClick', 'onAddToSpace', 'onRemoveFromSpace', 'settingsState', 'saveKey', 'addAgent', 'createAgent', 'removeAgent', 'makeDefault', 'testAgent', 'setRuntimeEnabled', 'pocUrlFetchTimeout'];
 
 test('build gera um único motor _motor.js com stubs globais para triggers do Chat, web app e tela', () => {
   execSync('node build.mjs', { stdio: 'pipe' });

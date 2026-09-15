@@ -1,12 +1,15 @@
 import { pocP10 } from '../poc/p10-editor/harness';
 import { pocP14 } from '../poc/p14-trace/harness';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
-import { reply } from './agent';
+import { DEFAULT_STEPS, reply } from './agent';
+import { cacheTickets, newToken } from './approvalStore';
 import { handleChat, type ChatDeps, type ChatEvent } from './chat';
 import { evalAction } from './evalEntry';
 import { complete, type Completion, type Message } from './llm';
 import * as runlog from './runlog';
 import * as store from './store';
+import { memoryIO } from './tools/memoryStore';
+import { allowedTools } from './tools/registry';
 import { coverage } from './trace';
 import { agentFolderPath, ensureFolderPath, extractFolderId, loadAgent, seedAgent, validAgentName, type LoadedAgent } from './workspace';
 
@@ -105,6 +108,11 @@ export function doGet(e: GoogleAppsScript.Events.DoGet) {
 }
 
 // ---------- Google Chat (app clássico) ----------
+const nowText = () => {
+  const tz = Session.getScriptTimeZone();
+  return `${Utilities.formatDate(new Date(), tz, "yyyy-MM-dd'T'HH:mm:ssXXX (EEEE)")} fuso ${tz}`;
+};
+
 function chatDeps(): ChatDeps {
   return {
     enabled: store.isEnabled,
@@ -114,22 +122,33 @@ function chatDeps(): ChatDeps {
     load: loadAgent,
     history: store.getHistory,
     saveHistory: store.saveHistory,
-    llm: (key, model, messages) => complete(key, model, messages, CHAT_MAX_TOKENS),
+    llm: (key, model, messages, tools) => complete(key, model, messages, CHAT_MAX_TOKENS, undefined, tools),
+    toolkit: (spec, ownerDm) => ({ tools: allowedTools(spec.config.tools), ctx: { now: nowText, ownerDm, memory: memoryIO(spec.folderId) }, steps: spec.config.steps ?? DEFAULT_STEPS }),
+    tickets: cacheTickets(),
+    newToken,
   };
 }
 
 export function onMessage(e: ChatEvent) {
   const d = chatDeps();
-  if (e.type !== 'MESSAGE') return handleChat(e, d);
+  if (e.type !== 'MESSAGE' && e.type !== 'CARD_CLICKED') return handleChat(e, d);
   const t = runlog.begin('chat', { question: (e.message?.argumentText ?? e.message?.text ?? '').trim(), user: e.user.email });
   const out = handleChat(e, {
     ...d,
     load: (id) => t.step('resolve_agent', () => loadAgent(id), agentInfo(id)),
-    llm: (key, model, messages) => t.step('llm_call', () => d.llm(key, model, messages), llmInfo(model, messages), true),
+    llm: (key, model, messages, tools) => t.step('llm_call', () => d.llm(key, model, messages, tools), llmInfo(model, messages), true),
+    toolkit: (spec, ownerDm) => {
+      const k = d.toolkit!(spec, ownerDm);
+      return { ...k, tools: k.tools.map((tool) => ({ ...tool, run: (a, c) => t.step('tool_call', () => tool.run(a, c), () => ({ tool: tool.name })) })) };
+    },
   });
   t.mark('reply');
   t.end({ answer: out.text });
   return out;
+}
+
+export function onCardClick(e: ChatEvent) {
+  return onMessage({ ...e, type: 'CARD_CLICKED' });
 }
 
 export function onAddToSpace(e: ChatEvent) {
