@@ -68,7 +68,7 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
     const spans: string[] = [];
     const llm = (m: Message[], defs: ToolDef[]) => (spans.push('llm_call'), script ? script() : env.llm(model, m, defs));
     const tools = allowedTools(allow).map((t) => ({ ...t, run: (a: Record<string, unknown>, c: ToolCtx) => (spans.push('tool_call'), t.run(a, c)) }));
-    const steps = s.steps ?? DEFAULT_STEPS;
+    const steps = s.steps ?? spec.config.steps ?? DEFAULT_STEPS; // mesma precedência da produção (main.ts toolkit)
     let turn: TurnResult | undefined;
     const d: ChatDeps = {
       enabled: () => true,

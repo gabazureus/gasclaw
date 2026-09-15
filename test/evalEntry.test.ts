@@ -57,6 +57,13 @@ describe('runEval', () => {
     expect(runEval(md, e).pass).toBe(true);
   });
 
+  test('sem steps no cenário, vale o steps do agente (igual à produção)', () => {
+    const loop = (): Completion => ({ text: '', toolCalls: [{ id: 'c', type: 'function', function: { name: 'now', arguments: '{}' } }] });
+    const { e } = env(loop, { agent: () => buildSpec('f', 'eval', { AGENTS: '---\ntools: [now]\nsteps: 1\n---\nRegras' }) });
+    const r = runEval('---\nname: t\n---\n## turnos\n- a\n## verificações\n- includes: limite\n', e);
+    expect(r.replies[0]).toContain('limite de 1 passos');
+  });
+
   test('sem chave e sem roteiro: erro claro', () => {
     const { e } = env(() => ({ text: 'x' }), { apiKey: null });
     expect(() => runEval(readFileSync('evals/smoke.md', 'utf8'), e)).toThrow('chave');
