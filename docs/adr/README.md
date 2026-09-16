@@ -31,3 +31,4 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [025](025-rodizio-de-modelos-gratuitos.md) | Rodízio de modelos gratuitos (`model: free`) | Proposto; medição pela POC P11 pendente |
 | [026](026-run-duravel.md) | Run durável: o passo é a unidade e o estado mora no Drive | Aceito; P4 no dev v66 e P19 no v72 |
 | [027](027-gatilho-worker.md) | O gatilho de 1 min é o worker do run durável | Aceito; P3 passou 4/4 no dev v60 |
+| [028](028-aprovacao-duravel.md) | Aprovação durável pertence ao run no Drive | Aceito; P20 passou 5/5 no dev v74 |

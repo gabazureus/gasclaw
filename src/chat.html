@@ -66,6 +66,7 @@ function render(p, r, runId) {
       p.querySelectorAll('button').forEach((x) => { x.disabled = true; });
       const params = {};
       params[c.key] = c.value;
+      if (r.approvalToken) params.token = r.approvalToken;
       const next = add('andamento', 'Agente: trabalhando…');
       await acompanhar(next, await call('runDecide', runId, params).catch(erro), runId);
     };
@@ -77,14 +78,16 @@ function render(p, r, runId) {
 const erro = (e) => ({ ok: false, error: (e && e.message) || String(e) });
 
 /** Acompanha um run até ele terminar, falhar ou parar esperando você. */
-async function acompanhar(p, r, runId) {
+async function acompanhar(p, r, runId, knownApprovalToken) {
   if (!r || r.ok === false) { p.className = 'agente'; p.textContent = 'Agente: ' + (r && r.error ? r.error : 'não consegui responder'); return; }
   const id = r.runId || runId;
+  let approvalToken = r.approvalToken || knownApprovalToken || '';
   for (let i = 0; i < POLL_MAX; i++) {
-    if (r.status === 'done' || r.status === 'failed' || r.waiting) return render(p, r, id);
+    if (r.approvalToken) approvalToken = r.approvalToken;
+    if (r.status === 'done' || r.status === 'failed' || r.waiting) return render(p, { ...r, ...(approvalToken ? { approvalToken } : {}) }, id);
     p.textContent = 'Agente: trabalhando…' + (r.spent && r.spent !== 'US$ 0.00' ? ' (' + r.spent + ')' : '');
     await sleep(POLL_MS);
-    r = await call('runState', id).catch(erro);
+    r = await call('runState', id, approvalToken).catch(erro);
     if (!r || r.ok === false) { p.className = 'agente'; p.textContent = 'Agente: ' + (r && r.error ? r.error : 'perdi o contato com a tarefa'); return; }
   }
   p.className = 'agente';

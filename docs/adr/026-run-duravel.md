@@ -49,9 +49,9 @@ nunca roda de novo.
 
 ## Consequências
 
-- Um turno longo passa a atravessar execuções. Na tela, a decisão pertence ao run guardado no Drive e não usa o
-  ticket do Chat. Os cards do Google Chat continuam cache-backed por 10 min. Definir e medir um prazo de 24 h para
-  a tela pertence à P20; ainda não está implementado.
+- Um turno longo passa a atravessar execuções. Pela [ADR-028](028-aprovacao-duravel.md), aprovações de tools na tela
+  e no Google Chat pertencem ao run guardado no Drive, valem 24 h e não dependem do cache; perguntas `ask` continuam
+  no ticket legado de 10 min.
 - Cada passo paga uma ida ao Drive. A **P18** mediu 683 ms de média para a sessão no Drive, mas com a linha de base
   variando de 1.765 a 4.670 ms — o número precisa de mais amostras antes de virar orçamento de desempenho.
 - A entrega é **na tela primeiro** (a tela já faz polling). O Chat assíncrono depende da POC P2 e fica para depois.

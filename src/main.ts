@@ -6,14 +6,15 @@ import { pocP3 } from '../poc/p3-pump/harness';
 import { runP3SyntheticWorker, syntheticTurn } from '../poc/p3-pump/worker';
 import { pocP4 } from '../poc/p4-run/harness';
 import { pocP19 } from '../poc/p19-inflight/harness';
+import { pocP20 } from '../poc/p20-approval/harness';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
 import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, reply } from './agent';
-import { decisionFrom } from './approval';
-import { cacheTickets, newToken } from './approvalStore';
-import { chatTurn, handleChat, type ChatDeps, type ChatEvent } from './chat';
+import { approvalCard, decisionFrom, issue, issueGrant } from './approval';
+import { cacheTickets, decideChatApproval, decideScreenApproval, durableTickets, hashToken, newToken } from './approvalStore';
+import { chatTurn, handleChat, type ChatDeps, type ChatEvent, type ChatReply } from './chat';
 import { extendBudget, markInflight, newRun, resumeOf, RUN_BUDGET_USD, view, withDecision, type DurableRun } from './run';
-import { pump, type StepDeps } from './runner';
-import { runIO } from './runStore';
+import { pump, pumpById, type StepDeps } from './runner';
+import { runIO, type RunIO } from './runStore';
 import { flushMemory } from './tools/memoryFlush';
 import { cliAuthorized, MUTATING, validSecret } from './cli';
 import { evalAction } from './evalEntry';
@@ -251,16 +252,43 @@ function chatDeps(): ChatDeps {
       skills: skillsIO(spec.folderId).index(),
       bootstrap: bootstrapIO(spec.folderId),
     }),
-    tickets: cacheTickets(),
+    tickets: durableTickets(runIO(), cacheTickets()),
     newToken,
   };
+}
+
+const updateCard = (body: Omit<ChatReply, 'actionResponse'>): ChatReply => ({ actionResponse: { type: 'UPDATE_MESSAGE' }, ...body });
+
+/** Clique de aprovação do Chat: ator vem do evento autenticado, nunca dos parâmetros do card. */
+function durableChatClick(e: ChatEvent): ChatReply {
+  const p = e.common?.parameters ?? {};
+  const io = runIO();
+  const replacement = newToken();
+  const out = decideChatApproval(io, p, e.user.email, replacement, Date.now());
+  if (out.kind === 'rejected') return { text: `Não dá para responder: ${out.error}.` }; // mantém o card de outra pessoa intacto
+  if (out.kind === 'refreshed') return updateCard(approvalCard({ token: replacement, pending: out.run.pending!, folderId: out.run.folderId, runId: out.run.runId }, out.run.answer ?? 'Esta ação ainda precisa da sua aprovação.'));
+  const done = pumpById(stepDeps(CHAT_BUDGET_MS), out.run.runId) ?? out.run;
+  if (done.status === 'waiting' && done.pending?.kind === 'approval') {
+    const token = newToken();
+    const waiting = { ...done, approval: issueGrant(done.pending, done.user, hashToken(token), Date.now()) };
+    io.save(waiting);
+    return updateCard(approvalCard({ token, pending: waiting.pending!, folderId: waiting.folderId, runId: waiting.runId }, waiting.answer ?? 'Esta ação precisa da sua aprovação.'));
+  }
+  if (done.status === 'waiting' && done.pending?.kind === 'ask' && done.snapshot) {
+    const token = newToken();
+    const t = issue({ user: done.user, session: done.session, text: done.text, history: [], state: done.snapshot, pending: done.pending, granted: done.granted, done: done.done, runId: done.runId }, token, Date.now());
+    cacheTickets().put(t);
+    return updateCard(approvalCard(t, done.answer ?? 'Preciso de uma resposta.'));
+  }
+  return updateCard({ text: done.answer ?? (done.status === 'failed' ? `Não consegui terminar: ${done.error ?? 'erro desconhecido'}` : 'Aprovação registrada; continuarei a tarefa.'), cardsV2: [] });
 }
 
 export function onMessage(e: ChatEvent) {
   const d = chatDeps();
   if (e.type !== 'MESSAGE' && e.type !== 'CARD_CLICKED') return handleChat(e, d);
   const t = runlog.begin('chat', { question: (e.message?.argumentText ?? e.message?.text ?? '').trim(), user: e.user.email });
-  const out = handleChat(e, traced(t, d));
+  const p = e.common?.parameters ?? {};
+  const out = e.type === 'CARD_CLICKED' && p.folderId && p.runId ? durableChatClick(e) : handleChat(e, traced(t, d));
   t.mark('reply');
   t.end({ answer: out.text });
   observe.maybeDrain(); // fallback sem gatilho: só grava se a fila tiver mais de 1 min
@@ -318,10 +346,11 @@ function stepDeps(budgetMs = STEP_BUDGET_MS): StepDeps {
       const apiKey = store.getApiKey();
       if (!apiKey) throw new Error('Falta a chave do OpenRouter. Cole-a na tela gasclaw.');
       const d = chatDeps();
-      const ownerDm = r.user === me.toLowerCase();
+      const isOwner = r.user === me.toLowerCase();
+      const ownerDm = r.ownerDm;
       const base = d.toolkit!(spec, ownerDm);
       // O acesso ao Google só entra no contexto de quem é o dono, igual à conversa (ADR-023).
-      const kit = { ...base, ctx: { ...base.ctx, isOwner: ownerDm, google: ownerDm ? base.ctx.google : undefined } };
+      const kit = { ...base, ctx: { ...base.ctx, isOwner, google: isOwner ? base.ctx.google : undefined } };
       const t = runlog.begin('webchat', { question: r.text.slice(0, 2000), user: r.user });
       try {
         const { turn, ritualDone } = chatTurn({
@@ -359,6 +388,21 @@ function stepDeps(budgetMs = STEP_BUDGET_MS): StepDeps {
 
 /** Onde a conversa da tela mora, igual ao webchat: `<pasta do agente>:tela/chat/<e-mail>`. */
 const screenSession = (folderId: string, owner: string) => `${folderId}:${webSpace(owner).name}`;
+/** Emite só quando não há credencial válida. Perder cache nunca rotaciona autorização ainda válida. */
+function screenApproval(io: RunIO, r: DurableRun, now: number, knownToken?: string): { run: DurableRun; token?: string } {
+  if (r.status !== 'waiting' || r.pending?.kind !== 'approval') return { run: r };
+  if (knownToken && r.approval?.tokenHash === hashToken(knownToken) && now >= r.approval.issuedAt && now < r.approval.expiresAt) return { run: r, token: knownToken };
+  if (r.approval && now >= r.approval.issuedAt && now < r.approval.expiresAt) return { run: r };
+  const token = knownToken ?? newToken();
+  const next = { ...r, approval: issueGrant(r.pending, r.user, hashToken(token), now), updatedAt: now };
+  io.save(next);
+  return { run: next, token };
+}
+
+function runResponse(io: RunIO, r: DurableRun, now: number, token?: string) {
+  const ready = screenApproval(io, r, now, token);
+  return { ok: true, runId: ready.run.runId, ...view(ready.run), ...pendingView(ready.run, ready.token) };
+}
 
 /**
  * A tela pede algo ao agente. Tentamos responder **na hora**, dentro dos 20 s (é o caso comum);
@@ -371,21 +415,22 @@ export function runAsk(text: string) {
   const t = String(text ?? '').slice(0, 4000).trim();
   if (!t) return { ok: false, error: 'Mande um texto para eu responder.' };
   const now = Date.now();
-  const r = newRun({ runId: `tela-${now}-${Utilities.getUuid().slice(0, 8)}`, session: screenSession(entry.folderId, me), folderId: entry.folderId, user: me, text: t, now });
-  runIO().enqueue(r, now);
-  const done = pump(stepDeps(CHAT_BUDGET_MS), 1, now + CHAT_BUDGET_MS)[0] ?? r;
-  return { ok: true, runId: r.runId, ...view(done), ...pendingView(done) };
+  const r = newRun({ runId: `tela-${now}-${Utilities.getUuid().slice(0, 8)}`, session: screenSession(entry.folderId, me), folderId: entry.folderId, user: me, text: t, now, ownerDm: true });
+  const io = runIO();
+  io.enqueue(r, now);
+  const done = pumpById(stepDeps(CHAT_BUDGET_MS), r.runId) ?? r;
+  return runResponse(io, done, Date.now());
 }
 
 /** A tela acompanha um run em andamento. Só o dono do run o enxerga. */
-export function runState(runId: string) {
+export function runState(runId: string, approvalToken?: string) {
   const me = assertOwner();
   const entry = store.listAgents()[0];
   if (!entry) return { ok: false, error: 'Nenhum agente configurado.' };
   const r = runIO().load(entry.folderId, String(runId ?? ''));
   if (!r) return { ok: false, error: 'Não encontrei essa tarefa.' };
   if (r.user !== me.toLowerCase()) return { ok: false, error: 'Essa tarefa não é sua.' };
-  return { ok: true, runId: r.runId, ...view(r), ...pendingView(r) };
+  return runResponse(runIO(), r, Date.now(), String(approvalToken ?? ''));
 }
 
 /**
@@ -402,30 +447,37 @@ export function runDecide(runId: string, params: Record<string, string>) {
   if (r.user !== me.toLowerCase()) return { ok: false, error: 'Essa tarefa não é sua.' };
   const p = params ?? {};
   const now = Date.now();
-  let next: DurableRun;
   if (r.status === 'paused') {
     if (p.decision !== 'continue') return { ok: false, error: 'Essa tarefa está parada no teto de custo: responda se quer continuar.' };
-    next = extendBudget(r, RUN_BUDGET_USD, now);
-  } else {
-    if (r.status !== 'waiting' || !r.pending) return { ok: false, error: 'Essa tarefa não está esperando resposta.' };
-    const decision = decisionFrom(r.pending, p);
-    if (!decision) return { ok: false, error: 'Resposta inválida para este pedido.' };
-    next = withDecision(r, decision, now);
+    const next = extendBudget(r, RUN_BUDGET_USD, now);
+    io.enqueue(next, now, true);
+    return runResponse(io, pumpById(stepDeps(CHAT_BUDGET_MS), next.runId) ?? next, Date.now());
   }
-  io.enqueue(next, now, true); // decidiu = progresso: as tentativas voltam a zero
-  const done = pump(stepDeps(CHAT_BUDGET_MS), 1, now + CHAT_BUDGET_MS)[0] ?? next;
-  return { ok: true, runId: done.runId, ...view(done), ...pendingView(done) };
+  if (r.status !== 'waiting' || !r.pending) return { ok: false, error: 'Essa tarefa não está esperando resposta.' };
+  const decision = decisionFrom(r.pending, p);
+  if (!decision) return { ok: false, error: 'Resposta inválida para este pedido.' };
+  if (r.pending.kind === 'approval') {
+    if (!r.approval) return runResponse(io, r, now); // run antigo: emite credencial sem refazer o turno
+    const replacement = newToken();
+    const out = decideScreenApproval(io, r, p, me, replacement, now);
+    if (out.kind === 'rejected') return { ok: false, error: out.error };
+    if (out.kind === 'refreshed') return runResponse(io, out.run, now, replacement);
+    return runResponse(io, pumpById(stepDeps(CHAT_BUDGET_MS), out.run.runId) ?? out.run, Date.now());
+  }
+  const next = withDecision(r, decision, now);
+  io.enqueue(next, now, true);
+  return runResponse(io, pumpById(stepDeps(CHAT_BUDGET_MS), next.runId) ?? next, Date.now());
 }
 
 /** O que a tela precisa desenhar além do texto: os botões (Aprovar/Negar, opções do `ask`, Continuar). */
-function pendingView(r: DurableRun): { choices?: { key: 'decision' | 'answer'; value: string; label: string }[] } {
+function pendingView(r: DurableRun, token?: string): { approvalToken?: string; choices?: { key: 'decision' | 'answer'; value: string; label: string }[] } {
   if (r.status === 'paused') return { choices: [{ key: 'decision', value: 'continue', label: 'Continuar' }] };
   if (r.status !== 'waiting' || !r.pending) return {};
   if (r.pending.kind === 'ask') {
     const options = String(r.pending.args.options ?? '').split(',').map((o) => o.trim()).filter(Boolean).slice(0, 6);
     return { choices: options.map((o) => ({ key: 'answer' as const, value: o, label: o.slice(0, 40) })) };
   }
-  return { choices: [{ key: 'decision', value: 'approve', label: 'Aprovar' }, { key: 'decision', value: 'deny', label: 'Negar' }] };
+  return { ...(token ? { approvalToken: token } : {}), choices: [{ key: 'decision', value: 'approve', label: 'Aprovar' }, { key: 'decision', value: 'deny', label: 'Negar' }] };
 }
 
 /** Ação manual `step` (POST com o segredo da CLI): executa o mesmo pump usado diretamente pelo gatilho. */
@@ -768,6 +820,7 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p3: (step) => pocP3(step),
   p4: (step) => pocP4(step),
   p19: (step) => pocP19(step),
+  p20: (step) => pocP20(step),
   p6: (step) => pocP6(step, ownerEmail()),
   p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),

@@ -3,6 +3,8 @@
 //
 // Por que o estado não mora nas Properties: um Snapshot com a conversa passa fácil dos 9 KB por valor. Por que o
 // ponteiro não mora no Drive: a fila é lida a cada minuto pelo pump, e listar pasta a cada minuto é caro e lento.
+import { redeemGrant, type GrantResult } from './approval';
+import type { Decision } from './agent';
 import { claim, nextClaimable, nextExhausted, parseRun, pointerOf, queueKey, splitRunQueue, type DurableRun, type RunPointer } from './run';
 
 const CACHE_S = 21_600; // 6 h: só acelera; quando expira, o run volta do Drive
@@ -69,8 +71,12 @@ export type RunIO = {
   claimNext: (now: number) => { pointer: RunPointer; run: DurableRun; exhausted?: true } | null;
   /** Reivindica somente o run pedido; se ele estiver ocupado, não cai no próximo da fila. */
   claimById: (runId: string, now: number) => { pointer: RunPointer; run: DurableRun } | null;
+  /** Consome ou renova uma aprovação lendo o Drive sob trava; cache nunca decide autorização. */
+  decide: (folderId: string, runId: string, request: ApprovalAttempt, now: number) => GrantResult | { kind: 'rejected'; error: string };
   pointers: () => RunPointer[];
 };
+
+export type ApprovalAttempt = { tokenHash: string; actor: string; decision: Decision; replacementHash: string };
 
 export function runIO(
   props = PropertiesService.getScriptProperties(),
@@ -84,13 +90,20 @@ export function runIO(
     return parseRun(files.read(folderId, runFile(runId)));
   };
 
-  const save: RunIO['save'] = (r) => {
+  const loadFresh = (folderId: string, runId: string) => parseRun(files.read(folderId, runFile(runId)));
+
+  const persist = (r: DurableRun) => {
     const raw = JSON.stringify(r);
     // O Drive é a fonte da verdade e vai sempre; o cache é só atalho, e um run grande demais simplesmente não o usa.
     files.write(r.folderId, runFile(r.runId), raw);
-    if (raw.length <= CACHE_MAX) cache.put(runCacheKey(r.folderId, r.runId), raw, CACHE_S);
-    else cache.remove(runCacheKey(r.folderId, r.runId)); // melhor sem atalho que com atalho velho
+    try {
+      if (raw.length <= CACHE_MAX) cache.put(runCacheKey(r.folderId, r.runId), raw, CACHE_S);
+      else cache.remove(runCacheKey(r.folderId, r.runId)); // melhor sem atalho que com atalho velho
+    } catch {
+      // CacheService nunca decide durabilidade; claims e aprovações leem o Drive diretamente.
+    }
   };
+  const save: RunIO['save'] = persist;
 
   const pointers = () => splitRunQueue(props.getProperties());
 
@@ -98,6 +111,31 @@ export function runIO(
     load,
     save,
     pointers,
+    decide: (folderId, runId, request, now) => {
+      if (!lock.tryLock(CLAIM_LOCK_MS)) return { kind: 'rejected', error: 'aprovação ocupada: clique de novo em alguns segundos' };
+      try {
+        const run = loadFresh(folderId, runId); // autorização sempre lê a fonte da verdade
+        if (!run) return { kind: 'rejected', error: 'não encontrei essa tarefa' };
+        const out = redeemGrant(run, request.tokenHash, request.actor, request.decision, now, request.replacementHash);
+        if (out.kind === 'rejected') return out;
+        if (out.kind === 'accepted') {
+          // A trava impede o pump de enxergar o ponteiro antes de o Drive confirmar o estado consumido.
+          props.setProperty(queueKey(runId), JSON.stringify(pointerOf(out.run, now)));
+          try {
+            persist(out.run);
+          } catch (err) {
+            props.deleteProperty(queueKey(runId));
+            throw err;
+          }
+        } else {
+          persist(out.run);
+          props.deleteProperty(queueKey(runId));
+        }
+        return out;
+      } finally {
+        lock.releaseLock();
+      }
+    },
     enqueue: (r, now, progressed) => {
       save(r); // o estado precisa existir antes do ponteiro: um pump que chegue no meio não pode achar endereço vazio
       const prev = splitRunQueue(props.getProperties()).find((p) => p.runId === r.runId);
@@ -118,7 +156,7 @@ export function runIO(
       } finally {
         lock.releaseLock();
       }
-      const run = load(taken.folderId, taken.runId);
+      const run = loadFresh(taken.folderId, taken.runId);
       if (!run) {
         props.deleteProperty(queueKey(taken.runId));
         return null;
@@ -149,7 +187,7 @@ export function runIO(
         lock.releaseLock();
       }
       // Fora da trava de propósito: ler o Drive pode levar segundos, e segurar a ScriptLock aqui travaria o lote do trace.
-      const run = load(taken.folderId, taken.runId);
+      const run = loadFresh(taken.folderId, taken.runId);
       if (!run) {
         props.deleteProperty(queueKey(taken.runId)); // ponteiro órfão (estado apagado à mão): a fila se limpa sozinha
         return null;

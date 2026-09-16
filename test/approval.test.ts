@@ -92,4 +92,15 @@ describe('approvalCard (Chat cardsV2)', () => {
       ['B', { key: 'answer', value: 'B' }],
     ]);
   });
+  test('P20: card durável leva referência mínima e informa 24 h', () => {
+    const m = approvalCard(issue({ ...base, folderId: 'f1' }, TOKEN, 0), 'Posso enviar?');
+    const params = buttons(m)[0].onClick.action.parameters;
+    expect(params).toEqual([
+      { key: 'folderId', value: 'f1' },
+      { key: 'runId', value: 'r' },
+      { key: 'token', value: TOKEN },
+      { key: 'decision', value: 'approve' },
+    ]);
+    expect(m.cardsV2[0].card.header.title).toContain('24 h');
+  });
 });

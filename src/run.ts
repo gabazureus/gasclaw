@@ -7,6 +7,7 @@
 // Divisão: aqui só decisões puras (o que reivindicar, onde parou, quanto gastou, o que fazer a seguir).
 // A borda (runStore.ts) guarda o estado no Drive e o ponteiro na fila das Script Properties.
 import type { Decision, Pending, Snapshot, TurnResult } from './agent';
+import type { ApprovalGrant } from './approval';
 
 /** Prefixo próprio na fila das Script Properties: separado do `Q:` do trace (perder trace custa um log; perder run custa a resposta). */
 export const RUN_PREFIX = 'R:';
@@ -44,10 +45,13 @@ export type DurableRun = {
   session: string;
   folderId: string;
   user: string;
+  /** Origem do turno: só true libera memória privada na retomada. Runs antigos falham fechados. */
+  ownerDm: boolean;
   text: string;
   status: RunStatus;
   snapshot?: Snapshot;
   pending?: Pending;
+  approval?: ApprovalGrant;
   decision?: Decision;
   done: Record<string, string>;
   granted: string[];
@@ -59,11 +63,12 @@ export type DurableRun = {
   updatedAt: number;
 };
 
-export const newRun = (i: { runId: string; session: string; folderId: string; user: string; text: string; now: number; capUsd?: number }): DurableRun => ({
+export const newRun = (i: { runId: string; session: string; folderId: string; user: string; text: string; now: number; ownerDm?: boolean; capUsd?: number }): DurableRun => ({
   runId: i.runId,
   session: i.session,
   folderId: i.folderId,
   user: i.user.toLowerCase(),
+  ownerDm: i.ownerDm === true,
   text: i.text,
   status: 'queued',
   done: {},
@@ -225,10 +230,12 @@ export function parseRun(raw: string | null | undefined): DurableRun | null {
       folderId: o.folderId,
       session: String(o.session ?? ''),
       user: String(o.user ?? '').toLowerCase(),
+      ownerDm: o.ownerDm === true,
       text: String(o.text ?? ''),
       status,
       ...(o.snapshot && Array.isArray(o.snapshot.messages) ? { snapshot: o.snapshot } : {}),
       ...(o.pending ? { pending: o.pending } : {}),
+      ...(o.approval && typeof o.approval === 'object' ? { approval: o.approval } : {}),
       ...(o.decision ? { decision: o.decision } : {}),
       done: o.done && typeof o.done === 'object' ? (o.done as Record<string, string>) : {},
       granted: Array.isArray(o.granted) ? o.granted.filter((g): g is string => typeof g === 'string') : [],

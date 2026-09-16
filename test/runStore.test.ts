@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { issueGrant } from '../src/approval';
 import { LEASE_MS, MAX_ATTEMPTS, newRun, queueKey, type DurableRun } from '../src/run';
 import { runCacheKey, runFile, runIO, type RunFiles } from '../src/runStore';
 
@@ -10,21 +11,30 @@ function fakes() {
   const cached = new Map<string, string>();
   const disk = new Map<string, string>();
   let free = true;
+  let failSet = false;
+  let failCachePut = false;
   const props = {
     getProperties: () => Object.fromEntries(store),
-    setProperty: (k: string, v: string) => void store.set(k, v),
+    setProperty: (k: string, v: string) => { if (failSet) throw new Error('properties indisponível'); store.set(k, v); },
     deleteProperty: (k: string) => void store.delete(k),
   };
-  const cache = { get: (k: string) => cached.get(k) ?? null, put: (k: string, v: string) => void cached.set(k, v), remove: (k: string) => void cached.delete(k) };
+  const cache = { get: (k: string) => cached.get(k) ?? null, put: (k: string, v: string) => { if (failCachePut) throw new Error('cache indisponível'); cached.set(k, v); }, remove: (k: string) => void cached.delete(k) };
   const lock = { tryLock: () => free, releaseLock: () => {} };
   const files: RunFiles = { read: (f, n) => disk.get(`${f}/${n}`) ?? null, write: (f, n, raw) => void disk.set(`${f}/${n}`, raw) };
-  return { store, cached, disk, files, busy: () => void (free = false), io: runIO(props as never, cache as never, lock as never, files) };
+  return { store, cached, disk, files, busy: () => void (free = false), failSet: () => void (failSet = true), failCachePut: () => void (failCachePut = true), io: runIO(props as never, cache as never, lock as never, files) };
 }
 
 const mk = (runId: string, over: Partial<DurableRun> = {}): DurableRun => ({
   ...newRun({ runId, session: 'f1:espaco', folderId: 'f1', user: 'dono@x.com', text: 'oi', now: NOW }),
   ...over,
 });
+
+const HASH = 'a'.repeat(64);
+const NEXT_HASH = 'b'.repeat(64);
+const waiting = (): DurableRun => {
+  const pending = { kind: 'approval' as const, name: 'gmail.send', callId: 'c1', key: 'r1:0:c1', args: {} };
+  return mk('r1', { status: 'waiting', pending, snapshot: { messages: [], step: 0, queue: [] }, approval: issueGrant(pending, 'dono@x.com', HASH, NOW) });
+};
 
 describe('runFile: o runId vem do Chat e vira nome de arquivo seguro', () => {
   it('normaliza barras, pontos e espaços', () => {
@@ -172,5 +182,55 @@ describe('load: o cache é atalho, o Drive é a fonte da verdade', () => {
 
   it('run inexistente devolve null', () => {
     expect(fakes().io.load('f1', 'nunca-existiu')).toBeNull();
+  });
+});
+
+describe('P20 decide: consumo atômico e Drive autoritativo', () => {
+  it('C1 ignora cache velho, grava a decisão no Drive e publica o ponteiro', () => {
+    const f = fakes();
+    f.io.save(waiting());
+    f.cached.set(runCacheKey('f1', 'r1'), JSON.stringify(mk('r1', { status: 'done' })));
+    const out = f.io.decide('f1', 'r1', { tokenHash: HASH, actor: 'dono@x.com', decision: { approved: true }, replacementHash: NEXT_HASH }, NOW + 1);
+    expect(out.kind).toBe('accepted');
+    expect(JSON.parse(f.disk.get('f1/r1.json')!)).toMatchObject({ status: 'queued', decision: { approved: true } });
+    expect(JSON.parse(f.store.get(queueKey('r1'))!)).toMatchObject({ runId: 'r1', attempts: 0 });
+  });
+
+  it('C2 terceiro não grava, não consome e não cria ponteiro', () => {
+    const f = fakes();
+    f.io.save(waiting());
+    const before = f.disk.get('f1/r1.json');
+    expect(f.io.decide('f1', 'r1', { tokenHash: HASH, actor: 'ana@x.com', decision: { approved: true }, replacementHash: NEXT_HASH }, NOW + 1)).toMatchObject({ kind: 'rejected' });
+    expect(f.disk.get('f1/r1.json')).toBe(before);
+    expect(f.store.has(queueKey('r1'))).toBe(false);
+    expect(f.io.decide('f1', 'r1', { tokenHash: HASH, actor: 'dono@x.com', decision: { approved: true }, replacementHash: NEXT_HASH }, NOW + 2).kind).toBe('accepted');
+  });
+
+  it('C3 segundo clique não altera o ponteiro nem reenfileira', () => {
+    const f = fakes();
+    f.io.save(waiting());
+    const req = { tokenHash: HASH, actor: 'dono@x.com', decision: { approved: true } as const, replacementHash: NEXT_HASH };
+    expect(f.io.decide('f1', 'r1', req, NOW + 1).kind).toBe('accepted');
+    const pointer = f.store.get(queueKey('r1'));
+    expect(f.io.decide('f1', 'r1', req, NOW + 2).kind).toBe('rejected');
+    expect(f.store.get(queueKey('r1'))).toBe(pointer);
+  });
+
+  it('não consome a aprovação quando publicar o ponteiro falha', () => {
+    const f = fakes();
+    f.io.save(waiting());
+    f.failSet();
+    expect(() => f.io.decide('f1', 'r1', { tokenHash: HASH, actor: 'dono@x.com', decision: { approved: true }, replacementHash: NEXT_HASH }, NOW + 1)).toThrow('properties');
+    expect(JSON.parse(f.disk.get('f1/r1.json')!)).toMatchObject({ status: 'waiting', approval: { tokenHash: HASH } });
+    expect(f.store.has(queueKey('r1'))).toBe(false);
+  });
+
+  it('cache indisponível não impede consumo; o claim lê o Drive autoritativo', () => {
+    const f = fakes();
+    f.io.save(waiting());
+    f.cached.set(runCacheKey('f1', 'r1'), JSON.stringify(waiting()));
+    f.failCachePut();
+    expect(f.io.decide('f1', 'r1', { tokenHash: HASH, actor: 'dono@x.com', decision: { approved: true }, replacementHash: NEXT_HASH }, NOW + 1).kind).toBe('accepted');
+    expect(f.io.claimById('r1', NOW + 2)?.run).toMatchObject({ status: 'queued', decision: { approved: true } });
   });
 });

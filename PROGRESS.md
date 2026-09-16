@@ -1,7 +1,7 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, com a porcentagem de progresso e se já foi resolvido.
-> **Atualizado em:** 2026-09-16 · dev na versão 72 · P3 aprovada 4/4 (worker 3.992 ms, idle completo 716 ms, 8,47% das 6 h) · P4 aprovada 3/3 (retomada em 3 execuções) · P19 aprovada 3/3 (morte após efeito, zero repetição e aviso honesto) · link do Apps Script na tela · testes 725/725 · prod ainda na versão 1.
+> **Atualizado em:** 2026-09-16 · dev na versão 74 · P3 aprovada 4/4 (worker 3.992 ms, idle completo 716 ms, 8,47% das 6 h) · P4 aprovada 3/3 · P19 aprovada 3/3 · P20 aprovada 5/5 (Drive, 24 h, uso único e vínculo) · testes 748/748 · prod ainda na versão 1.
 > **Fontes:** [spec](docs/specs/), [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementacao.md),
 > [ADRs](docs/adr/README.md), [CHANGELOG](CHANGELOG.md), [log da wiki](docs/wiki/log.md),
 > [tracks](conductor/tracks.md), Beads (`bd list`) e `git log`.
@@ -36,12 +36,12 @@ A porcentagem de cada fase é a média simples dos itens dela.
 |---|---|---|---|
 | **F0**: fundação e primeira fatia | 18 | ████████░░ **82%** | 11 de 18 |
 | **F1**: agente-pasta completo | 21 | ██████░░░░ **56%** | 7 de 21 |
-| **F2**: tarefas longas e aprovação | 11 | █████░░░░░ **46%** | 4 de 11 |
+| **F2**: tarefas longas e aprovação | 12 | █████░░░░░ **51%** | 5 de 12 |
 | **F3**: proatividade e dados | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
 | **F4**: canais extras | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
 | **Transversal** (docs, open source, segurança, POCs) | 22 | ███████░░░ **69%** | 12 de 22 |
-| **Produto (F0–F4)** | 58 | ██████░░░░ **56%** | 22 de 58 |
-| **Geral** | 80 | ██████░░░░ **60%** | 34 de 80 |
+| **Produto (F0–F4)** | 59 | ██████░░░░ **56%** | 23 de 59 |
+| **Geral** | 81 | ██████░░░░ **60%** | 35 de 81 |
 
 > A F1 subiu de 45% para 56% porque seis itens ficaram prontos no dev e foram medidos: trace do agente (P14 12/12),
 > observabilidade na tela (P15 6/6), motor de tools, aprovação com card, ferramentas do Google e o rodízio de
@@ -50,15 +50,16 @@ A porcentagem de cada fase é a média simples dos itens dela.
 > O Transversal subiu de 65% para 69% com a auditoria concluída sem nenhum crítico e dois itens novos (aviso honesto
 > quando a ferramenta falha; ação com efeito que sobrevive à resposta perdida).
 >
-> A F2 chegou a 46% com o **núcleo do run durável** ([ADR-026](docs/adr/026-run-duravel.md)), o gatilho-worker medido
+> A F2 chegou a 51% com o **núcleo do run durável** ([ADR-026](docs/adr/026-run-duravel.md)), o gatilho-worker medido
 > pela P3 ([ADR-027](docs/adr/027-gatilho-worker.md)): checkpoint por passo, estado na pasta do agente, fila própria,
 > lease de 6 min, teto de US$ 0,10 e incerteza honesta para efeitos em voo. A P4 provou no dev v66 que o mesmo run
 > atravessa três execuções e não repete um efeito já registrado; a P19 provou no v72 que uma morte depois do efeito
-> deixa `inflight` durável, não chama o passo na retomada e devolve o aviso de incerteza.
+> deixa `inflight` durável, não chama o passo na retomada e devolve o aviso de incerteza. A P20 provou no v74 que a
+> aprovação sobrevive sem cache por 24 h, não é consumida por terceiro e não reenfileira no clique repetido.
 >
 > **O que ainda segura a F1 e o produto:** o acesso de outra pessoa nunca foi testado de verdade na tela (90%);
 > a tela de chat está só com texto, porque a voz foi adiada por você (80%); "Novo agente" ainda não foi usado na tela (85%).
-> **Fora do produto:** as POCs ainda vão no bundle de prod, só desligadas; **prod segue na versão 1**, enquanto o dev está na 62;
+> **Fora do produto:** as POCs ainda vão no bundle de prod, só desligadas; **prod segue na versão 1**, enquanto o dev está na 73;
 > a publicação pelo GitHub/CI continua adiada por você; e o Monitoring fica indisponível porque você decidiu não habilitar faturamento.
 
 ---
@@ -98,7 +99,7 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | **Observabilidade na tela** (lote de 1 min, modelos e custo por modelo, limites) | ✅ | 100 | ✅ Sim | — (no dev: abas Ao vivo, Lote, Modelos e custo e Limites; `./gasclaw limits` e `usage`; P15 6/6 e P16 7/7 na v35, com o custo do trace a −0,1% do que o OpenRouter cobrou; gatilho de 1 min ativo). Monitoring segue indisponível por faturamento, decisão do usuário | [ADR-016](docs/adr/016-painel-de-limites.md); [ADR-018](docs/adr/018-modelos-e-custo.md); [poc/p15-limites](poc/p15-limites/README.md); [poc/p16-custo](poc/p16-custo/README.md) |
 | E0 harness de evals (`./gasclaw eval`) | ✅ | 100 | ✅ Sim | — (6/6 no dev v16: smoke, e1-now, e1-memoria, e1-limite, e1-injecao, e1-fora-da-lista) | commit `9fa87d7` |
 | E1 motor de tools (allowlist, schema, limite de passos, memória só na DM do dono) | ✅ | 100 | ✅ Sim | — (toolkit ligado no Chat real e só com as tools aprovadas no painel; evals `e1-*` verdes na v35) | `9fa87d7`, `c9c11c9` |
-| E5 aprovação + ask (card de uso único, 10 min) | ✅ | 100 | ✅ Sim | — (`e5-aprovar`, `e5-negar`, `e5-token-reusado` e os 4 `webchat-*` verdes na v35) | `106f11e`, `7cb6e42`, `69f4ac8` |
+| E5 aprovação + ask | ✅ | 100 | ✅ Sim | — (aprovação de tool: uso único e 24 h no Drive desde P20/v74; `ask`: 10 min no cache; evals e `webchat-*` verdes) | [ADR-028](docs/adr/028-aprovacao-duravel.md); `106f11e`, `7cb6e42`, `69f4ac8` |
 | E6 ferramentas do Workspace por REST (agenda, Gmail, contatos, tarefas, Drive/Docs/Sheets) | ✅ | 100 | ✅ Sim | — no dev: 7 evals `e6-*` verdes na v35 (agenda, freebusy, gmail-rascunho, contato, drive, tarefa, injeção), cada um apagando o que criou; ferramentas do Google só para o dono, com card completo | [ADR-023](docs/adr/023-ferramentas-do-workspace-rest.md) |
 | P17 / ADR-019: tela de chat do gasclaw e voz | 🟢 | 80 | 🟡 Parcial | texto pronto no dev (`?page=chat`, link absoluto, trace completo, `webchat-*` verdes na v35); **voz adiada por decisão do usuário** | [ADR-019](docs/adr/019-tela-de-chat-e-voz.md) |
 | **Acesso e ferramentas aprovados no painel** (M2, ADR-021) | 🟢 | 90 | 🟡 Parcial | no dev: todo agente fica só com o dono e sem tools até o clique em Aprovar; falta **testar o acesso de outra pessoa de verdade na tela** | [ADR-021](docs/adr/021-acesso-aprovado-no-painel.md) |
@@ -116,7 +117,7 @@ A porcentagem de cada fase é a média simples dos itens dela.
 
 ---
 
-## F2 — Tarefas longas e aprovação (46%)
+## F2 — Tarefas longas e aprovação (51%)
 
 | Elemento | Status | % | Resolvido? | O que falta | Fonte |
 |---|---|---|---|---|---|
@@ -124,6 +125,7 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | POC P3: gatilho como worker do pump | ✅ | 100 | ✅ Sim | — (4/4 repetido no dev v60 após incluir a reconciliação durável de traces interrompidos; custo fixo projetado em 8,47% da cota Workspace) | spec#10; [ADR-027](docs/adr/027-gatilho-worker.md) |
 | POC P4: run durável em 3+ execuções | ✅ | 100 | ✅ Sim | — (dev v66: cache removido antes de cada retomada; mesmo `runId`, checkpoints 1→2→done, resposta `p4-ok`, 1 efeito e 1 chave durável) | spec#10; ADR-005, [ADR-026](docs/adr/026-run-duravel.md) |
 | POC P19: morte entre efeito e checkpoint | ✅ | 100 | ✅ Sim | — (dev v72: 1 efeito, `inflight` no Drive, 0 `done key`, 0 chamadas do passo na retomada e aviso honesto) | [POC](poc/p19-inflight/README.md); [ADR-026](docs/adr/026-run-duravel.md) |
+| POC P20: aprovação durável | ✅ | 100 | ✅ Sim | — (dev v74: cache removido; aprovação após 660.001 ms; terceiro e clique duplo recusados; expiração em 24 h rotaciona sem replay; 1 efeito por run) | [POC](poc/p20-approval/README.md); [ADR-028](docs/adr/028-aprovacao-duravel.md) |
 | POC P5: GASADK com seam OpenRouter e checkpoint | ⏳ | 10 | ❌ Não | tudo | ADR-004 |
 | Resposta em até 20 s, senão "pensando…" e fila | ⏳ | 10 | ❌ Não | tudo | spec#6 |
 | Checkpoint, lease, estados e idempotência | ✅ | 100 | ✅ Sim | — (P4 provou retomadas ordenadas; P19 provou a janela ambígua depois do efeito) | spec#6; plano#D.F2.5; [ADR-026](docs/adr/026-run-duravel.md) |

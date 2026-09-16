@@ -162,6 +162,7 @@ describe('handleChat: aprovação e ask (E5)', () => {
     expect(tokenOf(r)).toHaveLength(32);
     expect(mem.text).toBe('- prefiro café\n');
     expect(d.saved).toEqual({});
+    expect([...data.values()][0]).toMatchObject({ folderId: 'f1', ownerDm: true, prompt: expect.stringContaining('memory.remove') });
     expect([...data.values()][0].state.messages.some((m) => m.role === 'system')).toBe(false);
   });
 

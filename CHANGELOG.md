@@ -29,9 +29,9 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 ### F2 — Tarefas longas 🔄 (em construção)
 
 - 🔄 **Tarefas que não terminam numa tacada só** ([ADR-026](docs/adr/026-run-duravel.md)): o Apps Script encerra qualquer execução em 6 minutos, e o Google Chat espera resposta em 30 segundos. Até aqui, um pedido que não coubesse nisso terminava em *"Parei por tempo antes de terminar"* — e o que o agente já tinha feito era **jogado fora**. Agora o trabalho é guardado a cada passo, na pasta do próprio agente, e continua sozinho de onde parou. Um passo que já rodou nunca roda de novo.
-- 🔄 **Aprovação durável na tela** ([ADR-026](docs/adr/026-run-duravel.md)): o run guarda no Drive onde parou, preparando
-  aprovações de até 24 horas na tela. Os cards atuais do Google Chat continuam valendo 10 minutos; ampliar esse prazo
-  ainda depende da P20.
+- ✅ **Aprovação durável por 24 horas no Chat e na tela** ([ADR-028](docs/adr/028-aprovacao-duravel.md)): a aprovação
+  agora pertence ao run no Drive, não ao cache de dez minutos. Perder o cache não perde o card; só o solicitante
+  aprova, uma única vez. Ao expirar, o run continua esperando e recebe nova credencial sem repetir LLM ou efeitos.
 - 🔄 **Teto de gasto por tarefa:** cada tarefa tem um limite de **US$ 0,10**. Ao chegar nele, o agente **para, guarda onde estava** e pergunta se você quer continuar — em vez de gastar sem avisar ou perder o trabalho.
 - ✅ **Nunca fazer duas vezes (P19):** se a execução morrer bem no meio de uma ação com efeito (enviar e-mail, criar evento, escrever num arquivo), o gasclaw **não repete**. No dev v72, a morte forçada pelo motor real de turno deixou `inflight` no Drive; a retomada executou zero passos, manteve um único efeito e mostrou o aviso de incerteza.
 - ✅ **Gatilho-worker medido ([ADR-027](docs/adr/027-gatilho-worker.md)):** no dev, o gatilho de 1 min avança a fila
@@ -39,7 +39,7 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
   custo fixo projetado em 8,47% das 6 h diárias do Workspace.
 - ✅ **Run em várias execuções (P4):** no dev v66, o mesmo `runId` retomou do Drive em três execuções GAS distintas,
   avançou pelos checkpoints 1 e 2, terminou com a resposta esperada e registrou o efeito sintético uma única vez.
-- ⏳ **Ainda em construção:** a F2 não está concluída; faltam aprovação durável (P20), custo real por passo, Chat assíncrono, planner e retry.
+- ⏳ **Ainda em construção:** a F2 não está concluída; faltam custo real por passo, Chat assíncrono, planner e retry. Perguntas `ask` ainda usam o ticket de 10 minutos.
 
 ### F0 — Primeira conversa com um agente do Drive ✅
 

@@ -352,5 +352,142 @@
       "safety": "Tratar qualquer nova tool mut\u00e1vel como efeito em voo e revisar a classifica\u00e7\u00e3o EFFECT no mesmo change set.",
       "clarity": "Manter PROGRESS/ADR/Beads sincronizados a cada POC medida."
     }
+  },
+  {
+    "phase": "Align",
+    "summary": "HEAD 16eab8e e dev v72 auditados; P20 confirmada como pr\u00f3xima lacuna F2; fluxos tela/Chat e fronteiras de identidade mapeados; decis\u00f5es de produto aguardam gate.",
+    "scores": {
+      "correctness": {
+        "score": 7,
+        "note": "estado factual confirmado por git, gasclaw status, c\u00f3digo, docs e Beads; comportamento P20 ainda n\u00e3o existe"
+      },
+      "design": {
+        "score": 6,
+        "note": "fonte dur\u00e1vel existente identificada; prazo e superf\u00edcies ainda dependem do gate"
+      },
+      "testing": {
+        "score": 4,
+        "note": "su\u00edte existente localizada, mas nenhuma evid\u00eancia P20 ou execu\u00e7\u00e3o nova nesta fase"
+      },
+      "safety": {
+        "score": 7,
+        "note": "uso \u00fanico, v\u00ednculo por e-mail e lock atuais auditados; modelo final aguarda decis\u00e3o"
+      },
+      "clarity": {
+        "score": 8,
+        "note": "lacuna CacheService versus Drive e impacto por superf\u00edcie explicitados"
+      }
+    }
+  },
+  {
+    "phase": "Language",
+    "summary": "Gloss\u00e1rio separa aprova\u00e7\u00e3o dur\u00e1vel, credencial opaca e ticket legado; mapa marca approval/run como m\u00f3dulos cr\u00edticos e Drive como fonte da verdade.",
+    "scores": {
+      "correctness": {
+        "score": 8,
+        "note": "termos derivados dos tipos e fluxos auditados em src/approval, chat, run e runStore"
+      },
+      "design": {
+        "score": 8,
+        "note": "lifecycle dur\u00e1vel separado do artefato de transporte/cache"
+      },
+      "testing": {
+        "score": 4,
+        "note": "fase documental; comportamento ainda sem testes P20"
+      },
+      "safety": {
+        "score": 8,
+        "note": "uso \u00fanico, solicitante, expira\u00e7\u00e3o e fonte da verdade viraram invariantes expl\u00edcitos"
+      },
+      "clarity": {
+        "score": 9,
+        "note": "conflito sem\u00e2ntico ticket/cache removido do vocabul\u00e1rio alvo"
+      }
+    }
+  },
+  {
+    "phase": "Specify",
+    "summary": "Track P20 e epic gasclaw-7yt criados; spec define Drive autoritativo, validade 24 h, hash da credencial, consumo+enqueue at\u00f4micos e POC real C1-C5.",
+    "scores": {
+      "correctness": {
+        "score": 8,
+        "note": "crit\u00e9rios cobrem cache perdido, terceiro, clique duplo, expira\u00e7\u00e3o e contrato Chat+tela"
+      },
+      "design": {
+        "score": 9,
+        "note": "reusa DurableRun e rejeita store paralelo; janela decis\u00e3o/enqueue fechada na spec"
+      },
+      "testing": {
+        "score": 8,
+        "note": "estrat\u00e9gia inclui core, store, integra\u00e7\u00e3o e POC GAS real mensur\u00e1vel"
+      },
+      "safety": {
+        "score": 9,
+        "note": "ator autenticado, token hash-only, uso \u00fanico e falha de persist\u00eancia especificados"
+      },
+      "clarity": {
+        "score": 9,
+        "note": "interfaces, transi\u00e7\u00f5es, escopo e exclus\u00f5es expl\u00edcitos no track"
+      }
+    }
+  },
+  {
+    "phase": "Architect",
+    "summary": "FCIS fechado: approval/run decidem com valores puros; runStore l\u00ea/grava Drive e ponteiro sob lock; main/chat s\u00f3 adaptam identidade e transporte. Ask ficou fora; retomada ser\u00e1 por runId.",
+    "scores": {
+      "correctness": {
+        "score": 8,
+        "note": "blast radius rastreado em src, testes, evals, webchat e POCs; interfaces preservam caminho legado de ask"
+      },
+      "design": {
+        "score": 9,
+        "note": "n\u00facleo puro e shell fino, sem store novo nem depend\u00eancia; transi\u00e7\u00e3o cr\u00edtica \u00e9 \u00fanica"
+      },
+      "testing": {
+        "score": 8,
+        "note": "cada fronteira tem teste definido, inclusive claimById e cache velho"
+      },
+      "safety": {
+        "score": 9,
+        "note": "m\u00f3dulos approval/runStore/main/runner marcados para revis\u00e3o integral"
+      },
+      "clarity": {
+        "score": 9,
+        "note": "scope e decis\u00f5es ADR-001..007 fecham as tens\u00f5es encontradas"
+      }
+    }
+  },
+  {
+    "phase": "Review \u2014 P20 aprova\u00e7\u00e3o dur\u00e1vel",
+    "summary": "P20 5/5 no dev v74; Drive autoritativo, validade 24 h, terceiro e clique duplo recusados, rota\u00e7\u00e3o sem replay; dois achados altos e um m\u00e9dio corrigidos; 748/748 testes.",
+    "scores": {
+      "correctness": {
+        "score": 10,
+        "note": "POC real C1-C5 passou no dev v74 pelo RunIO, fila e runner reais"
+      },
+      "design": {
+        "score": 9,
+        "note": "aprova\u00e7\u00e3o pertence ao DurableRun; Chat e tela usam adaptadores comuns sem store paralelo"
+      },
+      "testing": {
+        "score": 10,
+        "note": "79 arquivos e 748/748 testes; build, tipos, shell, diff e POC real verdes"
+      },
+      "safety": {
+        "score": 10,
+        "note": "ator autenticado, hash-only, uso \u00fanico, lock, rollback do ponteiro e claims Drive-fresh revisados"
+      },
+      "clarity": {
+        "score": 9,
+        "note": "ADR-028, POC, track, progresso, changelog e linguagem reconciliados"
+      }
+    },
+    "recommendations": {
+      "correctness": "Medir em seguida custo real por passo ou P2 Chat ass\u00edncrono.",
+      "design": "Manter ask legado fora do contrato dur\u00e1vel at\u00e9 POC pr\u00f3pria.",
+      "testing": "Adicionar browser runner automatizado quando a infraestrutura existir.",
+      "safety": "Preservar claims Drive-fresh para toda transi\u00e7\u00e3o de autoriza\u00e7\u00e3o.",
+      "clarity": "Atualizar Beads e docs a cada POC medida."
+    }
   }
 ]

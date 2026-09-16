@@ -25,7 +25,7 @@
 | ↳ P14 — trace do agente (lote de 1 min) | `[~]` | [POC P14](../poc/p14-trace/README.md) · [ADR-014](../docs/adr/014-trace-do-agente.md) | `gasclaw-exl` (duplicata aberta: `gasclaw-5rn`) |
 | ↳ P15/P16 — painel de limites, modelos e custo | `[~]` código pronto, medição pendente | [ADR-016](../docs/adr/016-painel-de-limites.md) · [ADR-018](../docs/adr/018-modelos-e-custo.md) | `gasclaw-cmx` |
 | ↳ P17 — tela de chat (texto) e voz | `[~]` texto no dev; voz adiada | [POC P17](../poc/p17-voz/README.md) · [ADR-019](../docs/adr/019-tela-de-chat-e-voz.md) | `gasclaw-zkt` |
-| F2 — execução durável (P2–P5) | `[~]` em andamento; P3, P4 e P19 medidas | [ADR-026](../docs/adr/026-run-duravel.md) · [ADR-027](../docs/adr/027-gatilho-worker.md) | `gasclaw-lwn` |
+| F2 — execução durável (P2–P5) | `[~]` em andamento; P3, P4, P19 e P20 medidas | [ADR-026](../docs/adr/026-run-duravel.md) · [ADR-027](../docs/adr/027-gatilho-worker.md) · [ADR-028](../docs/adr/028-aprovacao-duravel.md) | `gasclaw-lwn` · `gasclaw-7yt` |
 | F3 — proatividade + dados (inbox Excel = POC P8) | `[ ]` planejada | Parte D do plano F0 | — |
 | F4 — canais extras + `npx gasclaw` | `[ ]` planejada | Parte D do plano F0 | — |
 

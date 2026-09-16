@@ -35,6 +35,17 @@ export function pumpOnce(d: StepDeps): DurableRun | null {
   const now = d.clock();
   const c = d.io.claimNext(now);
   if (!c) return null;
+  return runClaim(d, c, now);
+}
+
+/** Retoma exatamente o run decidido pelo usuário; nunca consome outro ponteiro da fila. */
+export function pumpById(d: StepDeps, runId: string): DurableRun | null {
+  const now = d.clock();
+  const c = d.io.claimById(runId, now);
+  return c ? runClaim(d, c, now) : null;
+}
+
+function runClaim(d: StepDeps, c: { pointer: import('./run').RunPointer; run: DurableRun; exhausted?: true }, now: number): DurableRun {
 
   // Gastou as tentativas: não trabalha mais, só conta ao usuário que não deu (a fila já o soltou).
   if (c.exhausted) return settle(d, afterFailure(c.run, c.run.error ?? 'não consegui completar depois de várias tentativas', MAX_ATTEMPTS, now), false);

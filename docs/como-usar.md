@@ -87,8 +87,9 @@ Abra com `./gasclaw open`. Só o dono (quem publicou) consegue entrar. No topo a
    - **Remover** tira o agente da lista, mas a pasta continua no Drive.
 4. **Testar:** escreva uma pergunta e clique em **Enviar ao agente ⭐**. A resposta vem com o modelo usado e o tempo em ms. O teste não usa histórico.
 5. **Conversar com o agente:** o link no topo abre a tela de conversa (`?page=chat`), com as mesmas ferramentas,
-   aprovações e perguntas do Chat. Na tela, a decisão fica no run guardado no Drive; ainda não há expiração de 24 h
-   implementada. No Google Chat, os cards continuam valendo uma vez só, por 10 min.
+   aprovações e perguntas do Chat. Aprovações de tools ficam no run do Drive por 24 h, valem uma vez e só para quem
+   fez o pedido; se expirarem, o run continua esperando e emite nova credencial sem repetir trabalho. Perguntas do
+   agente (`ask`) continuam com prazo de 10 min.
 6. **Observabilidade:** as abas **Ao vivo** (runs em andamento e os 10 últimos), **Modelos e custo** (modelo por agente e custo por modelo; **Voltar ao do AGENTS** desfaz a escolha), **Limites** (cotas do Google e do OpenRouter; **Ler de novo agora** ignora o cache) e **Lote** (fila do trace; **Gravar a fila agora** grava na hora).
 7. **POC P1:** teste técnico de resposta longa. Não é preciso para o uso normal.
 

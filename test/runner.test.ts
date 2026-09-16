@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { TurnResult } from '../src/agent';
 import { markInflight, MAX_ATTEMPTS, newRun, queueKey, RUN_BUDGET_USD, type DurableRun } from '../src/run';
 import { runIO, type RunFiles } from '../src/runStore';
-import { pump, pumpOnce, type StepDeps, type StepOutcome } from '../src/runner';
+import { pump, pumpById, pumpOnce, type StepDeps, type StepOutcome } from '../src/runner';
 
 const NOW = 1_700_000_000_000;
 const snap = (step = 1) => ({ messages: [{ role: 'user' as const, content: 'oi' }], step, queue: [] });
@@ -69,6 +69,15 @@ describe('pumpOnce: um passo por execução', () => {
     h.io.enqueue(mk(), NOW);
     for (let i = 0; i < MAX_ATTEMPTS + 3; i++) expect(pumpOnce(h.d)).not.toBeNull();
     expect(JSON.parse(h.props.get(queueKey('r1'))!).attempts).toBe(0);
+  });
+
+  it('P20: retomada por decisão trabalha o run escolhido, não o mais antigo', () => {
+    const h = harness((r) => ({ turn: turn({ text: r.runId }) }));
+    h.io.enqueue(mk({ runId: 'antigo' }), NOW - 1);
+    h.io.enqueue(mk(), NOW);
+    expect(pumpById(h.d, 'r1')?.answer).toBe('r1');
+    expect(h.spy).toHaveBeenCalledWith(expect.objectContaining({ runId: 'r1' }));
+    expect(h.props.has(queueKey('antigo'))).toBe(true);
   });
 });
 

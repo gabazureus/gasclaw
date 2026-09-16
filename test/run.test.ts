@@ -232,6 +232,11 @@ describe('leitura pela tela e pelo pump', () => {
     expect(run().user).toBe('dono@exemplo.com');
     expect(run().budget).toEqual({ usedUsd: 0, capUsd: RUN_BUDGET_USD });
   });
+
+  it('P20: contexto de DM do dono é explícito e fechado por padrão', () => {
+    expect(newRun({ runId: 'r', session: 's', folderId: 'f', user: 'dono@x.com', text: 'x', now: NOW }).ownerDm).toBe(false);
+    expect(newRun({ runId: 'r', session: 's', folderId: 'f', user: 'dono@x.com', text: 'x', now: NOW, ownerDm: true }).ownerDm).toBe(true);
+  });
 });
 
 describe('parseRun: o arquivo no Drive é editável pelo dono', () => {

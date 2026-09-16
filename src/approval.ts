@@ -1,9 +1,66 @@
 // Aprovação e ask (E5), núcleo puro: ticket de uso único com validade de 10 min (spec §8) e o card do Chat.
 import type { Decision, Pending, Snapshot } from './agent';
 import type { Message } from './llm';
+import type { DurableRun } from './run';
 
 export const TICKET_TTL_MS = 600_000;
+export const APPROVAL_TTL_MS = 86_400_000;
 const TOKEN_RE = /^[A-Za-z0-9_-]{24,64}$/;
+const HASH_RE = /^[a-f0-9]{64}$/;
+
+export type ApprovalGrant = {
+  tokenHash: string;
+  pendingKey: string;
+  user: string;
+  issuedAt: number;
+  expiresAt: number;
+};
+
+export type GrantResult =
+  | { kind: 'accepted'; run: DurableRun }
+  | { kind: 'refreshed'; run: DurableRun }
+  | { kind: 'rejected'; error: string; run: DurableRun };
+
+export function issueGrant(pending: Pending, user: string, tokenHash: string, now: number): ApprovalGrant {
+  const normalizedUser = user.trim().toLowerCase();
+  if (pending.kind !== 'approval' || !pending.key || !normalizedUser || !HASH_RE.test(tokenHash) || !Number.isFinite(now)) throw new Error('credencial de aprovação inválida');
+  return { tokenHash, pendingKey: pending.key, user: normalizedUser, issuedAt: now, expiresAt: now + APPROVAL_TTL_MS };
+}
+
+/** Compara hashes sem saída antecipada; o token bruto nunca entra no estado durável. */
+function sameHash(a: string, b: string): boolean {
+  if (!HASH_RE.test(a) || !HASH_RE.test(b)) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/** Transição pura da aprovação. A borda lê/grava o run no Drive sob trava. */
+export function redeemGrant(r: DurableRun, tokenHash: string, actor: string, decision: Decision, now: number, replacementHash: string): GrantResult {
+  if (r.status !== 'waiting' || r.pending?.kind !== 'approval' || !r.snapshot || !r.approval) {
+    return { kind: 'rejected', error: 'este pedido já foi respondido ou não está esperando aprovação', run: r };
+  }
+  const g = r.approval;
+  const owner = r.user.toLowerCase();
+  const validGrant = HASH_RE.test(g.tokenHash)
+    && g.pendingKey === r.pending.key
+    && g.user === owner
+    && Number.isFinite(g.issuedAt)
+    && Number.isFinite(g.expiresAt)
+    && Number.isFinite(now)
+    && now >= g.issuedAt
+    && g.expiresAt - g.issuedAt === APPROVAL_TTL_MS;
+  if (!validGrant || !sameHash(g.tokenHash, tokenHash)) return { kind: 'rejected', error: 'pedido inválido', run: r };
+  if (actor.toLowerCase() !== owner) return { kind: 'rejected', error: 'só quem fez o pedido pode responder', run: r };
+  if (now >= g.expiresAt) {
+    try {
+      return { kind: 'refreshed', run: { ...r, approval: issueGrant(r.pending, owner, replacementHash, now), updatedAt: now } };
+    } catch {
+      return { kind: 'rejected', error: 'não consegui renovar este pedido', run: r };
+    }
+  }
+  return { kind: 'accepted', run: { ...r, status: 'queued', decision, approval: undefined, answer: undefined, updatedAt: now } };
+}
 
 /** Tudo que é preciso para retomar o turno depois do clique. `session` = chave do histórico (agente:espaço). */
 export type Ticket = {
@@ -19,13 +76,18 @@ export type Ticket = {
   done: Record<string, string>;
   runId: string;
   expiresAt: number;
+  folderId?: string;
+  /** A pendência nasceu numa DM do dono; não pode ser inferido só pelo e-mail ao retomar. */
+  ownerDm?: boolean;
+  issuedAt?: number;
+  prompt?: string;
 };
 /** `take` lê e apaga numa operação só (a borda usa trava): é o que garante o uso único. */
 export type TicketStore = { put: (t: Ticket) => void; take: (token: string) => Ticket | null };
 
 export function issue(t: Omit<Ticket, 'token' | 'expiresAt'>, token: string, now: number): Ticket {
   if (!TOKEN_RE.test(token)) throw new Error('token de aprovação fraco ou malformado');
-  return { ...t, user: t.user.toLowerCase(), token, expiresAt: now + TICKET_TTL_MS };
+  return { ...t, user: t.user.toLowerCase(), token, issuedAt: now, expiresAt: now + TICKET_TTL_MS };
 }
 
 export function redeem(store: TicketStore, token: string, user: string, now: number): { ok: true; ticket: Ticket } | { ok: false; error: string } {
@@ -47,22 +109,23 @@ export function decisionFrom(p: Pending, params: { decision?: string; answer?: s
 }
 
 const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const button = (text: string, token: string, key: 'decision' | 'answer', value: string) => ({
+const button = (text: string, token: string, key: 'decision' | 'answer', value: string, ref?: { folderId: string; runId: string }) => ({
   text,
-  onClick: { action: { function: 'onCardClick', parameters: [{ key: 'token', value: token }, { key, value }] } },
+  onClick: { action: { function: 'onCardClick', parameters: [...(ref ? [{ key: 'folderId', value: ref.folderId }, { key: 'runId', value: ref.runId }] : []), { key: 'token', value: token }, { key, value }] } },
 });
 type Button = ReturnType<typeof button>;
 type Widget = { textParagraph: { text: string } } | { buttonList: { buttons: Button[] } };
 
 /** Mensagem do Chat com o card (cardsV2). O clique chega como evento CARD_CLICKED com common.parameters. */
-export function approvalCard(t: Ticket, text: string): { text: string; cardsV2: { cardId: string; card: { header: { title: string }; sections: { widgets: Widget[] }[] } }[] } {
+export function approvalCard(t: Pick<Ticket, 'token' | 'pending' | 'runId' | 'folderId'>, text: string): { text: string; cardsV2: { cardId: string; card: { header: { title: string }; sections: { widgets: Widget[] }[] } }[] } {
   const ask = t.pending.kind === 'ask';
+  const ref = !ask && t.folderId ? { folderId: t.folderId, runId: t.runId } : undefined;
   const options = ask
     ? String(t.pending.args.options ?? '').split(',').map((o) => o.trim()).filter(Boolean).slice(0, 6)
     : [];
   const buttons = ask
     ? options.map((o) => button(o.slice(0, 40), t.token, 'answer', o))
-    : [button('Aprovar', t.token, 'decision', 'approve'), button('Negar', t.token, 'decision', 'deny')];
+    : [button('Aprovar', t.token, 'decision', 'approve', ref), button('Negar', t.token, 'decision', 'deny', ref)];
   const widgets: Widget[] = [{ textParagraph: { text: escape(text) } }, ...(buttons.length ? [{ buttonList: { buttons } }] : [])];
-  return { text: ask ? 'Pergunta do agente.' : 'Esta ação precisa de aprovação.', cardsV2: [{ cardId: ask ? 'pergunta' : 'aprovacao', card: { header: { title: ask ? 'Pergunta do agente' : 'Aprovação necessária (vale 10 min)' }, sections: [{ widgets }] } }] };
+  return { text: ask ? 'Pergunta do agente.' : 'Esta ação precisa de aprovação.', cardsV2: [{ cardId: ask ? 'pergunta' : 'aprovacao', card: { header: { title: ask ? 'Pergunta do agente' : `Aprovação necessária (vale ${ref ? '24 h' : '10 min'})` }, sections: [{ widgets }] } }] };
 }

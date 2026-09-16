@@ -46,7 +46,9 @@
 | Política de aprovação | `never`, `once` ou `always` por tool | `Approval` | `once` ainda sem tool que use |
 | Pendência | Onde o turno parou esperando aprovação ou resposta | `Pending`, `Snapshot` | Retomada pela fila de chamadas restante |
 | Ask | Pergunta do agente ao usuário; a próxima mensagem ou o botão responde | tool `ask`, `Tickets.open` | Só quem perguntou responde |
-| Ticket de aprovação | Estado do turno pausado, com token de uso único | `Ticket`, `issue`/`redeem`, `cacheTickets` | 10 min; `take` sob trava; vinculado a usuário e sessão |
+| Aprovação durável | Consentimento pendente para uma tool dentro de um run durável | `DurableRun.approval`, `RunIO.decide` | Fonte da verdade no Drive; vale 24 h; ligada à pendência e ao solicitante; expirar não executa nem refaz o turno |
+| Credencial de aprovação | Segredo opaco entregue no card para responder uma aprovação durável | `ApprovalGrant`, `issueGrant`/`redeemGrant` | Uso único; só o hash fica no Drive; o cache da tela é atalho descartável |
+| Ticket legado | Snapshot completo de uma pergunta `ask` guardado no CacheService | `Ticket`, `cacheTickets` | 10 min; aprovações de tools não dependem mais dele |
 | Kill switch | Property que pausa todos os agentes | `RUNTIME_ENABLED`, `setEnabled` | `./gasclaw down` |
 | Chave de idempotência | `runId:step:callId` de cada tool já executada no turno | `TurnResult.done`, `DurableRun.done` | Persiste no checkpoint do run; P4 provou uma execução de efeito em três execuções GAS |
 | Efeito em voo | Ação externa iniciada cujo resultado ficou incerto porque a execução morreu antes do checkpoint final | `DurableRun.inflight`, `beforeEffect`, `markInflight` | Persiste antes de `tool.run`; a retomada não repete e avisa o usuário (P19) |
@@ -76,7 +78,8 @@
 | `agent` | Turno com tools | `runTurn`, `trimHistory`, `reply` (Testar) | core | yes |
 | `tools/registry` | Lista fechada, allowlist, validação de argumentos | `TOOLS`, `allowedTools`, `toDefs`, `findTool`, `validateArgs` | core | yes |
 | `tools/memory`, `tools/memoryStore` | Fatos da memória; leitura/escrita do `MEMORY.md` | `addEntry`, `removeEntry`, `memoryMessage`; `memoryIO` | core / shell | yes |
-| `approval`, `approvalStore` | Tickets de uso único e card; guarda no Cache com trava | `issue`, `redeem`, `decisionFrom`, `approvalCard`; `cacheTickets`, `newToken` | core / shell | yes |
+| `approval`, `approvalStore` | Regras da aprovação durável, credencial de uso único e card; Drive como fonte da verdade | `issueGrant`, `redeemGrant`, `decisionFrom`, `approvalCard`; `durableTickets`, `hashToken` | core / shell | yes |
+| `run`, `runStore`, `runner` | Estado e retomada do run durável; arquivo no Drive e fila/lease em Properties | `DurableRun`, `runIO`, `pumpOnce` | core / shell | yes |
 | `chat` | Evento → turno → resposta (Chat, tela e eval) | `handleChat`, `isOwnerDm` | core com deps injetadas | yes |
 | `webchat` | Tela de conversa como DM do dono | `webSend`, `webClick`, `voiceDelegate` | core | no |
 | `llm` | OpenRouter | `complete`, `buildRequest`, `parseResponse` | shell fina | yes |
