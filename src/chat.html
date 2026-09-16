@@ -9,6 +9,8 @@
   #log { min-height: 50vh; max-height: 70vh; overflow-y: auto; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: .75rem; }
   #log p { margin: .4rem 0; white-space: pre-wrap; }
   .eu { color: #0b4f8a; }
+  .andamento { color: #6b6b66; font-style: italic; }
+  .meta { color: #6b6b66; font-size: .8rem; margin-top: .15rem; }
   form { display: flex; gap: .5rem; margin-top: .75rem; }
   input { flex: 1; min-width: 0; padding: .5rem; font: inherit; }
   button { padding: .45rem .9rem; font: inherit; cursor: pointer; }
@@ -25,13 +27,17 @@
     <input id="texto" autocomplete="off" placeholder="Escreva uma mensagem" required>
     <button type="submit" id="enviar">Enviar</button>
   </form>
+  <p class="meta">Tarefas longas continuam sozinhas, mesmo se você fechar esta aba: volte depois e a resposta estará na conversa.</p>
 </main>
 <script>
 // Tudo que vem do modelo entra por textContent: nada é interpretado como HTML ou código (ADR-002).
 const $ = (id) => document.getElementById(id);
 const log = $('log');
-const run = (fn, ...a) => new Promise((ok, ko) => google.script.run.withSuccessHandler(ok).withFailureHandler(ko)[fn](...a));
-const fail = (e) => ({ text: 'Erro: ' + ((e && e.message) || e) });
+const call = (fn, ...a) => new Promise((ok, ko) => google.script.run.withSuccessHandler(ok).withFailureHandler(ko)[fn](...a));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const POLL_MS = 2000;
+const POLL_MAX = 300; // 10 min de acompanhamento; depois disso a tarefa segue no servidor, só paramos de olhar
 
 function add(cls, text) {
   const p = document.createElement('p');
@@ -42,20 +48,47 @@ function add(cls, text) {
   return p;
 }
 
-/** Resposta do agente; cards de aprovação e ask viram botões (o clique é de uso único no servidor). */
-function render(r) {
-  const p = add('agente', 'Agente: ' + (r.text || ''));
-  for (const c of r.cardsV2 || []) for (const s of c.card.sections) for (const w of s.widgets) for (const b of (w.buttonList ? w.buttonList.buttons : [])) {
+/** Desenha o desfecho de um run: texto, custo e, se ele parou esperando você, os botões. */
+function render(p, r, runId) {
+  p.className = 'agente';
+  p.textContent = 'Agente: ' + (r.text || '');
+  if (r.spent && r.spent !== 'US$ 0.00') {
+    const m = document.createElement('span');
+    m.className = 'meta';
+    m.textContent = '  · ' + r.spent;
+    p.append(m);
+  }
+  for (const c of r.choices || []) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.textContent = b.text;
+    btn.textContent = c.label;
     btn.onclick = async () => {
       p.querySelectorAll('button').forEach((x) => { x.disabled = true; });
-      const params = Object.fromEntries(b.onClick.action.parameters.map((x) => [x.key, x.value]));
-      render(await run('chatClick', params).catch(fail));
+      const params = {};
+      params[c.key] = c.value;
+      const next = add('andamento', 'Agente: trabalhando…');
+      await acompanhar(next, await call('runDecide', runId, params).catch(erro), runId);
     };
     p.append(' ', btn);
   }
+  log.scrollTop = log.scrollHeight;
+}
+
+const erro = (e) => ({ ok: false, error: (e && e.message) || String(e) });
+
+/** Acompanha um run até ele terminar, falhar ou parar esperando você. */
+async function acompanhar(p, r, runId) {
+  if (!r || r.ok === false) { p.className = 'agente'; p.textContent = 'Agente: ' + (r && r.error ? r.error : 'não consegui responder'); return; }
+  const id = r.runId || runId;
+  for (let i = 0; i < POLL_MAX; i++) {
+    if (r.status === 'done' || r.status === 'failed' || r.waiting) return render(p, r, id);
+    p.textContent = 'Agente: trabalhando…' + (r.spent && r.spent !== 'US$ 0.00' ? ' (' + r.spent + ')' : '');
+    await sleep(POLL_MS);
+    r = await call('runState', id).catch(erro);
+    if (!r || r.ok === false) { p.className = 'agente'; p.textContent = 'Agente: ' + (r && r.error ? r.error : 'perdi o contato com a tarefa'); return; }
+  }
+  p.className = 'agente';
+  p.textContent = 'Agente: a tarefa continua rodando no servidor. Recarregue a página daqui a pouco para ver o resultado.';
 }
 
 $('form').onsubmit = async (ev) => {
@@ -65,7 +98,8 @@ $('form').onsubmit = async (ev) => {
   $('texto').value = '';
   $('enviar').disabled = true;
   add('eu', 'Você: ' + text);
-  render(await run('chatSend', text).catch(fail));
+  const p = add('andamento', 'Agente: trabalhando…');
+  await acompanhar(p, await call('runAsk', text).catch(erro));
   $('enviar').disabled = false;
   $('texto').focus();
 };

@@ -6,5 +6,6 @@ test('chat.html: resposta do modelo só por textContent, sem innerHTML/eval, sem
   expect(html).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|eval\(|new Function|document\.write/);
   expect(html).not.toMatch(/sk-[A-Za-z0-9]/);
   expect(html).not.toContain('getUserMedia'); // ADR-019: o iframe do HtmlService não delega microphone
-  for (const fn of ['chatSend', 'chatClick']) expect(html).toContain(`'${fn}'`);
+  // A tela passou a conversar pelo run durável (ADR-026): pedir, acompanhar e decidir.
+  for (const fn of ['runAsk', 'runState', 'runDecide']) expect(html).toContain(`'${fn}'`);
 });
