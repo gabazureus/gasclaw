@@ -1,4 +1,4 @@
-import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, runTurn, withEngineRules, type TurnInput, type TurnResult } from './agent';
+import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, runTurn, withEngineRules, type Decision, type Snapshot, type TurnInput, type TurnResult } from './agent';
 import { bootstrapDone, bootstrapMessage, shouldBootstrap } from './bootstrap';
 import { flushMemory } from './tools/memoryFlush';
 import { approvalCard, decisionFrom, issue, redeem, type Ticket, type TicketStore } from './approval';
@@ -46,6 +46,56 @@ const NO_TOOLS: Toolkit = { tools: [], ctx: { now: () => '', ownerDm: false, mem
 export const isOwnerDm = (e: ChatEvent, owner: string): boolean =>
   (e.space.singleUserBotDm === true || e.space.type === 'DM') && e.user.email.toLowerCase() === owner.toLowerCase();
 
+/** Um turno montado e rodado: papéis + skills + memória + ritual + tools. Não toca em histórico, ticket, card nem compactação. */
+export type ChatTurnInput = {
+  spec: AgentSpec;
+  kit: Toolkit;
+  text: string;
+  history: Message[]; // já resolvido por quem chama
+  ownerDm: boolean; // fonte única aqui dentro (kit.ctx.ownerDm vem do mesmo lugar)
+  runId: string;
+  budgetMs: number;
+  llm: (messages: Message[], tools: ToolDef[]) => Completion;
+  resume?: Snapshot & { decision?: Decision };
+  done?: Record<string, string>;
+  granted?: string[];
+  clock?: () => number;
+  /** Instante do início, quando quem chama já leu o relógio (evita uma leitura a mais por turno). */
+  startMs?: number;
+};
+/** `ritual` = o bootstrap entrou neste turno; `ritualDone` = ele cumpriu o papel (quem persiste decide consumir). */
+export type ChatTurnResult = { turn: TurnResult; ritual: boolean; ritualDone: boolean };
+
+export function chatTurn(i: ChatTurnInput): ChatTurnResult {
+  const system = i.spec.system + skillsBlock(i.kit.skills ?? []); // só nome e descrição das skills entram no prompt
+  const clock = i.clock ?? Date.now;
+  const start = i.startMs ?? clock();
+  // Ritual de estreia: só na 1ª conversa da DM do dono e nunca numa retomada.
+  const bootstrapMd = !i.resume && i.kit.bootstrap && i.ownerDm && i.history.length === 0 ? i.kit.bootstrap.read() : null;
+  const ritual = shouldBootstrap(bootstrapMd, i.history.length, i.ownerDm);
+  const ritualMsgs: Message[] = ritual ? [{ role: 'user', content: bootstrapMessage(bootstrapMd ?? '') }] : [];
+  // O system fica fora do snapshot (tamanho do cache) e volta do agente atual na retomada.
+  const resume = i.resume ? { ...i.resume, messages: [{ role: 'system' as const, content: withEngineRules(system, i.kit.tools.length > 0) }, ...i.resume.messages] } : undefined;
+  const turn = runTurn({
+    system,
+    history: [...ritualMsgs, ...i.history],
+    text: i.text,
+    memory: i.ownerDm && !i.resume ? (i.kit.ctx.memory.recall?.() ?? i.kit.ctx.memory.read()) : undefined, // curada + notas de hoje e ontem
+    tools: i.kit.tools,
+    ctx: i.kit.ctx,
+    llm: i.llm,
+    runId: i.runId,
+    steps: i.kit.steps,
+    deadlineMs: start + i.budgetMs,
+    clock,
+    granted: i.granted,
+    done: i.done,
+    resume,
+  });
+  const usadas = turn.events.filter((ev) => ev.status === 'ok' || ev.status === 'approved').map((ev) => ev.name);
+  return { turn, ritual, ritualDone: ritual && bootstrapDone(usadas) };
+}
+
 export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
   if (e.type === 'ADDED_TO_SPACE') return { text: 'Olá! Sou o gasclaw 🦀. Me mande uma mensagem para falar com seu agente.' };
   const click = e.type === 'CARD_CLICKED';
@@ -84,7 +134,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
           return reply('Resposta inválida para este pedido.');
         }
         ticket = r.ticket;
-        resume = { ...ticket.state, messages: [{ role: 'system', content: withEngineRules(spec.system + skillsBlock(kit.skills ?? []), kit.tools.length > 0) }, ...ticket.state.messages], decision };
+        resume = { ...ticket.state, decision };
       } else if (click) return reply(`Não dá para responder: ${r.error}.`);
       // ask aberto de outra pessoa: segue como mensagem comum
     }
@@ -92,25 +142,21 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
 
     const text = ticket?.text ?? typed;
     const history = d.history(hk); // na retomada também: mensagens trocadas enquanto a aprovação esperava não se perdem
-    // Ritual de estreia: só na 1ª conversa da DM do dono; entra como conteúdo da pasta, antes da fala do usuário.
-    const bootstrapMd = !resume && kit.bootstrap && ownerDm && history.length === 0 ? kit.bootstrap.read() : null;
-    const ritual = shouldBootstrap(bootstrapMd, history.length, ownerDm) ? [{ role: 'user' as const, content: bootstrapMessage(bootstrapMd ?? '') }] : [];
     const runId = ticket?.runId ?? e.message?.name ?? `${hk}:${start}`;
-    const out = runTurn({
-      system: spec.system + skillsBlock(kit.skills ?? []), // só nome e descrição das skills entram no prompt
-      history: [...ritual, ...history],
+    const { turn: out, ritualDone } = chatTurn({
+      spec,
+      kit,
       text,
-      memory: ownerDm && !resume ? (kit.ctx.memory.recall?.() ?? kit.ctx.memory.read()) : undefined, // curada + notas de hoje e ontem
-      tools: kit.tools,
-      ctx: kit.ctx,
-      llm: (m, defs) => d.llm(key, spec.config.model, m, defs),
+      history,
+      ownerDm,
       runId,
-      steps: kit.steps,
-      deadlineMs: start + (d.budgetMs ?? CHAT_BUDGET_MS),
-      clock,
-      granted: ticket?.granted,
-      done: ticket?.done, // o que já rodou antes da aprovação não roda de novo (idempotência entre execuções)
+      budgetMs: d.budgetMs ?? CHAT_BUDGET_MS,
+      llm: (m, defs) => d.llm(key, spec.config.model, m, defs),
+      startMs: start,
       resume,
+      done: ticket?.done, // o que já rodou antes da aprovação não roda de novo (idempotência entre execuções)
+      granted: ticket?.granted,
+      clock,
     });
     d.onTurn?.(out);
     if (out.pending && out.state) {
@@ -122,7 +168,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
       return reply(out.text, approvalCard(t, out.text));
     }
     // O ritual só é consumido quando cumpriu o papel (o agente gravou algo); senão, fica para a próxima conversa.
-    if (ritual.length && bootstrapDone(out.events.filter((ev) => ev.status === 'ok' || ev.status === 'approved').map((ev) => ev.name))) kit.bootstrap?.consume();
+    if (ritualDone) kit.bootstrap?.consume();
     // Flush de memória antes de compactar: o que for durável vira nota do dia, para não se perder no corte do histórico.
     if (ownerDm && out.history.length >= MAX_HISTORY && kit.ctx.memory.saveDay && kit.ctx.memory.today) flushMemory(out.history, kit.ctx, (m) => d.llm(key, spec.config.model, m));
     d.saveHistory(hk, out.history);
