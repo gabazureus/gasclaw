@@ -5,7 +5,7 @@ import { drainBody, QUEUE_PREFIX, queueEntry, settle, shouldDrain, splitQueue } 
 import { accountKind, buildLimits, type LimitItem, type Read } from './limits';
 import { getOwner } from './store';
 import { keyInfo } from './models';
-import { cleanupRunsDaily, ensureRunStore } from './runlog';
+import { cleanupRunsDaily, ensureRunStore, reconcileStaleRuns } from './runlog';
 import { redact, type Run } from './trace';
 import { chart, dayKey, dayTotals, fold, freePerMinuteMax, loadUsage, prune, totalCost, totalReq, usageProps, type RunsOfDay, type Usage } from './usage';
 
@@ -16,6 +16,8 @@ const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=mult
 const props = () => PropertiesService.getScriptProperties();
 const cache = () => CacheService.getScriptCache();
 const auth = () => ({ Authorization: `Bearer ${ScriptApp.getOAuthToken()}` });
+export const TERMINAL_PREFIX = 'TERMINAL:';
+export const RUNNING_PREFIX = 'RUNNING:';
 const msg = (err: unknown) => redact(String((err as Error)?.message ?? err)).slice(0, 200);
 const read = <T>(fn: () => T): Read<T> => {
   try {
@@ -27,17 +29,48 @@ const read = <T>(fn: () => T): Read<T> => {
 
 // ---------- fila (turno) ----------
 
-/** No turno: 1 setProperty (entrada ≤ 9 KB) + 1 put do run redigido para o JSON completo. Nunca lança. */
+const terminalSnapshot = (run: Run): Run => redact({
+  ...run,
+  spans: [],
+  question: run.question?.slice(0, 200),
+  answer: run.answer?.slice(0, 200),
+  error: run.error?.slice(0, 200),
+});
+
+/** No turno: fila + marcador terminal numa escrita, e o JSON completo no cache. Nunca lança. */
 export function enqueue(run: Run): void {
   try {
     const e = queueEntry(run);
-    props().setProperty(`${QUEUE_PREFIX}${e.id}`, JSON.stringify(e));
+    props().setProperties({ [`${QUEUE_PREFIX}${e.id}`]: JSON.stringify(e), [`${TERMINAL_PREFIX}${e.id}`]: JSON.stringify(terminalSnapshot(run)) });
+    props().deleteProperty(`${RUNNING_PREFIX}${e.id}`);
     cache().remove('obs:props');
     const full = JSON.stringify(redact(run));
     if (full.length < 95_000) cache().put(`qjson:${run.id}`, full, 21_600);
   } catch (err) {
     console.warn(`observe enqueue: ${msg(err)}`);
   }
+}
+
+/** Reconciliação de morte forçada: fila e marcador durável entram na mesma escrita; caches podem ser refeitos depois. */
+export function enqueueOnce(run: Run, markerKey: string, markerValue: string): boolean {
+  try {
+    const p = props();
+    if (p.getProperty(markerKey)) return false;
+    const e = queueEntry(run);
+    p.setProperties({ [`${QUEUE_PREFIX}${e.id}`]: JSON.stringify(e), [markerKey]: markerValue });
+    p.deleteProperty(`${RUNNING_PREFIX}${e.id}`);
+  } catch (err) {
+    console.warn(`observe enqueueOnce: ${msg(err)}`);
+    return false;
+  }
+  try {
+    cache().remove('obs:props');
+    const full = JSON.stringify(redact(run));
+    if (full.length < 95_000) cache().put(`qjson:${run.id}`, full, 21_600);
+  } catch (err) {
+    console.warn(`observe enqueueOnce cache: ${msg(err)}`);
+  }
+  return true;
 }
 
 // ---------- Properties com cache de 60 s (1 getProperties por leitura; a chave nunca vai para o cache) ----------
@@ -184,6 +217,7 @@ export function ensureTrigger(): TriggerStatus {
 /** Fallback sem gatilho: drena se a fila tiver mais de 1 min (no turno ou ao abrir a tela). */
 export function maybeDrain(): DrainResult | null {
   try {
+    reconcileStaleRuns();
     if (!shouldDrain(oldestQueued(), Date.now(), triggerStatus() === 'ativo')) return null;
     return drain(20, true);
   } catch (err) {

@@ -22,6 +22,8 @@ export function runFile(runId: string): string {
   return `${safe}.json`;
 }
 
+export const runCacheKey = (folderId: string, runId: string) => `r:${folderId}:${runFile(runId)}`;
+
 function runsDir(folderId: string): GoogleAppsScript.Drive.Folder {
   const child = (parent: GoogleAppsScript.Drive.Folder, name: string) => {
     const it = parent.getFoldersByName(name);
@@ -65,6 +67,8 @@ export type RunIO = {
    * `exhausted` marca a entrega final de um run que gastou as tentativas: não é para trabalhar, é para desistir com recado.
    */
   claimNext: (now: number) => { pointer: RunPointer; run: DurableRun; exhausted?: true } | null;
+  /** Reivindica somente o run pedido; se ele estiver ocupado, não cai no próximo da fila. */
+  claimById: (runId: string, now: number) => { pointer: RunPointer; run: DurableRun } | null;
   pointers: () => RunPointer[];
 };
 
@@ -74,10 +78,8 @@ export function runIO(
   lock = LockService.getScriptLock(),
   files: RunFiles = driveFiles(),
 ): RunIO {
-  const key = (folderId: string, runId: string) => `r:${folderId}:${runFile(runId)}`;
-
   const load: RunIO['load'] = (folderId, runId) => {
-    const hit = cache.get(key(folderId, runId));
+    const hit = cache.get(runCacheKey(folderId, runId));
     if (hit) return parseRun(hit);
     return parseRun(files.read(folderId, runFile(runId)));
   };
@@ -86,8 +88,8 @@ export function runIO(
     const raw = JSON.stringify(r);
     // O Drive é a fonte da verdade e vai sempre; o cache é só atalho, e um run grande demais simplesmente não o usa.
     files.write(r.folderId, runFile(r.runId), raw);
-    if (raw.length <= CACHE_MAX) cache.put(key(r.folderId, r.runId), raw, CACHE_S);
-    else cache.remove(key(r.folderId, r.runId)); // melhor sem atalho que com atalho velho
+    if (raw.length <= CACHE_MAX) cache.put(runCacheKey(r.folderId, r.runId), raw, CACHE_S);
+    else cache.remove(runCacheKey(r.folderId, r.runId)); // melhor sem atalho que com atalho velho
   };
 
   const pointers = () => splitRunQueue(props.getProperties());
@@ -103,6 +105,26 @@ export function runIO(
       props.setProperty(queueKey(r.runId), JSON.stringify(next));
     },
     dequeue: (runId) => props.deleteProperty(queueKey(runId)),
+    claimById: (runId, now) => {
+      if (!lock.tryLock(CLAIM_LOCK_MS)) return null;
+      let taken: RunPointer | null = null;
+      try {
+        const p = splitRunQueue(props.getProperties()).find((candidate) => candidate.runId === runId);
+        if (!p) return null;
+        const c = claim(p, now);
+        if (!c.ok) return null;
+        props.setProperty(queueKey(runId), JSON.stringify(c.pointer));
+        taken = c.pointer;
+      } finally {
+        lock.releaseLock();
+      }
+      const run = load(taken.folderId, taken.runId);
+      if (!run) {
+        props.deleteProperty(queueKey(taken.runId));
+        return null;
+      }
+      return { pointer: taken, run };
+    },
     claimNext: (now) => {
       if (!lock.tryLock(CLAIM_LOCK_MS)) return null; // outro pump está reivindicando: este sai, o próximo minuto tenta
       let taken: RunPointer;

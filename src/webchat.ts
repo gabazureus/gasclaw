@@ -4,7 +4,7 @@ import { handleChat, type ChatDeps, type ChatReply } from './chat';
 
 /** Conversa da tela por usuário: tratada como DM (só o dono abre a página); histórico em `<pasta>:tela/chat/<e-mail>`. */
 export const webSpace = (owner: string) => ({ name: `tela/chat/${owner.toLowerCase()}`, singleUserBotDm: true });
-const screen = (d: ChatDeps): ChatDeps => ({ ...d, budgetMs: SCREEN_BUDGET_MS });
+const screen = (d: ChatDeps): ChatDeps => ({ ...d, surface: 'screen', budgetMs: SCREEN_BUDGET_MS });
 
 export const webSend = (d: ChatDeps, owner: string, text: string): ChatReply =>
   handleChat({ type: 'MESSAGE', message: { text }, user: { email: owner }, space: webSpace(owner) }, screen(d));

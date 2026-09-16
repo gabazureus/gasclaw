@@ -1,7 +1,7 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, com a porcentagem de progresso e se já foi resolvido.
-> **Atualizado em:** 2026-09-15 · dev na versão 41, com as 4 entregas da Pista Motor (sessões no Drive, memória do dia, skills, bootstrap) e o rodízio de modelos gratuitos · POC P11 5/5, P14 12/12, P15 6/6 · P16 6/7 (o C7 pegou o rodízio consultando a cota a cada turno) · P18 reprovada (683 ms contra meta de 300 ms, medição a repetir) · `eval --all` 23/24 (`webchat-now` caiu por resposta vazia do provedor) · testes 637/637 · prod ainda na versão 1.
+> **Atualizado em:** 2026-09-16 · dev na versão 66 · P3 aprovada 4/4 (worker 3.992 ms, idle completo 716 ms, 8,47% das 6 h) · P4 aprovada 3/3 (3 execuções distintas retomadas do Drive, `runId` estável, resposta final e efeito único) · formatação Markdown do Google Chat corrigida · traces interrompidos reconciliados · testes 708/708 · prod ainda na versão 1.
 > **Fontes:** [spec](docs/specs/), [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementacao.md),
 > [ADRs](docs/adr/README.md), [CHANGELOG](CHANGELOG.md), [log da wiki](docs/wiki/log.md),
 > [tracks](conductor/tracks.md), Beads (`bd list`) e `git log`.
@@ -36,12 +36,12 @@ A porcentagem de cada fase é a média simples dos itens dela.
 |---|---|---|---|
 | **F0**: fundação e primeira fatia | 18 | ████████░░ **82%** | 11 de 18 |
 | **F1**: agente-pasta completo | 21 | ██████░░░░ **56%** | 7 de 21 |
-| **F2**: tarefas longas e aprovação | 10 | ██░░░░░░░░ **22%** | 0 de 10 |
+| **F2**: tarefas longas e aprovação | 10 | ████░░░░░░ **38%** | 2 de 10 |
 | **F3**: proatividade e dados | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
 | **F4**: canais extras | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
 | **Transversal** (docs, open source, segurança, POCs) | 22 | ███████░░░ **69%** | 12 de 22 |
-| **Produto (F0–F4)** | 57 | █████░░░░░ **52%** | 18 de 57 |
-| **Geral** | 79 | ██████░░░░ **56%** | 30 de 79 |
+| **Produto (F0–F4)** | 57 | █████░░░░░ **55%** | 20 de 57 |
+| **Geral** | 79 | ██████░░░░ **59%** | 32 de 79 |
 
 > A F1 subiu de 45% para 56% porque seis itens ficaram prontos no dev e foram medidos: trace do agente (P14 12/12),
 > observabilidade na tela (P15 6/6), motor de tools, aprovação com card, ferramentas do Google e o rodízio de
@@ -50,14 +50,14 @@ A porcentagem de cada fase é a média simples dos itens dela.
 > O Transversal subiu de 65% para 69% com a auditoria concluída sem nenhum crítico e dois itens novos (aviso honesto
 > quando a ferramenta falha; ação com efeito que sobrevive à resposta perdida).
 >
-> A F2 saiu de 10% para 22% com o **núcleo do run durável** ([ADR-026](docs/adr/026-run-duravel.md)): checkpoint por
-> passo, estado na pasta do agente, fila própria separada da do trace, lease de 6 min, teto de US$ 0,10 por tarefa e a
-> regra de nunca repetir uma ação com efeito interrompida — 77 testes. **Nada disso está ligado à tela nem medido**,
-> e é por isso que nenhum item da F2 virou ✅: falta a ação `step` e as POCs P3 e P4.
+> A F2 chegou a 38% com o **núcleo do run durável** ([ADR-026](docs/adr/026-run-duravel.md)), o gatilho-worker medido
+> pela P3 ([ADR-027](docs/adr/027-gatilho-worker.md)): checkpoint por passo, estado na pasta do agente, fila própria,
+> lease de 6 min, teto de US$ 0,10 e incerteza honesta para efeitos em voo. A P4 provou no dev v66 que o mesmo run
+> atravessa três execuções e não repete um efeito já registrado. Falta a P19 matar a execução entre efeito e checkpoint.
 >
 > **O que ainda segura a F1 e o produto:** o acesso de outra pessoa nunca foi testado de verdade na tela (90%);
 > a tela de chat está só com texto, porque a voz foi adiada por você (80%); "Novo agente" ainda não foi usado na tela (85%).
-> **Fora do produto:** as POCs ainda vão no bundle de prod, só desligadas; **prod segue na versão 1**, enquanto o dev está na 35;
+> **Fora do produto:** as POCs ainda vão no bundle de prod, só desligadas; **prod segue na versão 1**, enquanto o dev está na 62;
 > a publicação pelo GitHub/CI continua adiada por você; e o Monitoring fica indisponível porque você decidiu não habilitar faturamento.
 
 ---
@@ -115,16 +115,16 @@ A porcentagem de cada fase é a média simples dos itens dela.
 
 ---
 
-## F2 — Tarefas longas e aprovação (22%)
+## F2 — Tarefas longas e aprovação (38%)
 
 | Elemento | Status | % | Resolvido? | O que falta | Fonte |
 |---|---|---|---|---|---|
 | POC P2: Chat assíncrono (card enviado depois) | ⏳ | 10 | ❌ Não | tudo | spec#10; ADR-006 |
-| POC P3: step via pump → doPost | 🟡 | 25 | ❌ Não | veredito puro pronto e testado; falta a ação `step` e a coleta | spec#10; ADR-005, [ADR-026](docs/adr/026-run-duravel.md) |
-| POC P4: run durável em 3+ execuções | 🟡 | 25 | ❌ Não | núcleo, fila e pump prontos e testados; falta ligar no `main.ts` e medir | spec#10; ADR-005, [ADR-026](docs/adr/026-run-duravel.md) |
+| POC P3: gatilho como worker do pump | ✅ | 100 | ✅ Sim | — (4/4 repetido no dev v60 após incluir a reconciliação durável de traces interrompidos; custo fixo projetado em 8,47% da cota Workspace) | spec#10; [ADR-027](docs/adr/027-gatilho-worker.md) |
+| POC P4: run durável em 3+ execuções | ✅ | 100 | ✅ Sim | — (dev v66: cache removido antes de cada retomada; mesmo `runId`, checkpoints 1→2→done, resposta `p4-ok`, 1 efeito e 1 chave durável) | spec#10; ADR-005, [ADR-026](docs/adr/026-run-duravel.md) |
 | POC P5: GASADK com seam OpenRouter e checkpoint | ⏳ | 10 | ❌ Não | tudo | ADR-004 |
 | Resposta em até 20 s, senão "pensando…" e fila | ⏳ | 10 | ❌ Não | tudo | spec#6 |
-| Checkpoint, lease, estados e idempotência | 🟡 | 60 | ❌ Não | núcleo puro, estado no Drive, fila `R:` e pump prontos (77 testes); falta ligar no `main.ts` e medir | spec#6; plano#D.F2.5; [ADR-026](docs/adr/026-run-duravel.md) |
+| Checkpoint, lease, estados e idempotência | 🟢 | 70 | 🟡 Parcial | P4 provou checkpoint e chave durável em 3 execuções; falta a morte entre efeito e checkpoint (P19) | spec#6; plano#D.F2.5; [ADR-026](docs/adr/026-run-duravel.md) |
 | Limites `steps` e `usd_per_run` | 🟡 | 50 | ❌ Não | teto de US$ 0,10 por run no núcleo, com pausa e opção de continuar; falta alimentar o custo real de cada passo | plano#D.F2.5; [ADR-026](docs/adr/026-run-duravel.md) |
 | Tools (Gmail, Drive, Sheets, Docs, Agenda, HTTP) com cards Aprovar/Negar | ⏳ | 10 | ❌ Não | tudo | spec#8; plano#D.F2.6 |
 | Retry com backoff em 429/5xx | ⏳ | 10 | ❌ Não | tudo (parte vem antes, com o rodízio de modelos gratuitos) | plano#D.F2.7 |
@@ -189,8 +189,8 @@ A porcentagem de cada fase é a média simples dos itens dela.
 |---|---|---|---|---|---|
 | P1: chamada longa (UrlFetch) | F0 | ✅ | ✅ Sim | mais de 60 s sem erro | 109,5 s, 110,1 s e 126,1 s sem erro ([ADR-010](docs/adr/010-poc-p1-urlfetch.md)) |
 | P2: Chat assíncrono | F2 | ⏳ | ❌ Não | card enviado 2 min depois do evento, sem chave de conta de serviço | — |
-| P3: step via doPost | F2 | 🟡 | ❌ Não | C2 o trabalho aparece como execução de web app, não `TIME_DRIVEN` (aborta cedo se não) · C1 o tempo de gatilho cresce só com os despertares (< 2 s cada) · C3 pump vazio no pior caso · C4 projeção do dia cabe na cota | veredito puro pronto e testado; `observe.processesByType()` é o instrumento; falta a coleta |
-| P4: run durável | F2 | 🟡 | ❌ Não | 3+ execuções sem perder estado e **zero efeito duplicado** | núcleo, fila `R:` e pump prontos, 77 testes ([ADR-026](docs/adr/026-run-duravel.md)); falta ligar e medir |
+| P3: gatilho-worker | F2 | ✅ | ✅ Sim | C1 `runId` correto termina em `done/ok` · C2 worker sintético ≤ 10 s · C3 handler completo vazio < 1 s · C4 custo fixo ≤ 20% das 6 h | dev v60: 3.992 ms · 716 ms com zero traces/runs · 1.829.440 ms/dia (8,47%) · 4/4 ([ADR-027](docs/adr/027-gatilho-worker.md)) |
+| P4: run durável | F2 | ✅ | ✅ Sim | 3+ execuções sem perder estado e **zero efeito duplicado em retomadas ordenadas** | dev v66: 3 UUIDs, leitura forçada do Drive, checkpoints 1→2→done, `p4-ok`, 1 efeito/1 chave ([POC](poc/p4-run/README.md), [ADR-026](docs/adr/026-run-duravel.md)) |
 | P5: GASADK | F2 | ⏳ | ❌ Não | planner via OpenRouter com checkpoint por step | — |
 | **P6: Docs/Sheets nativos** | F1 | ✅ | ✅ Sim | C1: 4 Docs < 3 s · C2: < 200 ms com cache (V1, V2 ou validade de 30 s) · C3: editar invalida o cache · C4: títulos e listas preservados · C5: pasta mista resolve cada papel | C1 1,1–1,2 s; V1 472–608 ms e V2 294–383 ms → validade de 30 s (54–77 ms); C3, C4 e C5 ✅ ([ADR-012](docs/adr/012-agentes-em-docs-e-sheets.md)) |
 | P7: token do CI | F0 | ⏸️ | ⏸️ Adiado | deploy verde 8+ dias depois do login | — |
@@ -249,8 +249,8 @@ Cada POC tem critério medido, roda sozinha por `./gasclaw poc <id>` (só no dev
 | 2 | P11: rodízio de modelos gratuitos | Os modelos `:free` respondem dentro dos 30 s do Chat com troca automática? | taxa de sucesso ≥ 95% em 20 mensagens · p95 < 25 s · troca em 429/5xx < 2 s | `poc p11` | ⏳ | F1: `model: free` |
 | 3 | P12: conta Gmail pessoal | O gasclaw instala e roda numa conta `@gmail.com` (consentimento Externo/Teste) sem o app do Chat? | `up` sem pausas de Workspace · chat na tela responde · token dura ≥ 8 dias | `poc p12` (precisa de uma conta pessoal de teste) | ⏳ | F1: chat na tela e 2ª usuária |
 | 4 | P2: Chat assíncrono | Dá para responder "pensando…" e enviar a resposta depois, como app? | card enviado 2 min depois do evento, sem chave de conta de serviço | `poc p2` | ⏳ | F2: resposta assíncrona |
-| 5 | P3: step via doPost | Dá para encadear passos sem gastar o tempo de trigger? | 50 steps via pump → doPost | `poc p3` | ⏳ | F2: execução durável |
-| 6 | P4: run durável | Uma tarefa sobrevive a várias execuções? | 3+ execuções sem perder estado | `poc p4` | ⏳ | F2: checkpoint |
+| 5 | P3: gatilho-worker | O custo fixo do worker direto deixa margem para o trabalho real? | worker ≤ 10 s · idle completo < 1 s · 1.440 idles + 200 steps/dia ≤ 20% de 6 h | `poc p3` | ✅ 4/4 no dev v60 | F2: execução durável |
+| 6 | P4: run durável | Uma tarefa sobrevive a várias execuções? | 3+ execuções sem perder estado e zero efeito duplicado | `poc p4` | ✅ 3/3 no dev v66 | F2: checkpoint |
 | 7 | P9: papéis responder/validar/redigir | A cadeia de 3 modelos melhora a resposta e cabe no modo assíncrono? | tempo da cadeia e ganho de qualidade medido em 10 perguntas | `poc p9` | ⏳ (depende da P2) | F2: `/revisar` |
 | 8 | P5: GASADK | O planner do GASADK funciona com OpenRouter e checkpoint? | planner + checkpoint por step | `poc p5` | ⏳ | F2: planner |
 | 9 | P8: Excel → Sheets | Um xlsx grande vira Sheets a tempo? | xlsx de 5 MB lido em < 60 s | `poc p8` | ⏳ | F3: inbox |

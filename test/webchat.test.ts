@@ -40,9 +40,12 @@ function setup(script: Completion[]) {
 describe('tela de chat (texto + voz) sobre o mesmo handleChat', () => {
   test('texto: DM do dono na conversa da tela, com memória', () => {
     const { d, store, sent } = setup([{ text: 'Oi!' }]);
-    expect(webSend(d, 'dono@x.com', 'oi').text).toBe('Oi!');
+    const reply = webSend(d, 'dono@x.com', 'oi');
+    expect(reply.text).toBe('Oi!');
+    expect(reply.markupSyntax).toBeUndefined();
     expect(store[`f1:${webSpace('dono@x.com').name}`]).toHaveLength(2);
     expect(sent[0].some((m) => m.content.includes('prefiro café'))).toBe(true);
+    expect(sent[0][0].content).not.toContain('Markdown do Google Chat');
   });
 
   test('C5: voz delegada entra no MESMO histórico do texto', () => {

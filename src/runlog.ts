@@ -1,8 +1,8 @@
 // Trace do agente (ADR-014), borda: cache ao vivo no turno; a planilha "gasclaw — execuções" (1 linha por run) e
 // gasclaw/runs/<id>.json (completo, 90 dias) são gravados em lote pelo observe.drain (gatilho de 1 min ou fallback).
 // NUNCA lança: falha de gravação vira console.warn e a resposta segue.
-import { enqueue } from './observe';
-import { expired, finish, HEADER, redact, renderTree, setStep, span, startRun, type Run, type RunKind, type RunMeta } from './trace';
+import { enqueue, enqueueOnce, RUNNING_PREFIX, TERMINAL_PREFIX } from './observe';
+import { closeStale, expired, finish, HEADER, redact, renderTree, setStep, span, startRun, type Run, type RunKind, type RunMeta } from './trace';
 import { ensureFolderPath, SHEET_MIME } from './workspace';
 
 const SHEET_NAME = 'gasclaw — execuções';
@@ -11,6 +11,8 @@ const DRIVE = 'https://www.googleapis.com/drive/v3/files';
 const LIVE_KEY = 'runs:ids';
 const LIVE_MAX = 20;
 const SIX_HOURS = 21_600;
+const STALE_PREFIX = 'STALE:';
+const STALE_MARKER_MS = 86_400_000;
 
 const props = () => PropertiesService.getScriptProperties();
 const cache = () => CacheService.getScriptCache();
@@ -77,6 +79,25 @@ function toCache(run: Run, listed = false) {
   }
 }
 
+/** Snapshot pequeno e durável: o CacheService pode expulsar entradas antes do TTL prometido. */
+function runningSnapshot(run: Run): Run {
+  return redact({
+    ...run,
+    spans: [],
+    question: run.question?.slice(0, 200),
+    answer: undefined,
+    error: undefined,
+  });
+}
+
+function persistRunning(run: Run) {
+  try {
+    props().setProperty(`${RUNNING_PREFIX}${run.id}`, JSON.stringify(runningSnapshot(run)));
+  } catch (err) {
+    warn('marcador running', err);
+  }
+}
+
 const summarize = (r: Run): Summary => ({ id: r.id, kind: r.kind, status: r.status, step: r.step, startedAt: r.startedAt, ms: r.ms, agent: r.agent, model: r.model, tokens: r.tokens, cost: r.cost, question: (r.question ?? '').slice(0, 80) });
 
 // ---------- tracer ----------
@@ -97,6 +118,7 @@ export function newRunId(): string {
 export function begin(kind: RunKind, meta: RunMeta, opts: TracerOptions = {}): Tracer {
   const now = opts.now ?? Date.now;
   let run = startRun(newRunId(), kind, now(), meta);
+  persistRunning(run);
   toCache(run, true);
   // C8 (P14, v25): a trava + o cache da lista ao vivo levaram até 1.087 ms antes do 1º passo, fora de qualquer span;
   // agora esse custo do próprio trace aparece como o passo trace_begin e a soma dos passos cobre a duração do run
@@ -111,6 +133,7 @@ export function begin(kind: RunKind, meta: RunMeta, opts: TracerOptions = {}): T
     step(name, fn, info, _slow = false) {
       const t0 = now();
       run = setStep(run, name);
+      persistRunning(run);
       toCache(run); // ao vivo na tela: passo atual (a planilha vem no lote, ≤ 70 s)
       try {
         const v = fn();
@@ -133,8 +156,8 @@ export function begin(kind: RunKind, meta: RunMeta, opts: TracerOptions = {}): T
     end(out) {
       const failed = run.spans.find((s) => s.status === 'error');
       run = finish(run, now(), failed && !out.error ? { ...out, error: String(failed.data?.error ?? failed.name) } : out);
-      toCache(run);
       enqueue(run); // lote: sem planilha e sem JSON dentro do turno
+      toCache(run);
       return run;
     },
   };
@@ -151,9 +174,132 @@ export function sheetRows(): string[][] {
 export function liveRuns(): { running: Summary[]; recent: Summary[]; sheetUrl: string | null } {
   const ids: string[] = JSON.parse(cache().get(LIVE_KEY) ?? '[]');
   const all = cache().getAll(ids.map((i) => `run:${i}`));
-  const list = ids.flatMap((i) => (all[`run:${i}`] ? [summarize(JSON.parse(all[`run:${i}`]) as Run)] : []));
+  const now = Date.now();
+  const list = ids.flatMap((i) => {
+    if (!all[`run:${i}`]) return [];
+    return [summarize(closeStale(JSON.parse(all[`run:${i}`]) as Run, now))];
+  });
   const id = props().getProperty('RUNS_SHEET_ID');
   return { running: list.filter((r) => r.status === 'running'), recent: list.filter((r) => r.status !== 'running').slice(0, 10), sheetUrl: id ? sheetUrl(id) : null };
+}
+
+/** Worker de 1 min: fecha sob trava os processos que o runtime matou antes de `end()` e os envia ao lote uma vez. */
+export function reconcileStaleRuns(now = Date.now()): number {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(3_000)) return 0;
+  try {
+    const properties = props().getProperties();
+    for (const [key, value] of Object.entries(properties)) {
+      if (key.startsWith(STALE_PREFIX) || key.startsWith(TERMINAL_PREFIX)) {
+        try {
+          const terminal = JSON.parse(value) as Run;
+          const runningKey = `${RUNNING_PREFIX}${terminal.id}`;
+          if (properties[runningKey]) {
+            try {
+              props().deleteProperty(runningKey);
+              delete properties[runningKey];
+            } catch {
+              continue; // o terminal protege contra ressurreição até a remoção do RUNNING funcionar
+            }
+          }
+          if (now - (terminal.endedAt ?? terminal.startedAt) > STALE_MARKER_MS) {
+            props().deleteProperty(key);
+            delete properties[key];
+          }
+        } catch {
+          props().deleteProperty(key);
+          delete properties[key];
+        }
+      }
+    }
+    const cachedIds: string[] = JSON.parse(cache().get(LIVE_KEY) ?? '[]');
+    const runningIds = Object.keys(properties).filter((key) => key.startsWith(RUNNING_PREFIX)).map((key) => key.slice(RUNNING_PREFIX.length));
+    const durableIds = Object.entries(properties)
+      .filter(([key]) => key.startsWith(TERMINAL_PREFIX) || key.startsWith(STALE_PREFIX))
+      .flatMap(([key, value]) => {
+        try {
+          return [{ id: key.slice(key.indexOf(':') + 1), startedAt: (JSON.parse(value) as Run).startedAt }];
+        } catch {
+          return [];
+        }
+      })
+      .sort((a, b) => b.startedAt - a.startedAt)
+      .slice(0, LIVE_MAX)
+      .map((x) => x.id);
+    const ids = [...new Set([...cachedIds, ...runningIds, ...durableIds])];
+    const all = cache().getAll(ids.map((i) => `run:${i}`));
+    let closed = 0;
+    const visible: Run[] = [];
+    const repairs: Record<string, string> = {};
+    const repairCache = (run: Run) => {
+      const r = redact(slim(run));
+      const raw = JSON.stringify(r);
+      if (raw.length <= 95_000) repairs[`run:${r.id}`] = raw;
+    };
+    for (const id of ids) {
+      const terminal = properties[`${TERMINAL_PREFIX}${id}`];
+      if (terminal) {
+        const full = cache().get(`qjson:${id}`) ?? terminal;
+        try {
+          const run = JSON.parse(full) as Run;
+          if (!all[`run:${id}`] || (JSON.parse(all[`run:${id}`]) as Run).status === 'running') repairCache(run);
+          visible.push(run);
+        } catch {
+          // marcador inválido é removido pela varredura acima na próxima rodada
+        }
+        continue;
+      }
+      const stale = properties[`${STALE_PREFIX}${id}`];
+      if (stale) {
+        try {
+          const run = JSON.parse(cache().get(`qjson:${id}`) ?? stale) as Run;
+          if (!all[`run:${id}`] || (JSON.parse(all[`run:${id}`]) as Run).status === 'running') repairCache(run);
+          visible.push(run);
+        } catch {
+          // marcador inválido é removido pela varredura acima na próxima rodada
+        }
+        continue;
+      }
+      const cachedRun = all[`run:${id}`] ? JSON.parse(all[`run:${id}`]) as Run : null;
+      const durableRunning = properties[`${RUNNING_PREFIX}${id}`] ? JSON.parse(properties[`${RUNNING_PREFIX}${id}`]) as Run : null;
+      const run = cachedRun && durableRunning ? { ...cachedRun, step: durableRunning.step } : (cachedRun ?? durableRunning);
+      if (!run) continue;
+      if (run.status !== 'running' && durableRunning) {
+        enqueue(run); // a persistência terminal anterior falhou; refaz fila + marcador juntos
+        repairCache(run);
+        visible.push(run);
+        continue;
+      }
+      if (run.status !== 'running') {
+        visible.push(run);
+        continue;
+      }
+      const next = closeStale(run, now);
+      if (next === run) {
+        if (!all[`run:${id}`]) repairCache(run);
+        visible.push(run);
+        continue;
+      }
+      const marker = `${STALE_PREFIX}${id}`;
+      if (!enqueueOnce(next, marker, JSON.stringify(runningSnapshot(next)))) {
+        visible.push(run);
+        continue;
+      }
+      repairCache(next);
+      visible.push(next);
+      closed += 1;
+    }
+    const nextIds = visible.sort((a, b) => b.startedAt - a.startedAt).slice(0, LIVE_MAX).map((run) => run.id);
+    try {
+      if (Object.keys(repairs).length) cache().putAll(repairs, SIX_HOURS);
+      if (JSON.stringify(nextIds) !== JSON.stringify(cachedIds)) cache().put(LIVE_KEY, JSON.stringify(nextIds), SIX_HOURS);
+    } catch (err) {
+      warn('reparo do cache', err);
+    }
+    return closed;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 export function runDetail(id?: string): { run: Run | null; tree: string } {
@@ -166,7 +312,7 @@ export function runDetail(id?: string): { run: Run | null; tree: string } {
     raw = it && it.hasNext() ? it.next().getBlob().getDataAsString('UTF-8') : null;
   }
   if (!raw) return { run: null, tree: `(run ${runId} não encontrado)` };
-  const run = redact(JSON.parse(raw) as Run);
+  const run = redact(closeStale(JSON.parse(raw) as Run, Date.now()));
   return { run, tree: renderTree(run) };
 }
 

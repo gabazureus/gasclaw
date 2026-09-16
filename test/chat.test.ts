@@ -31,8 +31,30 @@ describe('handleChat', () => {
   });
   test('usuário autorizado recebe resposta e histórico é salvo por agente+espaço', () => {
     const d = deps();
-    expect(handleChat(msg('ana@x.com'), d)).toEqual({ text: 'olá' });
+    expect(handleChat(msg('ana@x.com'), d)).toEqual({ text: 'olá', markupSyntax: 'MARKUP_SYNTAX_MARKDOWN' });
     expect(d.saved['f1:spaces/S1']).toHaveLength(2);
+  });
+  test('resposta usa Markdown padrão suportado pelo Google Chat e orienta o modelo sobre o subconjunto', () => {
+    let system = '';
+    const text = '**forte** *ênfase* ~~removido~~ `código`\n```\nbloco\n```\n- item\n    - aninhado\n1. passo\n> citação\n[link](https://example.com)';
+    const r = handleChat(msg('ana@x.com'), deps({
+      llm: (_k, _m, messages) => {
+        system = messages[0].content;
+        return { text };
+      },
+    }));
+    expect(r).toEqual({ text, markupSyntax: 'MARKUP_SYNTAX_MARKDOWN' });
+    expect(system).toContain('Markdown do Google Chat');
+    expect(system).toContain('blocos com três crases');
+    expect(system).toContain('quatro espaços por nível');
+    expect(system).toContain('Não use títulos com #, tabelas, listas de tarefas, HTML');
+  });
+  test('neutraliza tags especiais capazes de criar menções, emoji ou citações ativas', () => {
+    const text = '<chat-user data-user="users/all"> <chat-emoji data-emoji-name=":x:"> <chat-citation data-id="c1">fonte</chat-citation> <users/all> <customEmojis/abc>';
+    const r = handleChat(msg('ana@x.com'), deps({ llm: () => ({ text }) }));
+    expect(r.text).not.toMatch(/<(?:chat-(?:user|emoji|citation)|users\/|customEmojis\/)/i);
+    expect(r.text).toContain('&lt;chat-user');
+    expect(r.text).toContain('&lt;users/all>');
   });
   test('usa argumentText (sem a menção) quando existe', () => {
     let last = '';
@@ -135,7 +157,8 @@ describe('handleChat: aprovação e ask (E5)', () => {
   test('pendência vira card; nada executa e o histórico não é salvo ainda', () => {
     const { d, mem, data } = setup([call('memory_remove', '{"text":"café"}')]);
     const r = handleChat(dm('apague o café'), d);
-    expect(r.text).toContain('memory.remove');
+    expect(r.text).toBe('Esta ação precisa de aprovação.');
+    expect(JSON.stringify(r.cardsV2)).toContain('memory.remove');
     expect(tokenOf(r)).toHaveLength(32);
     expect(mem.text).toBe('- prefiro café\n');
     expect(d.saved).toEqual({});
@@ -146,7 +169,7 @@ describe('handleChat: aprovação e ask (E5)', () => {
     const { d, mem, sent } = setup([call('memory_remove', '{"text":"café"}'), { text: 'Removi.' }]);
     const token = tokenOf(handleChat(dm('apague o café'), d));
     const r = handleChat(click(token, { decision: 'approve' }), d);
-    expect(r).toEqual({ actionResponse: { type: 'UPDATE_MESSAGE' }, text: 'Removi.', cardsV2: [] });
+    expect(r).toEqual({ actionResponse: { type: 'UPDATE_MESSAGE' }, text: 'Removi.', markupSyntax: 'MARKUP_SYNTAX_MARKDOWN', cardsV2: [] });
     expect(mem.text).toBe('');
     expect(sent[1][0]).toEqual({ role: 'system', content: expect.stringContaining('Regras') });
     expect(d.saved['f1:spaces/D']).toEqual([{ role: 'user', content: 'apague o café' }, { role: 'assistant', content: 'Removi.' }]);
@@ -189,7 +212,9 @@ describe('handleChat: aprovação e ask (E5)', () => {
 
   test('ask sem opções: a próxima mensagem do mesmo usuário é a resposta', () => {
     const { d, sent } = setup([call('ask', '{"question":"Qual sala?"}'), { text: 'Reservei a B.' }]);
-    expect(handleChat(dm('reserve uma sala'), d).text).toContain('Qual sala?');
+    const question = handleChat(dm('reserve uma sala'), d);
+    expect(question.text).toBe('Pergunta do agente.');
+    expect(JSON.stringify(question.cardsV2)).toContain('Qual sala?');
     expect(handleChat(dm('B'), d).text).toBe('Reservei a B.');
     expect(sent[1][sent[1].length - 1]).toEqual({ role: 'tool', tool_call_id: 'c1', content: 'resposta do usuário: B' });
   });

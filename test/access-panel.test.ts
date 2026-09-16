@@ -9,6 +9,7 @@ function stubGas() {
   const store = {
     getProperty: (k: string) => props[k] ?? null,
     setProperty: (k: string, v: string) => void (props[k] = v),
+    setProperties: (values: Record<string, string>) => void Object.assign(props, values),
     getProperties: () => ({ ...props }),
     deleteProperty: (k: string) => void delete props[k],
   };

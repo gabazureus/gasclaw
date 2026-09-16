@@ -85,7 +85,9 @@ Abra com `./gasclaw open`. Só o dono (quem publicou) consegue entrar. No topo a
    - ⭐ marca o agente que responde no Chat, que é o primeiro da lista. **Tornar padrão** passa a ⭐ para outro agente.
    - **Remover** tira o agente da lista, mas a pasta continua no Drive.
 4. **Testar:** escreva uma pergunta e clique em **Enviar ao agente ⭐**. A resposta vem com o modelo usado e o tempo em ms. O teste não usa histórico.
-5. **Conversar com o agente:** o link no topo abre a tela de conversa (`?page=chat`), com as mesmas ferramentas, aprovações e perguntas do Chat. Os botões de aprovação valem uma vez só, por 10 min.
+5. **Conversar com o agente:** o link no topo abre a tela de conversa (`?page=chat`), com as mesmas ferramentas,
+   aprovações e perguntas do Chat. Na tela, a decisão fica no run guardado no Drive; ainda não há expiração de 24 h
+   implementada. No Google Chat, os cards continuam valendo uma vez só, por 10 min.
 6. **Observabilidade:** as abas **Ao vivo** (runs em andamento e os 10 últimos), **Modelos e custo** (modelo por agente e custo por modelo; **Voltar ao do AGENTS** desfaz a escolha), **Limites** (cotas do Google e do OpenRouter; **Ler de novo agora** ignora o cache) e **Lote** (fila do trace; **Gravar a fila agora** grava na hora).
 7. **POC P1:** teste técnico de resposta longa. Não é preciso para o uso normal.
 
@@ -94,6 +96,9 @@ Abra com `./gasclaw open`. Só o dono (quem publicou) consegue entrar. No topo a
 - **DM:** mande qualquer texto e o agente ⭐ responde.
 - **Espaço:** adicione o app ao espaço; ele se apresenta ("Olá! Sou o gasclaw 🦀…"). Depois, mencione o app na mensagem (**@gasclaw dev** ou **@gasclaw**).
 - **Memória:** cada conversa (a DM ou cada espaço) guarda as últimas 20 mensagens por até 6 h. Depois disso, o agente começa do zero.
+- **Formatação:** as respostas aceitam negrito, itálico, tachado, código inline ou em bloco, listas com marcadores
+  ou números, listas aninhadas, citações e links. O agente evita títulos `#`, tabelas, checklists, HTML, notas de
+  rodapé e imagens Markdown, que o Google Chat não renderiza de forma confiável.
 
 Mensagens que você pode ver:
 

@@ -410,7 +410,7 @@ cmd_doctor() {
 }
 
 cmd_poc() { # POCs automáticas, só no dev: cria fixtures, mede e sai ≠ 0 se algum critério falhar
-  local id="${1:-}" step="${2:-}" r
+  local id="${1:-}" step="${2:-}" r trace=""
   [ "$TARGET" = dev ] || die "POCs rodam só no dev"
   printf '%s' "$id" | grep -qE '^p[0-9]+$' || die "uso: ./gasclaw poc <id> [etapa]  (ex.: ./gasclaw poc p6)"
   [ -z "$step" ] || printf '%s' "$step" | grep -qE '^[a-z0-9]+$' || die "etapa inválida: $step"
@@ -423,7 +423,8 @@ cmd_poc() { # POCs automáticas, só no dev: cria fixtures, mede e sai ≠ 0 se 
     if [ -f "${hook%pc.sh}$step.sh" ]; then ( . "./${hook%pc.sh}$step.sh" ) || die "POC $id $step falhou (veja a saída acima)"; return 0; fi
   fi
   say "POC $id no dev (pode levar alguns minutos)"
-  r=$(remote "poc&id=$id${step:+&step=$step}") || die "chamada ao web app falhou (rode ./gasclaw doctor)"
+  [ "$id" = p3 ] && trace="&trace=0" # a própria POC não pode contaminar a medição do gatilho ocioso
+  r=$(remote "poc&id=$id${step:+&step=$step}$trace") || die "chamada ao web app falhou (rode ./gasclaw doctor)"
   printf '%s' "$r" | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{let r;try{r=JSON.parse(s)}catch{console.error(s.slice(0,500));process.exit(2)}console.log(JSON.stringify(r,null,2));process.exit(r.pass===true?0:1)})'
 }
 

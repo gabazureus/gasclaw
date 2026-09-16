@@ -1,6 +1,6 @@
 # ADR-005 — Execução durável: pump + doPost + checkpoint no Drive
 
-- **Status:** Proposto (depende de P3 e P4) · 2026-09-14
+- **Status:** Parcialmente substituído pelas ADRs [026](026-run-duravel.md) e [027](027-gatilho-worker.md); P3 e P4 medidas · 2026-09-16
 
 ## Contexto
 6 min por execução, 6 h/dia de runtime de trigger, 20 triggers, 9 KB por Property, 30

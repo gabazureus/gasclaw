@@ -1,5 +1,6 @@
 import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, runTurn, withEngineRules, type Decision, type Snapshot, type TurnInput, type TurnResult } from './agent';
 import { bootstrapDone, bootstrapMessage, shouldBootstrap } from './bootstrap';
+import { CHAT_FORMAT_RULES, CHAT_MARKUP_SYNTAX, safeChatMarkdown } from './chatFormat';
 import { flushMemory } from './tools/memoryFlush';
 import { approvalCard, decisionFrom, issue, redeem, type Ticket, type TicketStore } from './approval';
 import type { Completion, Message, ToolDef } from './llm';
@@ -21,8 +22,9 @@ export type AgentEntry = { folderId: string; name: string };
 export type Toolkit = { tools: Tool[]; ctx: ToolCtx; steps: number; skills?: Skill[]; bootstrap?: { read: () => string | null; consume: () => void } };
 /** `open(sessão)` = token de um `ask` aberto nessa conversa (a próxima mensagem responde). */
 export type Tickets = TicketStore & { open?: (session: string) => string | null };
-export type ChatReply = { text?: string; cardsV2?: unknown[]; actionResponse?: { type: 'UPDATE_MESSAGE' } };
+export type ChatReply = { text?: string; markupSyntax?: typeof CHAT_MARKUP_SYNTAX; cardsV2?: unknown[]; actionResponse?: { type: 'UPDATE_MESSAGE' } };
 export type ChatDeps = {
+  surface?: 'google-chat' | 'screen';
   enabled: () => boolean;
   owner: () => string;
   apiKey: () => string | null;
@@ -97,18 +99,25 @@ export function chatTurn(i: ChatTurnInput): ChatTurnResult {
 }
 
 export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
-  if (e.type === 'ADDED_TO_SPACE') return { text: 'Olá! Sou o gasclaw 🦀. Me mande uma mensagem para falar com seu agente.' };
+  const markdown = d.surface !== 'screen';
+  if (e.type === 'ADDED_TO_SPACE') return markdown
+    ? { text: 'Olá! Sou o gasclaw 🦀. Me mande uma mensagem para falar com seu agente.', markupSyntax: CHAT_MARKUP_SYNTAX }
+    : { text: 'Olá! Sou o gasclaw 🦀. Me mande uma mensagem para falar com seu agente.' };
   const click = e.type === 'CARD_CLICKED';
   if (e.type !== 'MESSAGE' && !click) return {};
   // Clique atualiza o próprio card (tira os botões); mensagem responde normalmente.
-  const reply = (text: string, extra: Partial<ChatReply> = {}): ChatReply => (click ? { actionResponse: { type: 'UPDATE_MESSAGE' }, text, cardsV2: [], ...extra } : { text, ...extra });
+  const reply = (text: string, extra: Partial<ChatReply> = {}): ChatReply => {
+    const body: ChatReply = markdown ? { text: safeChatMarkdown(text), markupSyntax: CHAT_MARKUP_SYNTAX } : { text };
+    return click ? { actionResponse: { type: 'UPDATE_MESSAGE' }, cardsV2: [], ...body, ...extra } : { ...body, ...extra };
+  };
   if (!d.enabled()) return reply('O gasclaw está pausado pelo administrador.');
   const entry = d.defaultAgent();
   if (!entry) return reply('Nenhum agente configurado. Abra a tela gasclaw e cole a URL de uma pasta do Drive.');
   const key = d.apiKey();
   if (!key) return reply('Falta a chave do OpenRouter. Cole-a na tela gasclaw.');
   try {
-    const spec = d.load(entry.folderId);
+    const loaded = d.load(entry.folderId);
+    const spec = markdown ? { ...loaded, system: `${loaded.system}${CHAT_FORMAT_RULES}` } : loaded;
     if (!canUse(spec.access, e.user.email, d.owner())) return reply(`Você (${e.user.email}) não tem acesso ao agente ${spec.name}.`); // acesso aprovado no painel (ADR-021)
     const hk = `${entry.folderId}:${e.space.name}`;
     const ownerDm = isOwnerDm(e, d.owner());

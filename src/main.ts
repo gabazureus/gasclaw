@@ -2,6 +2,9 @@ import { pocP10 } from '../poc/p10-editor/harness';
 import { pocP14 } from '../poc/p14-trace/harness';
 import { pocP15 } from '../poc/p15-limites/harness';
 import { pocP16 } from '../poc/p16-custo/harness';
+import { pocP3 } from '../poc/p3-pump/harness';
+import { runP3SyntheticWorker, syntheticTurn } from '../poc/p3-pump/worker';
+import { pocP4 } from '../poc/p4-run/harness';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
 import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, reply } from './agent';
 import { decisionFrom } from './approval';
@@ -422,37 +425,72 @@ function pendingView(r: DurableRun): { choices?: { key: 'decision' | 'answer'; v
   return { choices: [{ key: 'decision', value: 'approve', label: 'Aprovar' }, { key: 'decision', value: 'deny', label: 'Negar' }] };
 }
 
-/** Ação `step` (POST com o segredo da CLI): uma execução do pump. É quem faz o trabalho — o gatilho só a acorda. */
+/** Ação manual `step` (POST com o segredo da CLI): executa o mesmo pump usado diretamente pelo gatilho. */
+function syntheticStepDeps(): StepDeps {
+  return { io: runIO(), clock: Date.now, step: syntheticTurn };
+}
+
 export function stepRuns() {
   const touched = pump(stepDeps(), PUMP_MAX_STEPS, Date.now() + PUMP_BUDGET_MS);
   return { ok: true, steps: touched.length, runs: touched.map((r) => ({ runId: r.runId, ...view(r) })) };
 }
 
-/**
- * O gatilho de 1 min não trabalha: ele acorda e dispara o passo no web app, para o trabalho rodar em execução comum
- * e não consumir a cota de gatilho (6 h/dia no Workspace, 90 min em conta pessoal). É o que a POC P3 vai medir.
- * Se o disparo falhar, dá **um** passo aqui mesmo: melhor gastar um pouco da cota do que deixar o run parado calado.
- */
-function kickPump(): void {
+const P3_IDLE_REQ = 'poc:p3:drain:req';
+const P3_IDLE_RESULT = 'poc:p3:drain:result';
+const P3_WORKER_REQ = 'poc:p3:kick:req';
+const P3_WORKER_RESULT = 'poc:p3:kick:result';
+
+function runP3IdleProbe(): boolean {
+  if (!isDev()) return false;
+  const cache = CacheService.getScriptCache();
+  if (cache.get(P3_IDLE_REQ) !== '1') return false;
+  cache.remove(P3_IDLE_REQ);
+  const t0 = Date.now();
   try {
-    if (!runIO().pointers().length) return; // fila vazia: o despertar custa quase nada
-    const secret = PropertiesService.getScriptProperties().getProperty('CLI_SECRET');
-    const url = appUrl();
-    if (!secret || !url) return;
-    const res = UrlFetchApp.fetch(url, {
-      method: 'post',
-      payload: { action: 'step', secret },
-      headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` },
-      muteHttpExceptions: true,
-    });
-    if (res.getResponseCode() >= 300) throw new Error(`pump ${res.getResponseCode()}`);
+    const reconcileAt = Date.now();
+    runlog.reconcileStaleRuns();
+    const reconcileMs = Date.now() - reconcileAt;
+    const drainAt = Date.now();
+    const drained = observe.drain();
+    const drainMs = Date.now() - drainAt;
+    const queueAt = Date.now();
+    const pointers = runIO().pointers();
+    if (!pointers.length) workRuns(pointers);
+    const queueMs = Date.now() - queueAt;
+    cache.put(P3_IDLE_RESULT, JSON.stringify({ ok: pointers.length === 0, ms: Date.now() - t0, reconcileMs, drainMs, queueMs, drained, queued: pointers.length }), 21_600);
   } catch (err) {
-    console.warn(`pump: disparo falhou (${redactMsg(err)}); dando um passo no próprio gatilho`);
-    try {
-      pump(stepDeps(), 1, Date.now() + STEP_BUDGET_MS);
-    } catch (err2) {
-      console.warn(`pump: passo no gatilho também falhou: ${redactMsg(err2)}`);
-    }
+    cache.put(P3_IDLE_RESULT, JSON.stringify({ ok: false, error: redactMsg(err), ms: Date.now() - t0 }), 21_600);
+  }
+  return true;
+}
+
+function runP3WorkerProbe(): boolean {
+  if (!isDev()) return false;
+  const cache = CacheService.getScriptCache();
+  const requested = cache.get(P3_WORKER_REQ);
+  if (!requested) return false;
+  cache.remove(P3_WORKER_REQ);
+  const t0 = Date.now();
+  try {
+    const touched = runP3SyntheticWorker(requested, runIO().pointers(), syntheticStepDeps(), Date.now() + PUMP_BUDGET_MS);
+    const run = touched[0];
+    cache.put(P3_WORKER_RESULT, JSON.stringify({ ok: run?.runId === requested && run.status === 'done', runId: run?.runId, status: run?.status, ms: Date.now() - t0 }), 21_600);
+  } catch (err) {
+    cache.put(P3_WORKER_RESULT, JSON.stringify({ ok: false, error: redactMsg(err), ms: Date.now() - t0 }), 21_600);
+  }
+  return true;
+}
+
+/**
+ * O gatilho é o worker do run durável. O produto exige Workspace, cuja cota de gatilhos é 6 h/dia; a P3 mede
+ * o consumo real antes de aceitar este desenho. A fila vazia não abre Drive nem chama modelo.
+ */
+function workRuns(pointers = runIO().pointers()): void {
+  try {
+    if (!pointers.length) return;
+    pump(stepDeps(), PUMP_MAX_STEPS, Date.now() + PUMP_BUDGET_MS);
+  } catch (err) {
+    console.warn(`pump do gatilho falhou: ${redactMsg(err)}`);
   }
 }
 
@@ -637,8 +675,11 @@ export function runDetail(id: string) {
 
 /** Alvo do gatilho de 1 min (sem assertOwner: o gatilho roda como o dono). */
 export function drainRuns() {
+  if (runP3WorkerProbe()) return { n: 0, ms: 0, oldest: null };
+  if (runP3IdleProbe()) return { n: 0, ms: 0, oldest: null };
+  runlog.reconcileStaleRuns();
   const drained = observe.drain();
-  kickPump(); // mesmo gatilho, dois trabalhos: gravar o trace em lote e acordar o pump do run durável (ADR-026)
+  workRuns(); // mesmo gatilho, dois trabalhos: gravar o trace em lote e avançar o run durável (ADR-027)
   return drained;
 }
 
@@ -719,6 +760,8 @@ export function pocUrlFetchTimeout() {
 // ---------- POCs automáticas: ./gasclaw poc <id> [etapa] → doGet?action=poc ----------
 const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {
   p1: () => pocUrlFetchTimeout(),
+  p3: (step) => pocP3(step),
+  p4: (step) => pocP4(step),
   p6: (step) => pocP6(step, ownerEmail()),
   p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),

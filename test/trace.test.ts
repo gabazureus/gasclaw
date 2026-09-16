@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { coverage, expired, finish, HEADER, redact, renderTree, setStep, span, startRun, summaryRow } from '../src/trace';
+import { closeStale, coverage, expired, finish, GAS_MAX_EXECUTION_MS, HEADER, LIVE_STALE_MS, redact, renderTree, setStep, span, startRun, summaryRow } from '../src/trace';
 
 const base = () => startRun('r1', 'chat', 1_000, { question: 'oi', agent: 'assistente' });
 
@@ -28,6 +28,20 @@ describe('finish', () => {
   });
   test('erro vira status error com a mensagem', () => {
     expect(finish(base(), 1_500, { error: 'falhou' })).toMatchObject({ status: 'error', error: 'falhou', ms: 500 });
+  });
+});
+
+describe('closeStale', () => {
+  test('run no limite possível do GAS continua em andamento', () => {
+    expect(closeStale(setStep(base(), 'llm_call'), 1_000 + LIVE_STALE_MS).status).toBe('running');
+  });
+  test('run além do limite vira erro interrompido com duração limitada', () => {
+    const r = closeStale(setStep(base(), 'llm_call'), 1_001 + LIVE_STALE_MS);
+    expect(r).toMatchObject({ status: 'error', step: 'llm_call (interrompido)', ms: GAS_MAX_EXECUTION_MS, error: expect.stringContaining('interrompida') });
+  });
+  test('run já concluído nunca é alterado', () => {
+    const done = finish(base(), 1_500, { answer: 'ok' });
+    expect(closeStale(done, 1_000 + LIVE_STALE_MS * 2)).toBe(done);
   });
 });
 

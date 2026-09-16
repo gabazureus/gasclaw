@@ -69,15 +69,24 @@ describe('approvalCard (Chat cardsV2)', () => {
   const buttons = (m: ReturnType<typeof approvalCard>) => m.cardsV2[0].card.sections[0].widgets.flatMap((w) => ('buttonList' in w ? w.buttonList.buttons : []));
   test('aprovação: Aprovar e Negar chamam onCardClick com token e decisão; texto escapado', () => {
     const m = approvalCard(issue(base, TOKEN, 0), 'Posso usar <b>memory.remove</b>?');
-    expect(m.text).toContain('memory.remove');
+    expect(m.text).toBe('Esta ação precisa de aprovação.');
     const [yes, no] = buttons(m);
     expect(yes.text).toBe('Aprovar');
     expect(yes.onClick.action).toEqual({ function: 'onCardClick', parameters: [{ key: 'token', value: TOKEN }, { key: 'decision', value: 'approve' }] });
     expect(no.onClick.action.parameters[1]).toEqual({ key: 'decision', value: 'deny' });
     expect(JSON.stringify(m.cardsV2)).toContain('&lt;b&gt;');
   });
+  test('card mantém texto não confiável literal em HTML escapado, sem interpretar Markdown', () => {
+    const m = approvalCard(issue(base, TOKEN, 0), '[site inocente](https://destino-real.example) <b>forte</b>');
+    expect(m.text).toBe('Esta ação precisa de aprovação.');
+    expect(m.text).not.toContain('destino-real');
+    expect(m.cardsV2[0].card.sections[0].widgets[0]).toEqual({
+      textParagraph: { text: '[site inocente](https://destino-real.example) &lt;b&gt;forte&lt;/b&gt;' },
+    });
+  });
   test('ask com opções: um botão por opção (answer)', () => {
     const m = approvalCard(issue({ ...base, pending: askP }, TOKEN, 0), 'Qual sala?');
+    expect(m.text).toBe('Pergunta do agente.');
     expect(buttons(m).map((b) => [b.text, b.onClick.action.parameters[1]])).toEqual([
       ['A', { key: 'answer', value: 'A' }],
       ['B', { key: 'answer', value: 'B' }],

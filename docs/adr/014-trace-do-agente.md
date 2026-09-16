@@ -23,6 +23,9 @@ leve; custo vindo de `usage.cost` do OpenRouter. Critérios C1–C10 na
   - Cria sozinho `Meu Drive/gasclaw/gasclaw — execuções` e `gasclaw/runs/`, com os ids em Script Properties.
 - **Instrumentação só no `main.ts`**, embrulhando as dependências injetadas: Chat (`resolve_agent`, `llm_call` com prompt, modelo real, tokens e custo, `reply`), Testar, e POCs (sondas com `trace=0`).
 - **Tela**: seção "Ao vivo" com polling de 5 s via `google.script.run`, que para com a aba oculta. Mostra os runs em andamento e os últimos 10; o clique abre o detalhe com a árvore, a pergunta e a resposta completas. Tem link "abrir planilha".
+- **Execução abandonada:** uma morte forçada pelo limite do Apps Script não executa `end()`. Se um run continuar
+  `running` por mais de 6 min e 30 s, a leitura do Ao vivo o fecha como erro interrompido, atualiza o cache e o envia
+  ao mesmo lote dos demais runs. O limiar inclui 30 s de margem sobre o máximo de 6 min do runtime.
 - **CLI**: `./gasclaw trace [id]` (árvore) e `./gasclaw runs` (abre a planilha).
 
 ## Medição (dev, `./gasclaw poc p14`, 2 execuções completas)

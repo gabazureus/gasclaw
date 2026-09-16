@@ -1,90 +1,91 @@
-// POC P3 (pump barato): coleta no dev. O veredito puro mora em verdict.ts; aqui só se mede.
-// Em etapas, porque cada uma precisa esperar o gatilho de 1 min e a execução do GAS tem teto de 6 min.
+// POC P3: mede o custo fixo do gatilho-worker no dev. Cada sonda grava o próprio cronômetro no Cache.
 import { newRun } from '../../src/run';
 import { runIO } from '../../src/runStore';
-import * as observe from '../../src/observe';
 import * as store from '../../src/store';
-import { p3Verdict, type P3Input, type ProcessReading, type StepZero } from './verdict';
+import { P3_FIXED_BUDGET_PCT, P3_IDLE_MAX_MS, P3_WORKER_MAX_MS, isWorkspaceOwner, p3Verdict, projectedFixedMs, type P3Input } from './verdict';
 
 const PARTIAL = 'poc:p3';
+const IDLE_REQ = 'poc:p3:drain:req';
+const IDLE_RESULT = 'poc:p3:drain:result';
+const WORKER_REQ = 'poc:p3:kick:req';
+const WORKER_RESULT = 'poc:p3:kick:result';
 const SIX_HOURS = 21_600;
-const WAKE_MS = 80_000; // um ciclo do gatilho de 1 min, com folga
+const WAKE_MS = 80_000;
+const WORKSPACE_TRIGGER_MS = 6 * 3_600_000;
 
-type Partial3 = { stepZero?: StepZero; idleMs?: { normal: number; afterBatch: number }; quota?: { projectedMsPerDay: number; limitMsPerDay: number } };
+type Probe = { ok?: boolean; ms?: number; reconcileMs?: number; drainMs?: number; queueMs?: number; runId?: string; status?: string; drained?: { drained?: number }; queued?: number };
 
-const read = (): ProcessReading => {
-  const by = observe.processesByType();
-  return { triggerMsToday: by.TIME_DRIVEN?.ms ?? 0, count: by.TIME_DRIVEN?.n ?? 0 };
-};
-const webapp = (): { n: number; ms: number } => observe.processesByType().WEBAPP ?? { n: 0, ms: 0 };
-const partial = (): Partial3 => JSON.parse(CacheService.getScriptCache().get(PARTIAL) ?? '{}');
-const savePartial = (p: Partial3) => CacheService.getScriptCache().put(PARTIAL, JSON.stringify(p), SIX_HOURS);
+const cache = () => CacheService.getScriptCache();
+const partial = (): P3Input => JSON.parse(cache().get(PARTIAL) ?? '{}');
+const savePartial = (p: P3Input) => cache().put(PARTIAL, JSON.stringify(p), SIX_HOURS);
+export function parseP3Probe(raw: string | null): Probe | null {
+  try {
+    const value = JSON.parse(raw ?? 'null') as Probe | null;
+    return value && typeof value === 'object' ? value : null;
+  } catch {
+    return null;
+  }
+}
+const probe = (key: string): Probe | null => parseP3Probe(cache().get(key));
 
-/**
- * Passo zero: 1 run na fila, 1 ciclo de gatilho, e a pergunta que derruba (ou não) o desenho —
- * o TRABALHO rodou em execução comum (WEBAPP) ou dentro do gatilho (TIME_DRIVEN)?
- * Um passo de fallback do kickPump é legítimo e NÃO reprova: o que reprova é o caminho normal ser TIME_DRIVEN.
- */
-function etapaZero(): { poc: 'P3'; step: 'zero'; workType: StepZero['workType']; before: ProcessReading; after: ProcessReading; webappDelta: number; progrediu: boolean } {
+function etapaWorker(): { poc: 'P3'; step: 'worker'; pass: boolean; ms: number | null; completed: boolean } {
   const agent = store.listAgents()[0];
   if (!agent) throw new Error('nenhum agente cadastrado: cadastre um na tela antes de rodar a P3');
   const io = runIO();
-  const before = read();
-  const wBefore = webapp().n;
-  const runId = `p3-${Date.now().toString(36)}`;
+  const runId = `p3-worker-${Date.now().toString(36)}`;
   const r = newRun({ runId, session: `${agent.folderId}:poc/p3`, folderId: agent.folderId, user: store.getOwner() ?? '', text: 'responda apenas: ok', now: Date.now() });
+  cache().remove(WORKER_RESULT);
+  cache().put(WORKER_REQ, runId, SIX_HOURS);
   io.enqueue(r, Date.now());
-  Utilities.sleep(WAKE_MS); // deixa o gatilho de 1 min acordar e disparar o doPost
-  const after = read();
-  const depois = io.load(agent.folderId, runId);
-  const progrediu = !!depois && depois.updatedAt > r.updatedAt;
-  const webappDelta = webapp().n - wBefore; // conta a minha própria execução também: por isso o normal é >= 2
-  const triggerMs = after.triggerMsToday - before.triggerMsToday;
-  const wakes = Math.max(1, after.count - before.count);
-  const workType: StepZero['workType'] = !progrediu ? 'DESCONHECIDO' : triggerMs > wakes * 2000 ? 'TIME_DRIVEN' : 'WEBAPP';
-  io.dequeue(runId); // não deixa run de teste na fila
-  savePartial({ ...partial(), stepZero: { before, after, workType } });
-  return { poc: 'P3', step: 'zero', workType, before, after, webappDelta, progrediu };
+  Utilities.sleep(WAKE_MS);
+  const measured = probe(WORKER_RESULT);
+  const after = io.load(agent.folderId, runId);
+  const completed = measured?.ok === true && measured.runId === runId && measured.status === 'done' && after?.status === 'done' && after.answer === 'ok';
+  const ms = typeof measured?.ms === 'number' ? measured.ms : null;
+  io.dequeue(runId);
+  if (ms !== null) savePartial({ ...partial(), worker: { ms, completed } });
+  return { poc: 'P3', step: 'worker', pass: completed && ms !== null && ms <= P3_WORKER_MAX_MS, ms, completed };
 }
 
-/** C3: pump com fila vazia, em dois momentos — normal e logo depois de um lote grande do trace (pior caso). */
-function etapaVazio(): { poc: 'P3'; step: 'vazio'; normal: number; afterBatch: number } {
-  const medir = (): number => {
-    const before = read();
-    Utilities.sleep(WAKE_MS);
-    const after = read();
-    const wakes = Math.max(1, after.count - before.count);
-    return Math.round((after.triggerMsToday - before.triggerMsToday) / wakes);
+function etapaIdle(): { poc: 'P3'; step: 'idle'; pass: boolean; ms: number | null; reconcileMs: number | null; drainMs: number | null; queueMs: number | null; drained: number | null; queued: number | null } {
+  cache().remove(IDLE_RESULT);
+  cache().put(IDLE_REQ, '1', SIX_HOURS);
+  Utilities.sleep(WAKE_MS);
+  const measured = probe(IDLE_RESULT);
+  const ms = typeof measured?.ms === 'number' ? measured.ms : null;
+  const drained = typeof measured?.drained?.drained === 'number' ? measured.drained.drained : null;
+  const queued = typeof measured?.queued === 'number' ? measured.queued : null;
+  if (ms !== null && drained !== null && queued !== null) savePartial({ ...partial(), idle: { ms, drained, queued } });
+  return {
+    poc: 'P3', step: 'idle', pass: measured?.ok === true && ms !== null && ms < P3_IDLE_MAX_MS && drained === 0 && queued === 0,
+    ms, reconcileMs: measured?.reconcileMs ?? null, drainMs: measured?.drainMs ?? null, queueMs: measured?.queueMs ?? null, drained, queued,
   };
-  const normal = medir();
-  observe.drain(200); // solta a ScriptLock agora mesmo: o próximo despertar é o pior caso
-  const afterBatch = medir();
-  savePartial({ ...partial(), idleMs: { normal, afterBatch } });
-  return { poc: 'P3', step: 'vazio', normal, afterBatch };
 }
 
-/** C4: projeção do dia contra a cota da conta, com os números que o painel de limites já conhece. */
-function etapaCota(): { poc: 'P3'; step: 'cota'; projectedMsPerDay: number; limitMsPerDay: number } {
-  const hoje = read();
-  const agora = new Date();
-  const fracao = Math.max(0.05, (agora.getUTCHours() * 60 + agora.getUTCMinutes()) / 1440);
-  const projectedMsPerDay = Math.round(hoje.triggerMsToday / fracao);
-  const limitMsPerDay = (store.getOwner() ?? '').endsWith('@gmail.com') ? 90 * 60_000 : 6 * 3_600_000;
-  savePartial({ ...partial(), quota: { projectedMsPerDay, limitMsPerDay } });
-  return { poc: 'P3', step: 'cota', projectedMsPerDay, limitMsPerDay };
+function etapaCota(): { poc: 'P3'; step: 'cota'; pass: boolean; projectedMsPerDay: number; limitMsPerDay: number; fixedPct: number } {
+  const p = partial();
+  if (!p.worker || !p.idle) throw new Error('rode `./gasclaw poc p3 worker` e `./gasclaw poc p3 idle` antes da cota');
+  const owner = (store.getOwner() ?? '').toLowerCase();
+  if (!isWorkspaceOwner(owner)) throw new Error('a P3 redesenhada exige Google Workspace');
+  const projectedMsPerDay = projectedFixedMs(p.worker.ms, p.idle.ms);
+  const limitMsPerDay = WORKSPACE_TRIGGER_MS;
+  const fixedPct = (projectedMsPerDay / limitMsPerDay) * 100;
+  savePartial({ ...p, quota: { projectedMsPerDay, limitMsPerDay } });
+  return { poc: 'P3', step: 'cota', pass: fixedPct <= P3_FIXED_BUDGET_PCT, projectedMsPerDay, limitMsPerDay, fixedPct };
 }
 
 export function pocP3(step?: string) {
   if (step === 'reset') {
-    CacheService.getScriptCache().remove(PARTIAL);
+    cache().remove(PARTIAL);
+    cache().remove(IDLE_REQ);
+    cache().remove(IDLE_RESULT);
+    cache().remove(WORKER_REQ);
+    cache().remove(WORKER_RESULT);
     return { poc: 'P3', step, pass: true };
   }
-  if (step === 'vazio') return etapaVazio();
+  if (!step || step === 'zero' || step === 'kick' || step === 'worker') return etapaWorker();
+  if (step === 'drain' || step === 'vazio' || step === 'idle') return etapaIdle();
   if (step === 'cota') return etapaCota();
-  if (step === 'fim') {
-    const p = partial();
-    if (!p.stepZero) throw new Error('rode `./gasclaw poc p3 zero` antes do fim');
-    return p3Verdict(p as P3Input);
-  }
-  return etapaZero();
+  if (step === 'fim') return p3Verdict(partial());
+  throw new Error(`etapa desconhecida da P3: ${step}`);
 }

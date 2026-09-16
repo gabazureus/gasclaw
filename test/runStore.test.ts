@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LEASE_MS, MAX_ATTEMPTS, newRun, queueKey, type DurableRun } from '../src/run';
-import { runFile, runIO, type RunFiles } from '../src/runStore';
+import { runCacheKey, runFile, runIO, type RunFiles } from '../src/runStore';
 
 const NOW = 1_700_000_000_000;
 
@@ -33,6 +33,10 @@ describe('runFile: o runId vem do Chat e vira nome de arquivo seguro', () => {
   it('recusa um runId que não sobra nada', () => {
     expect(() => runFile('///')).toThrow('inválido');
   });
+});
+
+it('runCacheKey usa o mesmo nome seguro persistido no Drive', () => {
+  expect(runCacheKey('folder', 'Run / 1')).toBe('r:folder:run-1.json');
 });
 
 describe('enqueue: estado antes do ponteiro', () => {
@@ -78,6 +82,15 @@ describe('claimNext: a trava cobre só a reivindicação', () => {
     f.io.enqueue(mk('r1'), NOW);
     expect(f.io.claimNext(NOW)?.run.runId).toBe('r1');
     expect(f.io.claimNext(NOW + 1000)).toBeNull();
+  });
+
+  it('claimById nunca cai no run seguinte se o pedido já estiver ocupado', () => {
+    const f = fakes();
+    f.io.enqueue(mk('p3'), NOW);
+    f.io.enqueue(mk('real'), NOW + 1);
+    expect(f.io.claimById('p3', NOW)?.run.runId).toBe('p3');
+    expect(f.io.claimById('p3', NOW + 1)).toBeNull();
+    expect(JSON.parse(f.store.get(queueKey('real'))!).leaseUntil).toBeUndefined();
   });
 
   it('lease vencido é reivindicado de novo: a execução que pegou morreu', () => {

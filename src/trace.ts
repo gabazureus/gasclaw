@@ -23,6 +23,9 @@ export type Run = RunMeta & {
 export const HEADER = ['id', 'início', 'tipo', 'agente', 'status', 'passo', 'ms', 'modelo', 'tokens', 'custo', 'pergunta', 'resposta', 'erro'] as const;
 const CUT = 200;
 const DAY = 86_400_000;
+export const GAS_MAX_EXECUTION_MS = 360_000;
+/** Limite GAS + 30 s para atrasos de relógio/cache antes de declarar abandono. */
+export const LIVE_STALE_MS = GAS_MAX_EXECUTION_MS + 30_000;
 
 export function startRun(id: string, kind: RunKind, now: number, meta: RunMeta = {}): Run {
   return { id, kind, startedAt: now, status: 'running', step: 'início', spans: [], ...meta };
@@ -49,6 +52,16 @@ export function finish(run: Run, now: number, out: { answer?: string; error?: st
       }
     : {};
   return { ...run, ...totals, ...out, status: out.error ? 'error' : 'ok', step: 'fim', endedAt: now, ms: now - run.startedAt };
+}
+
+/** Um processo morto pelo runtime não executa `end`; fecha sua representação ao vivo depois do limite impossível. */
+export function closeStale(run: Run, now: number): Run {
+  if (run.status !== 'running' || now - run.startedAt <= LIVE_STALE_MS) return run;
+  const step = run.step;
+  return {
+    ...finish(run, run.startedAt + GAS_MAX_EXECUTION_MS, { error: 'Execução interrompida sem registrar o fim (timeout ou interrupção do Apps Script).' }),
+    step: `${step} (interrompido)`,
+  };
 }
 
 const SECRETS: [RegExp, string][] = [

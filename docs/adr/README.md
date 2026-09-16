@@ -8,7 +8,7 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [002](002-agente-pasta-sem-codigo.md) | Agente = pasta do Drive, sem código | Aceito |
 | [003](003-openrouter-unico-provedor.md) | OpenRouter como único provedor de LLM | Aceito |
 | [004](004-gasadk-condicional.md) | GASADK vendorizado só se a POC P5 passar | Proposto |
-| [005](005-execucao-duravel.md) | Execução durável: pump + doPost + checkpoint no Drive | Proposto (P3, P4) |
+| [005](005-execucao-duravel.md) | Execução durável: pump + doPost + checkpoint no Drive | Parcialmente substituído por ADR-026/027; P3/P4 medidas |
 | [006](006-chat-canal-principal.md) | Google Chat como canal principal | Proposto (P2) |
 | [007](007-docs-hub.md) | `docs/` como hub da documentação | Aceito |
 | [008](008-deploy-e-dono.md) | Deploy automático dev→prod; dono = conta do usuário | Aceito |
@@ -29,4 +29,5 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [023](023-ferramentas-do-workspace.md) | Ferramentas do Workspace por REST (E6) | Aceito; 7 de 7 evals `e6-*` verdes no dev (v35) |
 | [024](024-memoria-sessoes-skills-e-bootstrap.md) | Memória do dia, sessões no Drive, skills e ritual de estreia | Aceito no núcleo; medição no dev pendente |
 | [025](025-rodizio-de-modelos-gratuitos.md) | Rodízio de modelos gratuitos (`model: free`) | Proposto; medição pela POC P11 pendente |
-| [026](026-run-duravel.md) | Run durável: o passo é a unidade, estado no Drive, gatilho só acorda | Aceito no código; medição pelas POCs P3, P4 e P19 pendente |
+| [026](026-run-duravel.md) | Run durável: o passo é a unidade e o estado mora no Drive | Aceito; P4 medida no dev v66; P19 pendente |
+| [027](027-gatilho-worker.md) | O gatilho de 1 min é o worker do run durável | Aceito; P3 passou 4/4 no dev v60 |

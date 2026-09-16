@@ -1,6 +1,6 @@
-# ADR-026 — Run durável: o passo é a unidade, o estado mora no Drive, o gatilho só acorda
+# ADR-026 — Run durável: o passo é a unidade e o estado mora no Drive
 
-Status: **Aceito no código** (medição pendente: POCs P3, P4 e P19)
+Status: **Aceito e medido no dev v66** (mecanismo de despertar substituído pela [ADR-027](027-gatilho-worker.md); P19 pendente)
 Data: 2026-09-15
 Substitui em parte: [ADR-005](005-execucao-duravel.md) (que propunha pump + doPost + checkpoint, sem dizer como)
 
@@ -35,9 +35,8 @@ nunca roda de novo.
    bem-sucedidos não pode morrer de velhice na 4ª volta do pump.
 4. **A trava cobre só a reivindicação.** `LockService` no `claimNext` e em mais nada: segurar a ScriptLock durante uma
    chamada ao modelo travaria o lote do trace e o resto do gasclaw junto.
-5. **O gatilho de 1 min não trabalha, só acorda.** Ele lê a fila e dispara o passo em execução comum, para o trabalho
-   não consumir a cota de gatilho (6 h/dia no Workspace, **90 min/dia** em conta pessoal — é a conta pessoal que
-   aperta). É exatamente isto que a **POC P3** precisa medir antes de valer como verdade.
+5. **Substituído pela [ADR-027](027-gatilho-worker.md).** A P3 mostrou que `UrlFetchApp.fetch` espera o web app
+   responder e não cria o despertar barato proposto aqui. O gatilho passou a executar o worker diretamente.
 6. **Teto de US$ 0,10 por run** (decisão do usuário, 2026-09-15). Ao cruzar, o run **pausa com o estado guardado** e
    pergunta se continua; continuar estende o teto e devolve o run à fila, sem recomeçar do zero.
 7. **Efeito em voo não se repete.** Para tools cujo nome indica efeito (`create|update|draft|send|append|complete|
@@ -50,8 +49,9 @@ nunca roda de novo.
 
 ## Consequências
 
-- Um turno longo passa a atravessar execuções, e a aprovação deixa de depender do cache: o TTL pode ir de 10 min a
-  24 h sem risco de estourar os 95 KB, porque só o ticket fino fica no cache e o estado fica no Drive.
+- Um turno longo passa a atravessar execuções. Na tela, a decisão pertence ao run guardado no Drive e não usa o
+  ticket do Chat. Os cards do Google Chat continuam cache-backed por 10 min. Definir e medir um prazo de 24 h para
+  a tela pertence à P20; ainda não está implementado.
 - Cada passo paga uma ida ao Drive. A **P18** mediu 683 ms de média para a sessão no Drive, mas com a linha de base
   variando de 1.765 a 4.670 ms — o número precisa de mais amostras antes de virar orçamento de desempenho.
 - A entrega é **na tela primeiro** (a tela já faz polling). O Chat assíncrono depende da POC P2 e fica para depois.
@@ -66,6 +66,49 @@ turno sobreviver a uma execução, e cada um custaria mais do que entrega dentro
 
 | POC | Pergunta | Critério |
 |---|---|---|
-| **P3** | O pump consome cota de gatilho proporcional ao trabalho, ou só ao despertar? | O tempo TIME_DRIVEN cresce com os despertares (< 2 s cada), não com os 50 passos; os passos aparecem como execução de web app |
+| **P3** | O pump consome cota de gatilho proporcional ao trabalho, ou só ao despertar? | O critério original reprovou; o redesenho e o novo critério estão na [ADR-027](027-gatilho-worker.md) |
 | **P4** | Um run atravessa a morte da execução? | ≥ 3 execuções, resposta correta no fim, **zero efeito duplicado** |
 | **P19** | E se a execução morrer exatamente entre a chamada e a gravação? | O run não repete efeito; o usuário recebe o recado de incerteza |
+
+## Medição P3 — 2026-09-16
+
+Resultado: **reprovada em C2** no dev v46.
+
+O `step` foi publicado com modo sintético (`action=step&synthetic=1`, só em `__DEV__`) para medir sem gastar chamadas
+reais ao modelo. O gatilho usa esse modo apenas quando o primeiro ponteiro da fila é da sessão `:poc/p3`.
+
+Evidência:
+
+- `./gasclaw poc p3 reset` → `pass: true`.
+- `./gasclaw poc p3 zero` → `workType: "TIME_DRIVEN"`, `progrediu: true`, `triggerMsToday` 375.838 → 380.201 ms,
+  `count` 174 → 175.
+- `./gasclaw poc p3 fim` → `pass: false`, `aborted: true`, C2: "o trabalho rodou como execução de gatilho".
+- Sonda direta do endpoint sintético vazio: POST `action=step&synthetic=1` → HTTP 200 em 2,706 s,
+  `{"ok":true,"steps":0,"runs":[]}`.
+- Diagnóstico no dev v47–v49:
+  - `./gasclaw poc p3 fetch`: o gatilho chamou só `GET ?action=ping`; cronômetro interno `ms: 1.748`, HTTP 200.
+    A leitura de processos da API veio atrasada (`count` não avançou), então o dado confiável aqui é o cronômetro
+    interno do gatilho.
+  - `./gasclaw poc p3 drain`: o gatilho chamou só `observe.drain()`; cronômetro interno `ms: 825`
+    (`drained.ms: 378`).
+  - `./gasclaw poc p3 kick`: o gatilho chamou só `kickPump()` com run sintético P3; cronômetro interno `ms: 8.517`,
+    `progrediu: true`.
+
+Conclusão: o desenho "gatilho só acorda chamando o web app" **não ficou barato o suficiente** pela régua da P3, porque
+`UrlFetchApp.fetch` é síncrono: o gatilho paga o tempo do `step` até o web app responder. O GET mínimo e o lote de
+observabilidade isolados ficaram abaixo de 2 s; o `kickPump` com run sintético ficou em 8,5 s porque esperou a
+reivindicação do run, leitura/gravação no Drive e `dequeue` do web app. A [ADR-027](027-gatilho-worker.md) registra o
+redesenho e a nova medição.
+
+## Medição P4 — 2026-09-16
+
+Resultado: **aprovada 3/3** no dev v66 por `./gasclaw poc p4`.
+
+- C1: o mesmo `runId` atravessou **três execuções GAS distintas** (UUIDs próprios), com checkpoints `1 → 2 → done`.
+- C2: a terceira execução retomou o estado do Drive e terminou em `done` com a resposta `p4-ok`.
+- C3: o efeito sintético ocorreu **uma vez** e o `DurableRun.done` terminou com **uma chave**
+  `runId:0:p4-effect`; as duas retomadas não repetiram o efeito.
+
+A P4 remove o cache do run antes de cada avanço, portanto cada retomada lê o arquivo no Drive. Ela prova a travessia
+normal entre checkpoints, não substitui a P19: ainda falta encerrar uma execução à força
+depois do efeito e antes da gravação para comprovar o desfecho honesto de `inflight` no runtime real.

@@ -1,9 +1,8 @@
 // Pump do run durável (ADR-005, F2): **um passo por execução**.
 //
 // A unidade durável é o passo, como no Eve: uma volta do laço termina, o estado vai para o Drive, e a execução pode
-// morrer em seguida sem prejuízo — a próxima retoma exatamente dali. O gatilho de 1 min não faz o trabalho; ele só
-// acorda e chama isto, para o trabalho rodar em execução comum e não consumir a cota de gatilho (6 h/dia no
-// Workspace, 90 min em conta pessoal).
+// morrer em seguida sem prejuízo — a próxima retoma exatamente dali. O gatilho de 1 min chama este worker; a P3
+// mede se o trabalho cabe na cota diária de gatilhos do Workspace.
 import { afterFailure, afterStep, charge, interrupted, isOpen, MAX_ATTEMPTS, type DurableRun } from './run';
 import type { RunIO } from './runStore';
 import type { TurnResult } from './agent';

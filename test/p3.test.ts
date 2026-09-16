@@ -1,70 +1,122 @@
-import { describe, expect, test } from 'vitest';
-import { P3_IDLE_MAX_MS, P3_PUMP_WAKE_MAX_MS, p3Verdict, type P3Input } from '../poc/p3-pump/verdict';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { parseP3Probe } from '../poc/p3-pump/harness';
+import { P3_FIXED_BUDGET_PCT, P3_IDLE_MAX_MS, P3_WORKER_MAX_MS, isWorkspaceOwner, p3Verdict, projectedFixedMs, type P3Input } from '../poc/p3-pump/verdict';
+import { runP3SyntheticWorker } from '../poc/p3-pump/worker';
+import { newRun } from '../src/run';
 
-const zero = (workType: P3Input['stepZero']['workType'], delta = 300): P3Input['stepZero'] => ({
-  before: { triggerMsToday: 10_000, count: 5 },
-  after: { triggerMsToday: 10_000 + delta, count: 6 },
-  workType,
-});
+const SECRET = '0123456789abcdef'.repeat(4);
+const body = (out: unknown) => JSON.parse((out as { getContent: () => string }).getContent());
+
+function stubGas() {
+  const props: Record<string, string> = { OWNER: 'dono@x.com', CLI_SECRET: SECRET };
+  const store = {
+    getProperty: (k: string) => props[k] ?? null,
+    setProperty: (k: string, v: string) => void (props[k] = v),
+    getProperties: () => ({ ...props }),
+    deleteProperty: (k: string) => void delete props[k],
+  };
+  const cache = { get: () => null, put: () => undefined, remove: () => undefined, removeAll: () => undefined, getAll: () => ({}) };
+  vi.stubGlobal('__DEV__', true);
+  vi.stubGlobal('PropertiesService', { getScriptProperties: () => store });
+  vi.stubGlobal('CacheService', { getScriptCache: () => cache });
+  vi.stubGlobal('Session', { getActiveUser: () => ({ getEmail: () => 'dono@x.com' }), getEffectiveUser: () => ({ getEmail: () => 'dono@x.com' }) });
+  vi.stubGlobal('ContentService', { MimeType: { JSON: 'json' }, createTextOutput: (s: string) => ({ setMimeType: () => ({ getContent: () => s }) }) });
+}
+
+afterEach(() => vi.unstubAllGlobals());
+
 const completo = (over: Partial<P3Input> = {}): P3Input => ({
-  stepZero: zero('WEBAPP'),
-  bulk: { before: { triggerMsToday: 10_300, count: 6 }, after: { triggerMsToday: 30_300, count: 56 }, steps: 50, pumps: 50 },
-  idleMs: { normal: 120, afterBatch: 380 },
-  quota: { projectedMsPerDay: 2_000_000, limitMsPerDay: 21_600_000 },
+  worker: { ms: 3_049, completed: true },
+  idle: { ms: 825, drained: 0, queued: 0 },
+  quota: { projectedMsPerDay: 1_797_800, limitMsPerDay: 21_600_000 },
   ...over,
 });
 
-describe('P3: passo zero decide antes de gastar os 50 steps', () => {
-  test('trabalho como TIME_DRIVEN aborta na hora, com um único check', () => {
-    const r = p3Verdict(completo({ stepZero: zero('TIME_DRIVEN') }));
-    expect(r).toMatchObject({ pass: false, aborted: true });
-    expect(r.checks).toHaveLength(1);
-    expect(r.checks[0].id).toBe('C2');
-    expect(r.checks[0].detail).toContain('não existe neste desenho');
+describe('P3: gatilho como worker dentro da cota do Workspace', () => {
+  test('P3 fica registrada no endpoint de POCs do build dev', async () => {
+    stubGas();
+    const { doPost } = await import('../src/main');
+    expect(body(doPost({ parameter: { action: 'poc', id: 'p3', step: 'reset', trace: '0', secret: SECRET } } as never))).toMatchObject({ poc: 'P3', step: 'reset', pass: true });
   });
 
-  test('tipo não identificado também aborta (não conta como sucesso)', () => {
-    expect(p3Verdict(completo({ stepZero: zero('DESCONHECIDO') })).aborted).toBe(true);
+  test('sonda sintética toca só o run P3 pedido, nunca o run real seguinte', async () => {
+    vi.stubGlobal('__DEV__', true);
+    const p3 = newRun({ runId: 'p3', session: 'agent:poc/p3', folderId: 'agent', user: 'dono@x.com', text: 'ok', now: 1 });
+    const real = newRun({ runId: 'real', session: 'agent:tela/chat/dono', folderId: 'agent', user: 'dono@x.com', text: 'envie', now: 2 });
+    const queue = [p3, real];
+    const step = vi.fn(() => ({ turn: { text: 'ok', history: [], events: [], done: {}, granted: [] } }));
+    const io = {
+      claimById: (runId: string) => {
+        const run = queue[0]?.runId === runId ? queue.shift() : undefined;
+        return run ? { run, pointer: { runId: run.runId, folderId: run.folderId, session: run.session, at: 1, attempts: 1 } } : null;
+      },
+      save: () => undefined,
+      dequeue: () => undefined,
+      enqueue: () => undefined,
+    } as never;
+    const pointers = [p3, real].map((r) => ({ runId: r.runId, session: r.session }));
+    expect(runP3SyntheticWorker('p3', pointers, { io, step, clock: () => 10 }, 100).map((r) => r.runId)).toEqual(['p3']);
+    expect(step).toHaveBeenCalledTimes(1);
+    expect(queue.map((r) => r.runId)).toEqual(['real']);
+    expect(runP3SyntheticWorker('outro', pointers, { io, step, clock: () => 10 }, 100)).toEqual([]);
+
+    const racedStep = vi.fn(() => ({ turn: { text: 'ok', history: [], events: [], done: {}, granted: [] } }));
+    const racedIo = {
+      claimById: () => null,
+      claimNext: () => ({ run: real, pointer: pointers[1] }),
+      save: () => undefined,
+      dequeue: () => undefined,
+      enqueue: () => undefined,
+    } as never;
+    expect(runP3SyntheticWorker('p3', pointers, { io: racedIo, step: racedStep, clock: () => 10 }, 100)).toEqual([]);
+    expect(racedStep).not.toHaveBeenCalled();
   });
 
-  test('despertar caro no passo zero reprova mesmo em execução comum', () => {
-    const r = p3Verdict(completo({ stepZero: zero('WEBAPP', P3_PUMP_WAKE_MAX_MS + 1) }));
-    expect(r.aborted).toBe(true);
-    expect(r.checks[0].pass).toBe(false);
-  });
-
-  test('medição completa e dentro dos tetos passa', () => {
+  test('medição completa dentro dos tetos passa', () => {
     const r = p3Verdict(completo());
-    expect(r.pass).toBe(true);
-    expect(r.checks.map((c) => c.id)).toEqual(['C2', 'C1', 'C3', 'C4']);
+    expect(r).toMatchObject({ pass: true, aborted: false });
+    expect(r.checks.map((c) => c.id)).toEqual(['C1', 'C2', 'C3', 'C4']);
   });
-});
 
-describe('P3: os demais critérios', () => {
-  test('C1 reprova se o gatilho cresceu além dos despertares (trabalho vazando para o gatilho)', () => {
-    const r = p3Verdict(completo({ bulk: { before: { triggerMsToday: 0, count: 0 }, after: { triggerMsToday: 200_000, count: 50 }, steps: 50, pumps: 50 } }));
-    expect(r.checks.find((c) => c.id === 'C1')).toMatchObject({ pass: false });
+  test('C1 exige conclusão bem-sucedida, não apenas timestamp alterado', () => {
+    expect(p3Verdict(completo({ worker: { ms: 3_049, completed: false } })).checks[0]).toMatchObject({ id: 'C1', pass: false });
+  });
+
+  test('C2 limita o overhead de um passo sintético dentro do gatilho', () => {
+    expect(p3Verdict(completo({ worker: { ms: P3_WORKER_MAX_MS, completed: true } })).checks.find((c) => c.id === 'C2')).toMatchObject({ pass: true });
+    const r = p3Verdict(completo({ worker: { ms: P3_WORKER_MAX_MS + 1, completed: true } }));
+    expect(r.checks.find((c) => c.id === 'C2')).toMatchObject({ pass: false });
+  });
+
+  test('C3 exige fila de trace vazia e despertar ocioso abaixo do teto', () => {
+    expect(p3Verdict(completo({ idle: { ms: P3_IDLE_MAX_MS, drained: 0, queued: 0 } })).checks.find((c) => c.id === 'C3')).toMatchObject({ pass: false });
+    expect(p3Verdict(completo({ idle: { ms: 100, drained: 1, queued: 0 } })).checks.find((c) => c.id === 'C3')).toMatchObject({ pass: false });
+    expect(p3Verdict(completo({ idle: { ms: 100, drained: 0, queued: 1 } })).checks.find((c) => c.id === 'C3')).toMatchObject({ pass: false });
+  });
+
+  test('C4 reserva no máximo 20% da cota para polling e orquestração', () => {
+    const limit = 21_600_000;
+    expect(p3Verdict(completo({ quota: { projectedMsPerDay: limit * (P3_FIXED_BUDGET_PCT / 100), limitMsPerDay: limit } })).checks.find((c) => c.id === 'C4')).toMatchObject({ pass: true });
+    const r = p3Verdict(completo({ quota: { projectedMsPerDay: limit * (P3_FIXED_BUDGET_PCT / 100) + 1, limitMsPerDay: limit } }));
+    expect(r.checks.find((c) => c.id === 'C4')).toMatchObject({ pass: false });
+  });
+
+  test('medição incompleta não passa', () => {
+    const r = p3Verdict({ worker: { ms: 3_049, completed: true } });
     expect(r.pass).toBe(false);
+    expect(r.checks.map((c) => c.id)).toEqual(['C1', 'C2']);
   });
 
-  test('C3 usa o PIOR caso: rápido no normal e lento depois do lote reprova', () => {
-    const r = p3Verdict(completo({ idleMs: { normal: 50, afterBatch: P3_IDLE_MAX_MS + 10 } }));
-    const c3 = r.checks.find((c) => c.id === 'C3')!;
-    expect(c3.pass).toBe(false);
-    expect(c3.detail).toContain('pior caso vale');
+  test('projeção fixa o exemplo medido e a conta Workspace', () => {
+    expect(projectedFixedMs(283, 311)).toBe(504_440);
+    expect(isWorkspaceOwner('owner@example.com')).toBe(true);
+    expect(isWorkspaceOwner('ana@gmail.com')).toBe(false);
+    expect(isWorkspaceOwner('ana@googlemail.com')).toBe(false);
   });
 
-  test('C4 reprova quando a projeção passa da cota da conta e mostra a porcentagem', () => {
-    const r = p3Verdict(completo({ quota: { projectedMsPerDay: 6_000_000, limitMsPerDay: 5_400_000 } }));
-    const c4 = r.checks.find((c) => c.id === 'C4')!;
-    expect(c4.pass).toBe(false);
-    expect(c4.detail).toContain('111%');
-  });
-
-  test('medição incompleta não passa (sem C1, C3 ou C4 não há veredito)', () => {
-    const r = p3Verdict({ stepZero: zero('WEBAPP') });
-    expect(r.pass).toBe(false);
-    expect(r.aborted).toBe(false);
-    expect(r.checks.map((c) => c.id)).toEqual(['C2']);
+  test('resultado ausente ou corrompido da sonda vira null', () => {
+    expect(parseP3Probe(null)).toBeNull();
+    expect(parseP3Probe('{')).toBeNull();
+    expect(parseP3Probe('{"ok":false}')).toEqual({ ok: false });
   });
 });

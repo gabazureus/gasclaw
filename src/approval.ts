@@ -64,5 +64,5 @@ export function approvalCard(t: Ticket, text: string): { text: string; cardsV2: 
     ? options.map((o) => button(o.slice(0, 40), t.token, 'answer', o))
     : [button('Aprovar', t.token, 'decision', 'approve'), button('Negar', t.token, 'decision', 'deny')];
   const widgets: Widget[] = [{ textParagraph: { text: escape(text) } }, ...(buttons.length ? [{ buttonList: { buttons } }] : [])];
-  return { text, cardsV2: [{ cardId: ask ? 'pergunta' : 'aprovacao', card: { header: { title: ask ? 'Pergunta do agente' : 'Aprovação necessária (vale 10 min)' }, sections: [{ widgets }] } }] };
+  return { text: ask ? 'Pergunta do agente.' : 'Esta ação precisa de aprovação.', cardsV2: [{ cardId: ask ? 'pergunta' : 'aprovacao', card: { header: { title: ask ? 'Pergunta do agente' : 'Aprovação necessária (vale 10 min)' }, sections: [{ widgets }] } }] };
 }

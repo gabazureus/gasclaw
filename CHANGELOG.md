@@ -16,13 +16,31 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 >
 > 🔒 **Ações com efeito só pela CLI com segredo ([ADR-022](docs/adr/022-csrf-segredo-da-cli.md)):** `./gasclaw poc`, `eval` e `down` passam a usar POST com um segredo gerado pelo `./gasclaw up` em `.env.local`. Rode `./gasclaw up` uma vez depois de atualizar.
 
+### Google Chat
+
+- ✅ **Formatação das respostas:** mensagens agora declaram Markdown explicitamente. Negrito, itálico, tachado,
+  código, listas, citações e links são renderizados em vez de mostrar os marcadores como `**`. Cards de aprovação
+  continuam em HTML escapado para exibir argumentos literalmente, sem transformar texto não confiável em links.
+- O motor orienta o agente a não usar títulos `#`, tabelas, checklists, HTML, notas de rodapé ou imagens Markdown,
+  que não fazem parte do subconjunto suportado pelo Google Chat.
+- ✅ **Run abandonado não fica preso no Ao vivo:** quando o Apps Script mata uma execução antes de `end()`, o painel
+  fecha o registro como interrompido depois de 6 min e 30 s e o move para Recentes, em vez de contar por 6 horas.
+
 ### F2 — Tarefas longas 🔄 (em construção)
 
 - 🔄 **Tarefas que não terminam numa tacada só** ([ADR-026](docs/adr/026-run-duravel.md)): o Apps Script encerra qualquer execução em 6 minutos, e o Google Chat espera resposta em 30 segundos. Até aqui, um pedido que não coubesse nisso terminava em *"Parei por tempo antes de terminar"* — e o que o agente já tinha feito era **jogado fora**. Agora o trabalho é guardado a cada passo, na pasta do próprio agente, e continua sozinho de onde parou. Um passo que já rodou nunca roda de novo.
-- 🔄 **Aprovação que espera você** ([ADR-026](docs/adr/026-run-duravel.md)): como o estado deixou de morar na memória temporária, um card de aprovação pode esperar **24 horas** em vez de 10 minutos, e conversas longas param de esbarrar no limite de tamanho.
+- 🔄 **Aprovação durável na tela** ([ADR-026](docs/adr/026-run-duravel.md)): o run guarda no Drive onde parou, preparando
+  aprovações de até 24 horas na tela. Os cards atuais do Google Chat continuam valendo 10 minutos; ampliar esse prazo
+  ainda depende da P20.
 - 🔄 **Teto de gasto por tarefa:** cada tarefa tem um limite de **US$ 0,10**. Ao chegar nele, o agente **para, guarda onde estava** e pergunta se você quer continuar — em vez de gastar sem avisar ou perder o trabalho.
 - 🔄 **Nunca fazer duas vezes:** se a execução morrer bem no meio de uma ação com efeito (enviar e-mail, criar evento, escrever num arquivo), o gasclaw **não repete**. Ele conta que começou, que não sabe se terminou, e devolve a decisão a você.
-- ⏳ **Ainda não ligado nem medido:** o núcleo está pronto e testado, mas a ligação com a tela e as medições (POCs P3 e P4) continuam pendentes. Nada disso está publicado.
+- ✅ **Gatilho-worker medido ([ADR-027](docs/adr/027-gatilho-worker.md)):** no dev, o gatilho de 1 min avança a fila
+  durável diretamente. A P3 passou 4/4 novamente na v60: worker sintético em 3,992 s, ciclo ocioso completo em 0,716 s e
+  custo fixo projetado em 8,47% das 6 h diárias do Workspace.
+- ✅ **Run em várias execuções (P4):** no dev v66, o mesmo `runId` retomou do Drive em três execuções GAS distintas,
+  avançou pelos checkpoints 1 e 2, terminou com a resposta esperada e registrou o efeito sintético uma única vez.
+- ⏳ **Ainda em construção:** a P19 precisa matar uma execução exatamente entre o efeito e o checkpoint e comprovar
+  o recado de incerteza sem repetição. F2 não está concluída.
 
 ### F0 — Primeira conversa com um agente do Drive ✅
 

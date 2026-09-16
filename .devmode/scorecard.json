@@ -50,5 +50,274 @@
         "note": "3 desvios registrados no ADR-009 do plano; minimal: marcados"
       }
     }
+  },
+  {
+    "phase": "Review/Close F0 (Task 11) + prep F1",
+    "summary": "ADR-009 (20 itens), tracks F0-F4, CHANGELOG F0 conclu\u00edda com ressalva, log, Beads 3kz fechado, plano POC P6 sem c\u00f3digo",
+    "scores": {
+      "correctness": {
+        "score": 8,
+        "note": "28/28 testes agora; 20 links locais sem quebra; 3 verifica\u00e7\u00f5es manuais da Task 9 ainda pendentes"
+      },
+      "design": {
+        "score": 8,
+        "note": "P6 com crit\u00e9rios C1-C5, variantes medidas pela escada minimal e interface pura resolveRoles/cacheKey/mergeConfig"
+      },
+      "testing": {
+        "score": 7,
+        "note": "sem c\u00f3digo novo; P6 exige TDD no n\u00facleo e medi\u00e7\u00e3o real no dev; CI ainda n\u00e3o roda"
+      },
+      "safety": {
+        "score": 8,
+        "note": "nenhuma a\u00e7\u00e3o externa nem commit; nenhum trecho de chave; guardrails ativos"
+      },
+      "clarity": {
+        "score": 8,
+        "note": "desvios e renumera\u00e7\u00e3o P6/P8 no ADR-009; spec \u00a710/11, README e como-usar desatualizados; tracks.md \u00e9 gerenciado pelo devmode"
+      }
+    }
+  },
+  {
+    "phase": "Align \u2014 vis\u00e3o pasta/autoria (read-only)",
+    "summary": "Vis\u00e3o \"agente f\u00e1cil de criar/editar no Drive, pasta padr\u00e3o + pasta indicada\" mapeada contra spec \u00a73-4, ADR-002/009/012, workspace.ts/settings.html, Beads 0ce/v53, docs OpenClaw/Eve; 12 lacunas e 4 perguntas de gate",
+    "scores": {
+      "correctness": {
+        "score": 7,
+        "note": "lacunas conferidas no c\u00f3digo (addAgent/seedAgent/loadAgent) e ADR-012; comportamento de edi\u00e7\u00e3o de .md no Drive n\u00e3o verificado ao vivo"
+      },
+      "design": {
+        "score": 8,
+        "note": "proposta reusa Drive como editor e o contrato por papel; nenhum editor pr\u00f3prio; conflito Shared Drive x Gmail pessoal apontado"
+      },
+      "testing": {
+        "score": 6,
+        "note": "fase de alinhamento sem c\u00f3digo; crit\u00e9rios verific\u00e1veis propostos, nenhum teste rodado"
+      },
+      "safety": {
+        "score": 9,
+        "note": "somente leitura; n\u00e3o tocou main.ts/gasclaw/poc/test; ADR-002 preservado (agent.ts do Eve ignorado)"
+      },
+      "clarity": {
+        "score": 8,
+        "note": "3 leituras de \"pasta do apps script\" com recomenda\u00e7\u00e3o; % de alinhamento justificada; perguntas com trade-off"
+      }
+    }
+  },
+  {
+    "phase": "Align \u2014 execu\u00e7\u00f5es/f\u00e1brica de software (read-only, lean)",
+    "summary": "Pedido \"rodar e visualizar execu\u00e7\u00f5es, profissional para cria\u00e7\u00e3o de software\" mapeado contra spec \u00a75-11, PROGRESS/esteira, main.ts/llm.ts/chat.ts/store.ts, gasclaw poc/logs/status, ADR-002; 4 leituras, escada nativa com limites oficiais, design concept e 4 perguntas de gate",
+    "scores": {
+      "correctness": {
+        "score": 7,
+        "note": "limites conferidos em docs oficiais (quotas GAS, Sheets API 60 w/min/usu\u00e1rio, Chat card 32 KB, Logging 30 dias, Looker 15 min, OpenRouter usage.cost); lat\u00eancia de appendRow por turno n\u00e3o medida (P14)"
+      },
+      "design": {
+        "score": 8,
+        "note": "reusa Sheets como banco+painel e Logging existente; uma fun\u00e7\u00e3o recordRun pura na borda; f\u00e1brica (B) limitada pelo ADR-002"
+      },
+      "testing": {
+        "score": 6,
+        "note": "alinhamento sem c\u00f3digo; crit\u00e9rios de POC propostos, nenhum teste rodado"
+      },
+      "safety": {
+        "score": 9,
+        "note": "somente leitura; n\u00e3o tocou src/gasclaw/poc/PROGRESS/docs/adr (P10 em curso); privacidade de prompt completo virou pergunta de gate"
+      },
+      "clarity": {
+        "score": 8,
+        "note": "recomenda\u00e7\u00e3o \u00fanica com trade-offs; hype separado do real; perguntas no formato AskUserQuestion"
+      }
+    }
+  },
+  {
+    "phase": "Align P14 (trace do agente)",
+    "summary": "Fronteira Execucoes x trace, modelo run+spans, gravacao, design trace puro + borda, prior art, P14 C1-C10, 3 perguntas de gate",
+    "scores": {
+      "correctness": {
+        "score": 7,
+        "note": "src/ lido; colunas da pagina Execucoes e campos OpenRouter/Process verificados em doc oficial; executionId em runtime sem API oficial"
+      },
+      "design": {
+        "score": 8,
+        "note": "nucleo puro trace + sink que nunca lanca; instrumentacao por injecao nas deps existentes (ChatDeps/llm)"
+      },
+      "testing": {
+        "score": 6,
+        "note": "criterios C1-C10 mensuraveis; nada medido ainda; latencias sao estimativas"
+      },
+      "safety": {
+        "score": 8,
+        "note": "redacao obrigatoria com teste de canario; risco de privacidade de runs/ registrado"
+      },
+      "clarity": {
+        "score": 8,
+        "note": "pt-BR, tabela de fronteira, JSON exemplo, 3 perguntas de gate"
+      }
+    }
+  },
+  {
+    "phase": "Implement P10+P14 (dev)",
+    "summary": "P10 passou e leitura do editor ligada (C7 12,8 s); trace do agente P14 no dev 8/10 com Ao vivo em acorde\u00e3o; v15; 6 commits locais",
+    "scores": {
+      "correctness": {
+        "score": 8,
+        "note": "87/87 testes; poc p10 (C1-C7) e poc p14 medidos no dev; C1 da P14 falhou e est\u00e1 declarado"
+      },
+      "design": {
+        "score": 8,
+        "note": "n\u00facleo puro trace/assembleAgent + bordas runlog/drive que n\u00e3o lan\u00e7am; Drive saiu de poc/ para src/drive.ts"
+      },
+      "testing": {
+        "score": 7,
+        "note": "TDD no n\u00facleo, regress\u00e3o F0, can\u00e1rio; acorde\u00e3o verificado no navegador com stub, n\u00e3o por teste"
+      },
+      "safety": {
+        "score": 8,
+        "note": "sem escopo novo; redact antes de gravar; checagem de segredos bloqueou 1 commit e foi corrigida"
+      },
+      "clarity": {
+        "score": 7,
+        "note": "ADR-013/014, PROGRESS e CHANGELOG atualizados; P14 C1/C6 e prod pendentes de decis\u00e3o"
+      }
+    }
+  },
+  {
+    "phase": "Align+Specify leve (Eve -> prototipo completo)",
+    "summary": "Eve lido em fonte primaria (18 paginas); tabela Eve->GAS, corte duro, roadmap unico E1-E10 com evals como aceite, DoD 16 cenarios, 5 riscos, gate de 4 perguntas",
+    "scores": {
+      "correctness": {
+        "score": 7,
+        "note": "capacidades com link primario; 3 itens marcados nao confirmados; card sincrono no Chat ainda nao medido"
+      },
+      "design": {
+        "score": 7,
+        "note": "loop de tools como deep module, registro de tools por arquivo, 1 dispatcher de triggers; P5 GASADK cortada"
+      },
+      "testing": {
+        "score": 6,
+        "note": "POCs viram evals automaticos por entrega; nada executado nesta fase"
+      },
+      "safety": {
+        "score": 8,
+        "note": "sem codigo do usuario, memoria como mensagem user, aprovacao padrao negar, canario de injecao no DoD"
+      },
+      "clarity": {
+        "score": 7,
+        "note": "pt-BR, P/M/G e acoes do usuario explicitas; tabela longa"
+      }
+    }
+  },
+  {
+    "phase": "Align+PriorArt (Limites)",
+    "summary": "Inventario de limites GAS/Workspace/OpenRouter com fonte oficial; tabela do painel; design minimo; gate com 3 perguntas",
+    "scores": {
+      "correctness": {
+        "score": 7,
+        "note": "12 paginas oficiais conferidas; custo do Monitoring e deteccao de edicao ficaram a verificar"
+      },
+      "design": {
+        "score": 7,
+        "note": "contadores proprios + 2 APIs sem escopo novo; GCP isolado atras de decisao"
+      },
+      "testing": {
+        "score": 4,
+        "note": "nada medido ainda; precisao dos contadores depende da POC P15"
+      },
+      "safety": {
+        "score": 8,
+        "note": "zero escopo novo na opcao recomendada; somente leitura"
+      },
+      "clarity": {
+        "score": 7,
+        "note": "rotulo medido vs informado; roadmap E0-E9 nao encontrado no repo"
+      }
+    }
+  },
+  {
+    "phase": "Align+PriorArt (Google, OpenRouter no painel, promptfoo)",
+    "summary": "Auditoria Google (7 de 10 escopos sem codigo), 17 candidatos com escopo oficial, OpenRouter models/key/generation/activity conferidos, desenho override+contadores+SVG, P16/ADR-018, promptfoo (b), gate de 4",
+    "scores": {
+      "correctness": {
+        "score": 7,
+        "note": "~25 paginas oficiais conferidas; CSP do HtmlService, uptime por modelo, Maps/Translate e exit code do promptfoo nao confirmados"
+      },
+      "design": {
+        "score": 8,
+        "note": "override explicito por agente, fold puro por span, horario em UTC como fonte unica, SVG sem dependencia"
+      },
+      "testing": {
+        "score": 4,
+        "note": "nada medido; criterios P16 definidos (+-2%, <1 s, virada UTC)"
+      },
+      "safety": {
+        "score": 8,
+        "note": "sem chave de management, escopos minimos em lote unico, promptfoo so dev e telemetria desligada"
+      },
+      "clarity": {
+        "score": 7,
+        "note": "tabelas densas; gate com 4 perguntas e recomendacao"
+      }
+    }
+  },
+  {
+    "phase": "Align + prior-art (loop duravel: Eve x gasclaw)",
+    "summary": "Loop do Eve levantado em 11 paginas oficiais; loop atual lido no codigo (runTurn/ticket/pump); desenho do run duravel da F2 proposto, sem POC",
+    "scores": {
+      "correctness": {
+        "score": 8,
+        "note": "fonte primaria citada por afirmacao; lacunas marcadas nao-confirmado (max steps/turno, tempo de parede)"
+      },
+      "design": {
+        "score": 7,
+        "note": "run.json = Snapshot+done+granted ja existentes; lease em Properties, corpo no Drive; nao medido"
+      },
+      "testing": {
+        "score": 4,
+        "note": "nada executado; P2/P3/P4 seguem pendentes e 4 POCs novas propostas"
+      },
+      "safety": {
+        "score": 9,
+        "note": "somente leitura; zero arquivo das pistas Motor e Observabilidade tocado"
+      },
+      "clarity": {
+        "score": 8,
+        "note": "tabela lado a lado, formato do run.json e 3 perguntas de gate"
+      }
+    },
+    "recommendations": {
+      "testing": "rodar P3 medindo com observe.processesToday (TIME_DRIVEN) antes de escrever o pump de runs",
+      "design": "confirmar contencao de leitura+escrita do run.json no Drive com 5 runs simultaneos (POC nova)"
+    }
+  },
+  {
+    "phase": "Resume \u2014 auditoria factual",
+    "summary": "Estado confrontado com git, dev v60, P3 4/4, 691 testes, Conductor e Beads; pr\u00f3xima frente definida como P4",
+    "scores": {
+      "correctness": {
+        "score": 8,
+        "note": "HEAD 34c4242, status dev v60/health ok, tsc exit 0 e 691/691 verificados agora"
+      },
+      "design": {
+        "score": 7,
+        "note": "P4 ataca o invariante central da F2 com crit\u00e9rio j\u00e1 aprovado; Conductor/UL/tech-stack est\u00e3o defasados"
+      },
+      "testing": {
+        "score": 8,
+        "note": "baseline completo 76 arquivos/691 testes em 5,15 s; P3 tem evid\u00eancia real 4/4 no dev"
+      },
+      "safety": {
+        "score": 8,
+        "note": "auditoria somente leitura at\u00e9 o scorecard; 29 arquivos locais preservados, sem commit/push/deploy"
+      },
+      "clarity": {
+        "score": 6,
+        "note": "PROGRESS/ADR-027 atuais, mas handoff, tracks, Beads, tech-stack e parte do PROGRESS divergem"
+      }
+    },
+    "recommendations": {
+      "clarity": "reconciliar Beads, tracks, UL e tech-stack com o estado medido, sem apagar hist\u00f3rico",
+      "correctness": "medir P4 no dev antes de elevar F2",
+      "testing": "criar POC P4 test-first e provar >=3 execu\u00e7\u00f5es, resposta final e efeito \u00fanico"
+    }
   }
 ]

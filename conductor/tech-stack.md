@@ -31,7 +31,7 @@
 - **Script Properties:** chave do OpenRouter, dono, lista de agentes, kill switch, override de modelo,
   fila do lote (`Q:`) e uso por modelo (`USAGE:`).
 - **Sheets:** planilha "gasclaw — execuções" (1 linha por run, gravada em lote) e aba "limites".
-- **(planejado, F2)** checkpoints e leases da execução durável (ADR-005).
+- **Drive na pasta do agente:** checkpoints `.gasclaw/runs/<runId>.json` da execução durável; fila `R:` e leases nas Script Properties (ADR-026; P4 medida no dev v66).
 
 ## Conventions
 - Module layout: deep modules with functional core / imperative shell split
