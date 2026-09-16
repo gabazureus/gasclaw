@@ -1,11 +1,31 @@
 import { describe, expect, test } from 'vitest';
-import { summarizeP11, type P11Obs } from '../poc/p11-free/summary';
+import { p95, summarizeP11, type P11Obs } from '../poc/p11-free/summary';
 
 const obs = (): P11Obs => ({
   burst: { n: 20, ok: 20, ms: Array.from({ length: 20 }, (_, i) => 3000 + i * 100), erros: [] },
   switch429: { ms: 1200, modelUsed: 'b/medio:free', fallback: [{ model: 'a/grande:free', error: 'OpenRouter 429: rate limit' }] },
   tools: { agentTools: ['now', 'memory.save'], candidatos: [{ id: 'a/grande:free', tools: true }, { id: 'b/medio:free', tools: true }], escolhido: { id: 'a/grande:free', tools: true } },
   quota: { today: 120, perMinute: 3, blocked: false, warn: false },
+});
+
+describe('p95: régua matemática, conferida com vetor calculado à mão', () => {
+  // Lição da v39: a fórmula errada (⌊0,95·n⌋) foi validada por um teste que a repetia. Um caso com resposta
+  // conhecida de fora, calculada no papel, teria pego o erro — é o que estes casos fazem.
+  test('20 valores de 100 a 2000: 95% de 20 = 19, logo o p95 é o 19º menor, 1900 (e NÃO o máximo, 2000)', () => {
+    const v = Array.from({ length: 20 }, (_, i) => (i + 1) * 100);
+    expect(p95(v)).toBe(1900);
+    expect(p95([...v].reverse())).toBe(1900); // a ordem da entrada não pode importar
+  });
+  test('10 valores de 1 a 10: 95% de 10 = 9,5, que arredonda para cima; o p95 é o 10º menor, 10', () => {
+    expect(p95([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])).toBe(10);
+  });
+  test('40 valores de 1 a 40: 95% de 40 = 38, logo o p95 é o 38º menor, 38', () => {
+    expect(p95(Array.from({ length: 40 }, (_, i) => i + 1))).toBe(38);
+  });
+  test('casos de borda: lista vazia é 0 e um valor só é ele mesmo', () => {
+    expect(p95([])).toBe(0);
+    expect(p95([42])).toBe(42);
+  });
 });
 
 describe('summarizeP11', () => {

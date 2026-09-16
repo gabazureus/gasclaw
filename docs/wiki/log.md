@@ -80,3 +80,10 @@ Proposta do usuário: trocar markdown por Google Docs (texto) e Google Sheets (d
 - Decisões do usuário registradas: [ADR-020](../adr/020-trace-em-lote.md) (trace em lote de 1 min) e [ADR-021](../adr/021-acesso-aprovado-no-painel.md) (acesso e ferramentas só pelo painel; núcleo pronto, painel com a Pista Observabilidade).
 - Docs alinhadas ao código: glossário e module map, índice de ADRs, READMEs espelhados, `como-usar`, runbook, `tracks.md`, `tech-stack`, `product.md`, READMEs das POCs P14–P16. Beads: `gasclaw-5rn` fechada como duplicata de `gasclaw-exl`.
 - Diffs para `gasclaw`, `build.mjs`, `main.ts`, PROGRESS e CHANGELOG entregues à Pista Observabilidade (lock por máquina, conferência da versão criada, CSRF em doPost, trace do clique na tela).
+
+## [2026-09-15] lint | Um teste escrito pela mesma cabeça que escreveu a fórmula não a valida
+- **O erro:** o p95 da POC P11 usava `⌊0,95·n⌋`, que com n=20 e índice-base zero cai no **último** elemento — ou seja, calculava o máximo e chamava de p95. Isso reprovou o C2 por causa de um único turno de 35,8 s, com mediana de 4,1 s e 18 de 20 turnos abaixo de 10 s.
+- **Por que passou despercebido:** o teste que eu escrevi esperava `4900` numa série que termina em `4900`. Ele repetia a fórmula em vez de conferir a resposta, então passou confirmando o engano.
+- **A lição:** onde a régua é matemática (percentil, média, custo, taxa), o teste precisa de pelo menos um caso com **resposta conhecida de fora**, calculada à mão — não derivada do mesmo raciocínio que gerou o código. Em `test/p11.test.ts` isso virou: 20 valores de 100 a 2000 → p95 = 1900 (o 19º menor), e não 2000.
+- **O que não fiz:** re-medir depois de corrigir a régua. O veredito foi recalculado sobre os mesmos dados; re-medir com a régua nova seria trocar a evidência para obter o resultado desejado.
+- Ver [ADR-025](../adr/025-rodizio-de-modelos-gratuitos.md) e `poc/p11-free/README.md`.
