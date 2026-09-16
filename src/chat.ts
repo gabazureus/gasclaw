@@ -39,6 +39,11 @@ export type ChatDeps = {
   onTurn?: (turn: TurnResult) => void;
   /** Compacta a sessão depois de salvar, se ela passou do teto (resumo + cauda). Sem isso, o histórico só é cortado. */
   compact?: (key: string, llm: (messages: Message[]) => Completion) => void;
+  /**
+   * Grava a conversa AGORA, fora do lote. Usado quando o turno termina em pendência de aprovação: o estado
+   * precisa estar no Drive antes de a execução acabar, senão o Aprovar volta para uma conversa que não existe.
+   */
+  saveHistoryNow?: (key: string, history: Message[]) => void;
 };
 
 const NO_TOOLS: Toolkit = { tools: [], ctx: { now: () => '', ownerDm: false, memory: { read: () => '', write: () => {} } }, steps: DEFAULT_STEPS };

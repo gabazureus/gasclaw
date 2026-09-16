@@ -60,8 +60,24 @@ que o Drive), aqui a base foi mais estável e o Drive perdeu em **todos** os tur
 da linha de base. A meta de 300 ms **não é cumprida** com 1 leitura + 1 escrita no Drive por turno.
 
 **Pendente:** repetir com 20 amostras (o padrão do harness subiu para 20, porque a CLI não tem como passar `turns`;
-a versão publicada ainda roda com 10). Só depois de confirmar com a amostra maior é que o desenho muda, e a proposta
-vai ao usuário antes — incluindo o que acontece se a execução morrer entre duas gravações.
+a versão publicada ainda roda com 10).
+
+### Decisão do usuário sobre o custo: gravação em lote
+Levei duas opções (1 escrita por turno com ~800 ms a mais, ou escrever a cada N turnos) e o usuário escolheu uma
+terceira: **lote**, o mesmo padrão já provado no trace. O turno responde na hora e a gravação sai logo depois, pelo
+gatilho de 1 min. A opção "a cada N turnos" foi recusada com razão: trocava latência por **perda silenciosa** de até
+N−1 turnos de conversa, e o usuário não seria avisado da perda.
+
+Regras do lote (`src/sessionQueue.ts` + `src/sessionQueueStore.ts`):
+- **Fila própria** (`S:`), nunca a `Q:` do trace nem a `R:` dos runs: perdas diferentes custam coisas diferentes.
+- **Exceção obrigatória:** turno que termina em **pendência de aprovação** (ou dentro de um run durável) grava
+  **imediatamente**, sem passar pelo lote — o estado precisa estar no Drive antes de a execução acabar, senão o
+  Aprovar volta para uma conversa que não existe.
+- Entrada corrompida é ignorada com aviso (não trava a fila) e cada conversa desiste depois de 3 tentativas, em vez
+  de ficar na fila para sempre.
+- As funções do `batch.ts` não foram reaproveitadas como estão porque a entrada de lá é linha de planilha
+  (`row`/`recs`/`rowDone`); o que se reaproveitou foi o **desenho** (prefixo nas Properties, fila ordenada por `at`,
+  `settle` com tentativas).
 
 ## Limitações conhecidas
 1. **`mem-limite` é offline:** o texto de 2.200 bytes não cabe no teto de 2 KB do cenário enviado no POST. O teto é limitação da nossa CLI, não do produto.
