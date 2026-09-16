@@ -59,9 +59,42 @@ Nenhum dos quatro cria dado na conta, então a limpeza é 0 por desenho.
 que o Drive), aqui a base foi mais estável e o Drive perdeu em **todos** os turnos. Isso aponta custo real, não ruído
 da linha de base. A meta de 300 ms **não é cumprida** com 1 leitura + 1 escrita no Drive por turno.
 
-**Pendente:** repetir com 20 amostras (o padrão do harness subiu para 20, porque a CLI não tem como passar `turns`;
-a versão publicada ainda roda com 10). Só depois de confirmar com a amostra maior é que o desenho muda, e a proposta
-vai ao usuário antes — incluindo o que acontece se a execução morrer entre duas gravações.
+#### Repetição com 20 amostras (dev v42, `e14f5b2` publicado) — **confirma o custo**
+| Métrica | 10 amostras (v41) | 20 amostras (v42) |
+|---|---|---|
+| Base (cache quente) | 1.638–2.926 ms | 2.134–4.573 ms |
+| Com Drive (cache frio) | 2.452–3.609 ms | 2.923–3.631 ms |
+| Diferença mediana | 773 ms | **718 ms** |
+| Diferença média | 829 ms | 488 ms |
+| p95 | 1.847 ms | **1.226 ms** |
+| Turnos acima de 300 ms | 8 de 10 | **13 de 19** |
+| Drive mais lento que a base | 10 de 10 | 15 de 19 |
+
+As duas medições concordam na mediana (~700–800 ms), que é o número que importa: o custo do Drive é real e a meta de
+300 ms não é cumprida com 1 leitura + 1 escrita por turno. O lado do Drive é **estável** (2.923–3.631 ms); quem oscila
+é a linha de base (um turno chegou a ser 1.580 ms mais lento que o Drive). Ou seja, a média e o p95 medem o ruído da
+base — a mediana, não. Essa é a razão de a leitura anterior de "regressão de 683 ms" não se sustentar como *média*
+enquanto o custo em si se confirma.
+
+### Decisão do usuário sobre o custo: gravação em lote
+Levei duas opções (1 escrita por turno com ~800 ms a mais, ou escrever a cada N turnos) e o usuário escolheu uma
+terceira: **lote**, o mesmo padrão já provado no trace. O turno responde na hora e a gravação sai logo depois, pelo
+gatilho de 1 min. A opção "a cada N turnos" foi recusada com razão: trocava latência por **perda silenciosa** de até
+N−1 turnos de conversa, e o usuário não seria avisado da perda.
+
+Regras do lote (`src/sessionQueue.ts` + `src/sessionQueueStore.ts`):
+- **Fila própria** (`S:`), nunca a `Q:` do trace nem a `R:` dos runs: perdas diferentes custam coisas diferentes.
+- **Sem exceção de "grava na hora" para a conversa.** O que precisa estar no Drive antes de a execução acabar é o
+  **estado** do run (`Snapshot`/`pending`/`done`/`granted`), que mora no `run.json` do loop durável — não a sessão.
+  A pendência de aprovação **não grava conversa**: o texto do card não é fala do assistente, e a retomada relê o
+  histórico. Duas tentativas de gravar `out.history` na pendência foram barradas pelos testes do `chat.ts`, que
+  estavam certos; a especificação é que estava imprecisa.
+- Fallback de tamanho: conversa que não cabe na Property (9 KB) é gravada direto pelo `sessionIO`, em vez de sumir.
+- Entrada corrompida é ignorada com aviso (não trava a fila) e cada conversa desiste depois de 3 tentativas, em vez
+  de ficar na fila para sempre.
+- As funções do `batch.ts` não foram reaproveitadas como estão porque a entrada de lá é linha de planilha
+  (`row`/`recs`/`rowDone`); o que se reaproveitou foi o **desenho** (prefixo nas Properties, fila ordenada por `at`,
+  `settle` com tentativas).
 
 ## Limitações conhecidas
 1. **`mem-limite` é offline:** o texto de 2.200 bytes não cabe no teto de 2 KB do cenário enviado no POST. O teto é limitação da nossa CLI, não do produto.
