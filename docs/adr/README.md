@@ -26,3 +26,7 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [020](020-trace-em-lote.md) | Trace em lote de 1 min (fila no turno, gatilho e fallback) | Aceito |
 | [021](021-acesso-aprovado-no-painel.md) | Acesso e ferramentas aprovados no painel | Aceito; painel em construção |
 | [022](022-csrf-segredo-da-cli.md) | Ações com efeito só por POST com o segredo da CLI (CSRF) | Aceito; risco residual aceito |
+| [023](023-ferramentas-do-workspace.md) | Ferramentas do Workspace por REST (E6) | Aceito; 7 de 7 evals `e6-*` verdes no dev (v35) |
+| [024](024-memoria-sessoes-skills-e-bootstrap.md) | Memória do dia, sessões no Drive, skills e ritual de estreia | Aceito no núcleo; medição no dev pendente |
+| [025](025-rodizio-de-modelos-gratuitos.md) | Rodízio de modelos gratuitos (`model: free`) | Proposto; medição pela POC P11 pendente |
+| [026](026-run-duravel.md) | Run durável: o passo é a unidade, estado no Drive, gatilho só acorda | Aceito no código; medição pelas POCs P3, P4 e P19 pendente |
