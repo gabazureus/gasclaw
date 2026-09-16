@@ -12,6 +12,8 @@
     input, textarea { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font: inherit; }
     button { padding: 8px 12px; border: 0; border-radius: 6px; background: #1d1d1b; color: #fff; cursor: pointer; margin-top: 8px; font: inherit; }
     button.sec { background: #e3e1db; color: #1d1d1b; }
+    /* Sem isto, um botão desabilitado fica idêntico a um ativo: a pessoa clica e nada acontece, sem retorno. */
+    button:disabled { background: #cfcdc7; color: #6b6b66; cursor: not-allowed; }
     .row { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 4px 0; }
     .err { color: #b3261e; }
     pre { white-space: pre-wrap; background: #f6f5f2; padding: 8px; border-radius: 6px; }
@@ -208,8 +210,10 @@
       const line = (text) => { const d = document.createElement('div'); d.textContent = text; return d; };
       const approve = button('Aprovar sugestão', () => call('approveAccess', folderId, { users: x.approved.users.concat(x.pending.users), tools: x.approved.tools.concat(x.pending.tools) }).then(() => { $('msg').textContent = 'Acesso aprovado.'; showAccess(folderId, holder); }));
       approve.disabled = !hasPending;
+      approve.title = hasPending ? 'Aprova o que a pasta sugeriu' : 'Nada novo a aprovar: a pasta não sugere nada além do que já está aprovado';
       const remove = button('Remover acesso', () => call('removeAccess', folderId).then(() => { $('msg').textContent = 'Acesso removido: só o dono, sem ferramentas.'; showAccess(folderId, holder); }));
       remove.disabled = x.approved.users.length === 0 && x.approved.tools.length === 0;
+      remove.title = remove.disabled ? 'Não há acesso aprovado para remover' : 'Volta o agente para só o dono, sem ferramentas';
       holder.replaceChildren(line('Sugerido pela pasta (falta aprovar): ' + (hasPending ? fmt(x.pending) : 'nada novo')), line('Aprovado: ' + fmt(x.approved)), approve, document.createTextNode(' '), remove);
     }).withFailureHandler((e) => { holder.textContent = e.message; }).agentAccess(folderId);
   }
