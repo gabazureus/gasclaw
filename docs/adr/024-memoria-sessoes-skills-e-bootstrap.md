@@ -59,8 +59,22 @@ Nenhum dos quatro cria dado na conta, então a limpeza é 0 por desenho.
 que o Drive), aqui a base foi mais estável e o Drive perdeu em **todos** os turnos. Isso aponta custo real, não ruído
 da linha de base. A meta de 300 ms **não é cumprida** com 1 leitura + 1 escrita no Drive por turno.
 
-**Pendente:** repetir com 20 amostras (o padrão do harness subiu para 20, porque a CLI não tem como passar `turns`;
-a versão publicada ainda roda com 10).
+#### Repetição com 20 amostras (dev v42, `e14f5b2` publicado) — **confirma o custo**
+| Métrica | 10 amostras (v41) | 20 amostras (v42) |
+|---|---|---|
+| Base (cache quente) | 1.638–2.926 ms | 2.134–4.573 ms |
+| Com Drive (cache frio) | 2.452–3.609 ms | 2.923–3.631 ms |
+| Diferença mediana | 773 ms | **718 ms** |
+| Diferença média | 829 ms | 488 ms |
+| p95 | 1.847 ms | **1.226 ms** |
+| Turnos acima de 300 ms | 8 de 10 | **13 de 19** |
+| Drive mais lento que a base | 10 de 10 | 15 de 19 |
+
+As duas medições concordam na mediana (~700–800 ms), que é o número que importa: o custo do Drive é real e a meta de
+300 ms não é cumprida com 1 leitura + 1 escrita por turno. O lado do Drive é **estável** (2.923–3.631 ms); quem oscila
+é a linha de base (um turno chegou a ser 1.580 ms mais lento que o Drive). Ou seja, a média e o p95 medem o ruído da
+base — a mediana, não. Essa é a razão de a leitura anterior de "regressão de 683 ms" não se sustentar como *média*
+enquanto o custo em si se confirma.
 
 ### Decisão do usuário sobre o custo: gravação em lote
 Levei duas opções (1 escrita por turno com ~800 ms a mais, ou escrever a cada N turnos) e o usuário escolheu uma
