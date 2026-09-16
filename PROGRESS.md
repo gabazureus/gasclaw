@@ -1,7 +1,7 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, com a porcentagem de progresso e se já foi resolvido.
-> **Atualizado em:** 2026-09-15 · dev na versão 35 com tudo verde: POC P14 12/12, P15 6/6, P16 7/7 e `./gasclaw eval --all` 20/20 (inclui os 7 `e6-*` com limpeza) · gatilho de 1 min ativo · testes 447/447 · prod ainda na versão 1.
+> **Atualizado em:** 2026-09-15 · dev na versão 41, com as 4 entregas da Pista Motor (sessões no Drive, memória do dia, skills, bootstrap) e o rodízio de modelos gratuitos · POC P11 5/5, P14 12/12, P15 6/6 · P16 6/7 (o C7 pegou o rodízio consultando a cota a cada turno) · P18 reprovada (683 ms contra meta de 300 ms, medição a repetir) · `eval --all` 23/24 (`webchat-now` caiu por resposta vazia do provedor) · testes 637/637 · prod ainda na versão 1.
 > **Fontes:** [spec](docs/specs/), [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementacao.md),
 > [ADRs](docs/adr/README.md), [CHANGELOG](CHANGELOG.md), [log da wiki](docs/wiki/log.md),
 > [tracks](conductor/tracks.md), Beads (`bd list`) e `git log`.
@@ -35,18 +35,23 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | Fase | Itens | Progresso | Resolvidos |
 |---|---|---|---|
 | **F0**: fundação e primeira fatia | 18 | ████████░░ **82%** | 11 de 18 |
-| **F1**: agente-pasta completo | 21 | █████░░░░░ **52%** | 7 de 21 |
-| **F2**: tarefas longas e aprovação | 10 | █░░░░░░░░░ **10%** | 0 de 10 |
+| **F1**: agente-pasta completo | 21 | ██████░░░░ **56%** | 7 de 21 |
+| **F2**: tarefas longas e aprovação | 10 | ██░░░░░░░░ **22%** | 0 de 10 |
 | **F3**: proatividade e dados | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
 | **F4**: canais extras | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
 | **Transversal** (docs, open source, segurança, POCs) | 22 | ███████░░░ **69%** | 12 de 22 |
-| **Produto (F0–F4)** | 57 | █████░░░░░ **48%** | 18 de 57 |
-| **Geral** | 79 | █████░░░░░ **54%** | 30 de 79 |
+| **Produto (F0–F4)** | 57 | █████░░░░░ **50%** | 18 de 57 |
+| **Geral** | 79 | █████░░░░░ **55%** | 30 de 79 |
 
 > A F1 subiu de 45% para 52% porque cinco itens ficaram prontos no dev e foram medidos: trace do agente (P14 12/12),
 > observabilidade na tela (P15 6/6 e P16 7/7), motor de tools, aprovação com card e ferramentas do Google (20/20 evals).
 > O Transversal subiu de 65% para 69% com a auditoria concluída sem nenhum crítico e dois itens novos (aviso honesto
 > quando a ferramenta falha; ação com efeito que sobrevive à resposta perdida).
+>
+> A F2 saiu de 10% para 22% com o **núcleo do run durável** ([ADR-026](docs/adr/026-run-duravel.md)): checkpoint por
+> passo, estado na pasta do agente, fila própria separada da do trace, lease de 6 min, teto de US$ 0,10 por tarefa e a
+> regra de nunca repetir uma ação com efeito interrompida — 77 testes. **Nada disso está ligado à tela nem medido**,
+> e é por isso que nenhum item da F2 virou ✅: falta a ação `step` e as POCs P3 e P4.
 >
 > **O que ainda segura a F1 e o produto:** o acesso de outra pessoa nunca foi testado de verdade na tela (90%);
 > a tela de chat está só com texto, porque a voz foi adiada por você (80%); "Novo agente" ainda não foi usado na tela (85%).
@@ -80,7 +85,7 @@ A porcentagem de cada fase é a média simples dos itens dela.
 
 ---
 
-## F1 — Agente-pasta completo (52%)
+## F1 — Agente-pasta completo (56%)
 
 | Elemento | Status | % | Resolvido? | O que falta | Fonte |
 |---|---|---|---|---|---|
@@ -94,7 +99,7 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | E6 ferramentas do Workspace por REST (agenda, Gmail, contatos, tarefas, Drive/Docs/Sheets) | ✅ | 100 | ✅ Sim | — no dev: 7 evals `e6-*` verdes na v35 (agenda, freebusy, gmail-rascunho, contato, drive, tarefa, injeção), cada um apagando o que criou; ferramentas do Google só para o dono, com card completo | [ADR-023](docs/adr/023-ferramentas-do-workspace-rest.md) |
 | P17 / ADR-019: tela de chat do gasclaw e voz | 🟢 | 80 | 🟡 Parcial | texto pronto no dev (`?page=chat`, link absoluto, trace completo, `webchat-*` verdes na v35); **voz adiada por decisão do usuário** | [ADR-019](docs/adr/019-tela-de-chat-e-voz.md) |
 | **Acesso e ferramentas aprovados no painel** (M2, ADR-021) | 🟢 | 90 | 🟡 Parcial | no dev: todo agente fica só com o dono e sem tools até o clique em Aprovar; falta **testar o acesso de outra pessoa de verdade na tela** | [ADR-021](docs/adr/021-acesso-aprovado-no-painel.md) |
-| Rodízio de modelos gratuitos (`model: free`) | ⏳ | 10 | ❌ Não | decidido: logo depois da P6; lista de `GET /api/v1/models` com preço zero e cache diário, troca de modelo em 429/5xx | Beads `gasclaw-v53` |
+| Rodízio de modelos gratuitos (`model: free`) | 🟢 | 90 | 🟡 Parcial | no dev e medido pela POC P11 na v39 (5 de 5): 20 de 20 turnos, troca de modelo em 1,1 s, p95 de 10,9 s. Escreva `free` no `AGENTS` ou na tela. Falta **tirar a consulta de cota do caminho do turno** (ela levou o C7 da P16 a 6 chamadas ao `/key` em 30 min, contra o teto de 3) e repetir a medição: uma execução só, com um turno de 35,8 s contra mediana de 4,1 s | [ADR-025](docs/adr/025-rodizio-de-modelos-gratuitos.md); [poc/p11-free](poc/p11-free/README.md) |
 | Chat na tela gasclaw (para quem usa Gmail pessoal) | ⏳ | 10 | ❌ Não | decidido: aba de conversa no web app, com instalação e cota próprias da pessoa; exige ADR (a spec §2 deixava o chat web fora do MVP) | Beads `gasclaw-v53` |
 | `./gasclaw up` detecta Gmail pessoal e pula o Chat | ⏳ | 10 | ❌ Não | decidido: conta `@gmail.com` → pula consentimento Interno e app do Chat; verificar consentimento "Externo/Teste" | Beads `gasclaw-v53` |
 | Conversas no Drive e resumo automático | ⏳ | 10 | ❌ Não | tudo (pode usar Sheets, se a P6 passar) | spec#6; plano#D.F1.1 |
@@ -108,17 +113,17 @@ A porcentagem de cada fase é a média simples dos itens dela.
 
 ---
 
-## F2 — Tarefas longas e aprovação (10%)
+## F2 — Tarefas longas e aprovação (22%)
 
 | Elemento | Status | % | Resolvido? | O que falta | Fonte |
 |---|---|---|---|---|---|
 | POC P2: Chat assíncrono (card enviado depois) | ⏳ | 10 | ❌ Não | tudo | spec#10; ADR-006 |
-| POC P3: step via pump → doPost | ⏳ | 10 | ❌ Não | tudo | spec#10; ADR-005 |
-| POC P4: run durável em 3+ execuções | ⏳ | 10 | ❌ Não | tudo | spec#10; ADR-005 |
+| POC P3: step via pump → doPost | 🟡 | 25 | ❌ Não | veredito puro pronto e testado; falta a ação `step` e a coleta | spec#10; ADR-005, [ADR-026](docs/adr/026-run-duravel.md) |
+| POC P4: run durável em 3+ execuções | 🟡 | 25 | ❌ Não | núcleo, fila e pump prontos e testados; falta ligar no `main.ts` e medir | spec#10; ADR-005, [ADR-026](docs/adr/026-run-duravel.md) |
 | POC P5: GASADK com seam OpenRouter e checkpoint | ⏳ | 10 | ❌ Não | tudo | ADR-004 |
 | Resposta em até 20 s, senão "pensando…" e fila | ⏳ | 10 | ❌ Não | tudo | spec#6 |
-| Checkpoint, lease, estados e idempotência | ⏳ | 10 | ❌ Não | tudo | spec#6; plano#D.F2.5 |
-| Limites `steps` e `usd_per_run` | ⏳ | 10 | ❌ Não | tudo | plano#D.F2.5 |
+| Checkpoint, lease, estados e idempotência | 🟡 | 60 | ❌ Não | núcleo puro, estado no Drive, fila `R:` e pump prontos (77 testes); falta ligar no `main.ts` e medir | spec#6; plano#D.F2.5; [ADR-026](docs/adr/026-run-duravel.md) |
+| Limites `steps` e `usd_per_run` | 🟡 | 50 | ❌ Não | teto de US$ 0,10 por run no núcleo, com pausa e opção de continuar; falta alimentar o custo real de cada passo | plano#D.F2.5; [ADR-026](docs/adr/026-run-duravel.md) |
 | Tools (Gmail, Drive, Sheets, Docs, Agenda, HTTP) com cards Aprovar/Negar | ⏳ | 10 | ❌ Não | tudo | spec#8; plano#D.F2.6 |
 | Retry com backoff em 429/5xx | ⏳ | 10 | ❌ Não | tudo (parte vem antes, com o rodízio de modelos gratuitos) | plano#D.F2.7 |
 | **Papéis responder, validar e redigir, só sob pedido (POC P9)** | ⏳ | 10 | ❌ Não | decidido: resposta normal com 1 modelo; um comando (ex.: `/revisar`) aciona validador e redator no modo "pensando…" | Beads `gasclaw-v53` |
@@ -182,14 +187,15 @@ A porcentagem de cada fase é a média simples dos itens dela.
 |---|---|---|---|---|---|
 | P1: chamada longa (UrlFetch) | F0 | ✅ | ✅ Sim | mais de 60 s sem erro | 109,5 s, 110,1 s e 126,1 s sem erro ([ADR-010](docs/adr/010-poc-p1-urlfetch.md)) |
 | P2: Chat assíncrono | F2 | ⏳ | ❌ Não | card enviado 2 min depois do evento, sem chave de conta de serviço | — |
-| P3: step via doPost | F2 | ⏳ | ❌ Não | 50 steps sem consumir o tempo de trigger | — |
-| P4: run durável | F2 | ⏳ | ❌ Não | 3+ execuções sem perder estado | — |
+| P3: step via doPost | F2 | 🟡 | ❌ Não | C2 o trabalho aparece como execução de web app, não `TIME_DRIVEN` (aborta cedo se não) · C1 o tempo de gatilho cresce só com os despertares (< 2 s cada) · C3 pump vazio no pior caso · C4 projeção do dia cabe na cota | veredito puro pronto e testado; `observe.processesByType()` é o instrumento; falta a coleta |
+| P4: run durável | F2 | 🟡 | ❌ Não | 3+ execuções sem perder estado e **zero efeito duplicado** | núcleo, fila `R:` e pump prontos, 77 testes ([ADR-026](docs/adr/026-run-duravel.md)); falta ligar e medir |
 | P5: GASADK | F2 | ⏳ | ❌ Não | planner via OpenRouter com checkpoint por step | — |
 | **P6: Docs/Sheets nativos** | F1 | ✅ | ✅ Sim | C1: 4 Docs < 3 s · C2: < 200 ms com cache (V1, V2 ou validade de 30 s) · C3: editar invalida o cache · C4: títulos e listas preservados · C5: pasta mista resolve cada papel | C1 1,1–1,2 s; V1 472–608 ms e V2 294–383 ms → validade de 30 s (54–77 ms); C3, C4 e C5 ✅ ([ADR-012](docs/adr/012-agentes-em-docs-e-sheets.md)) |
 | P7: token do CI | F0 | ⏸️ | ⏸️ Adiado | deploy verde 8+ dias depois do login | — |
 | **P10: editor do Apps Script** | F1 | ✅ | ✅ Sim | C1 nomes `.md.html` preservados · C3 leitura fiel byte a byte, listagem sem hardcode, < 3 s, precedência editor → Doc → `.md` · C4 edição chega sem `up` · C5 `up` preserva o editor · C6 motor em 1 arquivo | ver a linha da P10 na Esteira e o [ADR-013](docs/adr/013-autoria-editor-e-drive.md) |
 | P15: painel de limites | F1 | ⏳ | ❌ Não | C1 11 fontes ok/pendente · C2 cache < 1 s · C3 selos · C4 linha diária · C5 `./gasclaw limits` · C6 de quem é a cota | código pronto; medição aguarda gcloud e reautorização ([ADR-016](docs/adr/016-painel-de-limites.md)) |
 | P16: modelos e custo | F1 | ⏳ | ❌ Não | C1 ±2% do `usage_daily` · C2 < 1 s · C3 dia = soma das horas · C4 troca ≤ 30 s · C5 recusa sem tools · C6 `prune` · C7 ≤ 3 `/key` em 30 min | código pronto; medição aguarda gcloud ([ADR-018](docs/adr/018-modelos-e-custo.md)) |
+| **P11: rodízio de modelos gratuitos** | F1 | ✅ | ✅ Sim | C1–C5 na Esteira | 5 de 5 na v39: C1 20/20 turnos · C2 p95 10.924 ms (mediana 4.051 ms) · C3 troca em 1.146 ms · C4 nenhum candidato sem ferramentas · C5 automática. Expôs dois defeitos: o 403 "only available on agentic harnesses" travava o rodízio (0 de 20 na v37) e o `step()` aceitava `{"ok":false}` com HTTP 200 ([ADR-025](docs/adr/025-rodizio-de-modelos-gratuitos.md)) |
 | **P14: trace do agente** | F1 | 🟡 | 🟡 Parcial | C1–C10 na Esteira | 2 execuções automáticas: C2–C5 e C7–C10 ✅; C1 ❌ p95 3.893 ms; C6 tela 2,5 s ✅ e planilha 5,2 s ([ADR-014](docs/adr/014-trace-do-agente.md)) |
 | P8: Excel → Sheets | F3 | ⏳ | ❌ Não | xlsx de 5 MB lido em < 60 s | — |
 | P9: papéis responder/validar/redigir | F2 | ⏳ | ❌ Não | a definir: tempo da cadeia com modelos gratuitos e ganho de qualidade medido | — |
