@@ -10,6 +10,7 @@ import {
   interrupted,
   isOpen,
   LEASE_MS,
+  markInflight,
   MAX_ATTEMPTS,
   newRun,
   nextClaimable,
@@ -188,6 +189,10 @@ describe('efeito em voo: não repetir o que pode ter acontecido', () => {
     expect(hasEffect('gmail.send')).toBe(true);
     expect(hasEffect('tasks.create')).toBe(true);
     expect(hasEffect('calendar.list')).toBe(false);
+  });
+
+  it('marca o efeito no run antes do checkpoint final', () => {
+    expect(markInflight(run(), 'gmail.send', NOW).inflight).toEqual({ name: 'gmail.send', at: NOW });
   });
 
   it('execução morta com efeito em voo não repete: conta o que houve e devolve a decisão', () => {

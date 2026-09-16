@@ -14,9 +14,9 @@ type Prop = { type: 'string' | 'integer' | 'number' | 'boolean'; description?: s
 export type Schema = { type: 'object'; properties: Record<string, Prop>; required?: string[]; additionalProperties?: false };
 /** google/timeZone/offset: ferramentas do Workspace (E6); ausentes onde o canal não as liga. offset = "-03:00" do fuso. */
 /** memory: MEMORY.md (read/write) + notas do dia (day/saveDay/today) + recall pronto; day/saveDay/today/recall são opcionais para contextos simples. */
-export type MemoryCtx = { read: () => string; write: (text: string) => void; day?: (date: string) => string; saveDay?: (date: string, text: string) => void; today?: () => string; recall?: () => string };
+export type MemoryCtx = { read: () => string; write: (text: string) => void; assertWritable?: () => void; day?: (date: string) => string; saveDay?: (date: string, text: string) => void; today?: () => string; recall?: () => string };
 /** skill: corpo de uma skill sob demanda (skills/<nome>/SKILL.md); é texto, nunca executa (ADR-002). */
-export type ToolCtx = { now: () => string; ownerDm: boolean; memory: MemoryCtx; google?: Google; timeZone?: string; offset?: string; isOwner?: boolean; skill?: (name: string) => string | null };
+export type ToolCtx = { now: () => string; ownerDm: boolean; memory: MemoryCtx; google?: Google; timeZone?: string; offset?: string; isOwner?: boolean; skill?: (name: string) => string | null; beforeEffect?: () => void };
 /** ownerOnly: só o dono usa (e aprova); o motor recusa antes de qualquer card. */
 export type Tool = { name: string; description: string; parameters: Schema; approval: Approval; run: (args: Record<string, unknown>, ctx: ToolCtx) => string; ownerOnly?: boolean };
 
@@ -41,9 +41,12 @@ export const TOOLS: Tool[] = [
       const r = addEntry(before, String(a.text));
       if (!r.ok) throw new Error(r.error);
       if (day && ctx.memory.saveDay) {
+        ctx.beforeEffect?.();
         ctx.memory.saveDay(day, r.text);
         return `fato anotado na memória de ${day}`;
       }
+      ctx.memory.assertWritable?.();
+      ctx.beforeEffect?.();
       ctx.memory.write(r.text); // contexto sem notas do dia: cai na memória curada
       return 'fato salvo na memória';
     },
@@ -57,12 +60,14 @@ export const TOOLS: Tool[] = [
       ownerOnly(ctx);
       if (String(a.text).trim().length < 3) throw new Error('trecho curto demais (mínimo 3 caracteres)');
       const curated = removeEntry(ctx.memory.read(), String(a.text));
-      if (curated.removed) ctx.memory.write(curated.text);
       const day = ctx.memory.today?.();
       let removed = curated.removed;
+      let marked = false;
+      const mark = () => { if (!marked) { ctx.beforeEffect?.(); marked = true; } };
+      if (curated.removed) { ctx.memory.assertWritable?.(); mark(); ctx.memory.write(curated.text); }
       if (day && ctx.memory.day && ctx.memory.saveDay) {
         const note = removeEntry(ctx.memory.day(day), String(a.text));
-        if (note.removed) ctx.memory.saveDay(day, note.text);
+        if (note.removed) { mark(); ctx.memory.saveDay(day, note.text); }
         removed += note.removed;
       }
       return `${removed} fato(s) removido(s)`;

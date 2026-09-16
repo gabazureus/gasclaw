@@ -49,6 +49,7 @@
 | Ticket de aprovação | Estado do turno pausado, com token de uso único | `Ticket`, `issue`/`redeem`, `cacheTickets` | 10 min; `take` sob trava; vinculado a usuário e sessão |
 | Kill switch | Property que pausa todos os agentes | `RUNTIME_ENABLED`, `setEnabled` | `./gasclaw down` |
 | Chave de idempotência | `runId:step:callId` de cada tool já executada no turno | `TurnResult.done`, `DurableRun.done` | Persiste no checkpoint do run; P4 provou uma execução de efeito em três execuções GAS |
+| Efeito em voo | Ação externa iniciada cujo resultado ficou incerto porque a execução morreu antes do checkpoint final | `DurableRun.inflight`, `beforeEffect`, `markInflight` | Persiste antes de `tool.run`; a retomada não repete e avisa o usuário (P19) |
 
 ## Trace e observabilidade
 
@@ -63,7 +64,7 @@
 | Painel de limites | Cotas do Google, do OpenRouter e medidas do gasclaw com nível verde/amarelo/vermelho | `buildLimits`, `limitsNow` | ADR-016 |
 | Cenário de eval | Markdown com turnos, roteiro opcional e verificações | `parseScenario`, `runEval` | Só dado, nunca código (ADR-017) |
 | Run durável | Tarefa do agente com checkpoint e retomada entre execuções | `DurableRun`, `runAsk`, `runState`, `runDecide` | Estados queued/running/waiting/paused/done/failed (ADR-026) |
-| Checkpoint, Lease, Pump | Estado salvo por passo, reserva de execução e worker do gatilho | `runStore`, `pumpOnce`, `pump`, `drainRuns` | P3 e P4 medidas; ADR-026/027 |
+| Checkpoint, Lease, Pump | Estado salvo por passo, reserva de execução e worker do gatilho | `runStore`, `pumpOnce`, `pump`, `drainRuns` | P3, P4 e P19 medidas; ADR-026/027 |
 
 ## Module map
 

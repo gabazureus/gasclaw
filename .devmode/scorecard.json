@@ -319,5 +319,38 @@
       "correctness": "medir P4 no dev antes de elevar F2",
       "testing": "criar POC P4 test-first e provar >=3 execu\u00e7\u00f5es, resposta final e efeito \u00fanico"
     }
+  },
+  {
+    "phase": "Review \u2014 P19 + link Apps Script",
+    "summary": "P19 3/3 no dev v72 pelo motor/fila reais; fronteira exata de efeito e bug p\u00f3s-efeito corrigidos; link Apps Script validado em navegador; 725 testes verdes",
+    "scores": {
+      "correctness": {
+        "score": 10,
+        "note": "P19 3/3 real: 1 efeito, inflight persistido, 0 done, 0 passos na retomada; dev v72 id\u00eantico ao build"
+      },
+      "design": {
+        "score": 9,
+        "note": "hook na fronteira exata ap\u00f3s valida\u00e7\u00e3o e recarga dur\u00e1vel no catch; classificador EFFECT consolidado"
+      },
+      "testing": {
+        "score": 9,
+        "note": "725/725, regress\u00f5es red\u2192green e POC GAS; UI conferida desktop/mobile em navegador real, ainda sem su\u00edte browser automatizada"
+      },
+      "safety": {
+        "score": 10,
+        "note": "efeito irrevers\u00edvel n\u00e3o repete; falha de persist\u00eancia impede a tool; revis\u00e3o cr\u00edtica completa e sem push"
+      },
+      "clarity": {
+        "score": 9,
+        "note": "ADR-026, POC, progresso, changelog, linguagem, Conductor e Beads reconciliados"
+      }
+    },
+    "recommendations": {
+      "correctness": "Executar P20 para aprova\u00e7\u00e3o dur\u00e1vel e manter a mesma prova em dev antes de elevar F2.",
+      "design": "Na P20, preservar a separa\u00e7\u00e3o entre decis\u00e3o pura do run e I/O do Apps Script.",
+      "testing": "Quando o projeto adotar um runner de navegador, transformar o ensaio manual do painel em regress\u00e3o E2E por papel e nome acess\u00edvel.",
+      "safety": "Tratar qualquer nova tool mut\u00e1vel como efeito em voo e revisar a classifica\u00e7\u00e3o EFFECT no mesmo change set.",
+      "clarity": "Manter PROGRESS/ADR/Beads sincronizados a cada POC medida."
+    }
   }
 ]

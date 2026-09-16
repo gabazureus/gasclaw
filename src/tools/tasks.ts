@@ -36,7 +36,9 @@ export const TASKS_TOOLS: Tool[] = [
       const title = String(a.title).trim();
       if (!title) throw new Error('"title" vazio');
       const body = { title, ...(a.notes ? { notes: String(a.notes) } : {}), ...(a.due ? { due: dueDate(a.due) } : {}) };
-      const t = gcall(api(ctx), { method: 'post', url: TASKS_URL, body }, 'criar a tarefa');
+      const google = api(ctx);
+      ctx.beforeEffect?.();
+      const t = gcall(google, { method: 'post', url: TASKS_URL, body }, 'criar a tarefa');
       return JSON.stringify({ id: t.id, title: t.title });
     },
   },
@@ -48,7 +50,9 @@ export const TASKS_TOOLS: Tool[] = [
     run: (a, ctx) => {
       const id = String(a.id);
       if (!TASK_ID.test(id)) throw new Error('"id" de tarefa inválido');
-      const t = gcall(api(ctx), { method: 'patch', url: `${TASKS_URL}/${enc(id)}`, body: { status: 'completed' } }, 'concluir a tarefa');
+      const google = api(ctx);
+      ctx.beforeEffect?.();
+      const t = gcall(google, { method: 'patch', url: `${TASKS_URL}/${enc(id)}`, body: { status: 'completed' } }, 'concluir a tarefa');
       return JSON.stringify({ id: t.id, status: t.status });
     },
   },

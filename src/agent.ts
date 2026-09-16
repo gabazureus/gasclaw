@@ -1,4 +1,5 @@
 import type { Completion, Message, ToolCall, ToolDef } from './llm';
+import { EFFECT } from './run';
 import { memoryMessage } from './tools/memory';
 import { findTool, toDefs, validateArgs, type Tool, type ToolCtx } from './tools/registry';
 import type { AgentSpec } from './workspace';
@@ -44,6 +45,8 @@ export type TurnInput = {
   clock: () => number;
   done?: Record<string, string>; // runId:step:callId → resultado já executado
   granted?: string[]; // tools `once` já aprovadas nesta sessão
+  /** Shell durável: persiste a marca antes de uma tool com efeito tocar o mundo. */
+  beforeEffect?: (name: string) => void;
   /**
    * Continua um turno interrompido. `decision` só existe quando o usuário respondeu um card (aprovar/negar/ask);
    * um run que parou por tempo ou por limite volta SEM decisão, e aí a aprovação é exigida de novo (nada é auto-aprovado).
@@ -70,7 +73,6 @@ export const ENGINE_RULES = `
 - Nunca invente dados (agenda livre, e-mails, contatos, arquivos) quando a leitura falhar.`;
 export const withEngineRules = (system: string, hasTools: boolean): string => (hasTools ? `${system}${ENGINE_RULES}` : system);
 
-const EFFECT = /\.(create|update|draft|send|append|complete|save|remove)$/;
 const errorOf = (result: string): string => {
   try {
     return String((JSON.parse(result) as { error?: unknown }).error ?? result);
@@ -173,10 +175,16 @@ export function runTurn(i: TurnInput): TurnResult {
       }
       const stop = late(step, calls.slice(k));
       if (stop) return stop;
+      const effect = EFFECT.test(tool.name);
+      let crossedEffectBoundary = false;
+      const ctx = effect && i.beforeEffect ? { ...i.ctx, beforeEffect: () => { crossedEffectBoundary = true; i.beforeEffect!(tool.name); } } : i.ctx;
       try {
-        done[key] = tool.run(v.args, i.ctx);
+        done[key] = tool.run(v.args, ctx);
         ev(status, done[key]);
       } catch (err) {
+        // Na casca durável, a marca já foi gravada e uma falha da API pode ter ocorrido depois do efeito remoto.
+        // O pump relê o run e fecha com incerteza, sem repetir. Canais sem essa casca mantêm o tratamento local.
+        if (crossedEffectBoundary) throw err;
         ev('error', JSON.stringify({ ok: false, error: (err as Error).message, did_nothing: true })); // inequívoco para o modelo
       }
     }

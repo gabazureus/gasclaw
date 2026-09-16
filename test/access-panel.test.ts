@@ -19,7 +19,7 @@ function stubGas() {
   vi.stubGlobal('LockService', { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => undefined }) });
   vi.stubGlobal('Utilities', { formatDate: () => '20260915-120000', getUuid: () => 'abcd-efgh' });
   vi.stubGlobal('Session', { getActiveUser: () => ({ getEmail: () => me }), getEffectiveUser: () => ({ getEmail: () => 'dono@x.com' }) });
-  vi.stubGlobal('ScriptApp', { getService: () => ({ getUrl: () => 'https://script.google.com/a/x.com/macros/s/AKfy/exec' }), getProjectTriggers: () => [] });
+  vi.stubGlobal('ScriptApp', { getService: () => ({ getUrl: () => 'https://script.google.com/a/x.com/macros/s/AKfy/exec' }), getScriptId: () => 'script-teste', getProjectTriggers: () => [] });
 }
 
 const main = () => import('../src/main');

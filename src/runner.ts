@@ -49,8 +49,12 @@ export function pumpOnce(d: StepDeps): DurableRun | null {
     const o = d.step(c.run);
     return settle(d, afterStep(charge(c.run, o.usd ?? 0), o.turn, d.clock()), true);
   } catch (err) {
+    // O passo pode ter persistido `inflight` e só então falhado (por exemplo, o LLM caiu depois do envio).
+    // Recarregar evita que a cópia reivindicada antes do efeito apague essa marca e permita uma repetição.
+    const latest = d.io.load(c.run.folderId, c.run.runId) ?? c.run;
+    if (latest.inflight) return settle(d, interrupted(latest), false);
     // Falha do passo: volta para a fila enquanto restar tentativa; o `attempts` do ponteiro é quem conta.
-    return settle(d, afterFailure(c.run, (err as Error).message, c.pointer.attempts, d.clock()), false);
+    return settle(d, afterFailure(latest, (err as Error).message, c.pointer.attempts, d.clock()), false);
   }
 }
 

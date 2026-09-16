@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TurnResult } from '../src/agent';
-import { MAX_ATTEMPTS, newRun, queueKey, RUN_BUDGET_USD, type DurableRun } from '../src/run';
+import { markInflight, MAX_ATTEMPTS, newRun, queueKey, RUN_BUDGET_USD, type DurableRun } from '../src/run';
 import { runIO, type RunFiles } from '../src/runStore';
 import { pump, pumpOnce, type StepDeps, type StepOutcome } from '../src/runner';
 
@@ -105,6 +105,21 @@ describe('falha: tenta de novo, depois desiste com honestidade', () => {
     expect(h.spy).not.toHaveBeenCalled(); // o ponto todo: não roda de novo
     expect(r.status).toBe('failed');
     expect(r.answer).toContain('gmail.send');
+    expect(h.queued()).toBe(false);
+  });
+
+  it('falha depois do efeito preserva o inflight durável em vez de salvar a cópia antiga', () => {
+    const h = harness((r) => {
+      h.io.save(markInflight(r, 'gmail.send', NOW + 1));
+      throw new Error('LLM caiu depois do envio');
+    });
+    h.io.enqueue(mk(), NOW);
+
+    const r = pumpOnce(h.d)!;
+
+    expect(r.status).toBe('failed');
+    expect(r.answer).toContain('Não vou repetir');
+    expect(h.io.load('f1', 'r1')?.inflight?.name).toBe('gmail.send');
     expect(h.queued()).toBe(false);
   });
 

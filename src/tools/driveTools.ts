@@ -67,7 +67,9 @@ export const DRIVE_TOOLS: Tool[] = [
       const meta = JSON.stringify({ name: title, mimeType: 'application/vnd.google-apps.document' });
       const raw = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${content}\r\n--${boundary}--`;
       const url = `https://www.googleapis.com/upload/drive/v3/files?${qs({ uploadType: 'multipart', fields: 'id,name,webViewLink' })}`;
-      const f = gcall(api(ctx), { method: 'post', url, raw, contentType: `multipart/related; boundary=${boundary}` }, 'criar o documento');
+      const google = api(ctx);
+      ctx.beforeEffect?.();
+      const f = gcall(google, { method: 'post', url, raw, contentType: `multipart/related; boundary=${boundary}` }, 'criar o documento');
       return JSON.stringify({ id: f.id, link: f.webViewLink ?? null });
     },
   },
@@ -93,7 +95,9 @@ export const DRIVE_TOOLS: Tool[] = [
       if (values.length > MAX_ROWS) throw new Error(`no máximo ${MAX_ROWS} linhas`);
       // RAW: texto que parece fórmula (=IMPORTXML...) fica como texto, não executa.
       const url = `${SHEETS}/${enc(fileId(a.id))}/values/${enc(a1(a.range)).replace(/%21/g, '!')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
-      const r = gcall(api(ctx), { method: 'post', url, body: { values } }, 'escrever na planilha');
+      const google = api(ctx);
+      ctx.beforeEffect?.();
+      const r = gcall(google, { method: 'post', url, body: { values } }, 'escrever na planilha');
       return JSON.stringify({ updatedRange: r.updates?.updatedRange ?? null });
     },
   },

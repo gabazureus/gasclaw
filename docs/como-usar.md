@@ -82,6 +82,7 @@ Abra com `./gasclaw open`. Só o dono (quem publicou) consegue entrar. No topo a
 1. **Status:** mostra 🟢 Ativo ou ⏸ Pausado, se a chave está salva e quantos agentes existem. **Pausar/Ativar** liga e desliga todos os agentes.
 2. **Chave OpenRouter:** cole a chave (começa com `sk-or-`) e clique em **Salvar chave**. O campo se limpa e o status mostra "chave salva".
 3. **Agentes:** escreva um nome (letras minúsculas, números e hífen) e clique em **Novo agente**, que cria `Meu Drive/gasclaw/agentes/<nome>/`; ou cole a URL de uma pasta (`https://drive.google.com/drive/folders/...`) e clique em **Usar pasta existente**. A mensagem diz quais arquivos foram criados.
+   - O nome abre a pasta no Drive; **Apps Script**, ao lado, abre o projeto onde ficam os papéis `agentes/<nome>/<PAPEL>.md.html`.
    - ⭐ marca o agente que responde no Chat, que é o primeiro da lista. **Tornar padrão** passa a ⭐ para outro agente.
    - **Remover** tira o agente da lista, mas a pasta continua no Drive.
 4. **Testar:** escreva uma pergunta e clique em **Enviar ao agente ⭐**. A resposta vem com o modelo usado e o tempo em ms. O teste não usa histórico.

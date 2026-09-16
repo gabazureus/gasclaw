@@ -179,6 +179,14 @@
       const link = document.createElement('a');
       link.href = 'https://drive.google.com/drive/folders/' + a.folderId;
       link.textContent = (i === 0 ? '⭐ ' : '') + a.name;
+      const folder = document.createElement('span');
+      const script = document.createElement('a');
+      script.href = s.scriptUrl;
+      script.textContent = 'Apps Script';
+      script.target = '_blank';
+      script.rel = 'noopener';
+      script.setAttribute('aria-label', 'Abrir Apps Script de ' + a.name);
+      folder.append(link, ' · ', script);
       const actions = document.createElement('span');
       const holder = document.createElement('div');
       holder.className = 'muted';
@@ -195,7 +203,7 @@
       actions.append(accessBtn, ' ');
       if (i > 0) actions.append(button('Tornar padrão', () => call('makeDefault', a.folderId).then(render)), ' ');
       actions.append(button('Remover', () => call('removeAgent', a.folderId).then(render)));
-      row.append(link, actions);
+      row.append(folder, actions);
       box.append(row, holder);
       return box;
     }));

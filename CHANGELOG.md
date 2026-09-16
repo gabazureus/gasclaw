@@ -33,14 +33,13 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
   aprovações de até 24 horas na tela. Os cards atuais do Google Chat continuam valendo 10 minutos; ampliar esse prazo
   ainda depende da P20.
 - 🔄 **Teto de gasto por tarefa:** cada tarefa tem um limite de **US$ 0,10**. Ao chegar nele, o agente **para, guarda onde estava** e pergunta se você quer continuar — em vez de gastar sem avisar ou perder o trabalho.
-- 🔄 **Nunca fazer duas vezes:** se a execução morrer bem no meio de uma ação com efeito (enviar e-mail, criar evento, escrever num arquivo), o gasclaw **não repete**. Ele conta que começou, que não sabe se terminou, e devolve a decisão a você.
+- ✅ **Nunca fazer duas vezes (P19):** se a execução morrer bem no meio de uma ação com efeito (enviar e-mail, criar evento, escrever num arquivo), o gasclaw **não repete**. No dev v72, a morte forçada pelo motor real de turno deixou `inflight` no Drive; a retomada executou zero passos, manteve um único efeito e mostrou o aviso de incerteza.
 - ✅ **Gatilho-worker medido ([ADR-027](docs/adr/027-gatilho-worker.md)):** no dev, o gatilho de 1 min avança a fila
   durável diretamente. A P3 passou 4/4 novamente na v60: worker sintético em 3,992 s, ciclo ocioso completo em 0,716 s e
   custo fixo projetado em 8,47% das 6 h diárias do Workspace.
 - ✅ **Run em várias execuções (P4):** no dev v66, o mesmo `runId` retomou do Drive em três execuções GAS distintas,
   avançou pelos checkpoints 1 e 2, terminou com a resposta esperada e registrou o efeito sintético uma única vez.
-- ⏳ **Ainda em construção:** a P19 precisa matar uma execução exatamente entre o efeito e o checkpoint e comprovar
-  o recado de incerteza sem repetição. F2 não está concluída.
+- ⏳ **Ainda em construção:** a F2 não está concluída; faltam aprovação durável (P20), custo real por passo, Chat assíncrono, planner e retry.
 
 ### F0 — Primeira conversa com um agente do Drive ✅
 
@@ -55,7 +54,7 @@ Detalhes técnicos: [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementa
 
 - ✅ **Um comando para publicar e operar:** `./gasclaw up` instala o que falta, cria o projeto e publica. Nos passos que só dão para fazer clicando, ele pausa e abre a página certa. Depois disso, `down`, `status`, `logs`, `doctor`, `rollback`, `open` e `ship` cuidam do dia a dia.
 - ✅ **Agente = pasta do Google Drive:** você cola a URL da pasta, e o gasclaw cria `AGENTS.md`, `SOUL.md`, `IDENTITY.md` e `USER.md` a partir de modelos, sem sobrescrever o que já existe. Mudou um arquivo? A próxima mensagem já usa a versão nova, sem publicar de novo.
-- ✅ **Tela gasclaw** (só o dono acessa): salvar a chave do OpenRouter, adicionar e remover agentes, escolher o agente ⭐, testar uma pergunta e pausar ou reativar tudo.
+- ✅ **Tela gasclaw** (só o dono acessa): salvar a chave do OpenRouter, adicionar e remover agentes, abrir a pasta do Drive ou o projeto no Apps Script, escolher o agente ⭐, testar uma pergunta e pausar ou reativar tudo.
 - ✅ **Conversa no Google Chat:** o agente ⭐ responde no Google Chat usando os markdown da pasta do Drive, em DM ou num espaço, e lembra das mensagens recentes.
 - ✅ **Controle de acesso por agente:** só falam com o agente o dono e os e-mails listados em `users` no `AGENTS.md`.
 - ✅ **Botão de pânico:** `./gasclaw down` ou "Pausar" na tela; o Chat passa a responder que o gasclaw está pausado.

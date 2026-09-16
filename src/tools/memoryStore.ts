@@ -22,6 +22,7 @@ export function days(tz: string, now = new Date()): { today: string; yesterday: 
 
 export type MemoryIO = {
   read: () => string; // MEMORY.md (curada)
+  assertWritable: () => void;
   write: (text: string) => void;
   day: (date: string) => string; // nota de um dia
   saveDay: (date: string, text: string) => void;
@@ -53,9 +54,14 @@ export function memoryIO(folderId: string, tz = Session.getScriptTimeZone()): Me
     const s = source();
     return s ? (fetchTexts({ m: s }).m ?? '') : '';
   };
+  const assertWritable = () => {
+    if (source()?.kind === 'doc') throw new Error('MEMORY é um Google Doc: a escrita pelo agente ainda não é suportada (use MEMORY.md)');
+  };
   return {
     read,
+    assertWritable,
     write: (text) => {
+      assertWritable();
       const s = source();
       if (!s) {
         src = { entry: { id: DriveApp.getFolderById(folderId).createFile('MEMORY.md', text, 'text/markdown').getId(), name: 'MEMORY.md', mime: 'text/markdown', modified: Date.now() }, kind: 'md' };
@@ -65,8 +71,8 @@ export function memoryIO(folderId: string, tz = Session.getScriptTimeZone()): Me
         DriveApp.getFileById(s.entry.id).setContent(text);
         return;
       }
-      // minimal: escrever num Google Doc precisa de POC (upload com conversão não medido); até lá, recusa com motivo claro.
-      throw new Error('MEMORY é um Google Doc: a escrita pelo agente ainda não é suportada (use MEMORY.md)');
+      // `assertWritable` acima mantém esta variante fora da fronteira de efeito.
+      throw new Error('MEMORY não gravável');
     },
     day: dayIO.read,
     saveDay: dayIO.write,

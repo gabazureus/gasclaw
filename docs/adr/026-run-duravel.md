@@ -1,6 +1,6 @@
 # ADR-026 — Run durável: o passo é a unidade e o estado mora no Drive
 
-Status: **Aceito e medido no dev v66** (mecanismo de despertar substituído pela [ADR-027](027-gatilho-worker.md); P19 pendente)
+Status: **Aceito e medido no dev v72** (mecanismo de despertar substituído pela [ADR-027](027-gatilho-worker.md))
 Data: 2026-09-15
 Substitui em parte: [ADR-005](005-execucao-duravel.md) (que propunha pump + doPost + checkpoint, sem dizer como)
 
@@ -62,7 +62,7 @@ nunca roda de novo.
 Subagentes, MCP, sandbox, replay determinístico, streaming e fila FIFO durável. Nenhum deles é necessário para um
 turno sobreviver a uma execução, e cada um custaria mais do que entrega dentro dos limites do Apps Script.
 
-## Como saberemos que está certo (medições pendentes)
+## Como sabemos que está certo
 
 | POC | Pergunta | Critério |
 |---|---|---|
@@ -110,5 +110,17 @@ Resultado: **aprovada 3/3** no dev v66 por `./gasclaw poc p4`.
   `runId:0:p4-effect`; as duas retomadas não repetiram o efeito.
 
 A P4 remove o cache do run antes de cada avanço, portanto cada retomada lê o arquivo no Drive. Ela prova a travessia
-normal entre checkpoints, não substitui a P19: ainda falta encerrar uma execução à força
-depois do efeito e antes da gravação para comprovar o desfecho honesto de `inflight` no runtime real.
+normal entre checkpoints; a P19 abaixo cobre a janela entre o efeito e o checkpoint final.
+
+## Medição P19 — 2026-09-16
+
+Resultado: **aprovada 3/3** no dev v72 por `./gasclaw poc p19` ([evidência](../../poc/p19-inflight/README.md)).
+
+- C1: a primeira execução gravou `inflight: gmail.send` no Drive, executou um efeito sintético e morreu antes de
+  criar qualquer `done key`.
+- C2: outra execução removeu o cache, releu o Drive e passou o run pelo pump real; o passo foi chamado **0 vezes**,
+  o efeito continuou em **1** e o run fechou como `failed`.
+- C3: a resposta informou que `gmail.send` começou, que o resultado era incerto e que o gasclaw não repetiria a ação.
+
+A marca estreita é persistida imediatamente antes de `tool.run`; o checkpoint normal limpa `inflight` depois de um
+passo concluído. Assim, a janela ambígua prefere uma falha honesta a duplicar um efeito irreversível.

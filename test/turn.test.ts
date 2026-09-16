@@ -111,6 +111,55 @@ describe('runTurn', () => {
     expect(r.done['r1:0:c1']).toBe('antigo');
   });
 
+  test('efeito é anunciado antes de executar; leitura não é anunciada', () => {
+    const order: string[] = [];
+    const read: Tool = { ...TOOLS[0], name: 'calendar.list', run: () => (order.push('read'), 'livre') };
+    const effect: Tool = { ...TOOLS[0], name: 'gmail.send', run: (_a, ctx) => (ctx.beforeEffect?.(), order.push('effect'), 'enviado') };
+    const { i } = input([ask(call('c1', 'calendar_list'), call('c2', 'gmail_send')), say('ok')], {
+      tools: [read, effect],
+      beforeEffect: (name) => order.push(`persist:${name}`),
+    });
+
+    runTurn(i);
+
+    expect(order).toEqual(['read', 'persist:gmail.send', 'effect']);
+  });
+
+  test('falha ao persistir inflight impede que o efeito comece', () => {
+    let runs = 0;
+    const effect: Tool = { ...TOOLS[0], name: 'gmail.send', run: (_a, ctx) => (ctx.beforeEffect?.(), runs++, 'enviado') };
+    const { i } = input([ask(call('c1', 'gmail_send')), say('não enviado')], {
+      tools: [effect],
+      beforeEffect: () => { throw new Error('Drive indisponível'); },
+    });
+
+    expect(() => runTurn(i)).toThrow('Drive indisponível');
+    expect(runs).toBe(0);
+  });
+
+  test('erro da tool de efeito sobe para a casca durável preservar a incerteza', () => {
+    const effect: Tool = { ...TOOLS[0], name: 'gmail.send', run: (_a, ctx) => { ctx.beforeEffect?.(); throw new Error('resposta perdida'); } };
+    const { i } = input([ask(call('c1', 'gmail_send'))], {
+      tools: [effect],
+      beforeEffect: () => undefined,
+    });
+
+    expect(() => runTurn(i)).toThrow('resposta perdida');
+  });
+
+  test('validação local da tool acontece antes da fronteira e não vira incerteza', () => {
+    const effect: Tool = { ...TOOLS[0], name: 'gmail.send', run: () => { throw new Error('destinatário inválido'); } };
+    const { i } = input([ask(call('c1', 'gmail_send')), say('corrija o destinatário')], {
+      tools: [effect],
+      beforeEffect: () => { throw new Error('não deveria marcar'); },
+    });
+
+    const r = runTurn(i);
+
+    expect(r.events[0]).toMatchObject({ name: 'gmail.send', status: 'error' });
+    expect(r.text).toContain('destinatário inválido');
+  });
+
   test('tool com approval ≠ never: devolve pendência sem executar', () => {
     let runs = 0;
     const risky: Tool = { ...TOOLS[0], name: 'gmail.send', approval: 'always', run: () => (runs++, 'enviado') };

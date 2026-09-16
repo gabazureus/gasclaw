@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const EXEC = 'https://script.google.com/a/macros/x.com/s/AKfyTESTE/exec';
+const SCRIPT_ID = '1AbCdEfTeste';
 
 function stubGas(url: string | null) {
   const props: Record<string, string> = { OWNER: 'dono@x.com', AGENTS: '[{"folderId":"f1","name":"a"}]', OPENROUTER_API_KEY: 'sk-or-teste' };
@@ -10,7 +11,7 @@ function stubGas(url: string | null) {
   vi.stubGlobal('PropertiesService', { getScriptProperties: () => store });
   vi.stubGlobal('CacheService', { getScriptCache: () => cache });
   vi.stubGlobal('Session', { getActiveUser: () => ({ getEmail: () => 'dono@x.com' }), getEffectiveUser: () => ({ getEmail: () => 'dono@x.com' }) });
-  vi.stubGlobal('ScriptApp', { getService: () => ({ getUrl: () => url }), getProjectTriggers: () => { throw new Error('sem autorização'); } });
+  vi.stubGlobal('ScriptApp', { getService: () => ({ getUrl: () => url }), getScriptId: () => SCRIPT_ID, getProjectTriggers: () => { throw new Error('sem autorização'); } });
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -33,5 +34,20 @@ describe('link "Conversar com o agente" (bug: href relativo dentro do iframe do 
       expect(html).not.toMatch(/href\s*=\s*'\?(page|action)=/);
     }
     expect(readFileSync('src/settings.html', 'utf8')).toContain("$('chatLink').href = s.appUrl + '?page=chat'");
+  });
+});
+
+describe('link do projeto Apps Script do agente', () => {
+  test('settingsState usa o scriptId do projeto em execução', async () => {
+    stubGas(EXEC);
+    const { settingsState } = await import('../src/main');
+    expect(settingsState().scriptUrl).toBe(`https://script.google.com/home/projects/${SCRIPT_ID}/edit`);
+  });
+
+  test('a linha do agente renderiza um link acessível ao lado da pasta do Drive', () => {
+    const html = readFileSync('src/settings.html', 'utf8');
+    expect(html).toContain("script.href = s.scriptUrl");
+    expect(html).toContain("script.setAttribute('aria-label', 'Abrir Apps Script de ' + a.name)");
+    expect(html).toContain("folder.append(link, ' · ', script)");
   });
 });

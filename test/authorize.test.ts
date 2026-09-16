@@ -23,6 +23,7 @@ function stubGas() {
     AuthMode: { FULL: 'FULL' },
     AuthorizationStatus: { REQUIRED: 'REQUIRED', NOT_REQUIRED: 'NOT_REQUIRED' },
     getService: () => ({ getUrl: () => 'https://script.google.com/a/x.com/macros/s/AKfy/exec' }),
+    getScriptId: () => 'script-teste',
     getAuthorizationInfo: () => ({ getAuthorizationStatus: () => status, getAuthorizationUrl: () => (status === 'REQUIRED' ? 'https://accounts.google.com/o/oauth2/auth?x=1' : null) }),
     requireAllScopes: (mode: string) => void calls.push(`requireAllScopes:${mode}`),
     getProjectTriggers: () => [],

@@ -84,7 +84,9 @@ export const CALENDAR_TOOLS: Tool[] = [
         ...(guests.length ? { attendees: guests.map((email) => ({ email })) } : {}),
         ...(a.meet === false ? {} : { conferenceData: meetRequest() }),
       };
-      return created(gcall(api(ctx), { method: 'post', url: `${WRITE}?${WRITE_QS}`, body }, 'criar o evento'));
+      const google = api(ctx);
+      ctx.beforeEffect?.();
+      return created(gcall(google, { method: 'post', url: `${WRITE}?${WRITE_QS}`, body }, 'criar o evento'));
     },
   },
   {
@@ -104,7 +106,9 @@ export const CALENDAR_TOOLS: Tool[] = [
       };
       if (!Object.keys(body).length) throw new Error('nada para alterar');
       if (body.start && body.end) checkOrder(body.start, body.end, ctx);
-      return created(gcall(api(ctx), { method: 'patch', url: `${WRITE}/${enc(id)}?${WRITE_QS}`, body }, 'alterar o evento'));
+      const google = api(ctx);
+      ctx.beforeEffect?.();
+      return created(gcall(google, { method: 'patch', url: `${WRITE}/${enc(id)}?${WRITE_QS}`, body }, 'alterar o evento'));
     },
   },
   {

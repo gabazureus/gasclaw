@@ -29,5 +29,5 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [023](023-ferramentas-do-workspace.md) | Ferramentas do Workspace por REST (E6) | Aceito; 7 de 7 evals `e6-*` verdes no dev (v35) |
 | [024](024-memoria-sessoes-skills-e-bootstrap.md) | Memória do dia, sessões no Drive, skills e ritual de estreia | Aceito no núcleo; medição no dev pendente |
 | [025](025-rodizio-de-modelos-gratuitos.md) | Rodízio de modelos gratuitos (`model: free`) | Proposto; medição pela POC P11 pendente |
-| [026](026-run-duravel.md) | Run durável: o passo é a unidade e o estado mora no Drive | Aceito; P4 medida no dev v66; P19 pendente |
+| [026](026-run-duravel.md) | Run durável: o passo é a unidade e o estado mora no Drive | Aceito; P4 no dev v66 e P19 no v72 |
 | [027](027-gatilho-worker.md) | O gatilho de 1 min é o worker do run durável | Aceito; P3 passou 4/4 no dev v60 |

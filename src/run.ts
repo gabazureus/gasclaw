@@ -157,6 +157,10 @@ export const extendBudget = (r: DurableRun, moreUsd = RUN_BUDGET_USD, now = r.up
 export const EFFECT = /\.(create|update|draft|send|append|complete|save|remove)$/;
 export const hasEffect = (name: string): boolean => EFFECT.test(name);
 
+/** Checkpoint estreito, gravado imediatamente antes da chamada com efeito. */
+export const markInflight = (r: DurableRun, name: string, now: number): DurableRun =>
+  ({ ...r, inflight: { name, at: now }, updatedAt: now });
+
 /**
  * A execução morreu com uma tool de efeito em voo. Não dá para saber se o e-mail saiu, então o run **não** repete:
  * conta o que houve e devolve a decisão ao usuário. Honestidade acima de conveniência (mesma regra do `failureNotice`).

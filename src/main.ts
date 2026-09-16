@@ -5,12 +5,13 @@ import { pocP16 } from '../poc/p16-custo/harness';
 import { pocP3 } from '../poc/p3-pump/harness';
 import { runP3SyntheticWorker, syntheticTurn } from '../poc/p3-pump/worker';
 import { pocP4 } from '../poc/p4-run/harness';
+import { pocP19 } from '../poc/p19-inflight/harness';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
 import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, reply } from './agent';
 import { decisionFrom } from './approval';
 import { cacheTickets, newToken } from './approvalStore';
 import { chatTurn, handleChat, type ChatDeps, type ChatEvent } from './chat';
-import { extendBudget, newRun, resumeOf, RUN_BUDGET_USD, view, withDecision, type DurableRun } from './run';
+import { extendBudget, markInflight, newRun, resumeOf, RUN_BUDGET_USD, view, withDecision, type DurableRun } from './run';
 import { pump, type StepDeps } from './runner';
 import { runIO } from './runStore';
 import { flushMemory } from './tools/memoryFlush';
@@ -306,8 +307,9 @@ const PUMP_MAX_STEPS = 20;
  * no histórico do usuário.
  */
 function stepDeps(budgetMs = STEP_BUDGET_MS): StepDeps {
+  const io = runIO();
   return {
-    io: runIO(),
+    io,
     clock: Date.now,
     step: (r: DurableRun) => {
       const me = ownerEmail();
@@ -334,6 +336,7 @@ function stepDeps(budgetMs = STEP_BUDGET_MS): StepDeps {
           resume: resumeOf(r),
           done: r.done,
           granted: r.granted,
+          beforeEffect: (name) => io.save(markInflight(r, name, Date.now())),
         });
         // Fim do run = não ficou pendência nem parada. Só aqui a conversa é gravada, compactada e o ritual consumido.
         if (!turn.pending && !turn.stopped) {
@@ -507,12 +510,14 @@ export function onRemoveFromSpace() {
 // ---------- Tela gasclaw (google.script.run) ----------
 /** URL absoluta do web app (/exec, ou /dev no modo de teste): a tela roda num iframe em googleusercontent.com e link relativo não funciona. */
 export const appUrl = (): string => ScriptApp.getService().getUrl() ?? '';
+/** O projeto em execução é onde os arquivos `.md.html` dos agentes aparecem no editor (ADR-013/P10). */
+export const scriptUrl = (): string => `https://script.google.com/home/projects/${ScriptApp.getScriptId()}/edit`;
 
 export function settingsState() {
   const me = assertOwner();
   observe.maybeDrain(); // fallback sem gatilho ao abrir a tela
   const cliSecretAt = PropertiesService.getScriptProperties().getProperty('CLI_SECRET_AT');
-  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents: store.listAgents(), appUrl: appUrl(), cliSecretAt, auth: authStatus() };
+  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents: store.listAgents(), appUrl: appUrl(), scriptUrl: scriptUrl(), cliSecretAt, auth: authStatus() };
 }
 
 /**
@@ -762,6 +767,7 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p1: () => pocUrlFetchTimeout(),
   p3: (step) => pocP3(step),
   p4: (step) => pocP4(step),
+  p19: (step) => pocP19(step),
   p6: (step) => pocP6(step, ownerEmail()),
   p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),

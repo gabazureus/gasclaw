@@ -61,6 +61,7 @@ export type ChatTurnInput = {
   resume?: Snapshot & { decision?: Decision };
   done?: Record<string, string>;
   granted?: string[];
+  beforeEffect?: (name: string) => void;
   clock?: () => number;
   /** Instante do início, quando quem chama já leu o relógio (evita uma leitura a mais por turno). */
   startMs?: number;
@@ -92,6 +93,7 @@ export function chatTurn(i: ChatTurnInput): ChatTurnResult {
     clock,
     granted: i.granted,
     done: i.done,
+    beforeEffect: i.beforeEffect,
     resume,
   });
   const usadas = turn.events.filter((ev) => ev.status === 'ok' || ev.status === 'approved').map((ev) => ev.name);
