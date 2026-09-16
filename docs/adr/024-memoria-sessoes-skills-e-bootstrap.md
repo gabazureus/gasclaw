@@ -32,6 +32,37 @@ que ele mais sente no dia a dia.
 - Na **primeira conversa da DM do dono**, o `BOOTSTRAP.md` da pasta entra como mensagem do usuário (conteúdo da pasta, nunca regra do motor) pedindo no máximo duas perguntas curtas.
 - O arquivo só é **consumido quando cumpriu o papel** (o agente gravou algo com `memory.save`); senão fica para a próxima conversa. "Consumir" é copiar para `.gasclaw/BOOTSTRAP.done.md` e mandar o original para a **lixeira do dono**, nunca apagar de vez.
 
+## Medição (dev, v41)
+
+### Evals (`./gasclaw eval`, 4 de 4 verdes)
+| Eval | Resultado | Tempo | Observação |
+|---|---|---|---|
+| mem-dia | ✅ | 13,7 s | `memory.save` → nova sessão → lembra do chá |
+| skill-usa | ✅ | 3,3 s | `read_skill` chamada; a resposta segue o passo da skill |
+| skill-ausente | ✅ | 3,4 s | aviso honesto do motor, sem inventar passo a passo |
+| bootstrap-primeira-conversa | ✅ | 10,9 s | span `bootstrap` presente: o ritual entrou de verdade no turno |
+
+Nenhum dos quatro cria dado na conta, então a limpeza é 0 por desenho.
+
+### Custo da sessão no Drive (`./gasclaw poc p18`) — **reprovado**
+10 amostras (o padrão do harness na versão publicada; a CLI não passa `turns`):
+
+| Métrica | Valor |
+|---|---|
+| Base (cache quente) | 1.638–2.926 ms |
+| Com Drive (cache frio) | 2.452–3.609 ms |
+| Diferença por turno | mínimo 112 ms, mediana 773 ms, média 829 ms, p95 1.847 ms |
+| Turnos acima da meta de 300 ms | 8 de 10 |
+| Turnos em que o Drive foi mais lento que a base | **10 de 10** |
+
+**Leitura:** diferente da medição anterior (onde a base variou 1.765–4.670 ms e em 2 de 10 turnos ficou mais lenta
+que o Drive), aqui a base foi mais estável e o Drive perdeu em **todos** os turnos. Isso aponta custo real, não ruído
+da linha de base. A meta de 300 ms **não é cumprida** com 1 leitura + 1 escrita no Drive por turno.
+
+**Pendente:** repetir com 20 amostras (o padrão do harness subiu para 20, porque a CLI não tem como passar `turns`;
+a versão publicada ainda roda com 10). Só depois de confirmar com a amostra maior é que o desenho muda, e a proposta
+vai ao usuário antes — incluindo o que acontece se a execução morrer entre duas gravações.
+
 ## Limitações conhecidas
 1. **`mem-limite` é offline:** o texto de 2.200 bytes não cabe no teto de 2 KB do cenário enviado no POST. O teto é limitação da nossa CLI, não do produto.
 2. **Sem evals de sessão:** o runner zera o histórico em `(nova sessão)` e não toca no Drive nem no cache, então um cenário passaria mesmo sem a persistência existir. A cobertura ficou em teste unitário. Para valer no dev, o runner precisaria de um `(nova execução)` que limpe só o contexto do processo, e o `env` do eval precisaria receber um `sessionIO` — não cabe em poucas linhas.
