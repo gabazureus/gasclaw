@@ -44,7 +44,11 @@ export type TurnInput = {
   clock: () => number;
   done?: Record<string, string>; // runId:step:callId → resultado já executado
   granted?: string[]; // tools `once` já aprovadas nesta sessão
-  resume?: Snapshot & { decision: Decision };
+  /**
+   * Continua um turno interrompido. `decision` só existe quando o usuário respondeu um card (aprovar/negar/ask);
+   * um run que parou por tempo ou por limite volta SEM decisão, e aí a aprovação é exigida de novo (nada é auto-aprovado).
+   */
+  resume?: Snapshot & { decision?: Decision };
 };
 export type TurnResult = {
   text: string;
