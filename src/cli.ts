@@ -1,7 +1,8 @@
 // Segredo da CLI (M1, proteção contra CSRF), núcleo puro. Ações com efeito só por POST do ./gasclaw com CLI_SECRET.
 // O segredo nasce no PC (openssl rand -hex 32), mora em .env.local (gitignored) e em ScriptProperties; nunca na URL.
 
-export const MUTATING: ReadonlySet<string> = new Set(['eval', 'poc', 'enable', 'disable', 'drain']);
+// `step` = uma volta do pump do run durável (ADR-026). Tem efeito (executa ferramentas), então entra aqui.
+export const MUTATING: ReadonlySet<string> = new Set(['eval', 'poc', 'enable', 'disable', 'drain', 'step']);
 
 /** Comparação em tempo constante para strings do mesmo tamanho (não revela o prefixo certo pelo tempo). */
 export function safeEqual(a: string, b: string): boolean {

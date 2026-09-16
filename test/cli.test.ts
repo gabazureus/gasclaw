@@ -21,7 +21,8 @@ describe('segredo da CLI (M1: CSRF)', () => {
     expect(validSecret('xyz')).toBe(false);
     expect(validSecret('G'.repeat(64))).toBe(false);
   });
+  // Lista fixa de propósito: criar uma ação com efeito tem de quebrar este teste, para ninguém deixá-la acessível por GET.
   test('ações com efeito saem do GET', () => {
-    expect([...MUTATING].sort()).toEqual(['disable', 'drain', 'enable', 'eval', 'poc']);
+    expect([...MUTATING].sort()).toEqual(['disable', 'drain', 'enable', 'eval', 'poc', 'step']);
   });
 });

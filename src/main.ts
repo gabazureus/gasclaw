@@ -3,9 +3,13 @@ import { pocP14 } from '../poc/p14-trace/harness';
 import { pocP15 } from '../poc/p15-limites/harness';
 import { pocP16 } from '../poc/p16-custo/harness';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
-import { DEFAULT_STEPS, reply } from './agent';
+import { DEFAULT_STEPS, MAX_HISTORY, reply } from './agent';
 import { cacheTickets, newToken } from './approvalStore';
-import { handleChat, type ChatDeps, type ChatEvent } from './chat';
+import { chatTurn, handleChat, type ChatDeps, type ChatEvent } from './chat';
+import { newRun, resumeOf, view, type DurableRun } from './run';
+import { pump, type StepDeps } from './runner';
+import { runIO } from './runStore';
+import { flushMemory } from './tools/memoryFlush';
 import { cliAuthorized, MUTATING, validSecret } from './cli';
 import { evalAction } from './evalEntry';
 import { pocP11 } from '../poc/p11-free/harness';
@@ -25,10 +29,10 @@ import * as runlog from './runlog';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
 import { allowedTools } from './tools/registry';
-import { coverage } from './trace';
+import { coverage, redact } from './trace';
 import { agentInfo, llmInfo, traceDeps } from './traced';
 import { webClick, webSend } from './webchat';
-import { agentFolderPath, effectiveAccess, ensureFolderPath, extractFolderId, loadAgent, parseAccess, pendingSuggestions, seedAgent, validAgentName, withAccess, type Access, type LoadedAgent } from './workspace';
+import { agentFolderPath, canUse, effectiveAccess, ensureFolderPath, extractFolderId, loadAgent, parseAccess, pendingSuggestions, seedAgent, validAgentName, withAccess, type Access, type LoadedAgent } from './workspace';
 
 const CHAT_MAX_TOKENS = 1000; // resposta síncrona precisa caber em 30 s
 
@@ -107,6 +111,7 @@ function mutate(action: string, p: Record<string, string>): unknown {
       throw err;
     }
   }
+  if (action === 'step') return stepRuns();
   if (action === 'disable' || action === 'enable') {
     store.setEnabled(action === 'enable');
     return { ok: true, enabled: store.isEnabled() };
@@ -284,6 +289,100 @@ export function chatClick(params: Record<string, string>) {
   observe.maybeDrain();
   return out;
 }
+
+// ---------- Run durável (ADR-026): o pump dá um passo por vez, e o estado vive na pasta do agente ----------
+
+const STEP_BUDGET_MS = 120_000; // um passo cabe folgado nos 6 min da execução, sobrando tempo para gravar o checkpoint
+const PUMP_BUDGET_MS = 240_000; // 4 dos 6 min: o resto é margem para o último checkpoint
+const PUMP_MAX_STEPS = 20;
+
+/**
+ * Um passo de um run durável: monta o turno com as mesmas peças da conversa (papéis, skills, memória, ritual, tools)
+ * e **só persiste a conversa quando o run termina** — um checkpoint intermediário não pode gravar "Parei por tempo"
+ * no histórico do usuário.
+ */
+function stepDeps(): StepDeps {
+  return {
+    io: runIO(),
+    clock: Date.now,
+    step: (r: DurableRun) => {
+      const me = ownerEmail();
+      const spec = loadAgentForTurn(r.folderId);
+      if (!canUse(spec.access, r.user, me)) throw new Error(`${r.user} não tem acesso ao agente ${spec.name}`); // acesso aprovado no painel (ADR-021)
+      const apiKey = store.getApiKey();
+      if (!apiKey) throw new Error('Falta a chave do OpenRouter. Cole-a na tela gasclaw.');
+      const d = chatDeps();
+      const ownerDm = r.user === me.toLowerCase();
+      const base = d.toolkit!(spec, ownerDm);
+      // O acesso ao Google só entra no contexto de quem é o dono, igual à conversa (ADR-023).
+      const kit = { ...base, ctx: { ...base.ctx, isOwner: ownerDm, google: ownerDm ? base.ctx.google : undefined } };
+      const t = runlog.begin('webchat', { question: r.text.slice(0, 2000), user: r.user });
+      try {
+        const { turn, ritualDone } = chatTurn({
+          spec,
+          kit,
+          text: r.text,
+          history: d.history(r.session),
+          ownerDm,
+          runId: r.runId,
+          budgetMs: STEP_BUDGET_MS,
+          llm: (m, defs) => t.step('llm_call', () => d.llm(apiKey, spec.config.model, m, defs), llmInfo(spec.config.model, m), true),
+          resume: resumeOf(r),
+          done: r.done,
+          granted: r.granted,
+        });
+        // Fim do run = não ficou pendência nem parada. Só aqui a conversa é gravada, compactada e o ritual consumido.
+        if (!turn.pending && !turn.stopped) {
+          if (ritualDone) kit.bootstrap?.consume();
+          if (ownerDm && turn.history.length >= MAX_HISTORY && kit.ctx.memory.saveDay && kit.ctx.memory.today) flushMemory(turn.history, kit.ctx, (m) => d.llm(apiKey, spec.config.model, m));
+          d.saveHistory(r.session, turn.history);
+          d.compact?.(r.session, (m) => d.llm(apiKey, spec.config.model, m));
+        }
+        t.mark('reply');
+        return { turn, usd: t.end({ answer: turn.text }).cost ?? 0 };
+      } catch (err) {
+        t.end({ error: (err as Error).message });
+        throw err;
+      }
+    },
+  };
+}
+
+/** Ação `step` (POST com o segredo da CLI): uma execução do pump. É quem faz o trabalho — o gatilho só a acorda. */
+export function stepRuns() {
+  const touched = pump(stepDeps(), PUMP_MAX_STEPS, Date.now() + PUMP_BUDGET_MS);
+  return { ok: true, steps: touched.length, runs: touched.map((r) => ({ runId: r.runId, ...view(r) })) };
+}
+
+/**
+ * O gatilho de 1 min não trabalha: ele acorda e dispara o passo no web app, para o trabalho rodar em execução comum
+ * e não consumir a cota de gatilho (6 h/dia no Workspace, 90 min em conta pessoal). É o que a POC P3 vai medir.
+ * Se o disparo falhar, dá **um** passo aqui mesmo: melhor gastar um pouco da cota do que deixar o run parado calado.
+ */
+function kickPump(): void {
+  try {
+    if (!runIO().pointers().length) return; // fila vazia: o despertar custa quase nada
+    const secret = PropertiesService.getScriptProperties().getProperty('CLI_SECRET');
+    const url = appUrl();
+    if (!secret || !url) return;
+    const res = UrlFetchApp.fetch(url, {
+      method: 'post',
+      payload: { action: 'step', secret },
+      headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` },
+      muteHttpExceptions: true,
+    });
+    if (res.getResponseCode() >= 300) throw new Error(`pump ${res.getResponseCode()}`);
+  } catch (err) {
+    console.warn(`pump: disparo falhou (${redactMsg(err)}); dando um passo no próprio gatilho`);
+    try {
+      pump(stepDeps(), 1, Date.now() + STEP_BUDGET_MS);
+    } catch (err2) {
+      console.warn(`pump: passo no gatilho também falhou: ${redactMsg(err2)}`);
+    }
+  }
+}
+
+const redactMsg = (err: unknown) => redact(String((err as Error)?.message ?? err)).slice(0, 200);
 
 export function onAddToSpace(e: ChatEvent) {
   return handleChat({ ...e, type: 'ADDED_TO_SPACE' }, chatDeps());
@@ -464,7 +563,9 @@ export function runDetail(id: string) {
 
 /** Alvo do gatilho de 1 min (sem assertOwner: o gatilho roda como o dono). */
 export function drainRuns() {
-  return observe.drain();
+  const drained = observe.drain();
+  kickPump(); // mesmo gatilho, dois trabalhos: gravar o trace em lote e acordar o pump do run durável (ADR-026)
+  return drained;
 }
 
 export function observability() {
