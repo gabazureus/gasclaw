@@ -40,8 +40,5 @@ export function settleSessions(entries: SessionEntry[], ok: boolean[]): { remove
   return { remove, retry };
 }
 
-/**
- * Gravar agora, sem passar pelo lote? Sim quando o estado precisa estar no Drive antes de a execução acabar:
- * turno que terminou em pendência de aprovação ou que faz parte de um run durável.
- */
-export const writeNow = (opts: { pending?: boolean; durable?: boolean }): boolean => opts.pending === true || opts.durable === true;
+// Não existe exceção "grava na hora" para a sessão: o que precisa estar no Drive antes de a execução acabar é o
+// ESTADO do run (Snapshot/pending/done/granted), que mora no run.json. A pendência de aprovação não grava conversa.

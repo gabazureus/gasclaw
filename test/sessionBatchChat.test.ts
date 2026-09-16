@@ -8,9 +8,8 @@ const risky: Tool = { name: 'risco.send', description: 'pede aprovação', param
 const chamada = (id: string, name: string) => ({ id, type: 'function' as const, function: { name, arguments: '{}' } });
 const ctx: ToolCtx = { now: () => '', ownerDm: true, isOwner: true, memory: { read: () => '', write: () => {} } };
 
-function setup(script: Completion[], comFilaPropria: boolean) {
+function setup(script: Completion[]) {
   const lote: string[] = [];
-  const agora: string[] = [];
   const data = new Map<string, unknown>();
   const d: ChatDeps = {
     enabled: () => true,
@@ -25,29 +24,25 @@ function setup(script: Completion[], comFilaPropria: boolean) {
     tickets: { put: (t) => void data.set(t.token, t), take: () => null },
     newToken: () => 'a'.repeat(32),
     clock: () => 1,
-    ...(comFilaPropria ? { saveHistoryNow: (k: string) => void agora.push(k) } : {}),
   };
-  return { d, lote, agora };
+  return { d, lote };
 }
 const dm = (text: string): ChatEvent => ({ type: 'MESSAGE', message: { text }, user: { email: 'dono@x.com' }, space: { name: 'spaces/D', singleUserBotDm: true } });
 
 describe('gravação em lote, com exceção para a pendência de aprovação', () => {
   test('turno comum: vai pelo caminho do lote, e só uma vez', () => {
-    const { d, lote, agora } = setup([{ text: 'ok' }], true);
+    const { d, lote } = setup([{ text: 'ok' }]);
     expect(handleChat(dm('oi'), d).text).toBe('ok');
     expect(lote).toEqual(['f1:spaces/D']);
-    expect(agora).toEqual([]);
   });
 
   test('turno que termina em pendência NÃO grava a conversa (o card ainda não é fala do assistente)', () => {
-    const { d, lote, agora } = setup([{ text: '', toolCalls: [chamada('c1', 'risco_send')] }], true);
+    const { d, lote } = setup([{ text: '', toolCalls: [chamada('c1', 'risco_send')] }]);
     const r = handleChat(dm('envie'), d);
     expect(r.cardsV2).toBeDefined();
     expect(lote).toEqual([]);
-    expect(agora).toEqual([]);
   });
 
-  // EM ABERTO (perguntado ao orquestrador): se a pendência precisa mesmo gravar algo na hora, o que vai ao Drive
-  // é o ESTADO (Snapshot/pending/done/granted), que já viaja no Ticket — e não `out.history`, cuja última fala é o
-  // texto do card. Quando a decisão vier, o caso volta para cá.
+  // DECIDIDO (opção (a)): a pendência não grava conversa. O que precisa estar no Drive antes de a execução acabar
+  // é o ESTADO do run (run.json), não a sessão. Por isso não existe saveHistoryNow.
 });

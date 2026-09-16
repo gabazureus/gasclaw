@@ -84,9 +84,12 @@ N−1 turnos de conversa, e o usuário não seria avisado da perda.
 
 Regras do lote (`src/sessionQueue.ts` + `src/sessionQueueStore.ts`):
 - **Fila própria** (`S:`), nunca a `Q:` do trace nem a `R:` dos runs: perdas diferentes custam coisas diferentes.
-- **Exceção obrigatória:** turno que termina em **pendência de aprovação** (ou dentro de um run durável) grava
-  **imediatamente**, sem passar pelo lote — o estado precisa estar no Drive antes de a execução acabar, senão o
-  Aprovar volta para uma conversa que não existe.
+- **Sem exceção de "grava na hora" para a conversa.** O que precisa estar no Drive antes de a execução acabar é o
+  **estado** do run (`Snapshot`/`pending`/`done`/`granted`), que mora no `run.json` do loop durável — não a sessão.
+  A pendência de aprovação **não grava conversa**: o texto do card não é fala do assistente, e a retomada relê o
+  histórico. Duas tentativas de gravar `out.history` na pendência foram barradas pelos testes do `chat.ts`, que
+  estavam certos; a especificação é que estava imprecisa.
+- Fallback de tamanho: conversa que não cabe na Property (9 KB) é gravada direto pelo `sessionIO`, em vez de sumir.
 - Entrada corrompida é ignorada com aviso (não trava a fila) e cada conversa desiste depois de 3 tentativas, em vez
   de ficar na fila para sempre.
 - As funções do `batch.ts` não foram reaproveitadas como estão porque a entrada de lá é linha de planilha

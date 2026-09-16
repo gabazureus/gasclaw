@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { Session } from '../src/session';
-import { SESSION_QUEUE_PREFIX, SESSION_TRIES, sessionQueueKey, settleSessions, splitSessionQueue, writeNow, type SessionEntry } from '../src/sessionQueue';
+import { SESSION_QUEUE_PREFIX, SESSION_TRIES, sessionQueueKey, settleSessions, splitSessionQueue, type SessionEntry } from '../src/sessionQueue';
 
 const sess = (n = 1): Session => ({ messages: Array.from({ length: n }, (_, i) => ({ role: 'user', content: `m${i}` })) });
 const entry = (key: string, at: number, over: Partial<SessionEntry> = {}): SessionEntry => ({ key, at, session: sess(), ...over });
@@ -44,17 +44,5 @@ describe('settle: o que sai da fila e o que volta', () => {
     const r = settleSessions([entry('f1:a', 1, { tries: SESSION_TRIES - 1 })], [false]);
     expect(r.remove).toEqual(['S:f1:a']);
     expect(r.retry).toEqual([]);
-  });
-});
-
-describe('quando a gravação NÃO pode esperar o lote', () => {
-  test('pendência de aprovação e run durável gravam na hora', () => {
-    expect(writeNow({ pending: true })).toBe(true);
-    expect(writeNow({ durable: true })).toBe(true);
-    expect(writeNow({ pending: true, durable: true })).toBe(true);
-  });
-  test('turno comum vai para o lote', () => {
-    expect(writeNow({})).toBe(false);
-    expect(writeNow({ pending: false, durable: false })).toBe(false);
   });
 });
