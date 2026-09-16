@@ -31,10 +31,17 @@ describe('summarizeP11', () => {
     expect(summarizeP11(curta).c1.pass).toBe(false);
   });
 
-  test('C2: p95 abaixo de 25 s, calculado sobre os tempos medidos', () => {
-    expect(summarizeP11(obs()).c2).toMatchObject({ pass: true, p95Ms: 4900 });
+  test('C2: p95 pelo nearest-rank (⌈0,95·n⌉−1), não o máximo disfarçado', () => {
+    // 20 medições de 3000 a 4900: o p95 é a 19ª (4800). A fórmula antiga pegava a 20ª e media o máximo.
+    expect(summarizeP11(obs()).c2).toMatchObject({ pass: true, p95Ms: 4800 });
+  });
+  test('C2: um único turno lento não reprova, mas lentidão sustentada sim', () => {
+    // medido na v39: 1 outlier de 35,8 s com mediana de 4,1 s é ruído do provedor, não o rodízio sendo lento
+    const outlier = obs();
+    outlier.burst.ms = [...Array.from({ length: 19 }, () => 3000), 35_802];
+    expect(summarizeP11(outlier).c2).toMatchObject({ pass: true, p95Ms: 3000, maiorMs: 35_802 });
     const lento = obs();
-    lento.burst.ms = [...Array.from({ length: 19 }, () => 3000), 26_000];
+    lento.burst.ms = [...Array.from({ length: 15 }, () => 3000), ...Array.from({ length: 5 }, () => 26_000)];
     expect(summarizeP11(lento).c2).toMatchObject({ pass: false, p95Ms: 26_000 });
   });
 

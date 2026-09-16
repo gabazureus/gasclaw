@@ -216,25 +216,36 @@ export function usageView(apiKey: string | null, day?: string) {
 
 // ---------- limites ----------
 
-function processesToday(): { triggerMsToday: number; count: number } {
+/**
+ * Execuções de hoje quebradas por tipo (TIME_DRIVEN, WEBAPP, EDITOR…), **sem cache**.
+ *
+ * É o instrumento da POC P3 (ADR-026): a pergunta que derruba ou sustenta o desenho do pump é se o trabalho disparado
+ * por `doPost` conta como execução de gatilho. Sem a quebra por tipo só dá para medir o total, e o total não responde.
+ */
+export function processesByType(): Record<string, { n: number; ms: number }> {
   const start = new Date(Date.parse(`${dayKey(Date.now())}T00:00:00Z`)).toISOString();
   const base = `https://script.googleapis.com/v1/processes:listScriptProcesses?scriptId=${ScriptApp.getScriptId()}&scriptProcessFilter.startTime=${encodeURIComponent(start)}&pageSize=200`;
   const ms = (d?: string) => Math.round(parseFloat(d ?? '0') * 1000);
-  let triggerMsToday = 0;
-  let count = 0;
+  const by: Record<string, { n: number; ms: number }> = {};
   let token = '';
   for (let page = 0; page < 10; page++) {
     // o gatilho de 1 min gera ~1.440 execuções por dia: sem paginar, só as ~3 primeiras horas contavam
     const res = UrlFetchApp.fetch(`${base}${token ? `&pageToken=${encodeURIComponent(token)}` : ''}`, { headers: auth(), muteHttpExceptions: true });
     if (res.getResponseCode() !== 200) throw new Error(`processes ${res.getResponseCode()}: ${res.getContentText().slice(0, 160)}`);
     const body: { processes?: { processType?: string; duration?: string }[]; nextPageToken?: string } = JSON.parse(res.getContentText());
-    const list = body.processes ?? [];
-    triggerMsToday += list.filter((x) => x.processType === 'TIME_DRIVEN').reduce((t, x) => t + ms(x.duration), 0);
-    count += list.length;
+    for (const x of body.processes ?? []) {
+      const k = x.processType ?? 'DESCONHECIDO';
+      by[k] = { n: (by[k]?.n ?? 0) + 1, ms: (by[k]?.ms ?? 0) + ms(x.duration) };
+    }
     token = body.nextPageToken ?? '';
     if (!token) break;
   }
-  return { triggerMsToday, count };
+  return by;
+}
+
+function processesToday(): { triggerMsToday: number; count: number } {
+  const by = processesByType();
+  return { triggerMsToday: by.TIME_DRIVEN?.ms ?? 0, count: Object.values(by).reduce((t, v) => t + v.n, 0) };
 }
 
 function monitoringToday(): { requests: number } {

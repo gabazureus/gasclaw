@@ -12,11 +12,15 @@ const SUCESSO_MIN = 95;
 const P95_MAX = 25_000;
 const TROCA_MAX = 2000;
 
-/** p95: o valor abaixo do qual ficam 95% das medições (índice 0,95·n na lista ordenada). */
+/**
+ * p95 pelo nearest-rank: o menor valor que deixa 95% das medições abaixo dele (índice ⌈0,95·n⌉−1).
+ * A primeira versão usava ⌊0,95·n⌋ e, com n=20, caía no último elemento — ou seja, media o máximo e chamava de p95.
+ * Isso reprovou o C2 na v39 por causa de um único turno de 35,8 s, com mediana de 4,1 s e 18 de 20 turnos abaixo de 10 s.
+ */
 export function p95(ms: number[]): number {
   if (!ms.length) return 0;
   const s = [...ms].sort((a, b) => a - b);
-  return s[Math.min(s.length - 1, Math.floor(0.95 * s.length))];
+  return s[Math.max(0, Math.ceil(0.95 * s.length) - 1)];
 }
 
 export function summarizeP11(o: P11Obs) {
