@@ -191,9 +191,15 @@ export function afterFailure(r: DurableRun, err: string, attempts: number, now: 
 export const withDecision = (r: DurableRun, d: Decision, now: number): DurableRun =>
   r.status === 'waiting' && r.snapshot ? { ...r, status: 'queued', decision: d, answer: undefined, updatedAt: now } : r;
 
-/** Como o turno é retomado: o `Snapshot` guardado mais a decisão do usuário (ou uma decisão vazia de continuação). */
-export const resumeOf = (r: DurableRun): (Snapshot & { decision: Decision }) | undefined =>
-  r.snapshot && r.decision ? { ...r.snapshot, decision: r.decision } : undefined;
+/**
+ * Como o turno é retomado: o `Snapshot` guardado, com a decisão do usuário **se houver uma**.
+ *
+ * Sem decisão é o caso do run que parou por tempo ou por limite de passos: não há nada pendente, e é justamente por
+ * isso que a decisão não pode ser inventada — um `{ approved: true }` de fachada faria a próxima ferramenta pular o
+ * card de aprovação e entrar em `granted`. Retomar sem decisão faz o turno voltar a pedir aprovação, como deve.
+ */
+export const resumeOf = (r: DurableRun): (Snapshot & { decision?: Decision }) | undefined =>
+  r.snapshot ? { ...r.snapshot, ...(r.decision ? { decision: r.decision } : {}) } : undefined;
 
 /** O que a tela mostra agora, sem precisar entender o modelo de estado. */
 export const view = (r: DurableRun): { status: RunStatus; text: string; spent: string; waiting: boolean } => ({

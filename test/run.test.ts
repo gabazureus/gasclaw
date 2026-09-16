@@ -174,6 +174,13 @@ describe('falha e retomada', () => {
     expect(withDecision(run(), { approved: true }, NOW).status).toBe('queued');
     expect(resumeOf(run())).toBeUndefined(); // sem snapshot não há o que retomar
   });
+
+  it('run que parou por tempo retoma SEM decisão: inventar uma auto-aprovaria a próxima ferramenta', () => {
+    const porTempo = afterStep(run(), turn({ stopped: 'deadline', state: snap(2) }), NOW);
+    const r = resumeOf(porTempo);
+    expect(r).toEqual({ ...snap(2) }); // snapshot sim, decisão não
+    expect(r && 'decision' in r).toBe(false);
+  });
 });
 
 describe('efeito em voo: não repetir o que pode ter acontecido', () => {
