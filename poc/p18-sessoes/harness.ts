@@ -29,7 +29,8 @@ const msg = (i: number): Message => ({ role: i % 2 ? 'assistant' : 'user', conte
 export function pocP18(step?: string, params: Record<string, string> = {}): P18Result | { poc: 'P18'; step: string; pass: boolean; error: string } {
   const folderId = store.listAgents()[0]?.folderId ?? '';
   if (!folderId) return { poc: 'P18', step: step ?? '', pass: false, error: 'nenhum agente cadastrado: abra a tela do gasclaw e cadastre um agente antes de rodar a P18' };
-  const turns = Math.min(20, Math.max(3, Number(params.turns) || 10));
+  // A CLI passa só id e etapa: o padrão precisa ser amostra suficiente sozinho (10 turnos mediam mais ruído que custo).
+  const turns = Math.min(30, Math.max(3, Number(params.turns) || 20));
   const space = `poc-p18-${Date.now()}`;
   const io = sessionIO(folderId);
   const noCache = sessionIO(folderId, { get: () => null, put: () => {}, remove: () => {} } as unknown as GoogleAppsScript.Cache.Cache);
