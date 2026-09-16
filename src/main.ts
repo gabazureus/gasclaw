@@ -3,10 +3,11 @@ import { pocP14 } from '../poc/p14-trace/harness';
 import { pocP15 } from '../poc/p15-limites/harness';
 import { pocP16 } from '../poc/p16-custo/harness';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
-import { DEFAULT_STEPS, MAX_HISTORY, reply } from './agent';
+import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, reply } from './agent';
+import { decisionFrom } from './approval';
 import { cacheTickets, newToken } from './approvalStore';
 import { chatTurn, handleChat, type ChatDeps, type ChatEvent } from './chat';
-import { newRun, resumeOf, view, type DurableRun } from './run';
+import { extendBudget, newRun, resumeOf, RUN_BUDGET_USD, view, withDecision, type DurableRun } from './run';
 import { pump, type StepDeps } from './runner';
 import { runIO } from './runStore';
 import { flushMemory } from './tools/memoryFlush';
@@ -31,7 +32,7 @@ import { memoryIO } from './tools/memoryStore';
 import { allowedTools } from './tools/registry';
 import { coverage, redact } from './trace';
 import { agentInfo, llmInfo, traceDeps } from './traced';
-import { webClick, webSend } from './webchat';
+import { webClick, webSend, webSpace } from './webchat';
 import { agentFolderPath, canUse, effectiveAccess, ensureFolderPath, extractFolderId, loadAgent, parseAccess, pendingSuggestions, seedAgent, validAgentName, withAccess, type Access, type LoadedAgent } from './workspace';
 
 const CHAT_MAX_TOKENS = 1000; // resposta síncrona precisa caber em 30 s
@@ -237,7 +238,7 @@ function chatDeps(): ChatDeps {
     // ADR-025: `model: free` vira rodízio entre os gratuitos; qualquer outro id continua indo direto ao complete()
     llm: (key, model, messages, tools) => {
       const call = (id: string) => complete(key, id, messages, CHAT_MAX_TOKENS, undefined, tools);
-      return isFree(model) ? runFree(call, { tools: (tools ?? []).length > 0, apiKey: key }) : call(model);
+      return isFree(model) ? runFree(call, { tools: (tools ?? []).length > 0 }) : call(model);
     },
     toolkit: (spec, ownerDm) => ({
       tools: allowedTools(spec.access.tools),
@@ -301,7 +302,7 @@ const PUMP_MAX_STEPS = 20;
  * e **só persiste a conversa quando o run termina** — um checkpoint intermediário não pode gravar "Parei por tempo"
  * no histórico do usuário.
  */
-function stepDeps(): StepDeps {
+function stepDeps(budgetMs = STEP_BUDGET_MS): StepDeps {
   return {
     io: runIO(),
     clock: Date.now,
@@ -325,7 +326,7 @@ function stepDeps(): StepDeps {
           history: d.history(r.session),
           ownerDm,
           runId: r.runId,
-          budgetMs: STEP_BUDGET_MS,
+          budgetMs,
           llm: (m, defs) => t.step('llm_call', () => d.llm(apiKey, spec.config.model, m, defs), llmInfo(spec.config.model, m), true),
           resume: resumeOf(r),
           done: r.done,
@@ -346,6 +347,79 @@ function stepDeps(): StepDeps {
       }
     },
   };
+}
+
+// ---------- Entrada do run durável pela tela (?page=chat) ----------
+
+/** Onde a conversa da tela mora, igual ao webchat: `<pasta do agente>:tela/chat/<e-mail>`. */
+const screenSession = (folderId: string, owner: string) => `${folderId}:${webSpace(owner).name}`;
+
+/**
+ * A tela pede algo ao agente. Tentamos responder **na hora**, dentro dos 20 s (é o caso comum);
+ * se não der, o run já está durável na fila e a tela passa a acompanhar por `runState`.
+ */
+export function runAsk(text: string) {
+  const me = assertOwner();
+  const entry = store.listAgents()[0];
+  if (!entry) return { ok: false, error: 'Nenhum agente configurado. Cole a URL de uma pasta do Drive na tela gasclaw.' };
+  const t = String(text ?? '').slice(0, 4000).trim();
+  if (!t) return { ok: false, error: 'Mande um texto para eu responder.' };
+  const now = Date.now();
+  const r = newRun({ runId: `tela-${now}-${Utilities.getUuid().slice(0, 8)}`, session: screenSession(entry.folderId, me), folderId: entry.folderId, user: me, text: t, now });
+  runIO().enqueue(r, now);
+  const done = pump(stepDeps(CHAT_BUDGET_MS), 1, now + CHAT_BUDGET_MS)[0] ?? r;
+  return { ok: true, runId: r.runId, ...view(done), ...pendingView(done) };
+}
+
+/** A tela acompanha um run em andamento. Só o dono do run o enxerga. */
+export function runState(runId: string) {
+  const me = assertOwner();
+  const entry = store.listAgents()[0];
+  if (!entry) return { ok: false, error: 'Nenhum agente configurado.' };
+  const r = runIO().load(entry.folderId, String(runId ?? ''));
+  if (!r) return { ok: false, error: 'Não encontrei essa tarefa.' };
+  if (r.user !== me.toLowerCase()) return { ok: false, error: 'Essa tarefa não é sua.' };
+  return { ok: true, runId: r.runId, ...view(r), ...pendingView(r) };
+}
+
+/**
+ * A resposta do usuário a um run parado: aprovar/negar uma ferramenta, responder uma pergunta, ou mandar continuar
+ * depois do teto de custo. Devolve o run à fila e já tenta terminar na hora.
+ */
+export function runDecide(runId: string, params: Record<string, string>) {
+  const me = assertOwner();
+  const entry = store.listAgents()[0];
+  if (!entry) return { ok: false, error: 'Nenhum agente configurado.' };
+  const io = runIO();
+  const r = io.load(entry.folderId, String(runId ?? ''));
+  if (!r) return { ok: false, error: 'Não encontrei essa tarefa.' };
+  if (r.user !== me.toLowerCase()) return { ok: false, error: 'Essa tarefa não é sua.' };
+  const p = params ?? {};
+  const now = Date.now();
+  let next: DurableRun;
+  if (r.status === 'paused') {
+    if (p.decision !== 'continue') return { ok: false, error: 'Essa tarefa está parada no teto de custo: responda se quer continuar.' };
+    next = extendBudget(r, RUN_BUDGET_USD, now);
+  } else {
+    if (r.status !== 'waiting' || !r.pending) return { ok: false, error: 'Essa tarefa não está esperando resposta.' };
+    const decision = decisionFrom(r.pending, p);
+    if (!decision) return { ok: false, error: 'Resposta inválida para este pedido.' };
+    next = withDecision(r, decision, now);
+  }
+  io.enqueue(next, now, true); // decidiu = progresso: as tentativas voltam a zero
+  const done = pump(stepDeps(CHAT_BUDGET_MS), 1, now + CHAT_BUDGET_MS)[0] ?? next;
+  return { ok: true, runId: done.runId, ...view(done), ...pendingView(done) };
+}
+
+/** O que a tela precisa desenhar além do texto: os botões (Aprovar/Negar, opções do `ask`, Continuar). */
+function pendingView(r: DurableRun): { choices?: { key: 'decision' | 'answer'; value: string; label: string }[] } {
+  if (r.status === 'paused') return { choices: [{ key: 'decision', value: 'continue', label: 'Continuar' }] };
+  if (r.status !== 'waiting' || !r.pending) return {};
+  if (r.pending.kind === 'ask') {
+    const options = String(r.pending.args.options ?? '').split(',').map((o) => o.trim()).filter(Boolean).slice(0, 6);
+    return { choices: options.map((o) => ({ key: 'answer' as const, value: o, label: o.slice(0, 40) })) };
+  }
+  return { choices: [{ key: 'decision', value: 'approve', label: 'Aprovar' }, { key: 'decision', value: 'deny', label: 'Negar' }] };
 }
 
 /** Ação `step` (POST com o segredo da CLI): uma execução do pump. É quem faz o trabalho — o gatilho só a acorda. */
@@ -531,7 +605,7 @@ export function testAgent(folderId: string, text: string) {
     const model = spec.config.model;
     const call = (id: string, m: Message[]) => complete(key, id, m, CHAT_MAX_TOKENS);
     const out = reply(spec, [], text, (m) =>
-      t.step('llm_call', () => (isFree(model) ? runFree((id) => call(id, m), { tools: false, apiKey: key }) : call(model, m)), llmInfo(model, m), true),
+      t.step('llm_call', () => (isFree(model) ? runFree((id) => call(id, m), { tools: false }) : call(model, m)), llmInfo(model, m), true),
     );
     t.mark('reply');
     const run = t.end({ answer: out.text });

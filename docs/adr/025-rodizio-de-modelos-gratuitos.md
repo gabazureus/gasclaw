@@ -1,6 +1,6 @@
 # ADR-025 — Rodízio de modelos gratuitos (`model: free`)
 
-- **Status:** Proposto (núcleo pronto e testado; medição pela POC P11 pendente)
+- **Status:** Aceito (medido pela POC P11 na v39: 5 de 5 critérios)
 - **Data:** 2026-09-15
 - **Contexto:** o usuário quer o gasclaw barato. O OpenRouter tem modelos `:free`, mas cada um cai, fica ocupado
   (429) ou some da lista sem aviso, e nem todos aceitam ferramentas. Escolher um modelo gratuito fixo no `AGENTS`
@@ -64,3 +64,27 @@ outro. No teto, o rodízio não chama e explica o motivo; a partir de 80% a tela
 | C3 | troca em 429 simulado abaixo de 2 s |
 | C4 | agente com ferramentas nunca recebe modelo sem ferramentas |
 | C5 | `./gasclaw poc p11` roda sozinha e sai com código de erro quando falha |
+
+## Medição (v39, 2026-09-15)
+
+| Critério | Resultado |
+|---|---|
+| C1 | **20 de 20 turnos** (100%), acima dos 95% exigidos |
+| C2 | p95 **10.924 ms**, mediana 4.051 ms — dentro dos 25 s |
+| C3 | troca em **1.146 ms**, abaixo dos 2 s |
+| C4 | 20 candidatos, nenhum sem ferramentas quando o agente tem |
+| C5 | automática, com cota folgada (18 requisições no dia, pico de 5/min) |
+
+Duas coisas que a medição ensinou, e que valem mais que os números:
+
+1. **Os dois gratuitos de maior contexto recusam este uso.** O OpenRouter responde 403 "only available on agentic
+   harnesses" para `thinkingmachines/inkling*:free`. Como a ordem prioriza contexto, ela escolhe justamente esses —
+   o rodízio só funciona porque a troca passou a tratar esse 403 como falha passageira. Na primeira execução, com o
+   403 classificado como erro definitivo, foram **0 de 20 turnos**. Depois da correção, 20 de 20, todos atendidos
+   pelo terceiro candidato (`nvidia/nemotron-3-ultra-550b-a55b:free`).
+2. **Os gratuitos têm cauda longa.** Um turno levou 35,8 s contra uma mediana de 4,1 s. O p95 absorve isso, mas
+   quem usa vai encontrar esperas assim de vez em quando. Uma execução só não autoriza dizer que é estável.
+
+**Pendência aberta:** o rodízio consulta a cota a cada turno (`keyInfo`, cache de 10 min) e isso empurrou o C7 da
+P16 para 6 chamadas ao `/key` em 30 minutos, contra o teto de 3. O `is_free_tier` quase nunca muda; a leitura deve
+sair do caminho do turno ou ganhar cache bem maior. Decisão pendente com o orquestrador.

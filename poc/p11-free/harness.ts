@@ -1,6 +1,6 @@
 // POC P11 (descartável): rodízio de modelos gratuitos (ADR-025). Etapas chamadas pelo pc.sh com trace=0.
 import { FREE, freeOrder, quota, rotate } from '../../src/freeModels';
-import { getOverride, keyInfo, listModels, setOverride } from '../../src/models';
+import { freeTierCached, getOverride, listModels, setOverride } from '../../src/models';
 import * as observe from '../../src/observe';
 import { dayKey, dayTotals, freePerMinuteMax, totalReq } from '../../src/usage';
 
@@ -16,25 +16,21 @@ export type P11Deps = {
 const MIN_CTX = 16_000;
 const usageNow = () => observe.loadUsage(PropertiesService.getScriptProperties().getProperties());
 
-/** Requisições gratuitas de hoje e pico por minuto, pelos mesmos contadores do painel (ADR-016). */
-function quotaNow(key: string | null) {
+/**
+ * Requisições gratuitas de hoje e pico por minuto, pelos mesmos contadores do painel (ADR-016).
+ * Sem leitura do `/key`: a POC mediria a si mesma e ainda contaminaria o C7 da P16, que conta chamadas em 30 min.
+ */
+function quotaNow() {
   const u = usageNow();
   const today = totalReq(dayTotals(u, dayKey(Date.now(), 'utc'), 'utc'), (m) => m.endsWith(':free'));
   const perMinute = freePerMinuteMax(u);
-  let freeTier = false;
-  try {
-    freeTier = key ? keyInfo(key).is_free_tier : false;
-  } catch {
-    freeTier = false;
-  }
+  const freeTier = freeTierCached() ?? false;
   const v = quota({ today, perMinute, freeTier });
   return { today, perMinute, freeTier, blocked: v.blocked, warn: v.warn, note: v.note };
 }
 
 export function pocP11(step: string | undefined, p: Record<string, string>, d: P11Deps) {
-  const key = d.apiKey();
-
-  if (step === 'quota') return { poc: 'P11', step, pass: true, ...quotaNow(key) };
+  if (step === 'quota') return { poc: 'P11', step, pass: true, ...quotaNow() };
 
   if (step === 'tools') {
     // C4: com ferramentas aprovadas, nenhum candidato pode ser um modelo sem ferramentas

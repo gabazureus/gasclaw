@@ -30,6 +30,22 @@ Decisão e critérios: [ADR-025](../../docs/adr/025-rodizio-de-modelos-gratuitos
 - **O override volta ao que era.** O `burst` liga `model: free` no agente e restaura o valor anterior no fim,
   mesmo se der erro no meio.
 
+## Resultado (v39): 5 de 5
+
+C1 20/20 turnos · C2 p95 10.924 ms (mediana 4.051 ms) · C3 troca em 1.146 ms · C4 20 candidatos, nenhum sem
+ferramentas · C5 automática, cota folgada.
+
+**Na primeira execução (v37) deu 0 de 20**, por dois defeitos que a POC expôs:
+
+- o 403 "only available on agentic harnesses" era tratado como erro definitivo, então o rodízio travava no primeiro
+  candidato — e os dois de maior contexto da lista têm essa restrição;
+- o `step()` aceitava HTTP 200 com `{"ok":false}`: a etapa `switch` gravou erro, o `obs.json` saiu com `switch429`
+  vazio e só o veredito quebrou. Agora o `step` aborta com a mensagem do servidor.
+
+**O cálculo do p95 também estava errado** e reprovava o C2 sem razão: usava `⌊0,95·n⌋`, que com n=20 cai no último
+elemento (ou seja, media o máximo). Com nearest-rank, o p95 é 10.924 ms em vez de 35.802 ms. O teste original
+codificava a mesma fórmula errada, então passava validando o engano.
+
 ## Arquivos
 
 - `harness.ts` — etapas medidas dentro do Apps Script (`tools`, `switch`, `burst`, `quota`).

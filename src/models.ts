@@ -61,10 +61,22 @@ export function keyInfo(apiKey: string, fresh = false): KeyInfo {
   const d = JSON.parse(res.getContentText()).data ?? {};
   const info: KeyInfo = { limit: d.limit ?? null, usage: Number(d.usage ?? 0), usage_daily: Number(d.usage_daily ?? 0), is_free_tier: d.is_free_tier === true };
   cache().put('or:key', JSON.stringify(info), 600);
+  cache().put(FREE_TIER, String(info.is_free_tier), 21_600); // 6 h: quem lê o /key alimenta o cache que o turno usa
   const calls = JSON.parse(cache().get('or:keycalls') ?? '[]') as number[];
   cache().put('or:keycalls', JSON.stringify([...calls.filter((t) => t > Date.now() - 1_800_000), Date.now()]), 1_800);
   return info;
 }
+
+/**
+ * `is_free_tier` guardado por 6 h (ADR-025, C7 da P16): o turno precisa saber só qual é o teto diário, e isso
+ * quase nunca muda. Quem consulta o `/key` é o painel; o turno lê daqui e nunca faz chamada remota.
+ * `null` = ainda não foi lido nenhuma vez.
+ */
+const FREE_TIER = 'or:freetier';
+export const freeTierCached = (): boolean | null => {
+  const v = cache().get(FREE_TIER);
+  return v === null ? null : v === 'true';
+};
 
 export const keyCallsLast30min = (): number => (JSON.parse(cache().get('or:keycalls') ?? '[]') as number[]).filter((t) => t > Date.now() - 1_800_000).length;
 

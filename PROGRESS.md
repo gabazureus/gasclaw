@@ -40,11 +40,13 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | **F3**: proatividade e dados | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
 | **F4**: canais extras | 4 | █░░░░░░░░░ **10%** | 0 de 4 |
 | **Transversal** (docs, open source, segurança, POCs) | 22 | ███████░░░ **69%** | 12 de 22 |
-| **Produto (F0–F4)** | 57 | █████░░░░░ **50%** | 18 de 57 |
-| **Geral** | 79 | █████░░░░░ **55%** | 30 de 79 |
+| **Produto (F0–F4)** | 57 | █████░░░░░ **52%** | 18 de 57 |
+| **Geral** | 79 | ██████░░░░ **56%** | 30 de 79 |
 
-> A F1 subiu de 45% para 52% porque cinco itens ficaram prontos no dev e foram medidos: trace do agente (P14 12/12),
-> observabilidade na tela (P15 6/6 e P16 7/7), motor de tools, aprovação com card e ferramentas do Google (20/20 evals).
+> A F1 subiu de 45% para 56% porque seis itens ficaram prontos no dev e foram medidos: trace do agente (P14 12/12),
+> observabilidade na tela (P15 6/6), motor de tools, aprovação com card, ferramentas do Google e o rodízio de
+> modelos gratuitos (P11 5/5). **Ressalva do rodízio:** foi uma execução só, e um turno levou 35,8 s contra
+> mediana de 4,1 s — os modelos gratuitos têm cauda longa, então "funciona" ainda não quer dizer "é estável".
 > O Transversal subiu de 65% para 69% com a auditoria concluída sem nenhum crítico e dois itens novos (aviso honesto
 > quando a ferramenta falha; ação com efeito que sobrevive à resposta perdida).
 >
