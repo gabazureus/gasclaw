@@ -7,12 +7,17 @@ import { runP3SyntheticWorker, syntheticTurn } from '../poc/p3-pump/worker';
 import { pocP4 } from '../poc/p4-run/harness';
 import { pocP19 } from '../poc/p19-inflight/harness';
 import { pocP20 } from '../poc/p20-approval/harness';
+import { deliverP2Probe, pocP2, startP2Event } from '../poc/p2-chat-async/harness';
+import { createAsChatApp } from './chatApiGas';
+import { acceptChatMessage } from './chatAsync';
+import { deliveryDue, sendChatDelivery } from './chatDelivery';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
 import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, reply } from './agent';
 import { approvalCard, decisionFrom, issue, issueGrant } from './approval';
 import { cacheTickets, decideChatApproval, decideScreenApproval, durableTickets, hashToken, newToken } from './approvalStore';
 import { chatTurn, handleChat, type ChatDeps, type ChatEvent, type ChatReply } from './chat';
 import { extendBudget, markInflight, newRun, resumeOf, RUN_BUDGET_USD, view, withDecision, type DurableRun } from './run';
+import { asEnv, panelList } from './panels';
 import { pump, pumpById, type StepDeps } from './runner';
 import { runIO, type RunIO } from './runStore';
 import { flushMemory } from './tools/memoryFlush';
@@ -77,6 +82,12 @@ const folderOf = (key: string): string => key.split(':')[0];
 
 declare const __DEV__: boolean; // embutido pelo build: true só no deploy do dev (POCs)
 const isDev = () => typeof __DEV__ !== 'undefined' && __DEV__ === true;
+
+// P21: identidade do ambiente e URL do painel irmão, embutidas no build (nada é lido do outro ambiente)
+declare const __ENV__: string;
+declare const __SIBLING_URL__: string;
+const envName = () => (typeof __ENV__ !== 'undefined' ? __ENV__ : '');
+const siblingUrl = () => (typeof __SIBLING_URL__ !== 'undefined' ? __SIBLING_URL__ : '');
 
 /** Ações com efeito (M1): só chegam aqui pelo doPost, com o segredo da CLI já conferido. */
 function mutate(action: string, p: Record<string, string>): unknown {
@@ -192,12 +203,21 @@ export function doPost(e: GoogleAppsScript.Events.DoPost) {
 export function doGet(e: GoogleAppsScript.Events.DoGet) {
   const action = e?.parameter?.action;
   if (!action) {
+    // P21: o ambiente entra no título porque o painel roda em iframe — com dev e prod abertos lado a
+    // lado, as duas abas se chamariam "gasclaw" e a pílula no <h1> só ajuda depois de entrar na errada.
+    const title = (s: string) => `${s} · ${panelEnv()}`;
+    // hub e painel servem a tela com ownerEmail() (a mesma guarda de sempre); quem protege o dado é o
+    // assertOwner() dentro de panelsState()/settingsState(). O chat usa assertOwner() já na rota.
+    if (e?.parameter?.page === 'hub') {
+      ownerEmail();
+      return HtmlService.createHtmlOutputFromFile('hub').setTitle(title('gasclaw · painéis')).addMetaTag('viewport', 'width=device-width, initial-scale=1');
+    }
     if (e?.parameter?.page === 'chat') {
       assertOwner();
-      return HtmlService.createHtmlOutputFromFile('chat').setTitle('gasclaw · conversa').addMetaTag('viewport', 'width=device-width, initial-scale=1');
+      return HtmlService.createHtmlOutputFromFile('chat').setTitle(title('gasclaw · conversa')).addMetaTag('viewport', 'width=device-width, initial-scale=1');
     }
     ownerEmail();
-    return HtmlService.createHtmlOutputFromFile('settings').setTitle('gasclaw').addMetaTag('viewport', 'width=device-width, initial-scale=1');
+    return HtmlService.createHtmlOutputFromFile('settings').setTitle(title('gasclaw')).addMetaTag('viewport', 'width=device-width, initial-scale=1');
   }
   try {
     assertOwner();
@@ -284,11 +304,31 @@ function durableChatClick(e: ChatEvent): ChatReply {
 }
 
 export function onMessage(e: ChatEvent) {
+  const typed = (e.message?.argumentText ?? e.message?.text ?? '').trim().toLowerCase();
+  if (isDev() && e.type === 'MESSAGE' && typed === '/poc p2') {
+    if (e.user.email.toLowerCase() !== ownerEmail()) return { text: 'A POC P2 so pode ser iniciada pelo dono do gasclaw.' };
+    startP2Event(e.space.name, e.message?.thread?.name, runIO());
+    return {}; // `pensando...` ja foi criado como o app e confirmado por message.name na POC
+  }
   const d = chatDeps();
-  if (e.type !== 'MESSAGE' && e.type !== 'CARD_CLICKED') return handleChat(e, d);
+  if (e.type === 'MESSAGE') {
+    const io = runIO();
+    return acceptChatMessage(e, {
+      enabled: d.enabled,
+      owner: d.owner,
+      apiKey: d.apiKey,
+      defaultAgent: d.defaultAgent,
+      load: d.load,
+      loadRun: io.load,
+      enqueue: io.enqueue,
+      clock: Date.now,
+      uuid: () => Utilities.getUuid(),
+    });
+  }
+  if (e.type !== 'CARD_CLICKED') return handleChat(e, d);
   const t = runlog.begin('chat', { question: (e.message?.argumentText ?? e.message?.text ?? '').trim(), user: e.user.email });
   const p = e.common?.parameters ?? {};
-  const out = e.type === 'CARD_CLICKED' && p.folderId && p.runId ? durableChatClick(e) : handleChat(e, traced(t, d));
+  const out = p.folderId && p.runId ? durableChatClick(e) : handleChat(e, traced(t, d));
   t.mark('reply');
   t.end({ answer: out.text });
   observe.maybeDrain(); // fallback sem gatilho: só grava se a fila tiver mais de 1 min
@@ -334,8 +374,7 @@ const PUMP_MAX_STEPS = 20;
  * e **só persiste a conversa quando o run termina** — um checkpoint intermediário não pode gravar "Parei por tempo"
  * no histórico do usuário.
  */
-function stepDeps(budgetMs = STEP_BUDGET_MS): StepDeps {
-  const io = runIO();
+function stepDeps(budgetMs = STEP_BUDGET_MS, io = runIO()): StepDeps {
   return {
     io,
     clock: Date.now,
@@ -351,7 +390,7 @@ function stepDeps(budgetMs = STEP_BUDGET_MS): StepDeps {
       const base = d.toolkit!(spec, ownerDm);
       // O acesso ao Google só entra no contexto de quem é o dono, igual à conversa (ADR-023).
       const kit = { ...base, ctx: { ...base.ctx, isOwner, google: isOwner ? base.ctx.google : undefined } };
-      const t = runlog.begin('webchat', { question: r.text.slice(0, 2000), user: r.user });
+      const t = runlog.begin(r.delivery ? 'chat' : 'webchat', { question: r.text.slice(0, 2000), user: r.user });
       try {
         const { turn, ritualDone } = chatTurn({
           spec,
@@ -543,7 +582,25 @@ function runP3WorkerProbe(): boolean {
 function workRuns(pointers = runIO().pointers()): void {
   try {
     if (!pointers.length) return;
-    pump(stepDeps(), PUMP_MAX_STEPS, Date.now() + PUMP_BUDGET_MS);
+    const io = runIO();
+    const touched = pump(stepDeps(STEP_BUDGET_MS, io), PUMP_MAX_STEPS, Date.now() + PUMP_BUDGET_MS);
+    for (const run of touched) {
+      if (!run.delivery || run.delivery.status !== 'pending') continue;
+      const now = Date.now();
+      if (!deliveryDue(run, now)) {
+        io.enqueue(run, now, true);
+        continue;
+      }
+      try {
+        const sent = isDev() && run.delivery.probe === 'p2'
+          ? deliverP2Probe(run, io, now)
+          : sendChatDelivery(run, now, createAsChatApp, io.save);
+        if (sent.delivery?.status === 'sent') io.dequeue(sent.runId);
+      } catch (err) {
+        io.enqueue(run, now, true); // requestId estavel torna o retry seguro se o POST ja tiver sido aceito
+        console.warn(`entrega do Chat falhou: ${redactMsg(err)}`);
+      }
+    }
   } catch (err) {
     console.warn(`pump do gatilho falhou: ${redactMsg(err)}`);
   }
@@ -569,7 +626,19 @@ export function settingsState() {
   const me = assertOwner();
   observe.maybeDrain(); // fallback sem gatilho ao abrir a tela
   const cliSecretAt = PropertiesService.getScriptProperties().getProperty('CLI_SECRET_AT');
-  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents: store.listAgents(), appUrl: appUrl(), scriptUrl: scriptUrl(), cliSecretAt, auth: authStatus() };
+  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents: store.listAgents(), appUrl: appUrl(), scriptUrl: scriptUrl(), env: panelEnv(), cliSecretAt, auth: authStatus() };
+}
+
+/** P21: ambiente já normalizado (desconhecido conta como prod), para o rótulo do cabeçalho. */
+const panelEnv = () => asEnv(envName());
+
+/**
+ * Tela do hub (`?page=hub`): só os painéis conhecidos. De propósito NÃO passa por settingsState(),
+ * que drena o lote e lê todos os agentes — o hub é uma página de navegação, não um painel.
+ */
+export function panelsState() {
+  assertOwner();
+  return { env: panelEnv(), panels: panelList(envName(), appUrl(), siblingUrl()) };
 }
 
 /**
@@ -817,6 +886,7 @@ export function pocUrlFetchTimeout() {
 // ---------- POCs automáticas: ./gasclaw poc <id> [etapa] → doGet?action=poc ----------
 const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {
   p1: () => pocUrlFetchTimeout(),
+  p2: (step, params = {}) => pocP2(step, params, runIO()),
   p3: (step) => pocP3(step),
   p4: (step) => pocP4(step),
   p19: (step) => pocP19(step),

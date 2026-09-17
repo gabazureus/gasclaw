@@ -76,7 +76,14 @@ clasp_() { # projeto privado por chamada: nenhum comando compartilha (nem reescr
   rm -rf "$dir"
   return "$rc"
 }
-url() { printf 'https://script.google.com/a/macros/%s/s/%s/exec' "${DOMAIN:-}" "$(var "DEPLOY_ID_$UP")"; }
+exec_url() { printf 'https://script.google.com/a/macros/%s/s/%s/exec' "${DOMAIN:-}" "$1"; }
+url() { exec_url "$(var "DEPLOY_ID_$UP")"; }
+sibling_url() { # P21: URL do painel do OUTRO ambiente, embutida no build. Só navegação: nada é lido do outro lado.
+  local other d
+  if [ "$TARGET" = dev ]; then other=PROD; else other=DEV; fi
+  d=$(var "DEPLOY_ID_$other")
+  if [ -n "$d" ]; then exec_url "$d"; fi
+}
 gfetch() { # $1 token · $2 URL · $3 corpo do POST ("" = GET) · $4 segredo (só no POST). Imprime o corpo; ≠ 0 se falhar.
   # Medido (ADR-020): mesmo com o token no salto, o echo do Google perde a resposta de vez em quando (404), sem relação
   # com duração nem concorrência (GET 1/20; POST 0/10 a 3/5 por rodada). GET é idempotente: tenta de novo. POST leva um
@@ -199,11 +206,36 @@ ensure_gcp() {
     gcloud projects create "$p" --name="gasclaw $TARGET"
     setvar "GCP_PROJECT_$UP" "$p"
   fi
-  gcloud services enable script.googleapis.com chat.googleapis.com drive.googleapis.com sheets.googleapis.com logging.googleapis.com monitoring.googleapis.com tasks.googleapis.com people.googleapis.com calendar-json.googleapis.com gmail.googleapis.com --project "$p" >/dev/null
+  gcloud services enable script.googleapis.com chat.googleapis.com iamcredentials.googleapis.com drive.googleapis.com sheets.googleapis.com logging.googleapis.com monitoring.googleapis.com tasks.googleapis.com people.googleapis.com calendar-json.googleapis.com gmail.googleapis.com --project "$p" >/dev/null
   setvar "GCP_NUMBER_$UP" "$(gcloud projects describe "$p" --format='value(projectNumber)')"
   pause "CONSENT_OK_$UP" "https://console.cloud.google.com/auth/branding?project=$p" \
     "Tela de consentimento OAuth: público INTERNO, nome 'gasclaw', e-mail de suporte $ACCOUNT. Salve."
   ok "projeto GCP $p"
+}
+
+ensure_chat_identity() { # P2: identidade do app por impersonacao; nenhuma chave e criada ou baixada
+  local p sa role policy
+  p=$(var "GCP_PROJECT_$UP")
+  sa="gasclaw-chat@$p.iam.gserviceaccount.com"
+  role="projects/$p/roles/gasclawChatTokenMinter"
+  if ! gcloud iam service-accounts describe "$sa" --project "$p" >/dev/null 2>&1; then
+    say "criando identidade do Google Chat"
+    gcloud iam service-accounts create gasclaw-chat --display-name="gasclaw Chat app" --project "$p" >/dev/null
+  fi
+  if ! gcloud iam roles describe gasclawChatTokenMinter --project "$p" >/dev/null 2>&1; then
+    gcloud iam roles create gasclawChatTokenMinter --project "$p" --title="gasclaw Chat token minter" \
+      --description="Somente emite access token efemero para o Chat app" --permissions=iam.serviceAccounts.getAccessToken --stage=GA >/dev/null
+  else
+    gcloud iam roles update gasclawChatTokenMinter --project "$p" --title="gasclaw Chat token minter" \
+      --description="Somente emite access token efemero para o Chat app" --permissions=iam.serviceAccounts.getAccessToken --stage=GA >/dev/null
+  fi
+  # Conta dedicada: substitui a policy inteira por um unico principal e um unico papel minimo.
+  policy=$(mktemp "${TMPDIR:-/tmp}/gasclaw-chat-policy.XXXXXX")
+  printf '{"version":1,"bindings":[{"role":"%s","members":["user:%s"]}]}\n' "$role" "$ACCOUNT" > "$policy"
+  gcloud iam service-accounts set-iam-policy "$sa" "$policy" --project "$p" --quiet >/dev/null
+  rm -f "$policy"
+  setvar "CHAT_SA_EMAIL_$UP" "$sa"
+  ok "identidade do Chat sem chave: $sa"
 }
 
 ensure_script() {
@@ -245,7 +277,10 @@ deploy() {
   npm test > .tmp/test.log 2>&1 || die "testes falharam: veja .tmp/test.log" # o build.test gera numa pasta temporária
   say "build (logo antes do push)"
   export GCP_NUMBER="$(var "GCP_NUMBER_$UP")" # Monitoring (ADR-016)
+  export CHAT_SA_EMAIL="$(var "CHAT_SA_EMAIL_$UP")" # P2: email publico da identidade, nunca credencial
   if [ "$TARGET" = dev ]; then export GASCLAW_DEV=1; else export GASCLAW_DEV=0; fi # POCs só no build do dev (M1)
+  export GASCLAW_ENV="$TARGET"          # P21: rótulo do ambiente no cabeçalho do painel
+  export SIBLING_URL="$(sibling_url)"   # P21: link para o painel irmão (vazio enquanto o outro não tiver implantação)
   OUT_DIR=dist npm run build > .tmp/build.log 2>&1 || die "build falhou: veja .tmp/build.log"
   local built
   built=$(shasum -a 256 dist/_motor.js dist/appsscript.json | cut -d' ' -f1 | tr '\n' ' ')
@@ -343,6 +378,7 @@ cmd_up() {
   ensure_tools
   ensure_auth
   ensure_gcp
+  [ "$TARGET" = dev ] && ensure_chat_identity
   ensure_script
   deploy
   ensure_cli_secret # ADR-022 (a): logo depois do deploy, antes de qualquer outra chamada ao web app

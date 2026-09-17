@@ -44,10 +44,12 @@ describe('link do projeto Apps Script do agente', () => {
     expect(settingsState().scriptUrl).toBe(`https://script.google.com/home/projects/${SCRIPT_ID}/edit`);
   });
 
-  test('a linha do agente renderiza um link acessível ao lado da pasta do Drive', () => {
+  // P21: o link é o mesmo projeto para todos os agentes, então repetia-se igual em cada linha.
+  // Passou a morar no cabeçalho, junto do rótulo do ambiente; a linha do agente fica só com a pasta.
+  test('o link do Apps Script é do ambiente, no cabeçalho, e não se repete por agente', () => {
     const html = readFileSync('src/settings.html', 'utf8');
-    expect(html).toContain("script.href = s.scriptUrl");
-    expect(html).toContain("script.setAttribute('aria-label', 'Abrir Apps Script de ' + a.name)");
-    expect(html).toContain("folder.append(link, ' · ', script)");
+    expect(html).toMatch(/\$\('scriptLink'\)\.href = s\.scriptUrl/);
+    expect(html).toMatch(/<a id="scriptLink"[^>]*hidden>/); // só aparece depois de ter destino
+    expect(html).not.toContain("'Abrir Apps Script de '"); // não se repete mais por agente
   });
 });

@@ -59,10 +59,13 @@ describe('summarizeP14 (lote de 1 min)', () => {
   });
 });
 
-test('a tela para o polling quando a aba fica oculta (C7)', () => {
+// C7 continua valendo, agora mais forte: com o menu (P21) a Observabilidade também pode estar
+// fora da tela sem a aba estar oculta, e nesse caso o polling não deve sair do lugar.
+test('a tela para o polling quando a aba fica oculta ou a Observabilidade sai da vista (C7)', () => {
   const html = readFileSync('src/settings.html', 'utf8');
   expect(html).toContain("addEventListener('visibilitychange'");
-  expect(html).toMatch(/if \(document\.hidden\) return;/);
+  expect(html).toMatch(/document\.hidden[\s\S]{0,60}pg-observabilidade/); // as duas condições, em qualquer ordem
+  expect(html).toMatch(/if \(!\w+\(\)\) return;/); // nada de polling com a seção fora da vista
   expect(html).toContain('EVERY = { live: 5000, cost: 60000, limits: 60000, batch: 60000 }');
-  expect(html).toContain('if (!document.hidden) LOADERS[tab]()');
+  expect(html).toMatch(/setInterval\(\(\) => \{ if \(\w+\(\)\) LOADERS\[tab\]\(\); \}/);
 });

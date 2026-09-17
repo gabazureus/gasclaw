@@ -19,8 +19,16 @@
     pre { white-space: pre-wrap; background: #f6f5f2; padding: 8px; border-radius: 6px; }
     select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font: inherit; }
     .tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
-    .tabs button { background: #e3e1db; color: #1d1d1b; margin-top: 0; }
-    .tabs button[aria-selected="true"] { background: #1d1d1b; color: #fff; }
+    /* a borda é o que diz que isto é um controle: só o preenchimento dá 1,18:1 contra o fundo (WCAG 1.4.11) */
+    .tabs button { background: #e3e1db; color: #1d1d1b; margin-top: 0; border: 1px solid #8f8d86; }
+    .tabs button[aria-selected="true"], .tabs button[aria-current="page"] { background: #1d1d1b; color: #fff; border-color: #1d1d1b; }
+    /* o anel padrão do Firefox some dentro do botão quase preto: foco explícito, claro por dentro e escuro por fora */
+    a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid #0b4f8a; outline-offset: 2px; }
+    .tabs button[aria-selected="true"]:focus-visible, .tabs button[aria-current="page"]:focus-visible { outline-color: #7fb2e5; }
+    .env { font-size: 12px; padding: 1px 8px; border-radius: 8px; background: #e3e1db; vertical-align: middle; }
+    .env.prod { background: #8c1d18; color: #fff; } /* prod precisa ser visível de relance, não lido com atenção */
+    .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    .links { display: flex; gap: 12px; flex-wrap: wrap; margin: 4px 0 0; }
     .muted { color: #5f5e5a; font-size: 13px; }
     .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; }
     .legend i { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 2px; }
@@ -36,8 +44,23 @@
 </head>
 <body>
 <main>
-  <h1>🦀 gasclaw</h1>
-  <p><a id="chatLink" target="_top" hidden>Conversar com o agente</a></p>
+  <!-- "ambiente:" é oculto só visualmente: sem ele, o leitor de tela anuncia "gasclaw dev" e a palavra fica órfã -->
+  <h1>🦀 gasclaw <span class="env" id="envBadge"><span class="sr">ambiente: </span><span id="envName"></span></span></h1>
+  <p class="links">
+    <a id="chatLink" target="_top" hidden>Conversar com o agente</a>
+    <a id="hubLink" target="_top" hidden>Painéis</a>
+    <!-- link do ambiente, não do agente: é o mesmo projeto para todos eles (P21) -->
+    <a id="scriptLink" target="_blank" rel="noopener" hidden>Apps Script</a>
+  </p>
+
+  <!-- nav, não tablist: a Observabilidade já tem um tablist logo abaixo, e dois contratos de teclado
+       iguais na mesma tela confundem. Aqui os quatro botões são paradas normais do Tab. -->
+  <nav class="tabs" aria-label="Seções do painel">
+    <button id="nav-inicio" aria-current="page">Início</button>
+    <button id="nav-agentes">Agentes</button>
+    <button id="nav-observabilidade">Observabilidade</button>
+    <button id="nav-testar">Testar</button>
+  </nav>
 
   <section id="authBox" role="alert" hidden>
     <h2>Faltam permissões do Google</h2>
@@ -47,6 +70,7 @@
   </section>
   <p id="msg" role="status" aria-live="polite">Carregando…</p>
 
+  <div id="pg-inicio">
   <section>
     <h2>Status</h2>
     <div class="row"><span id="status"></span><button class="sec" id="toggle">…</button></div>
@@ -58,7 +82,9 @@
     <input id="key" type="password" placeholder="sk-or-v1-…" autocomplete="off">
     <button id="saveKey">Salvar chave</button>
   </section>
+  </div>
 
+  <div id="pg-agentes" hidden>
   <section>
     <h2><label for="url">Agentes</label></h2>
     <p>O agente com ⭐ responde no Google Chat.</p>
@@ -70,14 +96,9 @@
     <button id="add" class="sec">Usar pasta existente</button>
     <div id="agents"></div>
   </section>
+  </div>
 
-  <section>
-    <h2><label for="prompt">Testar</label></h2>
-    <textarea id="prompt" rows="2">Quem é você?</textarea>
-    <button id="test">Enviar ao agente ⭐</button>
-    <pre id="answer" hidden aria-live="polite"></pre>
-  </section>
-
+  <div id="pg-observabilidade" hidden>
   <section aria-labelledby="obsTitle">
     <div class="row"><h2 id="obsTitle">Observabilidade</h2><a id="sheet" target="_blank" rel="noopener" hidden>abrir planilha</a></div>
     <div role="tablist" aria-label="Observabilidade" class="tabs">
@@ -124,6 +145,15 @@
       <div id="drains"></div>
     </div>
   </section>
+  </div>
+
+  <div id="pg-testar" hidden>
+  <section>
+    <h2><label for="prompt">Testar</label></h2>
+    <textarea id="prompt" rows="2">Quem é você?</textarea>
+    <button id="test">Enviar ao agente ⭐</button>
+    <pre id="answer" hidden aria-live="polite"></pre>
+  </section>
 
   <section>
     <h2>POC P1 — UrlFetch longo</h2>
@@ -131,6 +161,7 @@
     <button class="sec" id="poc">Rodar POC P1</button>
     <pre id="pocOut" hidden></pre>
   </section>
+  </div>
 
 </main>
 <script>
@@ -166,7 +197,15 @@
       $('authHow').textContent = 'Se o link não abrir o pedido: abra o editor do Apps Script → arquivo _motor.gs → no menu de funções escolha "' + auth.editorFunction + '" → ▶ Executar → Permitir.';
     }
     // link absoluto: a tela roda num iframe em googleusercontent.com, onde "?page=chat" relativo não chega ao web app
-    if (s.appUrl) { $('chatLink').href = s.appUrl + '?page=chat'; $('chatLink').hidden = false; }
+    if (s.appUrl) {
+      $('chatLink').href = s.appUrl + '?page=chat'; $('chatLink').hidden = false;
+      $('hubLink').href = s.appUrl + '?page=hub'; $('hubLink').hidden = false;
+    }
+    // ambiente sempre à vista: evita mexer no prod achando que é o dev (P21)
+    $('envName').textContent = s.env;
+    $('envBadge').className = 'env ' + s.env;
+    $('scriptLink').href = s.scriptUrl;
+    $('scriptLink').hidden = false; // como os outros links: só aparece depois de ter destino
     $('status').textContent = (s.enabled ? '🟢 Ativo' : '⏸ Pausado') + ' · chave ' + (s.hasKey ? 'salva' : 'faltando') + ' · ' + s.agents.length + ' agente(s)';
     $('toggle').textContent = s.enabled ? 'Pausar' : 'Ativar';
     if (typeof fillAgents === 'function') fillAgents();
@@ -180,13 +219,7 @@
       link.href = 'https://drive.google.com/drive/folders/' + a.folderId;
       link.textContent = (i === 0 ? '⭐ ' : '') + a.name;
       const folder = document.createElement('span');
-      const script = document.createElement('a');
-      script.href = s.scriptUrl;
-      script.textContent = 'Apps Script';
-      script.target = '_blank';
-      script.rel = 'noopener';
-      script.setAttribute('aria-label', 'Abrir Apps Script de ' + a.name);
-      folder.append(link, ' · ', script);
+      folder.append(link); // o link do Apps Script é do ambiente, não do agente: mora no cabeçalho (P21)
       const actions = document.createElement('span');
       const holder = document.createElement('div');
       holder.className = 'muted';
@@ -327,7 +360,25 @@
       if (d) { ev.preventDefault(); selectTab(TABS[(i + d + TABS.length) % TABS.length], true); }
     };
   });
-  function startLive() { clearInterval(liveTimer); if (document.hidden) return; LOADERS[tab](); liveTimer = setInterval(() => { if (!document.hidden) LOADERS[tab](); }, EVERY[tab]); }
+  // ----- Menu do painel (P21): troca a seção visível sem recarregar, como as abas acima -----
+  const PAGES = ['inicio', 'agentes', 'observabilidade', 'testar'];
+  function selectPage(name) {
+    PAGES.forEach((p) => {
+      const on = p === name;
+      $('pg-' + p).hidden = !on;
+      if (on) $('nav-' + p).setAttribute('aria-current', 'page');
+      else $('nav-' + p).removeAttribute('aria-current');
+    });
+    // o foco fica no botão; quem não vê a tela precisa ouvir que o conteúdo abaixo trocou
+    $('msg').className = '';
+    $('msg').textContent = 'Seção: ' + $('nav-' + name).textContent;
+    startLive(); // a Observabilidade só consulta o servidor enquanto estiver à vista
+  }
+  // sem setas aqui de propósito: não há tabindex rotativo, então Tab já percorre os quatro (ver o comentário do <nav>)
+  PAGES.forEach((p) => { $('nav-' + p).onclick = () => selectPage(p); });
+
+  const watching = () => !document.hidden && !$('pg-observabilidade').hidden;
+  function startLive() { clearInterval(liveTimer); if (!watching()) return; LOADERS[tab](); liveTimer = setInterval(() => { if (watching()) LOADERS[tab](); }, EVERY[tab]); }
   function stopLive() { clearInterval(liveTimer); liveTimer = null; }
   document.addEventListener('visibilitychange', () => (document.hidden ? stopLive() : startLive()));
   startLive();

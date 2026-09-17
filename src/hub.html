@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<title>gasclaw · painéis</title>
+<style>
+  body { font: 15px/1.45 system-ui, sans-serif; margin: 0; background: #f7f7f5; color: #1d1d1b; }
+  main { max-width: 34rem; margin: 0 auto; padding: 1rem; }
+  h1 { font-size: 1.3rem; }
+  ul { list-style: none; padding: 0; }
+  li { border-bottom: 1px solid #e5e5e0; padding: .6rem 0; }
+  a:focus-visible { outline: 3px solid #0b4f8a; outline-offset: 2px; }
+  .aqui { font-weight: 600; }
+  .muted { color: #6b6b66; font-size: .85rem; }
+  .err { color: #b3261e; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🦀 gasclaw · painéis</h1>
+  <p id="msg" role="status" aria-live="polite">Carregando…</p>
+  <!-- role="list": o WebKit descarta a semântica de lista quando list-style some, e aqui a contagem é o conteúdo -->
+  <ul id="panels" role="list"></ul>
+  <p class="muted">Os ambientes são isolados: este hub só guarda o caminho de um para o outro — nenhum dado atravessa.</p>
+</main>
+<script>
+// Nada aqui entra como HTML: só textContent e href montado a partir da URL que o servidor embutiu no build.
+const $ = (id) => document.getElementById(id);
+
+function render(s) {
+  // Você está no hub, não num painel: dizer "você está no painel de X" seria mentira justo na tela
+  // que existe para não confundir os ambientes.
+  $('msg').className = '';
+  $('msg').textContent = 'Hub do ambiente ' + s.env + '.';
+  $('panels').replaceChildren(...s.panels.map((p) => {
+    const li = document.createElement('li');
+    // todo painel é um link, inclusive o do ambiente atual: quem favorita o hub precisa de caminho para os dois
+    const a = document.createElement('a');
+    a.href = p.url;
+    a.target = '_top';
+    a.textContent = 'Abrir o painel de ' + p.env;
+    li.append(a);
+    if (p.current) {
+      const aqui = document.createElement('span');
+      aqui.className = 'aqui';
+      aqui.textContent = ' · este é o ambiente deste hub';
+      li.append(aqui);
+    }
+    return li;
+  }));
+}
+
+google.script.run
+  .withSuccessHandler(render)
+  .withFailureHandler((e) => { $('msg').className = 'err'; $('msg').textContent = e.message; })
+  .panelsState();
+</script>
+</body>
+</html>
