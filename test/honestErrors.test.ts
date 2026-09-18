@@ -8,7 +8,7 @@ import { buildSpec, withAccess } from '../src/workspace';
 
 const DISABLED = { code: 403, body: '{"error":{"code":403,"message":"Google Calendar API has not been used in project 1 before or it is disabled."}}' };
 const call = (name: string, args: string): Completion => ({ text: '', toolCalls: [{ id: 'c1', type: 'function', function: { name, arguments: args } }] });
-const ev = (name: string, status: ToolEvent['status'], result = '{}'): ToolEvent => ({ name, callId: 'c', key: 'k', status, result });
+const ev = (name: string, status: ToolEvent['status'], result = '{}', argsKey = name): ToolEvent => ({ name, callId: 'c', key: 'k', argsKey, status, result });
 
 describe('falha de ferramenta é honesta (causa raiz: o erro chegava como texto solto)', () => {
   test('o modelo recebe {ok:false, error, did_nothing:true} e o system traz as regras fixas do motor', () => {

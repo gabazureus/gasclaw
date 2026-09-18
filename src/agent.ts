@@ -26,7 +26,8 @@ export function reply(
 }
 
 export type ToolStatus = 'ok' | 'error' | 'refused' | 'pending' | 'approved' | 'denied';
-export type ToolEvent = { name: string; callId: string; key: string; status: ToolStatus; result: string };
+/** `argsKey` = identidade da CHAMADA (tool + argumentos), não só da tool: é o que distingue duas chamadas irmãs. */
+export type ToolEvent = { name: string; callId: string; key: string; argsKey: string; status: ToolStatus; result: string };
 export type Pending = { kind: 'approval' | 'ask'; name: string; callId: string; key: string; args: Record<string, unknown> };
 /** Onde o turno parou: conversa até aqui, passo e chamadas do lote que faltam (a 1ª é a pendente). */
 export type Snapshot = { messages: Message[]; step: number; queue: ToolCall[] };
@@ -80,13 +81,27 @@ const errorOf = (result: string): string => {
     return result;
   }
 };
+/** Identidade de uma chamada, em forma canônica. Argumento ilegível cai no texto cru — pior chave, nunca falsa. */
+function callSignature(name: string, rawArgs: string | undefined): string {
+  try {
+    const o = JSON.parse(rawArgs || '{}') as unknown;
+    return o && typeof o === 'object' && !Array.isArray(o) ? grantKey(name, o as Record<string, unknown>) : `${name}:${rawArgs ?? ''}`;
+  } catch {
+    return `${name}:${rawArgs ?? ''}`;
+  }
+}
+
 /**
  * Guarda determinística (falha honesta): tool que falhou e não teve sucesso depois no turno → aviso fixo do motor no lugar da
  * resposta do modelo, para nenhuma afirmação de sucesso ou dado inventado chegar ao usuário.
  */
 export function failureNotice(events: ToolEvent[]): string | null {
-  const ok = new Set(events.filter((e) => e.status === 'ok' || e.status === 'approved').map((e) => e.name));
-  const failed = new Map(events.filter((e) => e.status === 'error' && !ok.has(e.name)).map((e) => [e.name, e]));
+  // Por CHAMADA, não por tool. Chaveado por nome, um fan-out (o modelo quebra "minha agenda do trimestre" em
+  // três `calendar.list`) escondia a falha de um período atrás do sucesso dos outros: o agente respondia a
+  // agenda pela metade, com convicção e sem aviso. Um retry da MESMA chamada continua perdoado, que é o caso
+  // em que o sucesso de fato desmente a falha.
+  const ok = new Set(events.filter((e) => e.status === 'ok' || e.status === 'approved').map((e) => e.argsKey));
+  const failed = new Map(events.filter((e) => e.status === 'error' && !ok.has(e.argsKey)).map((e) => [e.argsKey, e]));
   const lines = [...failed.values()].map((e) => {
     const why = errorOf(e.result).replace(/\s+/g, ' ').slice(0, 160);
     return EFFECT.test(e.name) ? `⚠️ A ação ${e.name} falhou: ${why}. Nada foi feito.` : `⚠️ Não consegui ler ${e.name.split('.')[0]}: ${why}.`;
@@ -148,8 +163,10 @@ export function runTurn(i: TurnInput): TurnResult {
     for (const [k, call] of calls.entries()) {
       const key = `${i.runId}:${step}:${call.id}`;
       const tool = findTool(i.tools, call.function.name);
+      const nome = tool?.name ?? call.function.name;
+      const argsKey = callSignature(nome, call.function.arguments);
       const ev = (status: ToolStatus, result: string) => {
-        events.push({ name: tool?.name ?? call.function.name, callId: call.id, key, status, result });
+        events.push({ name: nome, callId: call.id, key, argsKey, status, result });
         messages.push({ role: 'tool', tool_call_id: call.id, content: result });
       };
       if (!tool) {
@@ -177,7 +194,7 @@ export function runTurn(i: TurnInput): TurnResult {
       const grant = grantKey(tool.name, v.args);
       const needs = tool.name === 'ask' ? 'ask' : tool.approval === 'always' || (tool.approval === 'once' && !granted.has(grant)) ? 'approval' : null;
       if (needs && !d) {
-        events.push({ name: tool.name, callId: call.id, key, status: 'pending', result: needs === 'ask' ? 'aguardando resposta' : 'aguardando aprovação' });
+        events.push({ name: tool.name, callId: call.id, key, argsKey, status: 'pending', result: needs === 'ask' ? 'aguardando resposta' : 'aguardando aprovação' });
         const text = needs === 'ask' ? askText(v.args) : approvalText(tool.name, v.args);
         return finish(text, { pending: { kind: needs, name: tool.name, callId: call.id, key, args: v.args }, state: { messages: [...messages], step, queue: calls.slice(k) } });
       }

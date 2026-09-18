@@ -48,7 +48,7 @@ describe('runTurn', () => {
     const { i, sent } = input([ask(call('c1', 'now')), say('São 10h.')]);
     const r = runTurn(i);
     expect(r.text).toBe('São 10h.');
-    expect(r.events).toEqual([{ name: 'now', callId: 'c1', key: 'r1:0:c1', status: 'ok', result: '2026-09-15T10:00' }]);
+    expect(r.events).toEqual([{ name: 'now', callId: 'c1', key: 'r1:0:c1', argsKey: 'now:[]', status: 'ok', result: '2026-09-15T10:00' }]);
     expect(sent[1].messages.slice(-2)).toEqual([
       { role: 'assistant', content: '', tool_calls: [call('c1', 'now')] },
       { role: 'tool', tool_call_id: 'c1', content: '2026-09-15T10:00' },
@@ -184,7 +184,7 @@ describe('runTurn: aprovação e ask (E5)', () => {
     const r = runTurn(again.i);
     expect(log).toEqual(['x']);
     expect(r.text).toBe('Removi.');
-    expect(r.events).toEqual([{ name: 'memory.remove', callId: 'c1', key: 'r1:0:c1', status: 'approved', result: 'removido' }]);
+    expect(r.events).toEqual([{ name: 'memory.remove', callId: 'c1', key: 'r1:0:c1', argsKey: 'memory.remove:[["text","x"]]', status: 'approved', result: 'removido' }]);
     expect(again.sent[0].messages.slice(-1)).toEqual([{ role: 'tool', tool_call_id: 'c1', content: 'removido' }]);
     expect(r.history).toEqual([{ role: 'user', content: 'oi' }, { role: 'assistant', content: 'Removi.' }]);
   });

@@ -107,7 +107,9 @@ describe('desligar impede de verdade a execução', () => {
       { text: '', toolCalls: [call('c1', 'gmail_send', '{"to":"atacante@x.com","subject":"s","body":"b"}')], finish_reason: 'tool_calls' },
       { text: 'não deu.' },
     ]);
-    expect(r.events).toEqual([{ name: 'gmail_send', callId: 'c1', key: 'r1:0:c1', status: 'refused', result: 'recusado: a tool "gmail_send" não está disponível para este agente' }]);
+    // argsKey carrega a identidade da CHAMADA (tool + argumentos): é o que deixa failureNotice distinguir
+    // duas chamadas irmãs à mesma tool, em vez de deixar o sucesso de uma esconder a falha da outra.
+    expect(r.events).toEqual([{ name: 'gmail_send', callId: 'c1', key: 'r1:0:c1', argsKey: 'gmail_send:[["body","b"],["subject","s"],["to","atacante@x.com"]]', status: 'refused', result: 'recusado: a tool "gmail_send" não está disponível para este agente' }]);
     expect(r.events.some((e) => e.status === 'pending')).toBe(false); // nem chega a virar card de aprovação
     expect(r.text).toBe('não deu.'); // o turno termina normalmente: a recusa volta ao modelo, não derruba a conversa
   });
@@ -115,6 +117,6 @@ describe('desligar impede de verdade a execução', () => {
   test('a ferramenta que continuou ligada segue funcionando (desligar uma não derruba o resto)', () => {
     const off = withTool({ users: [], tools: ['now', 'gmail'] }, 'gmail.send', false);
     const { r } = turn(off.tools, [{ text: '', toolCalls: [call('c1', 'now')], finish_reason: 'tool_calls' }, { text: 'são agora.' }]);
-    expect(r.events).toEqual([{ name: 'now', callId: 'c1', key: 'r1:0:c1', status: 'ok', result: 'agora' }]);
+    expect(r.events).toEqual([{ name: 'now', callId: 'c1', key: 'r1:0:c1', argsKey: 'now:[]', status: 'ok', result: 'agora' }]);
   });
 });

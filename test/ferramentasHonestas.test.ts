@@ -76,3 +76,30 @@ describe('tasks.list: showCompleted sem showHidden responde o oposto da verdade'
     expect(chamadas[0]).toContain('showHidden=false');
   });
 });
+
+// Achado 9: a guarda de falha honesta falhava justamente onde mais importa.
+describe('failureNotice: sucesso de UMA chamada não apaga a falha de OUTRA na mesma tool', () => {
+  const ev = (name: string, argsKey: string, status: 'ok' | 'error', result = '') =>
+    ({ name, argsKey, callId: 'c', key: 'k', status, result }) as never;
+
+  test('fan-out de agenda: um período dá certo, outro dá 500 — o usuário precisa saber', async () => {
+    const { failureNotice } = await import('../src/agent');
+    const aviso = failureNotice([
+      ev('calendar.list', 'calendar.list:[["from","2026-01"]]', 'ok', 'reunião A'),
+      ev('calendar.list', 'calendar.list:[["from","2026-02"]]', 'error', '{"error":"backend error"}'),
+    ]);
+    expect(aviso).toContain('calendar'); // antes: null, e o agente respondia a agenda pela metade, com convicção
+  });
+
+  test('retry da MESMA chamada que depois deu certo continua sem gerar aviso', async () => {
+    const { failureNotice } = await import('../src/agent');
+    const mesma = 'calendar.list:[["from","2026-01"]]';
+    expect(failureNotice([ev('calendar.list', mesma, 'error', 'timeout'), ev('calendar.list', mesma, 'ok', 'reunião A')])).toBeNull();
+  });
+
+  test('tool de efeito que falhou diz que nada foi feito', async () => {
+    const { failureNotice } = await import('../src/agent');
+    const aviso = failureNotice([ev('gmail.send', 'gmail.send:[["to","ana@x.com"]]', 'error', 'quota')]);
+    expect(aviso).toContain('Nada foi feito');
+  });
+});
