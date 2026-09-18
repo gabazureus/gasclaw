@@ -1,6 +1,6 @@
 import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, runTurn, withEngineRules, type Decision, type Snapshot, type TurnInput, type TurnResult } from './agent';
 import { bootstrapDone, bootstrapMessage, shouldBootstrap } from './bootstrap';
-import { CHAT_FORMAT_RULES, CHAT_MARKUP_SYNTAX, safeChatMarkdown } from './chatFormat';
+import { CHAT_MARKUP_SYNTAX, safeChatMarkdown, withChatFormatRules } from './chatFormat';
 import { flushMemory } from './tools/memoryFlush';
 import { approvalCard, decisionFrom, issue, redeem, type Ticket, type TicketStore } from './approval';
 import type { Completion, Message, ToolDef } from './llm';
@@ -12,7 +12,7 @@ import { canUse, type AgentSpec } from './workspace';
 
 export type ChatEvent = {
   type: string;
-  message?: { name?: string; text?: string; argumentText?: string };
+  message?: { name?: string; text?: string; argumentText?: string; thread?: { name?: string } };
   user: { email: string };
   space: { name: string; type?: string; singleUserBotDm?: boolean };
   common?: { parameters?: Record<string, string> }; // CARD_CLICKED
@@ -119,7 +119,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
   if (!key) return reply('Falta a chave do OpenRouter. Cole-a na tela gasclaw.');
   try {
     const loaded = d.load(entry.folderId);
-    const spec = markdown ? { ...loaded, system: `${loaded.system}${CHAT_FORMAT_RULES}` } : loaded;
+    const spec = withChatFormatRules(loaded, markdown);
     if (!canUse(spec.access, e.user.email, d.owner())) return reply(`Você (${e.user.email}) não tem acesso ao agente ${spec.name}.`); // acesso aprovado no painel (ADR-021)
     const hk = `${entry.folderId}:${e.space.name}`;
     const ownerDm = isOwnerDm(e, d.owner());
