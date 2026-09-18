@@ -103,8 +103,25 @@ function saveUsage(prev: Record<string, string>, u: Usage, runsByDay: Record<str
 
 export type DrainResult = { drained: number; ms: number; rows: boolean; json: number; skipped?: string };
 
-/** `inline`: fallback dentro de um turno ou da tela; menos entradas e sem a limpeza de 90 dias (cabe nos 30 s do Chat). */
+/**
+ * `inline`: fallback dentro de um turno ou da tela; menos entradas e sem a limpeza de 90 dias (cabe nos 30 s do Chat).
+ *
+ * A limpeza roda FORA do lock, de propósito. Ela faz até 200 PATCH em série e não mexe na fila, mas o
+ * ScriptLock do Apps Script é GLOBAL: é o mesmo que a aprovação toma (`approvalStore`/`runStore`, 10 s de
+ * paciência). Segurando o lock durante os 200 PATCH, quem clicasse "Aprovar" naquela janela levava
+ * "aprovação ocupada" — erro na cara do usuário, vindo de uma faxina que nada tem a ver com aprovar.
+ *
+ * `cleanupRunsDaily` já tem guarda de uma vez por dia e try/catch próprios, então chamá-la aqui não a
+ * repete nem derruba a drenagem. De quebra, ela passa a rodar também quando a fila está vazia: antes ficava
+ * depois do `return` do caminho sem entradas, ou seja, uma instalação parada nunca limpava os arquivos.
+ */
 export function drain(max = 200, inline = false): DrainResult {
+  const out = drainLocked(max);
+  if (!inline && !out.skipped) cleanupRunsDaily();
+  return out;
+}
+
+function drainLocked(max: number): DrainResult {
   const t0 = Date.now();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5_000)) return { drained: 0, ms: Date.now() - t0, rows: false, json: 0, skipped: 'outra drenagem em andamento' };
@@ -152,7 +169,6 @@ export function drain(max = 200, inline = false): DrainResult {
     for (const e of done.retry) props().setProperty(`${QUEUE_PREFIX}${e.id}`, JSON.stringify(e)); // o JSON volta na próxima drenagem
     cache().removeAll(['obs:props', ...done.remove.map((id) => `qjson:${id}`)]);
     dailyLimitsRow(store.sheetId);
-    if (!inline) cleanupRunsDaily(); // até 200 PATCH em série: só no gatilho ou no "Gravar a fila agora"
     return record({ drained: entries.length, ms: Date.now() - t0, rows, json: entries.length - done.retry.length });
   } catch (err) {
     console.warn(`observe drain: ${msg(err)}`);
