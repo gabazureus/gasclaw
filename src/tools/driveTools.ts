@@ -1,5 +1,5 @@
 // Drive, Docs e Sheets (E6): REST com o escopo `drive` já no manifesto (files.list/export/upload; Sheets values.get/append).
-import { asData, enc, gcall, type Google, gtext, ownerGoogle, qs } from './google';
+import { asData, enc, gcall, type Google, gtext, incompleta, ownerGoogle, qs } from './google';
 import type { Schema, Tool, ToolCtx } from './registry';
 
 const DRIVE = 'https://www.googleapis.com/drive/v3/files';
@@ -13,6 +13,7 @@ const KIND: Record<string, string> = {
   'application/pdf': 'pdf',
 };
 const MAX_ROWS = 200;
+const DRIVE_MAX = 10; // teto da busca no Drive: um numero so, para o aviso de lista cortada nao divergir do pageSize
 
 const api = ownerGoogle; // só o dono (revisão E6)
 const fileId = (v: unknown) => {
@@ -41,9 +42,10 @@ export const DRIVE_TOOLS: Tool[] = [
     run: (a, ctx) => {
       const q = literal(String(a.query ?? '').trim());
       if (!q) throw new Error('"query" vazio');
-      const url = `${DRIVE}?${qs({ q: `(name contains '${q}' or fullText contains '${q}') and trashed = false`, fields: 'files(id,name,mimeType,modifiedTime,webViewLink)', pageSize: 10, orderBy: 'modifiedTime desc' })}`;
+      const url = `${DRIVE}?${qs({ q: `(name contains '${q}' or fullText contains '${q}') and trashed = false`, fields: 'files(id,name,mimeType,modifiedTime,webViewLink)', pageSize: DRIVE_MAX, orderBy: 'modifiedTime desc' })}`;
       const files = (gcall(api(ctx), { method: 'get', url }, 'buscar no Drive').files ?? []) as Record<string, string>[];
-      return asData('drive', files.map((f) => `${f.id} | ${String(f.name).slice(0, 200)} | ${KIND[f.mimeType] ?? f.mimeType} | ${f.modifiedTime} | ${f.webViewLink ?? ''}`).join('\n'));
+      const lines = files.map((f) => `${f.id} | ${String(f.name).slice(0, 200)} | ${KIND[f.mimeType] ?? f.mimeType} | ${f.modifiedTime} | ${f.webViewLink ?? ''}`);
+      return asData('drive', incompleta(lines, DRIVE_MAX));
     },
   },
   {
@@ -80,8 +82,13 @@ export const DRIVE_TOOLS: Tool[] = [
     approval: 'never',
     run: (a, ctx) => {
       const url = `${SHEETS}/${enc(fileId(a.id))}/values/${enc(a1(a.range)).replace(/%21/g, '!')}`;
-      const values = ((gcall(api(ctx), { method: 'get', url }, 'ler a planilha').values ?? []) as unknown[][]).slice(0, MAX_ROWS);
-      return asData('planilha', values.map((row) => row.map((c) => String(c)).join(' | ')).join('\n'));
+      // O corte tem de ser MEDIDO antes do slice: só o tamanho bruto sabe se a planilha era maior que o teto.
+      // Sem isso, uma planilha de 5.000 linhas devolvia as 200 primeiras calada, e "some a coluna C" respondia
+      // um número plausível e errado.
+      const todas = (gcall(api(ctx), { method: 'get', url }, 'ler a planilha').values ?? []) as unknown[][];
+      const values = todas.slice(0, MAX_ROWS);
+      const lines = values.map((row) => row.map((c) => String(c)).join(' | '));
+      return asData('planilha', incompleta(lines, MAX_ROWS, todas.length > MAX_ROWS ? 'ha mais' : undefined));
     },
   },
   {

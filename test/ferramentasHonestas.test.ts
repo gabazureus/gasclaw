@@ -103,3 +103,50 @@ describe('failureNotice: sucesso de UMA chamada não apaga a falha de OUTRA na m
     expect(aviso).toContain('Nada foi feito');
   });
 });
+
+// As três que sobraram. O helper `incompleta` já existia — a própria documentação dele cita "contatos 10" e
+// "planilha 200 linhas" — mas esses dois chamadores nunca foram ligados nele. `sheets.read` é o pior caso do
+// conjunto: numa planilha de 5.000 linhas ele devolve as 200 primeiras sem dizer nada, e "some a coluna C"
+// vira um número plausível e errado. Um número errado que parece certo é pior que um erro.
+describe('as listas que ainda truncavam em silêncio', () => {
+  const ctx = (responder: (r: { url: string }) => { code: number; body: string }) => {
+    const reqs: { url: string }[] = [];
+    return {
+      c: { now: () => '', ownerDm: true, isOwner: true, memory: { read: () => '', write: () => {} }, google: (r: { url: string }) => (reqs.push(r), responder(r)) } as never,
+      reqs,
+    };
+  };
+
+  test('sheets.read avisa quando a planilha tem mais linhas que o teto', async () => {
+    const { TOOLS, findTool } = await import('../src/tools/registry');
+    const id = '1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789';
+    const muitas = Array.from({ length: 250 }, (_, i) => [`linha ${i}`]);
+    const { c } = ctx(() => ({ code: 200, body: JSON.stringify({ values: muitas }) }));
+    const out = findTool(TOOLS, 'sheets.read')!.run({ id, range: 'Plan1!A1:A250' }, c);
+    expect(out).toContain('lista incompleta');
+    expect(out).toContain('200'); // quantas vieram de verdade
+  });
+
+  test('sheets.read NÃO avisa quando a planilha coube inteira', async () => {
+    const { TOOLS, findTool } = await import('../src/tools/registry');
+    const id = '1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789';
+    const { c } = ctx(() => ({ code: 200, body: JSON.stringify({ values: [['a'], ['b']] }) }));
+    expect(findTool(TOOLS, 'sheets.read')!.run({ id, range: 'Plan1!A1:A2' }, c)).not.toContain('lista incompleta');
+  });
+
+  test('contacts.find avisa quando bate no teto de 10', async () => {
+    const { CONTACTS_TOOLS, resetContactsWarmup } = await import('../src/tools/contacts');
+    resetContactsWarmup();
+    const pessoas = Array.from({ length: 10 }, (_, i) => ({ person: { names: [{ displayName: `Ana ${i}` }], emailAddresses: [{ value: `ana${i}@acme.com` }] } }));
+    const { c } = ctx((r) => ({ code: 200, body: JSON.stringify(r.url.includes('otherContacts') ? { results: [] } : { results: pessoas }) }));
+    const out = CONTACTS_TOOLS[0].run({ name: 'Ana' }, c);
+    expect(out).toContain('lista incompleta');
+  });
+
+  test('drive.search avisa quando bate no teto de 10', async () => {
+    const { TOOLS, findTool } = await import('../src/tools/registry');
+    const files = Array.from({ length: 10 }, (_, i) => ({ id: `id${i}`, name: `Doc ${i}`, mimeType: 'application/pdf', modifiedTime: '2030-01-15T10:00:00Z', webViewLink: 'https://x' }));
+    const { c } = ctx(() => ({ code: 200, body: JSON.stringify({ files }) }));
+    expect(findTool(TOOLS, 'drive.search')!.run({ query: 'doc' }, c)).toContain('lista incompleta');
+  });
+});

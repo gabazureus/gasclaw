@@ -157,3 +157,69 @@ describe('portabilidade: macOS, Linux, WSL e Windows', () => {
     expect(sh("open_url 'https://example.com' >/dev/null 2>&1; echo rc=$?", { GASCLAW_OS: 'FreeBSD' })).toContain('rc=0');
   });
 });
+
+// No Windows o Google Cloud CLI instala como `gcloud.cmd`, e o Git Bash não resolve `command -v gcloud`.
+// Era a ÚNICA dependência que separava o Git Bash de funcionar: por causa dela o gasclaw morria com
+// "gcloud not found" numa máquina onde o gcloud estava instalado, e o menu mentia no passo 1.
+//
+// Detectar não basta — quem detecta tem de CHAMAR a forma que existe. E há uma armadilha no caminho:
+// `command -v` encontra FUNÇÃO do shell, então um wrapper chamado `gcloud` se acharia a si mesmo e
+// recorreria para sempre. `type -P` olha só o disco. É esse o motivo de `bin_of` existir.
+describe('Windows: executável com sufixo .cmd/.exe', () => {
+  function withFakeBin(files: Record<string, string>, snippet: string, env: Record<string, string> = {}) {
+    const dir = mkdtempSync(join(tmpdir(), 'gasclaw-bin-'));
+    dirs.push(dir);
+    writeFileSync(join(dir, 'gasclaw'), DEFS);
+    writeFileSync(join(dir, 'gasclaw.env'), '');
+    const bin = join(dir, 'bin');
+    execFileSync('mkdir', ['-p', bin]);
+    for (const [name, body] of Object.entries(files)) {
+      writeFileSync(join(bin, name), `#!/usr/bin/env bash\n${body}\n`, { mode: 0o755 });
+    }
+    return execFileSync('bash', ['-c', `export PATH="${bin}:$PATH"; source ./gasclaw; ${snippet}`], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: { ...process.env, ...env, HOME: dir },
+    }).trim();
+  }
+
+  test('acha a ferramenta que só existe como .cmd, e diz qual nome chamar', () => {
+    expect(withFakeBin({ 'gasclawfake.cmd': 'echo hi' }, 'bin_of gasclawfake')).toBe('gasclawfake.cmd');
+    expect(withFakeBin({ 'gasclawfake.cmd': 'echo hi' }, 'have gasclawfake && echo yes || echo no')).toBe('yes');
+  });
+
+  test('sem nenhuma das formas, have responde não — e não derruba o script', () => {
+    expect(withFakeBin({}, 'have gasclawfake && echo yes || echo no')).toBe('no');
+    expect(withFakeBin({}, 'bin_of gasclawfake || echo ausente')).toBe('ausente');
+  });
+
+  test('a forma sem sufixo tem precedência (Linux e macOS não mudam de comportamento)', () => {
+    expect(withFakeBin({ gasclawfake: 'echo a', 'gasclawfake.cmd': 'echo b' }, 'bin_of gasclawfake')).toBe('gasclawfake');
+  });
+
+  // A armadilha: uma FUNÇÃO com o nome da ferramenta não pode contar como ferramenta instalada.
+  test('função do shell não passa por ferramenta instalada (senão o wrapper se acharia)', () => {
+    expect(withFakeBin({}, 'gasclawfake() { echo eu; }; have gasclawfake && echo yes || echo no')).toBe('no');
+  });
+
+  // Esta máquina TEM um gcloud de verdade, e o próprio script põe os caminhos do SDK no PATH — então não dá
+  // para provar a ausência dele aqui. O que dá para provar, e é o que importa, é o corpo do wrapper: ele
+  // chama o que o `bin_of` mandar, repassa os argumentos e NÃO recorre. Trocar o `bin_of` isola exatamente
+  // isso. Se o wrapper usasse `command -v`, acharia a si mesmo e o teste travaria em vez de passar.
+  test('o wrapper do gcloud chama o nome que bin_of mandar, e repassa os argumentos', () => {
+    const out = withFakeBin(
+      { 'gasclawfake.cmd': 'echo "recebeu: $*"' },
+      "bin_of() { printf 'gasclawfake.cmd'; }; gcloud auth list --format=json",
+    );
+    expect(out).toBe('recebeu: auth list --format=json');
+  });
+
+  // A mesma pergunta em quatro lugares foi o que fez a lista de ações com efeito do shell divergir do
+  // MUTATING do TS e render 405. Aqui ela tem de ter UMA implementação.
+  test('nenhum lugar pergunta por gcloud/node com `command -v` cru', () => {
+    const offenders = FULL.split('\n')
+      .map((l, i) => [i + 1, l] as const)
+      .filter(([, l]) => !/^\s*#/.test(l) && /command -v (gcloud|node|brew)\b/.test(l));
+    expect(offenders.map(([n, l]) => `${n}: ${l.trim()}`)).toEqual([]);
+  });
+});

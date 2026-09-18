@@ -21,6 +21,25 @@ os_kind() {
   esac
 }
 
+# No Windows o Google Cloud CLI instala como `gcloud.cmd`, e o Git Bash nao resolve `command -v gcloud`:
+# era a UNICA dependencia que separava o Git Bash de funcionar. O gasclaw morria com "gcloud not found"
+# numa maquina onde o gcloud estava instalado, e o menu mentia no passo 1 — por um sufixo.
+#
+# Detectar nao basta: quem detecta tem de CHAMAR a forma que existe, dai o `bin_of` devolver o nome.
+# `type -P` (e nao `command -v`) porque `command -v` acha FUNCAO do shell: o wrapper `gcloud` abaixo se
+# acharia a si mesmo e recorreria para sempre. `type -P` olha so o disco.
+bin_of() { # $1 nome da ferramenta -> imprime o nome a invocar; != 0 se nao existe em nenhuma forma
+  local c
+  for c in "$1" "$1.cmd" "$1.exe"; do
+    if type -P "$c" >/dev/null 2>&1; then printf '%s' "$c"; return 0; fi
+  done
+  return 1
+}
+have() { bin_of "$1" >/dev/null 2>&1; }
+# Assim o resto do arquivo continua escrevendo `gcloud ...` sem saber de nada disso. `command` pula a
+# funcao e vai ao executavel, entao nao ha recursao.
+gcloud() { command "$(bin_of gcloud || printf 'gcloud')" "$@"; }
+
 # Abrir uma URL nao pode DERRUBAR o comando: num servidor sem navegador o setup ainda deve seguir, so que
 # imprimindo o endereco para a pessoa abrir onde quiser.
 open_url() {
@@ -44,7 +63,8 @@ copy_clip() {
       elif command -v xsel >/dev/null; then xsel --clipboard --input
       elif command -v clip.exe >/dev/null; then clip.exe
       else cat >/dev/null; return 1; fi ;;
-    windows) clip ;;
+    # Mesmo caso do gcloud: no Git Bash quem existe e `clip.exe`, nao `clip`.
+    windows) local c; c=$(bin_of clip) || { cat >/dev/null; return 1; }; command "$c" ;;
     *) cat >/dev/null; return 1 ;;
   esac
 }
@@ -268,12 +288,12 @@ install_hint() {
 
 ensure_tools() {
   if [ "$(os_kind)" = mac ]; then
-    command -v brew >/dev/null || die "Homebrew not found. Install it from https://brew.sh, then run ./gasclaw again — everything else is installed for you."
-    command -v node >/dev/null || brew install node
-    command -v gcloud >/dev/null || brew install --cask google-cloud-sdk
+    have brew || die "Homebrew not found. Install it from https://brew.sh, then run ./gasclaw again — everything else is installed for you."
+    have node || brew install node
+    have gcloud || brew install --cask google-cloud-sdk
   else
-    command -v node >/dev/null || die "Node.js 20+ not found: $(install_hint 'Node.js' 'nodejs' 'OpenJS.NodeJS.LTS')"
-    command -v gcloud >/dev/null || die "gcloud not found: install the Google Cloud CLI from https://cloud.google.com/sdk/docs/install and run ./gasclaw again"
+    have node || die "Node.js 20+ not found: $(install_hint 'Node.js' 'nodejs' 'OpenJS.NodeJS.LTS')"
+    have gcloud || die "gcloud not found: install the Google Cloud CLI from https://cloud.google.com/sdk/docs/install and run ./gasclaw again"
   fi
   [ -x node_modules/.bin/clasp ] || npm ci
   ok "tools installed"
@@ -567,14 +587,14 @@ check() { # $1 descrição · $2 comando · $3 correção
 }
 cmd_doctor() {
   check "Node ≥ 20" 'node -e "process.exit(Number(process.versions.node.split(\".\")[0]) < 20 ? 1 : 0)"' "$([ "$(os_kind)" = mac ] && printf 'brew install node' || install_hint 'Node.js' 'nodejs' 'OpenJS.NodeJS.LTS')"
-  check "gcloud installed" 'command -v gcloud' "$([ "$(os_kind)" = mac ] && printf 'brew install --cask google-cloud-sdk' || printf 'https://cloud.google.com/sdk/docs/install')"
+  check "gcloud installed" 'have gcloud' "$([ "$(os_kind)" = mac ] && printf 'brew install --cask google-cloud-sdk' || printf 'https://cloud.google.com/sdk/docs/install')"
   check "login gcloud" 'gcloud auth list --filter=status:ACTIVE --format="value(account)" | grep -q @' "gcloud auth login --enable-gdrive-access"
   check "login clasp" '[ -f "$HOME/.clasprc.json" ]' "npx clasp login"
   check "npm dependencies" '[ -x node_modules/.bin/clasp ]' "npm ci"
   check "build and tests" 'npm run build && npm test' "run 'npm test' to see the error"
   check "script $TARGET created" '[ -n "$(var "SCRIPT_ID_$UP")" ]' "./gasclaw up"
   check "web app $TARGET published" '[ -n "$(var "DEPLOY_ID_$UP")" ]' "./gasclaw up"
-  check "OPENROUTER_API_KEY no .env.local" '[ -n "${OPENROUTER_API_KEY:-}" ]' "create .env.local with OPENROUTER_API_KEY=sk-or-…"
+  check "OPENROUTER_API_KEY in .env.local" '[ -n "${OPENROUTER_API_KEY:-}" ]' "create .env.local with OPENROUTER_API_KEY=sk-or-…"
   check "remote health" 'remote health | grep -q "\"ok\":true"' "open the panel and authorize, or: gcloud auth login --enable-gdrive-access"
 }
 
@@ -673,7 +693,7 @@ STEP_WHYS="node, gcloud and clasp on this machine|the account that will own the 
 
 step_done() { # $1 numero do passo -> 0 se ja esta feito
   case "$1" in
-    1) command -v node >/dev/null && command -v gcloud >/dev/null && [ -x node_modules/.bin/clasp ] ;;
+    1) have node && have gcloud && [ -x node_modules/.bin/clasp ] ;;
     2) [ -n "$(var ACCOUNT)" ] && [ -f "$HOME/.clasprc.json" ] && [ -n "$(var APPS_SCRIPT_API_OK)" ] ;;
     3) [ -n "$(var "GCP_PROJECT_$UP")" ] && [ -n "$(var "CONSENT_OK_$UP")" ] ;;
     4) [ -n "${OPENROUTER_API_KEY:-}" ] ;;
@@ -690,10 +710,10 @@ step_missing() {
   case "$1" in
     1)
       local falta=""
-      [ "$(os_kind)" = mac ] && { command -v brew >/dev/null || falta="Homebrew (install it from https://brew.sh first)"; }
+      [ "$(os_kind)" = mac ] && { have brew || falta="Homebrew (install it from https://brew.sh first)"; }
       if [ -z "$falta" ]; then
-        command -v node >/dev/null   || falta="node"
-        command -v gcloud >/dev/null || falta="${falta:+$falta, }gcloud"
+        have node   || falta="node"
+        have gcloud || falta="${falta:+$falta, }gcloud"
         [ -x node_modules/.bin/clasp ] || falta="${falta:+$falta, }npm deps"
         # "will install" só é verdade no macOS. Nos outros sistemas o gasclaw ORIENTA, não instala — prometer
         # o contrário faria a pessoa apertar `a` esperando mágica e receber um erro.
