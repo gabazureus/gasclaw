@@ -94,6 +94,21 @@ export function failureNotice(events: ToolEvent[]): string | null {
   return lines.length ? lines.join('\n') : null;
 }
 
+/**
+ * Chave do grant `once`: tool + TODOS os argumentos validados, em forma canônica (chaves ordenadas).
+ *
+ * Antes a chave só considerava o alvo quando o argumento se chamava literalmente `id`. Tools como `gmail.draft`,
+ * `docs.create` e `tasks.create` não têm `id`, então a chave delas era só o nome da tool: **uma** aprovação liberava
+ * todas as chamadas seguintes, para qualquer destinatário — e `granted` é durável, atravessando execuções.
+ *
+ * Prender só alguns argumentos dá falsa precisão (prende o destino e liberta o corpo), então a chave prende todos.
+ * Consequência aceita: mudar qualquer argumento faz pedir de novo. Para uma tool com efeito, é o lado certo do erro.
+ */
+export function grantKey(name: string, args: Record<string, unknown>): string {
+  const canonical = JSON.stringify(Object.keys(args).sort().map((k) => [k, args[k]]));
+  return `${name}:${canonical}`;
+}
+
 const askText = (a: Record<string, unknown>) => `${String(a.question)}${a.options ? `\nOpções: ${String(a.options)}` : ''}`;
 
 const LONG_FIELDS = ['body', 'description', 'content', 'notes'];
@@ -159,8 +174,7 @@ export function runTurn(i: TurnInput): TurnResult {
         ev('denied', 'negado pelo usuário: não execute e não tente de novo neste turno');
         continue;
       }
-      // once vale por tool + alvo (revisão E6, item 6): aprovar sheets.append:<id A> não libera <id B> no mesmo turno.
-      const grant = typeof v.args.id === 'string' ? `${tool.name}:${v.args.id}` : tool.name;
+      const grant = grantKey(tool.name, v.args);
       const needs = tool.name === 'ask' ? 'ask' : tool.approval === 'always' || (tool.approval === 'once' && !granted.has(grant)) ? 'approval' : null;
       if (needs && !d) {
         events.push({ name: tool.name, callId: call.id, key, status: 'pending', result: needs === 'ask' ? 'aguardando resposta' : 'aguardando aprovação' });

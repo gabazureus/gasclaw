@@ -199,15 +199,38 @@ describe('runTurn: aprovação e ask (E5)', () => {
     expect(again.sent[0].messages.slice(-1)[0]?.content).toContain('negado pelo usuário');
   });
 
-  test('once: depois de aprovada no turno, a mesma tool não pede de novo (granted)', () => {
+  test('once: a MESMA chamada nao pede de novo (granted vale por tool + argumentos)', () => {
     const log: string[] = [];
     const p = runTurn(input([ask(call('c1', 'memory_remove', '{"text":"a"}'))], { tools: [risky('once', log)] }).i);
-    const r = runTurn(input([ask(call('c2', 'memory_remove', '{"text":"b"}')), say('fim')], { tools: [risky('once', log)], resume: { ...p.state!, decision: { approved: true } } }).i);
-    expect(r.granted).toEqual(['memory.remove']);
-    expect(log).toEqual(['a', 'b']);
+    const r = runTurn(input([ask(call('c2', 'memory_remove', '{"text":"a"}')), say('fim')], { tools: [risky('once', log)], resume: { ...p.state!, decision: { approved: true } } }).i);
+    expect(log).toEqual(['a', 'a']);
     expect(r.pending).toBeUndefined();
-    const next = runTurn(input([ask(call('c3', 'memory_remove', '{"text":"c"}')), say('fim')], { tools: [risky('once', log)], granted: r.granted }).i);
-    expect(next.pending).toBeUndefined();
+    const next = runTurn(input([ask(call('c3', 'memory_remove', '{"text":"a"}')), say('fim')], { tools: [risky('once', log)], granted: r.granted }).i);
+    expect(next.pending).toBeUndefined(); // o grant atravessa execucoes para a mesma chamada
+  });
+
+  // Regressao de seguranca: o comentario dizia "tool + alvo", mas o alvo so era visto quando o argumento
+  // se chamava literalmente `id`. memory.remove nao tem `id`, entao UMA aprovacao liberava qualquer texto.
+  test('once: aprovar um alvo NAO libera outro alvo da mesma tool', () => {
+    const log: string[] = [];
+    const p = runTurn(input([ask(call('c1', 'memory_remove', '{"text":"a"}'))], { tools: [risky('once', log)] }).i);
+    const r = runTurn(input([ask(call('c2', 'memory_remove', '{"text":"OUTRO"}')), say('fim')], { tools: [risky('once', log)], resume: { ...p.state!, decision: { approved: true } } }).i);
+    expect(log).toEqual(['a']); // o segundo alvo NAO pode ter executado
+    expect(r.pending).toMatchObject({ kind: 'approval', name: 'memory.remove', args: { text: 'OUTRO' } });
+  });
+
+  // O caso reportado: gmail.draft nao tem `id` (o schema e to/cc/subject/body), entao um clique
+  // liberava todos os rascunhos seguintes do run, para qualquer destinatario. E `granted` e duravel.
+  test('once: aprovar gmail.draft para A nao libera gmail.draft para B', () => {
+    const sent: string[] = [];
+    const draft: Tool = { ...findTool(TOOLS, 'gmail.draft')!, ownerOnly: false, run: (a) => (sent.push(String(a.to)), 'rascunho criado') };
+    const a = '{"to":"ana@exemplo.com","subject":"s","body":"b"}';
+    const b = '{"to":"atacante@exemplo.com","subject":"s","body":"b"}';
+    const p = runTurn(input([ask(call('c1', 'gmail_draft', a))], { tools: [draft] }).i);
+    expect(p.pending).toMatchObject({ name: 'gmail.draft' });
+    const r = runTurn(input([ask(call('c2', 'gmail_draft', b)), say('fim')], { tools: [draft], resume: { ...p.state!, decision: { approved: true } } }).i);
+    expect(sent).toEqual(['ana@exemplo.com']); // o rascunho para o atacante NAO pode ter saido
+    expect(r.pending).toMatchObject({ kind: 'approval', name: 'gmail.draft', args: { to: 'atacante@exemplo.com' } });
   });
 
   test('always pede toda vez, mesmo com granted', () => {
