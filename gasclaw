@@ -76,7 +76,28 @@ clasp_() { # projeto privado por chamada: nenhum comando compartilha (nem reescr
   rm -rf "$dir"
   return "$rc"
 }
-exec_url() { printf 'https://script.google.com/a/macros/%s/s/%s/exec' "${DOMAIN:-}" "$1"; }
+# Conta pessoal (gmail.com) x Google Workspace. Muda TRES coisas: a forma da URL do web app, o publico da
+# tela de consentimento, e a existencia do Google Chat. Vale o que estiver gravado em ACCOUNT_KIND; sem isso,
+# deduz do dominio do e-mail, que e a mesma regra do `accountKind` no src/limits.ts.
+account_kind() {
+  local k
+  k=$(var ACCOUNT_KIND)
+  if [ -n "$k" ]; then printf '%s' "$k"; return 0; fi
+  case "$(var ACCOUNT)" in
+    *@gmail.com|*@googlemail.com|*@GMAIL.COM) printf 'personal' ;;
+    '') printf 'unknown' ;;
+    *) printf 'workspace' ;;
+  esac
+}
+is_personal() { [ "$(account_kind)" = personal ]; }
+
+# Em conta pessoal o Apps Script nao serve o web app sob /a/macros/<dominio>/ — essa forma so existe para
+# Workspace. Com DOMAIN=gmail.com a URL antiga apontava para um endereco inexistente e TODA chamada remota
+# falhava; era o bloqueador que impedia o gasclaw de rodar fora de Workspace.
+exec_url() {
+  if is_personal; then printf 'https://script.google.com/macros/s/%s/exec' "$1";
+  else printf 'https://script.google.com/a/macros/%s/s/%s/exec' "${DOMAIN:-}" "$1"; fi
+}
 url() { exec_url "$(var "DEPLOY_ID_$UP")"; }
 sibling_url() { # P21: URL do painel do OUTRO ambiente, embutida no build. Só navegação: nada é lido do outro lado.
   local other d
@@ -194,6 +215,10 @@ ensure_auth() {
   fi
   setvar ACCOUNT "$acct"
   setvar DOMAIN "${acct#*@}"
+  case "$acct" in
+    *@gmail.com|*@googlemail.com) setvar ACCOUNT_KIND personal ;;
+    *) setvar ACCOUNT_KIND workspace ;;
+  esac
   if [ ! -f "$HOME/.clasprc.json" ]; then
     say "signing in to clasp (opens the browser)"
     npx --no-install clasp login
@@ -213,8 +238,15 @@ ensure_gcp() {
   fi
   gcloud services enable script.googleapis.com chat.googleapis.com iamcredentials.googleapis.com drive.googleapis.com sheets.googleapis.com logging.googleapis.com monitoring.googleapis.com tasks.googleapis.com people.googleapis.com calendar-json.googleapis.com gmail.googleapis.com --project "$p" >/dev/null
   setvar "GCP_NUMBER_$UP" "$(gcloud projects describe "$p" --format='value(projectNumber)')"
-  pause "CONSENT_OK_$UP" "https://console.cloud.google.com/auth/branding?project=$p" \
-    "OAuth consent screen: audience INTERNAL, app name 'gasclaw', support email $ACCOUNT. Save."
+  # `INTERNAL` so existe em Workspace. Numa conta pessoal a unica opcao e EXTERNAL, e voce precisa se
+  # adicionar como test user — senao o Google recusa a autorizacao dos escopos.
+  if is_personal; then
+    pause "CONSENT_OK_$UP" "https://console.cloud.google.com/auth/branding?project=$p" \
+      "OAuth consent screen: audience EXTERNAL, app name 'gasclaw', support email $ACCOUNT. Save, then under 'Test users' add $ACCOUNT."
+  else
+    pause "CONSENT_OK_$UP" "https://console.cloud.google.com/auth/branding?project=$p" \
+      "OAuth consent screen: audience INTERNAL, app name 'gasclaw', support email $ACCOUNT. Save."
+  fi
   ok "GCP project $p"
 }
 
@@ -571,7 +603,7 @@ step_done() { # $1 numero do passo -> 0 se ja esta feito
     4) [ -n "${OPENROUTER_API_KEY:-}" ] ;;
     5) [ -n "$(var "DEPLOY_ID_$UP")" ] ;;
     6) [ -n "$(var "AGENT_OK_$UP")" ] ;;
-    7) [ -n "$(var "CHAT_OK_$UP")" ] ;;
+    7) is_personal || [ -n "$(var "CHAT_OK_$UP")" ] ;; # em conta pessoal o passo nao se aplica: conta como resolvido
     *) return 1 ;;
   esac
 }
@@ -584,7 +616,7 @@ step_detail() { # confirmacao curta do passo FEITO — repetir o "porque" numa l
     4) printf 'in .env.local' ;;
     5) printf 'published' ;;
     6) printf 'created' ;;
-    7) printf 'connected' ;;
+    7) if is_personal; then printf 'n/a on personal accounts'; else printf 'connected'; fi ;;
     *) printf '' ;;
   esac
 }
@@ -619,7 +651,8 @@ step_run() {
        printf '  Press Enter when the agent is created… '
        read -r _
        health ;; # confirma de verdade, uma vez: e o `health` que grava o flag que o menu le
-    7) [ -n "$(var "GCP_PROJECT_$UP")" ] || die "create the Google Cloud project first (step 3)"
+    7) is_personal && { warn "Google Chat apps need a Google Workspace account; everything else works on a personal account"; return 0; }
+       [ -n "$(var "GCP_PROJECT_$UP")" ] || die "create the Google Cloud project first (step 3)"
        pause "CHAT_OK_$UP" "https://console.cloud.google.com/apis/api/chat.googleapis.com/hangouts-chat?project=$(var "GCP_PROJECT_$UP")" \
          "Google Chat API: set App name 'gasclaw', enable Interactive features, choose 'App URL' and paste $(url) — then Save." ;;
     *) warn "no such step: $1" ;;
@@ -630,11 +663,19 @@ onboard_menu() {
   local i done=0 total=7 mark title why detail
   printf '\n\033[1m🦀 gasclaw\033[0m — agents that live in your Google Drive\n'
   for i in $(seq 1 $total); do step_done "$i" >/dev/null 2>&1 && done=$((done + 1)); done
-  printf '\n  Setup · \033[1m%s of %s\033[0m done · environment: %s\n\n' "$done" "$total" "$TARGET"
+  local acct
+  case "$(account_kind)" in
+    personal)  acct="personal account ($(var ACCOUNT)) · Google Chat unavailable" ;;
+    workspace) acct="Google Workspace ($(var DOMAIN))" ;;
+    *)         acct="account not detected yet — run step 2" ;;
+  esac
+  printf '\n  Setup · \033[1m%s of %s\033[0m done · environment: %s\n  \033[2m%s\033[0m\n\n' "$done" "$total" "$TARGET" "$acct"
   for i in $(seq 1 $total); do
     title=$(printf '%s' "$STEP_TITLES" | cut -d'|' -f"$i")
     why=$(printf '%s' "$STEP_WHYS" | cut -d'|' -f"$i")
-    if step_done "$i" >/dev/null 2>&1; then
+    if [ "$i" = 7 ] && is_personal; then
+      printf '  \033[2m—\033[0m %s  %-22s \033[2mnot available on personal accounts (needs Google Workspace)\033[0m\n' "$i" "$title"
+    elif step_done "$i" >/dev/null 2>&1; then
       detail=$(step_detail "$i")
       printf '  \033[32m✓\033[0m %s  %-22s \033[2m%s\033[0m\n' "$i" "$title" "${detail:-$why}"
     else

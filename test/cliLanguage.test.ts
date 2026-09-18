@@ -50,10 +50,12 @@ function withoutComment(line: string): string {
   return line;
 }
 
-// Só o que está entre aspas (simples ou duplas) do código, já sem o comentário.
+// Só o que está entre aspas (simples ou duplas) do código, já sem o comentário. Referência de variável
+// (`$acct`, `${DEPLOY_ID_$UP}`) é IDENTIFICADOR, não prosa: sai antes da leitura, senão um nome de variável
+// mal escolhido derruba o teste por um motivo que não é idioma — foi o que aconteceu com um `$conta`.
 function quotedParts(line: string): string[] {
   if (/^\s*#/.test(line)) return [];
-  return (withoutComment(line).match(/"[^"]*"|'[^']*'/g) ?? []).map((s) => s.slice(1, -1));
+  return (withoutComment(line).match(/"[^"]*"|'[^']*'/g) ?? []).map((s) => s.slice(1, -1).replace(/\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*/g, ' '));
 }
 
 function helpHeredocRange(): [number, number] {
@@ -123,6 +125,13 @@ describe('idioma da CLI (a vitrine é em inglês; comentário de código continu
 
   test('comentário em pt-BR no fim da linha não conta como saída', () => {
     expect(quotedParts('ok "published"  # a versão foi conferida antes')).toEqual(['published']);
-    expect(quotedParts('[ -z "$bad" ] || die "stale"')).toEqual(['$bad', 'stale']);
+  });
+
+  // Nome de variável é identificador, não prosa. Sem isto, chamar uma variável de `$conta` reprovaria o
+  // arquivo por "idioma" — e o motivo real seria outro: identificador em pt-BR, que o CLAUDE.md já proíbe.
+  test('referência de variável sai antes da leitura', () => {
+    expect(quotedParts('[ -z "$bad" ] || die "stale"')).toEqual([' ', 'stale']);
+    expect(quotedParts('printf "%s" "${DEPLOY_ID_$UP}"').map((t) => t.trim())).toEqual(['%s', '']);
+    expect(isPortuguese(quotedParts('printf "%s" "$conta"')[1] ?? '')).toBe(false);
   });
 });
