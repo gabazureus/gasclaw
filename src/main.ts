@@ -1033,10 +1033,21 @@ export function drainRuns() {
   if (runP3IdleProbe()) return { n: 0, ms: 0, oldest: null };
   if (runP22TickProbe()) return { n: 0, ms: 0, oldest: null };
   if (runP22WakeProbe()) return { n: 0, ms: 0, oldest: null };
-  runlog.reconcileStaleRuns();
-  const drained = observe.drain();
-  workRuns(); // mesmo gatilho, dois trabalhos: gravar o trace em lote e avançar o run durável (ADR-027)
-  return drained;
+  // Três trabalhos INDEPENDENTES no mesmo tique, e o gatilho é a única coisa que faz o agente responder.
+  // Em sequência crua, uma exceção no primeiro cancelava os outros dois — todo minuto, sem sinal na tela,
+  // porque o run continua 'running'. Isolar é o conserto; o `warn` é o que transforma o silêncio em rastro.
+  const isolado = (nome: string, f: () => void) => {
+    try {
+      f();
+    } catch (err) {
+      console.warn(`drainRuns ${nome}: ${redactMsg(err)}`);
+    }
+  };
+  isolado('reconcile', () => runlog.reconcileStaleRuns());
+  let drained: ReturnType<typeof observe.drain> | null = null;
+  isolado('drain', () => void (drained = observe.drain()));
+  isolado('runs', () => workRuns()); // gravar o trace em lote e avançar o run durável (ADR-027)
+  return drained ?? { n: 0, ms: 0, oldest: null };
 }
 
 export function observability() {

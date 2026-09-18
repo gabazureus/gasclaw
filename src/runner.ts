@@ -124,7 +124,13 @@ export function pump(d: StepDeps, maxSteps: number, deadlineMs: number, after?: 
     const r = pumpOnce(d);
     if (!r) break;
     touched.push(r);
-    after?.(r);
+    // O `after` é a ENTREGA. Um throw que escape dele (Chat fora do ar, 500, rede) matava o pump inteiro e
+    // punia todos os outros runs do tique por causa de um só. A entrega já é reenfileirada por quem a executa.
+    try {
+      after?.(r);
+    } catch {
+      // segue para o próximo run: este fica na fila e tenta de novo no próximo tique
+    }
   }
   return touched;
 }

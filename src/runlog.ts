@@ -18,6 +18,29 @@ const props = () => PropertiesService.getScriptProperties();
 const cache = () => CacheService.getScriptCache();
 const auth = () => ({ Authorization: `Bearer ${ScriptApp.getOAuthToken()}` });
 
+/**
+ * O cache e as Properties guardam ESTADO, não entrada validada — e estado pode vir quebrado.
+ *
+ * Um valor é truncado quando passa dos limites (100 KB por chave no cache, 9 KB por valor nas Properties) e
+ * fica meio-escrito quando a execução é cortada aos 6 min. Um `JSON.parse` cru sobre isso lançava dentro do
+ * `reconcileStaleRuns`, que o gatilho de 1 min chama ANTES de drenar e de avançar os runs: um único valor
+ * podre parava a entrega de todos os agentes, todo minuto, para sempre e sem sinal na tela.
+ */
+function parseOr<T>(raw: string | null | undefined, fallback: T): T {
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Lista de ids ao vivo, sempre um array de string: tipo errado no cache vale o mesmo que lista vazia. */
+function liveIds(): string[] {
+  const v = parseOr<unknown>(cache().get(LIVE_KEY), []);
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+}
+
 function warn(what: string, err: unknown) {
   console.warn(`runlog ${what}: ${redact(String((err as Error)?.message ?? err)).slice(0, 300)}`);
 }
@@ -69,7 +92,7 @@ function toCache(run: Run, listed = false) {
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(3000)) return;
     try {
-      const ids: string[] = JSON.parse(cache().get(LIVE_KEY) ?? '[]');
+      const ids = liveIds();
       cache().put(LIVE_KEY, JSON.stringify([r.id, ...ids.filter((x) => x !== r.id)].slice(0, LIVE_MAX)), SIX_HOURS);
     } finally {
       lock.releaseLock();
@@ -172,12 +195,12 @@ export function sheetRows(): string[][] {
 }
 
 export function liveRuns(): { running: Summary[]; recent: Summary[]; sheetUrl: string | null } {
-  const ids: string[] = JSON.parse(cache().get(LIVE_KEY) ?? '[]');
+  const ids = liveIds();
   const all = cache().getAll(ids.map((i) => `run:${i}`));
   const now = Date.now();
   const list = ids.flatMap((i) => {
-    if (!all[`run:${i}`]) return [];
-    return [summarize(closeStale(JSON.parse(all[`run:${i}`]) as Run, now))];
+    const run = parseOr<Run | null>(all[`run:${i}`], null);
+    return run ? [summarize(closeStale(run, now))] : []; // checkpoint podre some da tela, não derruba a tela
   });
   const id = props().getProperty('RUNS_SHEET_ID');
   return { running: list.filter((r) => r.status === 'running'), recent: list.filter((r) => r.status !== 'running').slice(0, 10), sheetUrl: id ? sheetUrl(id) : null };
@@ -212,7 +235,7 @@ export function reconcileStaleRuns(now = Date.now()): number {
         }
       }
     }
-    const cachedIds: string[] = JSON.parse(cache().get(LIVE_KEY) ?? '[]');
+    const cachedIds = liveIds();
     const runningIds = Object.keys(properties).filter((key) => key.startsWith(RUNNING_PREFIX)).map((key) => key.slice(RUNNING_PREFIX.length));
     const durableIds = Object.entries(properties)
       .filter(([key]) => key.startsWith(TERMINAL_PREFIX) || key.startsWith(STALE_PREFIX))
@@ -242,7 +265,8 @@ export function reconcileStaleRuns(now = Date.now()): number {
         const full = cache().get(`qjson:${id}`) ?? terminal;
         try {
           const run = JSON.parse(full) as Run;
-          if (!all[`run:${id}`] || (JSON.parse(all[`run:${id}`]) as Run).status === 'running') repairCache(run);
+          const cached = parseOr<Run | null>(all[`run:${id}`], null); // corrompido conta como ausente: repara
+          if (!cached || cached.status === 'running') repairCache(run);
           visible.push(run);
         } catch {
           // marcador inválido é removido pela varredura acima na próxima rodada
@@ -253,15 +277,17 @@ export function reconcileStaleRuns(now = Date.now()): number {
       if (stale) {
         try {
           const run = JSON.parse(cache().get(`qjson:${id}`) ?? stale) as Run;
-          if (!all[`run:${id}`] || (JSON.parse(all[`run:${id}`]) as Run).status === 'running') repairCache(run);
+          const cachedStale = parseOr<Run | null>(all[`run:${id}`], null);
+          if (!cachedStale || cachedStale.status === 'running') repairCache(run);
           visible.push(run);
         } catch {
           // marcador inválido é removido pela varredura acima na próxima rodada
         }
         continue;
       }
-      const cachedRun = all[`run:${id}`] ? JSON.parse(all[`run:${id}`]) as Run : null;
-      const durableRunning = properties[`${RUNNING_PREFIX}${id}`] ? JSON.parse(properties[`${RUNNING_PREFIX}${id}`]) as Run : null;
+      // Os dois ramos irmãos acima já eram protegidos; estes dois não eram. Era assimetria, não decisão.
+      const cachedRun = parseOr<Run | null>(all[`run:${id}`], null);
+      const durableRunning = parseOr<Run | null>(properties[`${RUNNING_PREFIX}${id}`], null);
       const run = cachedRun && durableRunning ? { ...cachedRun, step: durableRunning.step } : (cachedRun ?? durableRunning);
       if (!run) continue;
       if (run.status !== 'running' && durableRunning) {
@@ -303,7 +329,7 @@ export function reconcileStaleRuns(now = Date.now()): number {
 }
 
 export function runDetail(id?: string): { run: Run | null; tree: string } {
-  const runId = id || (JSON.parse(cache().get(LIVE_KEY) ?? '[]') as string[])[0];
+  const runId = id || liveIds()[0];
   if (!runId) return { run: null, tree: '(nenhum run ainda)' };
   let raw = cache().get(`run:${runId}`);
   if (!raw) {
