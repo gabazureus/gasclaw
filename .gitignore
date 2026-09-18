@@ -8,3 +8,8 @@ dist/
 .DS_Store
 .env
 .tmp/
+
+# Identificadores do ambiente (conta, projetos GCP, script ids, deployment ids).
+# Fica fora do versionamento: o repositório é publicável (Apache-2.0) e estes valores são do dono.
+# Use gasclaw.env.example como referência dos nomes.
+gasclaw.env
