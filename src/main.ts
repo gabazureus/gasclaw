@@ -959,23 +959,46 @@ export function setAgentUser(folderId: string, email: string, allowed: boolean) 
  * manual depois do setup. Passa pela mesma trava e pelo mesmo `withTool` do painel: um nome fora do registry
  * derruba a chamada inteira, antes de qualquer gravação.
  */
+/**
+ * Núcleo ÚNICO da gravação da lista inteira de ferramentas. A CLI (`./gasclaw tools`) e o painel
+ * ("Select all" / "Clear all") entram os dois por aqui.
+ *
+ * Existe porque marcar as 23 caixas do painel disparava 23 chamadas concorrentes, cada uma disputando a
+ * trava global: sob contenção várias falhavam com "another access change is in progress" e o acesso
+ * simplesmente não era concedido. Uma chamada, uma tomada da trava, uma gravação.
+ *
+ * O `reduce` sobre `withTool` valida nome a nome — nome desconhecido lança ANTES de qualquer gravação — e
+ * sai na ordem canônica do registry, não na ordem dos cliques. `users` é preservado: mexer em ferramenta
+ * nunca expulsa ninguém (ADR-021).
+ */
+function writeTools(folderId: string, names: string[], origem: string) {
+  const props = PropertiesService.getScriptProperties();
+  return underAccessLock(() => {
+    const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
+    const next = names.reduce<Access>((acc, n) => withTool(acc, n, true), { users: before.users, tools: [] });
+    const name = agentName(folderId);
+    const t = runlog.begin('config', { question: `ferramentas de ${name} ${origem}: ${before.tools.length} → ${next.tools.length}`, agent: name });
+    t.step('set_tools', () => props.setProperty(`ACCESS:${folderId}`, JSON.stringify(next)), () => ({ folderId, before, after: next }));
+    t.end({ answer: `ferramentas: ${next.tools.length}` });
+    return { folderId, approved: next, enabled: enabledTools(next), users: next.users };
+  });
+}
+
+/** Painel: liga ou desliga a lista inteira numa chamada. Mesma gravação da CLI, mesma trava. */
+export function setAgentTools(folderId: string, tools: string[]) {
+  assertOwner();
+  const names = Array.isArray(tools) ? tools.map(String) : [];
+  return writeTools(folderId, names, 'pela tela');
+}
+
 function setTools(folder: string, set: string) {
   const folderId = folder || store.listAgents()[0]?.folderId || '';
   if (!folderId) return { ok: false, status: 400, error: 'no agent registered' };
   const pedido = set.trim();
   if (!pedido) return { ok: false, status: 400, error: 'use set=all, set=none or set=<comma-separated names>' };
   const names = pedido === 'all' ? toolCatalog().map((t) => t.name) : pedido === 'none' ? [] : pedido.split(',').map((x) => x.trim()).filter(Boolean);
-  const props = PropertiesService.getScriptProperties();
-  return underAccessLock(() => {
-    const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
-    // reduce sobre o withTool do painel: valida nome a nome e sai na ordem canônica do registry
-    const next = names.reduce<Access>((acc, n) => withTool(acc, n, true), { users: before.users, tools: [] });
-    const name = agentName(folderId);
-    const t = runlog.begin('config', { question: `ferramentas de ${name} pela CLI: ${before.tools.length} → ${next.tools.length}`, agent: name });
-    t.step('set_tools', () => props.setProperty(`ACCESS:${folderId}`, JSON.stringify(next)), () => ({ folderId, before, after: next }));
-    t.end({ answer: `ferramentas: ${next.tools.length}` });
-    return { ok: true, folderId, agent: name, enabled: enabledTools(next), users: next.users };
-  });
+  const r = writeTools(folderId, names, 'pela CLI');
+  return { ok: true, folderId, agent: agentName(folderId), enabled: r.enabled, users: r.users };
 }
 
 /** Grava o acesso aprovado (normalizado por effectiveAccess) e registra a mudança como run config no trace. */

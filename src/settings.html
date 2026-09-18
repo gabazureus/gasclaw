@@ -255,20 +255,25 @@
       const approve = button('Approve suggestion', () => call('approveAccess', folderId, { users: x.approved.users.concat(x.pending.users), tools: x.approved.tools.concat(x.pending.tools) }).then(() => { $('msg').textContent = 'Access approved.'; showAccess(folderId, holder); }));
       approve.disabled = !hasPending;
       approve.title = hasPending ? 'Approves what the folder suggested' : 'Nothing new to approve: the folder suggests nothing beyond what is already approved';
+      // O usuário relatou que o botão não diz o que faz. A explicação vai na TELA, não só no title: ele
+      // aprova o que a PASTA sugeriu (users/tools do AGENTS.md ou da planilha config) e não tem relação
+      // com as caixinhas de ferramenta logo abaixo, que valem por si.
+      const explica = document.createElement('p');
+      explica.className = 'muted';
+      explica.textContent = hasPending
+        ? 'Approve suggestion accepts the people and tools suggested in the folder (AGENTS.md or the config sheet). The checkboxes below are separate — they always apply on their own.'
+        : 'Nothing suggested in the folder is waiting. The checkboxes below apply on their own.';
       const remove = button('Remove access', () => call('removeAccess', folderId).then(() => { $('msg').textContent = 'Access removed: owner only, no tools.'; showAccess(folderId, holder); }));
       remove.disabled = x.approved.users.length === 0 && x.approved.tools.length === 0;
       remove.title = remove.disabled ? 'There is no approved access to remove' : 'Takes the agent back to owner only, with no tools';
       const resumo = line('Approved: ' + fmt(x.approved));
       resumo.setAttribute('aria-live', 'polite'); // só o resumo é anunciado; a lista de ferramentas abaixo, não
-      // Uma resposta por vez vale para o RESUMO: duas caixinhas diferentes podem responder fora de ordem, e a
-      // mais antiga reescreveria o resumo com um estado que já não é o do servidor.
-      const guard = { seq: 0 };
       holder.replaceChildren(
         line('Suggested by the folder (needs approval): ' + (hasPending ? fmt(x.pending) : 'nothing new')),
-        resumo, approve, document.createTextNode(' '), remove,
+        resumo, approve, document.createTextNode(' '), remove, explica,
         usersBox(folderId, x, holder),
         stepsBox(folderId, x),
-        toolsBox(folderId, x, resumo, fmt, guard));
+        toolsBox(folderId, x, resumo, fmt, holder));
     }).withFailureHandler((e) => { holder.textContent = e.message; }).agentAccess(folderId);
   }
 
@@ -353,11 +358,27 @@
   const APPROVAL = { never: 'no approval needed', once: 'asks for approval the 1st time', always: 'always asks for approval' };
   const GROUP_LABEL = { '': 'General', memory: 'Memory', calendar: 'Calendar', gmail: 'Gmail', contacts: 'Contacts', tasks: 'Tasks', drive: 'Drive, Docs and Sheets' };
 
-  function toolsBox(folderId, x, resumo, fmt, guard) {
+  function toolsBox(folderId, x, resumo, fmt, holder) {
     const box = document.createElement('fieldset');
     const legend = document.createElement('legend');
     legend.textContent = 'Tools (' + x.enabled.length + ' of ' + x.catalog.length + ' on)';
     box.append(legend);
+    // Marcar as 23 caixas uma a uma disparava 23 chamadas concorrentes disputando a MESMA trava global:
+    // sob contenção várias falhavam e o acesso não era concedido. Aqui é uma chamada e uma gravação.
+    const lote = (nomes, feito) => {
+      $('msg').className = '';
+      $('msg').textContent = 'Working…';
+      google.script.run
+        .withSuccessHandler(() => { $('msg').textContent = feito; showAccess(folderId, holder); })
+        .withFailureHandler((e) => { $('msg').className = 'err'; $('msg').textContent = e.message; })
+        .setAgentTools(folderId, nomes);
+    };
+    const linha = document.createElement('p');
+    linha.append(
+      button('Select all', () => lote(x.catalog.map((t) => t.name), 'All tools turned on.')),
+      button('Clear all', () => lote([], 'All tools turned off.')),
+    );
+    box.append(linha);
     const groups = [];
     x.catalog.forEach((t) => {
       const g = groups.filter((o) => o.name === t.group)[0] || (groups.push({ name: t.group, tools: [] }), groups[groups.length - 1]);
@@ -368,12 +389,12 @@
       head.className = 'grp';
       head.textContent = GROUP_LABEL[g.name] || g.name;
       box.append(head);
-      g.tools.forEach((t) => box.append(toolRow(folderId, t, x.enabled.indexOf(t.name) >= 0, resumo, fmt, legend, x.catalog.length, guard)));
+      g.tools.forEach((t) => box.append(toolRow(folderId, t, x.enabled.indexOf(t.name) >= 0, resumo, fmt, legend, x.catalog.length)));
     });
     return box;
   }
 
-  function toolRow(folderId, t, on, resumo, fmt, legend, total, guard) {
+  function toolRow(folderId, t, on, resumo, fmt, legend, total) {
     const row = document.createElement('div');
     row.className = 'tool';
     const cb = document.createElement('input');
@@ -388,22 +409,28 @@
     // o que a pessoa precisa para decidir: se a ferramenta age sozinha e se ela usa a conta do dono
     hint.textContent = APPROVAL[t.approval] + (t.ownerOnly ? ' · owner only' : '');
     label.title = t.description;
+    // A sequência é DESTA linha, não do painel inteiro. Era uma só para as 23 caixas, então clicar numa
+    // invalidava o handler de outra — com 23 cliques, 22 respostas eram descartadas e a tela mostrava
+    // "marcado" para gravações que nunca aconteceram.
+    let seq = 0;
     cb.onchange = () => {
-      const n = ++guard.seq; // dois cliques rápidos, na mesma caixa ou em caixas diferentes: vale a última resposta
+      const n = ++seq; // dois cliques rápidos na MESMA caixa: vale a última resposta
       const want = cb.checked;
       $('msg').className = '';
       $('msg').textContent = 'Working…';
       google.script.run
         .withSuccessHandler((a) => {
-          if (n !== guard.seq) return;
+          if (n !== seq) return;
           cb.checked = a.enabled.indexOf(t.name) >= 0;
           resumo.textContent = 'Approved: ' + fmt(a.approved);
           legend.textContent = 'Tools (' + a.enabled.length + ' of ' + total + ' on)';
           $('msg').textContent = t.name + (cb.checked ? ' turned on.' : ' turned off: the agent can no longer use it.');
         })
         .withFailureHandler((e) => {
-          if (n !== guard.seq) return;
-          cb.checked = !want; // nada foi gravado: a caixa volta para o que o servidor tem
+          // A caixa volta SEMPRE, mesmo que a resposta chegue atrasada: ela é o estado que a pessoa
+          // acredita ter salvo, e deixá-la marcada depois de uma falha é a tela mentindo sobre o servidor.
+          cb.checked = !want;
+          if (n !== seq) return; // só a MENSAGEM pode ser descartada por estar velha
           $('msg').className = 'err';
           $('msg').textContent = e.message;
         })
