@@ -7,10 +7,29 @@
   body { font: 15px/1.45 system-ui, sans-serif; margin: 0; background: #f7f7f5; color: #1d1d1b; }
   main { max-width: 42rem; margin: 0 auto; padding: 1rem; }
   #log { min-height: 50vh; max-height: 70vh; overflow-y: auto; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: .75rem; }
-  #log p { margin: .4rem 0; white-space: pre-wrap; }
-  .eu { color: #0b4f8a; }
-  .andamento { color: #6b6b66; font-style: italic; }
-  .meta { color: #6b6b66; font-size: .8rem; margin-top: .15rem; }
+  /* Uma linha por mensagem; o alinhamento diz quem falou antes de qualquer leitura. */
+  .row { display: flex; margin: .5rem 0; }
+  .row.me { justify-content: flex-end; }
+  .row.agent { justify-content: flex-start; }
+  .bubble { max-width: 80%; padding: .55rem .8rem; border-radius: 1rem; }
+  .row.me .bubble { background: #0b4f8a; color: #fff; border-bottom-right-radius: .25rem; }
+  .row.agent .bubble { background: #eceae4; color: #1d1d1b; border-bottom-left-radius: .25rem; }
+  .row.pending .bubble { background: transparent; color: #6b6b66; font-style: italic; padding-left: 0; }
+  /* Markdown renderizado: o espaçamento precisa caber dentro do balão, não empurrá-lo. */
+  .bubble > :first-child { margin-top: 0; }
+  .bubble > :last-child { margin-bottom: 0; }
+  .bubble p { margin: .4rem 0; white-space: pre-wrap; }
+  .bubble h3 { font-size: 1rem; margin: .6rem 0 .3rem; }
+  .bubble ul, .bubble ol { margin: .4rem 0; padding-left: 1.3rem; }
+  .bubble li { margin: .15rem 0; }
+  .bubble code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; background: rgba(0,0,0,.07); padding: .1em .3em; border-radius: .25rem; }
+  .row.me .bubble code { background: rgba(255,255,255,.2); }
+  .bubble pre { background: rgba(0,0,0,.07); padding: .5rem .65rem; border-radius: .4rem; overflow-x: auto; margin: .4rem 0; }
+  .row.me .bubble pre { background: rgba(255,255,255,.15); }
+  .bubble pre code { background: none; padding: 0; }
+  .bubble a { color: inherit; }
+  .meta { color: #6b6b66; font-size: .8rem; margin-top: .15rem; display: block; }
+  .row.me .meta { color: #cfe0ef; }
   form { display: flex; gap: .5rem; margin-top: .75rem; }
   input { flex: 1; min-width: 0; padding: .5rem; font: inherit; }
   button { padding: .45rem .9rem; font: inherit; cursor: pointer; }
@@ -39,19 +58,113 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const POLL_MS = 2000;
 const POLL_MAX = 300; // 10 min de acompanhamento; depois disso a tarefa segue no servidor, só paramos de olhar
 
-function add(cls, text) {
-  const p = document.createElement('p');
-  p.className = cls;
-  p.textContent = text;
-  log.append(p);
+/**
+ * Markdown -> nós do DOM, um a um. Nenhuma atribuição de marcação: o texto vem do modelo, e o modelo lê
+ * conteúdo de terceiros (e-mail, documento, evento). Tudo entra por textContent ou createTextNode, então uma
+ * resposta com marcação dentro aparece como TEXTO — que é o que o ADR-002 exige. O teste em p17.test.ts
+ * recusa o arquivo inteiro se a palavra proibida aparecer, inclusive em comentário: a trava é cega de
+ * propósito, porque uma trava que aceita exceção deixa de ser trava.
+ */
+function inline(el, text) {
+  // Ordem importa: código primeiro, senão ** dentro de `code` viraria negrito.
+  const re = /`([^`]+)`|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*\n]+)\*|_([^_\n]+)_|\[([^\]]+)\]\(([^)\s]+)\)/;
+  let rest = text;
+  for (let m = re.exec(rest); m; m = re.exec(rest)) {
+    if (m.index > 0) el.append(document.createTextNode(rest.slice(0, m.index)));
+    if (m[1] !== undefined) { const c = document.createElement('code'); c.textContent = m[1]; el.append(c); }
+    else if (m[2] !== undefined || m[3] !== undefined) { const b = document.createElement('strong'); b.textContent = m[2] ?? m[3]; el.append(b); }
+    else if (m[4] !== undefined || m[5] !== undefined) { const i = document.createElement('em'); i.textContent = m[4] ?? m[5]; el.append(i); }
+    else {
+      // Só http(s): um link `javascript:` numa resposta do modelo seria execução vinda de fora.
+      const ok = /^https?:\/\//i.test(m[7]);
+      const a = document.createElement(ok ? 'a' : 'span');
+      a.textContent = m[6];
+      if (ok) { a.href = m[7]; a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+      el.append(a);
+    }
+    rest = rest.slice(m.index + m[0].length);
+  }
+  if (rest) el.append(document.createTextNode(rest));
+}
+
+function markdown(el, text) {
+  el.replaceChildren();
+  const linhas = String(text ?? '').split('\n');
+  let lista = null;
+  const fecharLista = () => { lista = null; };
+  for (let i = 0; i < linhas.length; i++) {
+    const l = linhas[i];
+    const cerca = /^```/.test(l);
+    if (cerca) {
+      fecharLista();
+      const corpo = [];
+      for (i++; i < linhas.length && !/^```/.test(linhas[i]); i++) corpo.push(linhas[i]);
+      const pre = document.createElement('pre');
+      const code = document.createElement('code');
+      code.textContent = corpo.join('\n');
+      pre.append(code);
+      el.append(pre);
+      continue;
+    }
+    const h = /^(#{1,6})\s+(.*)$/.exec(l);
+    if (h) { fecharLista(); const t = document.createElement('h3'); inline(t, h[2]); el.append(t); continue; }
+    const li = /^\s*([-*+]|\d+[.)])\s+(.*)$/.exec(l);
+    if (li) {
+      const ordenada = /\d/.test(li[1]);
+      if (!lista || lista.tagName !== (ordenada ? 'OL' : 'UL')) { lista = document.createElement(ordenada ? 'ol' : 'ul'); el.append(lista); }
+      const item = document.createElement('li');
+      inline(item, li[2]);
+      lista.append(item);
+      continue;
+    }
+    fecharLista();
+    if (!l.trim()) continue;
+    // Junta linhas seguidas num parágrafo só, preservando a quebra (o CSS usa pre-wrap).
+    const bloco = [l];
+    while (i + 1 < linhas.length && linhas[i + 1].trim() && !/^(```|#{1,6}\s|\s*([-*+]|\d+[.)])\s)/.test(linhas[i + 1])) bloco.push(linhas[++i]);
+    const par = document.createElement('p');
+    inline(par, bloco.join('\n'));
+    el.append(par);
+  }
+  if (!el.childNodes.length) el.append(document.createTextNode(''));
+}
+
+/**
+ * Uma linha alinhada (você à direita, o agente à esquerda) com o balão dentro. Devolve o BALÃO, porque é
+ * nele que o resto do código escreve; `bolha.row` dá acesso à linha para trocar de lado depois.
+ */
+function add(quem, text) {
+  const row = document.createElement('div');
+  row.className = 'row ' + quem;
+  const bolha = document.createElement('div');
+  bolha.className = 'bubble';
+  // O alinhamento é visual: quem usa leitor de tela precisa ouvir quem falou.
+  const sr = document.createElement('span');
+  sr.className = 'sr';
+  sr.textContent = quem === 'me' ? 'You said: ' : 'Agent said: ';
+  bolha.append(sr);
+  if (text) bolha.append(document.createTextNode(text));
+  bolha.row = row;
+  row.append(bolha);
+  log.append(row);
   log.scrollTop = log.scrollHeight;
-  return p;
+  return bolha;
+}
+
+/** Troca o texto puro do balão sem perder o rótulo do leitor de tela. */
+function say(bolha, text) {
+  const sr = bolha.querySelector('.sr');
+  bolha.replaceChildren();
+  if (sr) bolha.append(sr);
+  bolha.append(document.createTextNode(text));
 }
 
 /** Desenha o desfecho de um run: texto, custo e, se ele parou esperando você, os botões. */
 function render(p, r, runId) {
-  p.className = 'agente';
-  p.textContent = 'Agent: ' + (r.text || '');
+  p.row.className = 'row agent';
+  const sr = p.querySelector('.sr');
+  markdown(p, r.text || '');
+  if (sr) p.prepend(sr); // o rótulo do leitor de tela volta na frente do conteúdo renderizado
   if (r.spent && r.spent !== 'US$ 0.00') {
     const m = document.createElement('span');
     m.className = 'meta';
@@ -67,7 +180,7 @@ function render(p, r, runId) {
       const params = {};
       params[c.key] = c.value;
       if (r.approvalToken) params.token = r.approvalToken;
-      const next = add('andamento', 'Agent: working…');
+      const next = add('pending', 'Agent: working…');
       await acompanhar(next, await call('runDecide', runId, params).catch(erro), runId);
     };
     p.append(' ', btn);
@@ -79,19 +192,19 @@ const erro = (e) => ({ ok: false, error: (e && e.message) || String(e) });
 
 /** Acompanha um run até ele terminar, falhar ou parar esperando você. */
 async function acompanhar(p, r, runId, knownApprovalToken) {
-  if (!r || r.ok === false) { p.className = 'agente'; p.textContent = 'Agent: ' + (r && r.error ? r.error : "I couldn't answer"); return; }
+  if (!r || r.ok === false) { p.row.className = 'row agent'; say(p, r && r.error ? r.error : "I couldn't answer"); return; }
   const id = r.runId || runId;
   let approvalToken = r.approvalToken || knownApprovalToken || '';
   for (let i = 0; i < POLL_MAX; i++) {
     if (r.approvalToken) approvalToken = r.approvalToken;
     if (r.status === 'done' || r.status === 'failed' || r.waiting) return render(p, { ...r, ...(approvalToken ? { approvalToken } : {}) }, id);
-    p.textContent = 'Agent: working…' + (r.spent && r.spent !== 'US$ 0.00' ? ' (' + r.spent + ')' : '');
+    say(p, 'working…' + (r.spent && r.spent !== 'US$ 0.00' ? ' (' + r.spent + ')' : ''));
     await sleep(POLL_MS);
     r = await call('runState', id, approvalToken).catch(erro);
-    if (!r || r.ok === false) { p.className = 'agente'; p.textContent = 'Agent: ' + (r && r.error ? r.error : 'I lost contact with the task'); return; }
+    if (!r || r.ok === false) { p.row.className = 'row agent'; say(p, r && r.error ? r.error : 'I lost contact with the task'); return; }
   }
-  p.className = 'agente';
-  p.textContent = 'Agent: the task is still running on the server. Reload this page in a moment to see the result.';
+  p.row.className = 'row agent';
+  say(p, 'The task is still running on the server. Reload this page in a moment to see the result.');
 }
 
 $('form').onsubmit = async (ev) => {
@@ -100,8 +213,8 @@ $('form').onsubmit = async (ev) => {
   if (!text) return;
   $('texto').value = '';
   $('enviar').disabled = true;
-  add('eu', 'You: ' + text);
-  const p = add('andamento', 'Agente: trabalhando…');
+  add('me', text);
+  const p = add('pending', 'working…');
   await acompanhar(p, await call('runAsk', text).catch(erro));
   $('enviar').disabled = false;
   $('texto').focus();
