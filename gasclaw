@@ -11,7 +11,7 @@ set -a
 [ -f .env.local ] && . ./.env.local
 set +a
 
-CMD="${1:-help}"
+CMD="${1:-}"
 [ $# -gt 0 ] && shift
 TARGET=dev
 for a in "$@"; do [ "$a" = "--prod" ] && TARGET=prod; done
@@ -380,7 +380,10 @@ health() {
   local r
   r=$(remote health 2>/dev/null || true)
   case "$r" in
-    *'"ok":true'*) ok "health: $r" ;;
+    *'"ok":true'*)
+      # Grava o que o menu do onboarding precisa saber, para ele nao ter que perguntar pela rede (A6).
+      case "$r" in *'"agents":0'*) ;; *'"agents":'*) setvar "AGENT_OK_$UP" 1 ;; esac
+      ok "health: $r" ;;
     *) warn "health não confirmado automaticamente (abra $(url)). Resposta: ${r:0:160}" ;;
   esac
 }
@@ -543,9 +546,128 @@ cmd_rollback() {
   ok "$TARGET voltou para a versão $((cur - 1))"
 }
 
-case "$CMD" in
-  up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs|eval|limits|usage|tools) "cmd_$CMD" "$@" ;;
-  *) cat <<'TXT'
+
+# ---------- onboarding: o mapa do setup, um passo por vez ----------
+#
+# O `up` ja faz o setup inteiro de uma vez. Isto existe para o caso oposto: quem acabou de clonar e nao sabe
+# o que vai acontecer, quantos passos faltam, nem por que cada um existe. O `doctor` diz o que esta quebrado;
+# este menu diz onde voce esta e qual e o proximo passo.
+#
+# Cada passo e um par: um TESTE (ja esta feito?) e uma ACAO. Os dois saem do que ja existe no arquivo — nada
+# de um segundo caminho de setup que possa divergir do `up`.
+
+STEP_TITLES="Local tools|Google account|Google Cloud project|OpenRouter key|Web app (dev)|Your first agent|Google Chat"
+STEP_WHYS="node, gcloud and clasp on this machine|the account that will own the agents|hosts the Apps Script project and its APIs|the model provider — without it the agent cannot think|puts the panel and the 1-minute worker online|a Drive folder with four markdown files|optional: talk to your agent from Google Chat"
+
+# O menu le SO estado local. A primeira versao perguntava o health e listava as implantacoes a cada
+# renderizacao: 18 segundos para desenhar um menu. Quem chega num projeto novo nao espera 18 s por uma lista.
+# O flag AGENT_OK_<env> e gravado pelo `health`, que ja faz essa chamada dentro do `up`.
+
+step_done() { # $1 numero do passo -> 0 se ja esta feito
+  case "$1" in
+    1) command -v node >/dev/null && command -v gcloud >/dev/null && [ -x node_modules/.bin/clasp ] ;;
+    2) [ -n "$(var ACCOUNT)" ] && [ -f "$HOME/.clasprc.json" ] && [ -n "$(var APPS_SCRIPT_API_OK)" ] ;;
+    3) [ -n "$(var "GCP_PROJECT_$UP")" ] && [ -n "$(var "CONSENT_OK_$UP")" ] ;;
+    4) [ -n "${OPENROUTER_API_KEY:-}" ] ;;
+    5) [ -n "$(var "DEPLOY_ID_$UP")" ] ;;
+    6) [ -n "$(var "AGENT_OK_$UP")" ] ;;
+    7) [ -n "$(var "CHAT_OK_$UP")" ] ;;
+    *) return 1 ;;
+  esac
+}
+
+step_detail() { # confirmacao curta do passo FEITO — repetir o "porque" numa linha com ✓ so confunde
+  case "$1" in
+    1) printf 'installed' ;;
+    2) var ACCOUNT ;;
+    3) var "GCP_PROJECT_$UP" ;;
+    4) printf 'in .env.local' ;;
+    5) printf 'published' ;;
+    6) printf 'created' ;;
+    7) printf 'connected' ;;
+    *) printf '' ;;
+  esac
+}
+
+ask_openrouter_key() { # a pessoa digita; nunca ecoamos, e o arquivo nasce 600
+  printf '\n  An OpenRouter key looks like sk-or-v1-...  Get one at https://openrouter.ai/keys\n'
+  printf '  Paste it here (input is hidden, Enter to skip): '
+  local k
+  read -rs k
+  printf '\n'
+  [ -n "$k" ] || { warn "skipped: without a key the agent cannot answer"; return 0; }
+  case "$k" in sk-or-*) ;; *) die "that does not look like an OpenRouter key (it starts with sk-or-)" ;; esac
+  touch .env.local
+  chmod 600 .env.local
+  grep -v '^OPENROUTER_API_KEY=' .env.local > .env.local.tmp 2>/dev/null || true
+  printf 'OPENROUTER_API_KEY=%s\n' "$k" >> .env.local.tmp
+  mv .env.local.tmp .env.local
+  export OPENROUTER_API_KEY="$k"
+  ok "key saved in .env.local (gitignored, never committed)"
+}
+
+step_run() {
+  case "$1" in
+    1) ensure_tools ;;
+    2) ensure_auth ;;
+    3) ensure_gcp ;;
+    4) ask_openrouter_key ;;
+    5) cmd_up ;;
+    6) [ -n "$(var "DEPLOY_ID_$UP")" ] || die "publish the web app first (step 5)"
+       say "the panel opens: click \"New agent\", pick a name, and come back"
+       open "$(url)"
+       printf '  Press Enter when the agent is created… '
+       read -r _
+       health ;; # confirma de verdade, uma vez: e o `health` que grava o flag que o menu le
+    7) [ -n "$(var "GCP_PROJECT_$UP")" ] || die "create the Google Cloud project first (step 3)"
+       pause "CHAT_OK_$UP" "https://console.cloud.google.com/apis/api/chat.googleapis.com/hangouts-chat?project=$(var "GCP_PROJECT_$UP")" \
+         "Google Chat API: set App name 'gasclaw', enable Interactive features, choose 'App URL' and paste $(url) — then Save." ;;
+    *) warn "no such step: $1" ;;
+  esac
+}
+
+onboard_menu() {
+  local i done=0 total=7 mark title why detail
+  printf '\n\033[1m🦀 gasclaw\033[0m — agents that live in your Google Drive\n'
+  for i in $(seq 1 $total); do step_done "$i" >/dev/null 2>&1 && done=$((done + 1)); done
+  printf '\n  Setup · \033[1m%s of %s\033[0m done · environment: %s\n\n' "$done" "$total" "$TARGET"
+  for i in $(seq 1 $total); do
+    title=$(printf '%s' "$STEP_TITLES" | cut -d'|' -f"$i")
+    why=$(printf '%s' "$STEP_WHYS" | cut -d'|' -f"$i")
+    if step_done "$i" >/dev/null 2>&1; then
+      detail=$(step_detail "$i")
+      printf '  \033[32m✓\033[0m %s  %-22s \033[2m%s\033[0m\n' "$i" "$title" "${detail:-$why}"
+    else
+      printf '  \033[33m○\033[0m %s  %-22s \033[2m%s\033[0m\n' "$i" "$title" "$why"
+    fi
+  done
+  if [ "$done" -eq "$total" ]; then
+    printf '\n  \033[32mEverything is set up.\033[0m Talk to your agent: %s\n' "$(url)"
+  fi
+  printf '\n  \033[2m[1-%s] run a step   [a] run everything missing   [r] refresh   [d] diagnose   [q] quit\033[0m\n' "$total"
+}
+
+cmd_onboard() {
+  [ -t 0 ] || die "onboarding needs a terminal (run ./gasclaw onboard by hand)"
+  local choice i
+  while :; do
+    onboard_menu
+    printf '\n> '
+    read -r choice || return 0
+    case "$choice" in
+      q|Q|'') printf '\n'; return 0 ;;
+      # O menu le estado local para ser instantaneo; isto e a valvula para quando o estado mudou por fora
+      # (agente criado noutra aba, por exemplo). UMA chamada, so quando a pessoa pede.
+      r|R) printf '\n'; health ;;
+      d|D) printf '\n'; cmd_doctor ;;
+      a|A) for i in $(seq 1 7); do step_done "$i" >/dev/null 2>&1 || { printf '\n'; step_run "$i"; }; done ;;
+      [1-7]) printf '\n'; step_run "$choice" ;;
+      *) warn "type a number from 1 to 7, or a / d / q" ;;
+    esac
+  done
+}
+
+cmd_help() { cat <<'TXT'
 gasclaw — agentes do Drive rodando no Google Apps Script
 
   ./gasclaw up [--prod]       configura (1ª vez), publica e abre a tela
@@ -564,6 +686,14 @@ gasclaw — agentes do Drive rodando no Google Apps Script
   ./gasclaw usage [AAAA-MM-DD]  custo por modelo: 7 dias, ou as 24 h do dia
   ./gasclaw eval <cenário|--all> [--model id]  roda evals/*.md no dev (exit ≠ 0 em falha)
   ./gasclaw tools all|none|<a,b,c> [pasta]     liga/desliga as ferramentas do agente
+  ./gasclaw onboard           menu guiado do setup (o padrão quando nada foi publicado ainda)
 TXT
-  ;;
+}
+
+case "$CMD" in
+  up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs|eval|limits|usage|tools|onboard) "cmd_$CMD" "$@" ;;
+  # Sem argumento: quem ainda nao publicou nao quer uma lista de 15 comandos, quer saber por onde comecar.
+  # Quem ja publicou ja sabe, e a lista e mais util. O `help` explicito sempre mostra a lista.
+  '') if [ -n "$(var "DEPLOY_ID_$UP")" ]; then cmd_help; else cmd_onboard; fi ;;
+  *) cmd_help ;;
 esac
