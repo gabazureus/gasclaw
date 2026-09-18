@@ -80,9 +80,13 @@ fix it.
 Two of the seven steps need you to click in a Google page (the OAuth consent screen and the first
 authorization). gasclaw pauses, opens the right page, tells you exactly what to set, and waits for Enter.
 
-**What you need:** macOS with [Homebrew](https://brew.sh), a Google account, and an
-[OpenRouter](https://openrouter.ai) API key (step 4 asks for it and stores it in `.env.local`, which is
-never committed). Node.js and the rest are installed by step 1.
+**What you need:** a Google account and an [OpenRouter](https://openrouter.ai) API key — step 4 asks for it
+and stores it in `.env.local`, which is never committed.
+
+**Where it runs:** macOS, Linux, and Windows through WSL or Git Bash (the CLI is a bash script; there is no
+PowerShell version). On macOS, step 1 installs Node.js and the Google Cloud CLI for you with
+[Homebrew](https://brew.sh). On Linux and Windows it checks what is missing and tells you the exact command
+to install it — package managers differ too much for guessing to be safe.
 
 ### Workspace or a personal Gmail?
 
