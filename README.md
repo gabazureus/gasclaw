@@ -2,12 +2,12 @@
 
 **AI agents that live entirely inside Google Apps Script. No server, no hosting: an agent is a Google Drive folder, and you talk to it in Google Chat.**
 
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Runtime: Google Apps Script](https://img.shields.io/badge/runtime-Google%20Apps%20Script-4285F4.svg)](https://developers.google.com/apps-script)
 [![Language: TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6.svg)](https://www.typescriptlang.org/)
 [![Status: F1 in progress](https://img.shields.io/badge/status-F1%20in%20progress-yellow.svg)](CHANGELOG.md)
 
-English | [Português (Brasil)](README.pt-BR.md)
+English | [Português (Brasil)](README_PT_BR.md)
 
 ## Why gasclaw
 
@@ -161,7 +161,7 @@ Project documentation (in pt-BR) is indexed at [docs/README.md](docs/README.md).
 
 ## License
 
-Licensed under the [Apache License, Version 2.0](LICENSE). Copyright 2026 Gabriel Sorrentino. See [NOTICE](NOTICE) and [LICENSING.md](LICENSING.md) for contributions, dependency licenses, and trademarks.
+Licensed under the [MIT License](LICENSE). Copyright (c) 2026 Gabriel Sorrentino. See [LICENSING.md](LICENSING.md) for contributions, dependency licenses, and trademarks.
 
 Google, Google Apps Script, Google Drive, and Google Chat are trademarks of Google LLC; OpenRouter belongs to its owner. gasclaw is not affiliated with or endorsed by them.
 

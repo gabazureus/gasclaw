@@ -805,7 +805,7 @@ export function addAgent(url: string) {
   return { state: settingsState(), created };
 }
 
-/** "Novo agente": cria (ou reutiliza) Meu Drive/gasclaw/agentes/<nome>/, semeia os arquivos e registra a pasta. */
+/** "Novo agente": cria (ou reutiliza) Meu Drive/gasclaw/agents/<nome>/, semeia os arquivos e registra a pasta. */
 export function createAgent(name: string) {
   assertOwner();
   const n = name.trim();

@@ -14,7 +14,7 @@
     "serverless"
   ],
   "author": "Gabriel Sorrentino <gabriel.br@gmail.com>",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {

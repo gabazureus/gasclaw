@@ -210,7 +210,7 @@ export const EVAL_ACCESS: Access = { users: [], tools: ['now', 'memory', 'ask', 
  */
 export const evalLlm = (key: string | null, traced?: EvalEnv['llm']): EvalEnv['llm'] => traced ?? ((m, messages, defs) => complete(key ?? '', m, messages, 1000, undefined, defs));
 
-/** Liga o runEval no GAS: agente próprio em Meu Drive/gasclaw/agentes/eval (criado/reusado sozinho). */
+/** Liga o runEval no GAS: agente próprio em Meu Drive/gasclaw/agents/eval (criado/reusado sozinho). */
 export function evalAction(md: string, owner: string, model?: string, llm?: EvalEnv['llm']): EvalResult {
   const folder = ensureFolderPath(agentFolderPath('eval'));
   if (!folder.getFilesByName('AGENTS.md').hasNext()) folder.createFile('AGENTS.md', EVAL_AGENTS, 'text/markdown');

@@ -121,7 +121,7 @@ git commit -s
 
 Forgot? Amend the last commit with `git commit --amend -s --no-edit`, or sign a
 range with `git rebase --signoff <base>`. Contributions are accepted under
-Apache-2.0 (inbound = outbound); details in [LICENSING.md](LICENSING.md).
+MIT (inbound = outbound); details in [LICENSING.md](LICENSING.md).
 
 ## Changelog
 
@@ -151,7 +151,7 @@ the vulnerability process below.
 - [ ] Workarounds for Apps Script limits include a `poc/` and an ADR.
 - [ ] `CHANGELOG.md` is updated if a product capability changed.
 - [ ] Docs are updated if behavior, commands, or setup changed.
-- [ ] New files carry `SPDX-License-Identifier: Apache-2.0`.
+- [ ] New files need no license header; add `SPDX-License-Identifier: MIT` only if you prefer one.
 - [ ] Commits follow Conventional Commits and are signed off (`git commit -s`).
 - [ ] No secrets, account e-mails, domains, script IDs, or deployment IDs in the diff.
 

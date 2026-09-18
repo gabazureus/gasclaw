@@ -183,7 +183,7 @@ describe('loadAgent de produção, núcleo puro (ADR-013)', () => {
 });
 
 describe('pasta padrão do agente no Drive', () => {
-  test('agentFolderPath = gasclaw/agentes/<nome>', () => expect(agentFolderPath('assistente')).toEqual(['gasclaw', 'agentes', 'assistente']));
+  test('agentFolderPath = gasclaw/agents/<nome>', () => expect(agentFolderPath('assistente')).toEqual(['gasclaw', 'agents', 'assistente']));
   test('validAgentName aceita minúsculas, dígitos e hífen; recusa barra, espaço e vazio', () => {
     expect(['assistente', 'vendas-2'].map(validAgentName)).toEqual([true, true]);
     expect(['', 'a/b', 'Com Espaço', '-x', 'x'.repeat(41)].map(validAgentName)).toEqual([false, false, false, false, false]);

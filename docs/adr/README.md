@@ -14,7 +14,7 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [008](008-deploy-e-dono.md) | Deploy automático dev→prod; dono = conta do usuário | Aceito |
 | [009](009-ajustes-f0.md) | Ajustes de minimal code na F0 | Aceito |
 | [010](010-poc-p1-urlfetch.md) | POC P1: UrlFetch longo no Apps Script | Aceito |
-| [011](011-licenca-e-docs-da-comunidade.md) | Licença Apache-2.0 e docs da comunidade em inglês | Aceito |
+| [011](011-licenca-e-docs-da-comunidade.md) | Licença Apache-2.0 e docs da comunidade em inglês | Parcialmente substituído pelo ADR-030 (licença) |
 | [012](012-agentes-em-docs-e-sheets.md) | Agentes em Google Docs e Sheets nativos (POC P6) | Aceito |
 | [013](013-autoria-editor-e-drive.md) | Autoria em ambas as superfícies: editor do Apps Script + pasta do Drive (POC P10) | Aceito (medição); levar a prod aguarda o gate |
 | [014](014-trace-do-agente.md) | Trace do agente dentro do gasclaw (POC P14) | Aceito no dev; a gravação síncrona foi substituída pelo lote do ADR-020 |
@@ -33,3 +33,4 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [027](027-gatilho-worker.md) | O gatilho de 1 min é o worker do run durável | Aceito; P3 passou 4/4 no dev v60 |
 | [028](028-aprovacao-duravel.md) | Aprovação durável pertence ao run no Drive | Aceito; P20 passou 5/5 no dev v74 |
 | [029](029-autoridade-do-run-no-ponteiro.md) | Autoridade do run mora nas Script Properties, não no arquivo | Fatias 1, 2 e 3 implementadas; falta medir no dev |
+| [030](030-licenca-mit.md) | Licença MIT no lugar da Apache-2.0 | Aceito |
