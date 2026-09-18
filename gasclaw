@@ -177,6 +177,23 @@ script_url() { # $1 id da implantacao · $2 exec|dev
 exec_url() { script_url "$1" exec; }
 dev_url()  { script_url "$1" dev; }
 url() { exec_url "$(var "DEPLOY_ID_$UP")"; }
+# A tela de conversa servida pelo proprio Apps Script (`?page=chat`). Quem nao tem Google Workspace nao
+# fica sem conversar com o agente: o Chat do Google e um canal a mais, nao o unico.
+chat_url() { printf '%s?page=chat' "$(url)"; }
+
+# O id do web app tem ~57 caracteres, e gerado pelo Google e nao e configuravel; nao ha encurtador do
+# Google desde o fim do goo.gl em 2025, o Apps Script nao aceita dominio proprio, e encurtador de terceiro
+# poria um servidor de fora no caminho critico de alcancar o agente (ver ADR-036). Mas a dor nao e o link
+# ser longo: e ter de DIGITAR ou MANDAR um link longo. Quem nunca digita nao sofre com o tamanho.
+show_link() { # $1 URL · $2 frase curta. Copiar e conveniencia: sem ferramenta de clipboard, so imprime.
+  if printf '%s' "$1" | copy_clip 2>/dev/null; then
+    ok "$2 (copied to the clipboard): $1"
+  else
+    ok "$2: $1"
+  fi
+  return 0
+}
+
 sibling_url() { # P21: URL do painel do OUTRO ambiente, embutida no build. Só navegação: nada é lido do outro lado.
   local other d
   if [ "$TARGET" = dev ]; then other=PROD; else other=DEV; fi
@@ -552,11 +569,18 @@ cmd_up() {
   fi
   open_url "$(url)"
   ok "ready ($TARGET): $(url)"
+  # Sem copiar: a chave do OpenRouter pode ter acabado de ir para o clipboard, e ela e mais urgente aqui.
+  ok "talk to your agent: $(chat_url)"
 }
 
 cmd_down()    { remote disable && echo && ok "agents paused ($TARGET)"; }
 cmd_restart() { cmd_down || true; cmd_up; }
-cmd_open()    { open_url "$(url)"; }
+cmd_open() { # sem argumento abre o painel; `--chat` vai direto para a conversa com o agente
+  local alvo
+  alvo=$(url)
+  for a in "$@"; do [ "$a" = "--chat" ] && alvo=$(chat_url); done
+  open_url "$alvo"
+}
 
 cmd_ship() {
   TARGET=prod; UP=PROD
@@ -768,7 +792,10 @@ step_run() {
        open_url "$(url)"
        printf '  Press Enter when the agent is created… '
        read -r _
-       health ;; # confirma de verdade, uma vez: e o `health` que grava o flag que o menu le
+       health
+       # O momento em que o endereco importa: o agente existe e a pessoa quer falar com ele, talvez do
+       # celular. Aqui a chave ja foi colada no passo 5, entao copiar o link nao atropela nada.
+       show_link "$(chat_url)" "talk to your agent" ;; # confirma de verdade, uma vez: e o `health` que grava o flag que o menu le
     7) is_personal && { warn "Google Chat apps need a Google Workspace account; everything else works on a personal account"; return 0; }
        [ -n "$(var "GCP_PROJECT_$UP")" ] || die "create the Google Cloud project first (step 3)"
        pause "CHAT_OK_$UP" "https://console.cloud.google.com/apis/api/chat.googleapis.com/hangouts-chat?project=$(var "GCP_PROJECT_$UP")" \
@@ -839,6 +866,7 @@ gasclaw — agents that live in your Google Drive, running on Google Apps Script
   ./gasclaw doctor [--prod]   diagnose what is broken and how to fix it
   ./gasclaw rollback [--prod] go back to the previous version
   ./gasclaw open [--prod]     open the gasclaw panel
+  ./gasclaw open --chat       open the chat with your agent (works without Google Workspace)
   ./gasclaw poc <id> [step]   run a POC on dev and show the result (e.g. poc p6, poc p10)
   ./gasclaw trace [id]        step tree of one agent run (no id: the most recent)
   ./gasclaw runs              open the runs spreadsheet in Drive

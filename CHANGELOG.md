@@ -36,6 +36,19 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
   `CLAUDE.md`), e há um teste que trava a mistura: ele lê o que sai para humano e reprova português.
 - ✅ **Licença MIT** ([ADR-030](docs/adr/030-licenca-mit.md)), no lugar da Apache-2.0.
 
+- ✅ **Chegar ao agente sem digitar o link** ([ADR-036](docs/adr/036-chegar-ao-agente-sem-digitar-o-link.md)):
+  o endereço do web app tem ~94 caracteres e o Google não deixa encurtar. Em vez disso, o link da conversa é
+  **impresso e copiado para a área de transferência** no instante em que o primeiro agente é criado, e
+  `./gasclaw open --chat` vai direto para a conversa. Quem nunca digita não sofre com o tamanho.
+- ✅ **A tela de conversa deixa de ser invisível:** quem não tem Google Workspace sempre pôde conversar com o
+  agente pelo navegador, servido pelo próprio Apps Script. O Google Chat é um canal a mais, não o único.
+- ✅ **O painel diz de onde veio cada papel** ([ADR-035](docs/adr/035-procedencia-dos-papeis-no-painel.md)):
+  editor do Apps Script, Google Doc ou arquivo na pasta. Renomear a pasta desligava os papéis do editor em
+  silêncio, e o agente passava a seguir os arquivos da pasta — que quem tem a pasta compartilhada pode editar.
+- ✅ **O modelo escrito na pasta é conferido** ([ADR-034](docs/adr/034-modelo-da-pasta-conferido.md)): um
+  modelo inexistente, caro demais ou sem suporte a ferramentas cai no padrão, e o trace diz por quê. Antes a
+  pasta — que é compartilhável — era a única entrada de modelo que ninguém checava.
+
 ### Correções
 
 - ✅ **Listas que truncavam caladas:** `sheets.read` (200 linhas), `contacts.find` e `drive.search` (10 cada)

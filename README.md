@@ -94,7 +94,14 @@ to install it — package managers differ too much for guessing to be safe.
 
 ### Workspace or a personal Gmail?
 
-Both work, and gasclaw detects which one you have at step 2. What differs:
+Both work, and gasclaw detects which one you have at step 2.
+
+**Either way you talk to your agent in the browser.** gasclaw serves its own chat screen from Apps Script
+itself — `./gasclaw open --chat` opens it, and the link is printed and copied to your clipboard the moment
+your first agent is created. Google Chat is an **extra channel**, not the only one, so a personal Gmail
+account is not a second-class setup.
+
+What differs:
 
 | | Google Workspace | Personal Gmail |
 |---|---|---|
@@ -148,6 +155,40 @@ Supported frontmatter:
 Agent files can also be Google Docs (named `AGENTS` or `AGENTS.md`, and so on), and a Google Sheet named `config` with `key, value` rows overrides the frontmatter.
 
 Then find the app in Google Chat (`gasclaw dev`, or `gasclaw` in prod), send a DM, or add it to a space and mention it.
+
+## What your agent can do
+
+**23 tools today**, grouped the way the panel groups them. The panel shows the full catalogue with an
+on/off switch per tool — and **everything starts off until you approve it** ([ADR-021](docs/adr/021-acesso-aprovado-no-painel.md)).
+
+| Group | What it covers |
+|---|---|
+| Calendar | read your agenda, check who is free, create and update events |
+| Gmail | search, read, draft and send |
+| Contacts | find someone's e-mail by name |
+| Tasks | list, create and complete |
+| Drive, Docs and Sheets | find files, read and create Docs, read and append rows to Sheets |
+| Memory | what the agent remembers about you between conversations |
+| General | the current time, asking you a question back, reading a skill |
+
+### What that looks like
+
+Ask in plain language — these are requests, not commands:
+
+- *"what's on my calendar tomorrow?"* — answers straight away
+- *"what's Ana's e-mail?"* — answers straight away
+- *"draft a reply to the last e-mail from Ana"* — writes the draft, **asks you first**
+- *"add these three rows to the expenses sheet"* — **asks you first**
+- *"e-mail Ana the summary"* — **asks you every time**
+- *"remember that I prefer morning meetings"* — kept for the next conversations
+
+Two rules worth knowing before you share an agent:
+
+- **Google tools are owner-only.** People you approve in the panel can talk to the agent, but a request of
+  theirs that would use Gmail, Calendar, Contacts, Tasks or Drive/Docs/Sheets is refused. Only you approve
+  those cards.
+- **Anything with an effect asks first.** Sending an e-mail and creating or updating an event ask **every
+  time**; drafting, creating a Doc and appending rows ask **once per turn**. Reading never asks.
 
 ## CLI reference
 

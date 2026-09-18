@@ -39,3 +39,4 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [033](033-cli-e-painel-em-ingles.md) | A vitrine em inglês: CLI e painel | Aceito; amplia a exceção de idioma do ADR-011 |
 | [034](034-modelo-da-pasta-conferido.md) | O modelo pedido pela pasta é conferido, e cai no padrão quando não serve | Aceito |
 | [035](035-procedencia-dos-papeis-no-painel.md) | A procedência de cada papel aparece no painel | Aceito |
+| [036](036-chegar-ao-agente-sem-digitar-o-link.md) | Chegar ao agente sem digitar o link (e por que não encurtamos) | Aceito; QR code no terminal em aberto |

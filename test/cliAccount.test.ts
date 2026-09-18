@@ -223,3 +223,38 @@ describe('Windows: executável com sufixo .cmd/.exe', () => {
     expect(offenders.map(([n, l]) => `${n}: ${l.trim()}`)).toEqual([]);
   });
 });
+
+// "Link mais simples, ou imprimir o link quando o agente é criado."
+//
+// Encurtar não é possível sem trair o projeto: o id do web app tem ~57 caracteres, é gerado pelo Google e
+// não é configurável; o goo.gl foi desligado em 2025; Apps Script não aceita domínio próprio; e encurtador
+// de terceiro poria um servidor de fora no caminho crítico de alcançar o agente, contra o CLAUDE.md.
+//
+// Mas a dor não é o link ser longo — é ter de DIGITAR ou MANDAR um link longo. Quem nunca digita não sofre
+// com o tamanho. Daí: um endereço direto para a conversa, impresso e copiado na hora em que o agente nasce.
+describe('chegar ao agente sem digitar o link', () => {
+  test('chat_url é o painel com ?page=chat, nas duas formas de conta', () => {
+    expect(sh('chat_url', {}, envOf({ ACCOUNT: 'a@gmail.com', DEPLOY_ID_DEV: 'D' }))).toBe(
+      'https://script.google.com/macros/s/D/exec?page=chat',
+    );
+    expect(sh('chat_url', {}, envOf({ ACCOUNT: 'a@acme.com', DOMAIN: 'acme.com', DEPLOY_ID_DEV: 'D' }))).toBe(
+      'https://script.google.com/a/macros/acme.com/s/D/exec?page=chat',
+    );
+  });
+
+  test('show_link imprime o endereço mesmo quando não há como copiar', () => {
+    // Num servidor sem ferramenta de clipboard o setup não pode parar nem esconder o link.
+    const out = sh("show_link 'https://exemplo/x' 'talk to your agent'", { GASCLAW_OS: 'FreeBSD' });
+    expect(out).toContain('https://exemplo/x');
+    expect(out).toContain('talk to your agent');
+  });
+
+  test('show_link nunca derruba o comando', () => {
+    expect(sh("show_link 'https://exemplo/x' 'oi' >/dev/null 2>&1; echo rc=$?", { GASCLAW_OS: 'FreeBSD' })).toContain('rc=0');
+  });
+
+  test('`open` aceita --chat, e o help conta isso', () => {
+    expect(FULL).toMatch(/cmd_open\(\)[\s\S]{0,400}--chat/);
+    expect(FULL).toContain('./gasclaw open --chat');
+  });
+});

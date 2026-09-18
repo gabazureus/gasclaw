@@ -94,7 +94,14 @@ instalar — os gerenciadores de pacote variam demais para o chute ser seguro.
 
 ### Workspace ou Gmail pessoal?
 
-Os dois funcionam, e o gasclaw detecta qual é o seu no passo 2. O que difere:
+Os dois funcionam, e o gasclaw detecta qual é o seu no passo 2.
+
+**Dos dois jeitos você conversa com o agente pelo navegador.** O gasclaw serve a própria tela de conversa,
+do próprio Apps Script — `./gasclaw open --chat` abre, e o link é impresso e copiado para a área de
+transferência no instante em que o primeiro agente é criado. O Google Chat é um **canal a mais**, não o
+único, então conta pessoal não é um setup de segunda classe.
+
+O que difere:
 
 | | Google Workspace | Gmail pessoal |
 |---|---|---|
@@ -148,6 +155,40 @@ Frontmatter aceito:
 Os arquivos do agente também podem ser Google Docs (com o nome `AGENTS` ou `AGENTS.md`, e assim por diante), e uma planilha Google chamada `config`, com linhas `chave, valor`, sobrepõe o frontmatter.
 
 Depois, procure o app no Google Chat (`gasclaw dev`, ou `gasclaw` em prod), mande uma DM ou adicione o app a um espaço e mencione-o.
+
+## O que o seu agente faz
+
+**23 ferramentas hoje**, agrupadas como o painel agrupa. O painel mostra o catálogo inteiro com um
+liga/desliga por ferramenta — e **tudo começa desligado até você aprovar** ([ADR-021](docs/adr/021-acesso-aprovado-no-painel.md)).
+
+| Grupo | O que cobre |
+|---|---|
+| Agenda | ler a agenda, ver quem está livre, criar e atualizar eventos |
+| Gmail | buscar, ler, rascunhar e enviar |
+| Contatos | achar o e-mail de alguém pelo nome |
+| Tarefas | listar, criar e concluir |
+| Drive, Docs e Planilhas | achar arquivos, ler e criar Docs, ler e acrescentar linhas em planilhas |
+| Memória | o que o agente lembra de você entre as conversas |
+| Gerais | a hora certa, fazer uma pergunta de volta, ler uma skill |
+
+### Na prática
+
+Peça em linguagem normal — são pedidos, não comandos:
+
+- *"o que eu tenho na agenda amanhã?"* — responde na hora
+- *"qual é o e-mail da Ana?"* — responde na hora
+- *"rascunha uma resposta para o último e-mail da Ana"* — escreve o rascunho, **pergunta antes**
+- *"acrescenta estas três linhas na planilha de despesas"* — **pergunta antes**
+- *"manda o resumo por e-mail para a Ana"* — **pergunta toda vez**
+- *"lembra que eu prefiro reunião de manhã"* — fica para as próximas conversas
+
+Duas regras que valem saber antes de compartilhar um agente:
+
+- **As ferramentas do Google são só do dono.** Quem você aprova no painel conversa com o agente, mas um
+  pedido dessa pessoa que usaria Gmail, Agenda, Contatos, Tarefas ou Drive/Docs/Planilhas é recusado. Só
+  você aprova esses cards.
+- **Tudo que tem efeito pergunta antes.** Enviar e-mail e criar ou atualizar evento perguntam **toda vez**;
+  rascunhar, criar Doc e acrescentar linhas perguntam **uma vez por turno**. Ler nunca pergunta.
 
 ## Referência do CLI
 
