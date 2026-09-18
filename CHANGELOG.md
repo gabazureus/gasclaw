@@ -12,9 +12,40 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 
 > ⚠️ **Mudança de acesso ([ADR-021](docs/adr/021-acesso-aprovado-no-painel.md)):** quem conversa com o agente e quais ferramentas ele usa passam a valer só depois de aprovados no painel do gasclaw. `users:` e `tools:` na pasta, no editor ou na planilha `config` viram sugestões. Depois desta versão, todo agente responde só ao dono e fica sem ferramentas até você clicar em **Aprovar** no painel. Se você usava `users:` para dar acesso a outras pessoas, aprove essas pessoas no painel.
 >
-> 🔐 **Ferramentas do Google só para o dono ([ADR-023](docs/adr/023-ferramentas-do-workspace-rest.md)):** ferramentas do Google (agenda, Gmail, contatos, tarefas, Drive/Docs/Sheets) funcionam só para o dono do gasclaw. Pessoas aprovadas no painel continuam conversando com o agente, mas pedidos delas que usem essas ferramentas são recusados, e só o dono aprova esses cards. O card de aprovação agora mostra cada campo por inteiro (destinatários, convidados, ids); só o texto longo é resumido.
+> 🔐 **Ferramentas do Google só para o dono ([ADR-023](docs/adr/023-ferramentas-do-workspace.md)):** ferramentas do Google (agenda, Gmail, contatos, tarefas, Drive/Docs/Sheets) funcionam só para o dono do gasclaw. Pessoas aprovadas no painel continuam conversando com o agente, mas pedidos delas que usem essas ferramentas são recusados, e só o dono aprova esses cards. O card de aprovação agora mostra cada campo por inteiro (destinatários, convidados, ids); só o texto longo é resumido.
 >
 > 🔒 **Ações com efeito só pela CLI com segredo ([ADR-022](docs/adr/022-csrf-segredo-da-cli.md)):** `./gasclaw poc`, `eval` e `down` passam a usar POST com um segredo gerado pelo `./gasclaw up` em `.env.local`. Rode `./gasclaw up` uma vez depois de atualizar.
+
+### Instalação e primeiros passos
+
+- ✅ **Conta pessoal do Gmail, não só Google Workspace:** o gasclaw detecta o tipo da conta no passo 2 e ajusta o
+  que muda. O endereço do web app tem outra forma em conta pessoal (`script.google.com/macros/…`, sem o domínio
+  no caminho) — era isso que impedia o gasclaw de rodar fora do Workspace, porque a URL antiga apontava para um
+  endereço inexistente e **toda** chamada remota falhava. A tela de consentimento vira `EXTERNAL` e você precisa
+  se adicionar como usuário de teste. O app do Google Chat continua exigindo Workspace; todo o resto funciona.
+  As cotas do Google são menores: 20.000 UrlFetch e 100 e-mails por dia, e 90 min de gatilho em vez de 6 h.
+- ✅ **macOS, Linux e Windows** (pelo WSL ou Git Bash): a CLI era só macOS por três detalhes, não por
+  arquitetura — `open`, `pbcopy` e `brew`. No macOS o passo 1 continua instalando o que falta com o Homebrew;
+  no Linux e no Windows ele diz o comando exato, porque os gerenciadores de pacote variam demais para o chute
+  ser seguro. No Windows, o Google Cloud CLI instala como `gcloud.cmd` e o gasclaw passa a reconhecer as duas
+  formas — sem isso ele morria dizendo "gcloud not found" numa máquina onde o gcloud estava instalado.
+- ✅ **`./gasclaw onboard`, o mapa do setup:** sete passos, um por vez, cada um com o motivo de existir. O menu
+  diz o que falta num passo **antes** de você apertar `a`, e `[d]` diagnostica. Rodar de novo nunca repete
+  trabalho. É o que aparece quando você roda `./gasclaw` sem argumento e ainda não publicou nada.
+- ✅ **CLI e painel em inglês**, para a comunidade. Os comentários do código seguem em pt-BR (regra do
+  `CLAUDE.md`), e há um teste que trava a mistura: ele lê o que sai para humano e reprova português.
+- ✅ **Licença MIT** ([ADR-030](docs/adr/030-licenca-mit.md)), no lugar da Apache-2.0.
+
+### Correções
+
+- ✅ **Listas que truncavam caladas:** `sheets.read` (200 linhas), `contacts.find` e `drive.search` (10 cada)
+  devolviam o começo da lista sem avisar que havia mais. Numa planilha de 5.000 linhas, "some a coluna C"
+  virava um número plausível e errado — pior que um erro, porque um erro o agente conta. Agora a resposta diz
+  quando a lista está cortada.
+- ✅ **"Aprovação ocupada" sem motivo:** a faxina diária de arquivos antigos segurava o bloqueio global do
+  Apps Script durante centenas de chamadas, e quem clicasse **Aprovar** naquela janela levava erro. A faxina
+  saiu de dentro do bloqueio. De quebra, ela agora roda também quando não houve execuções no dia — antes uma
+  instalação parada nunca limpava nada.
 
 ### Google Chat
 
@@ -88,7 +119,7 @@ Detalhes técnicos: [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementa
 - 🔄 **"Novo agente" na tela:** cria sozinho a pasta `Meu Drive/gasclaw/agentes/<nome>/` (sem duplicar), com os arquivos iniciais; "Usar pasta existente" continua. O link de cada pasta aparece no `./gasclaw status` e no fim do `up`. (Código no dev; falta usar de verdade na tela.)
 - 🔄 **Trace do agente (no dev, POC P14, [ADR-014](docs/adr/014-trace-do-agente.md)):** na tela gasclaw, a seção **Ao vivo** mostra cada conversa, teste ou POC em andamento, com o passo atual e o tempo, e os 10 últimos. Clique num run para ver a árvore de passos: leitura do agente, chamada ao modelo com modelo, tokens e custo, e resposta, além da pergunta e da resposta completas. O link "abrir planilha" leva à `gasclaw — execuções`, com uma linha por run. No terminal, `./gasclaw trace [id]` mostra a árvore e `./gasclaw runs` abre a planilha. O detalhe completo, com o prompt, fica 90 dias em `Meu Drive/gasclaw/runs/`. Chaves e tokens são sempre removidos antes de gravar. **Sem custo na sua espera:** a conversa só anota o que aconteceu, e a gravação acontece depois, num lote de 1 minuto — o trace deixa a resposta 0,6 s mais lenta no pior caso, em vez dos 3 a 4 s da primeira versão.
 - 🔄 `./gasclaw eval` roda testes automáticos do agente no dev; ferramentas `now` e memória (`memory.save/remove/read`) com lista permitida por agente; aprovação com card de uso único (10 min) e perguntas com botões.
-- 🔄 **Ferramentas do Google, com aprovação e só para você (no dev, [ADR-023](docs/adr/023-ferramentas-do-workspace-rest.md)):** o agente consulta e escreve na sua agenda, cria rascunhos e busca no Gmail, lê contatos, cria tarefas e mexe em Drive, Docs e Sheets. Antes de qualquer ação que muda alguma coisa, ele mostra um card com os campos por inteiro e espera o seu clique. Essas ferramentas valem **só para o dono**: quem você aprovou no painel conversa normalmente, mas pedidos com ferramentas do Google são recusados.
+- 🔄 **Ferramentas do Google, com aprovação e só para você (no dev, [ADR-023](docs/adr/023-ferramentas-do-workspace.md)):** o agente consulta e escreve na sua agenda, cria rascunhos e busca no Gmail, lê contatos, cria tarefas e mexe em Drive, Docs e Sheets. Antes de qualquer ação que muda alguma coisa, ele mostra um card com os campos por inteiro e espera o seu clique. Essas ferramentas valem **só para o dono**: quem você aprovou no painel conversa normalmente, mas pedidos com ferramentas do Google são recusados.
 - 🔄 **O agente avisa quando a ferramenta falha:** se a ação no Google der erro, a resposta diz que não deu certo, em vez de afirmar que fez. (Havia o caso oposto: com a API da Agenda desligada, o agente respondia "Evento criado".)
 - 🔄 **Painel de observabilidade (no dev, [ADR-016](docs/adr/016-painel-de-limites.md) e [ADR-018](docs/adr/018-modelos-e-custo.md)):** na tela gasclaw, a seção **Observabilidade** reúne quatro abas: **Ao vivo** (conversas em andamento e as 10 últimas), **Lote** (o que ainda falta gravar), **Modelos e custo** (gasto por modelo nos últimos 7 dias e nas últimas 24 h, com o modelo escolhido por agente) e **Limites** (quanto já se usou das cotas do Google e do OpenRouter, com selo de folga). No terminal, `./gasclaw usage` e `./gasclaw limits`. O custo que o painel mostra ficou a 0,1% do que o OpenRouter cobrou de verdade. *(Uma fonte, o Monitoring do Google Cloud, aparece como indisponível: ela exige faturamento ativo, e você decidiu não habilitar.)*
 - 🔄 **Rodízio de modelos gratuitos (no dev, [ADR-025](docs/adr/025-rodizio-de-modelos-gratuitos.md)):** escreva `free` no lugar do nome do modelo — no `AGENTS`, na planilha `config` ou na tela — e o gasclaw usa o melhor modelo gratuito disponível no momento. Se ele falhar, cair ou estiver ocupado, o agente troca sozinho e responde assim mesmo; na tela você vê qual modelo respondeu por último, e no trace, por quais passou. Medido: 20 de 20 respostas, com a troca custando cerca de 1 segundo. **Duas ressalvas honestas:** modelo gratuito às vezes demora (a maioria respondeu em ~4 s, mas um levou 36 s), e ainda não verificamos a política de privacidade desses provedores — então não use `free` com memória pessoal por enquanto.
@@ -123,4 +154,4 @@ Detalhes técnicos: [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementa
 - `npx gasclaw` para qualquer pessoa instalar.
 
 <!-- Único lugar com o endereço do repositório: troque OWNER pelo dono real antes de abrir o repo. -->
-[Não publicado]: https://github.com/OWNER/gasclaw/commits/main
+[Não publicado]: https://github.com/gabazureus/gasclaw/commits/main

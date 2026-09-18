@@ -62,7 +62,7 @@ That second command opens the setup menu:
   Setup · 0 of 7 done · environment: dev
   account not detected yet — run step 2
 
-  ○ 1  Local tools            node, gcloud and clasp on this machine
+  ○ 1  Local tools            will install: node, gcloud, npm deps
   ○ 2  Google account         the account that will own the agents
   ○ 3  Google Cloud project   hosts the Apps Script project and its APIs
   ○ 4  OpenRouter key         the model provider — without it the agent cannot think
@@ -71,14 +71,18 @@ That second command opens the setup menu:
   ○ 7  Google Chat            optional: talk to your agent from Google Chat
 
   [1-7] run a step   [a] run everything missing   [r] refresh   [d] diagnose   [q] quit
+
+> 
 ```
 
 Press `a` and it runs everything that is missing. Press a number to do one step at a time. Each finished
 step is recorded, so running it again never repeats work — and `[d]` tells you what is broken and how to
 fix it.
 
-Two of the seven steps need you to click in a Google page (the OAuth consent screen and the first
-authorization). gasclaw pauses, opens the right page, tells you exactly what to set, and waits for Enter.
+Three of the seven steps need you to click in a Google page — turning on the Apps Script API (step 2), the
+OAuth consent screen (step 3) and the first authorization (step 5) — plus the Google Chat app (step 7) if
+you are on Workspace. gasclaw pauses, opens the right page, tells you exactly what to set, and waits for
+Enter.
 
 **What you need:** a Google account and an [OpenRouter](https://openrouter.ai) API key — step 4 asks for it
 and stores it in `.env.local`, which is never committed.
@@ -90,13 +94,17 @@ to install it — package managers differ too much for guessing to be safe.
 
 ### Workspace or a personal Gmail?
 
-Both work, and gasclaw detects which one you have at step 2. One thing differs:
+Both work, and gasclaw detects which one you have at step 2. What differs:
 
 | | Google Workspace | Personal Gmail |
 |---|---|---|
 | Panel, web chat, agents, Google tools | ✅ | ✅ |
 | **Google Chat app** | ✅ | ❌ needs Workspace |
 | Apps Script daily trigger time | 6 h | 90 min |
+| UrlFetch calls per day | 100,000 | 20,000 |
+| E-mails per day | 1,500 | 100 |
+| OAuth consent screen | `INTERNAL`, one click | `EXTERNAL`, and you must add yourself as a test user |
+| Web app address | `script.google.com/a/macros/<your-domain>/…` | `script.google.com/macros/…` |
 
 On a personal account step 7 is shown as not available and the setup completes without it. A Google One
 subscription does **not** change this: it is storage, not Workspace.
@@ -162,6 +170,8 @@ Every command accepts `--prod`; without it, the command targets dev.
 | `./gasclaw limits [--fresh]` | Limits panel (Google, OpenRouter, and measured by gasclaw) |
 | `./gasclaw usage [YYYY-MM-DD]` | Cost per model: last 7 days, or the 24 hours of one day |
 | `./gasclaw eval <scenario\|--all> [--model id]` | Runs `evals/*.md` in dev (non-zero exit on failure) |
+| `./gasclaw tools all\|none\|<a,b,c> [folder]` | Turns the agent's tools on and off |
+| `./gasclaw onboard` | Guided setup menu (the default before anything is published) |
 
 ## Roadmap
 
@@ -169,7 +179,7 @@ Every command accepts `--prod`; without it, the command targets dev.
 |---|---|---|
 | F0 | First conversation with a Drive agent: one-command publish, agent folder, owner screen, Google Chat replies, per-agent access, kill switch | Done (GitHub/CI postponed) |
 | F1 | Complete agent folder: conversations stored in Drive, daily memory, first-run ritual, skills, multiple agents, Google Groups in `users`, safer publishing | In progress |
-| F2 | Long tasks: background work beyond 30 s, Gmail/Drive/Sheets/Docs/Calendar/HTTP tools (using the Approve/Deny cards that already exist in F1), per-task limits, retries | Planned |
+| F2 | Long tasks: background work beyond 30 s, Gmail/Drive/Sheets/Docs/Calendar/HTTP tools (using the Approve/Deny cards that already exist in F1), per-task limits, retries | In progress |
 | F3 | Proactivity and data: `HEARTBEAT.md` checklist, cron-style `jobs.md`, `.xlsx` inbox to Google Sheets, ready-made agent templates | Planned |
 | F4 | Extra channels: Gmail threads, HTTP with token, MCP/A2A if the GASADK proof of concept passes, `npx gasclaw` | Planned |
 
@@ -179,14 +189,14 @@ The detailed, user-facing description of each stage is in [CHANGELOG.md](CHANGEL
 
 Current limits:
 
-- Few tools: the agent can only use `now`, `memory.*` (in the owner's DM), and `ask`; it cannot send e-mail, edit spreadsheets, or schedule anything yet.
+- Google tools work only for the owner: people approved in the panel can talk to the agent, but a request of theirs that would use Gmail, Calendar, Contacts, Tasks or Drive/Docs/Sheets is refused.
 - Only **one** agent (the default one) answers in Chat, in every space.
 - Short memory: the last 20 messages per agent and conversation, for up to 6 hours.
 - Each agent file is truncated at 20,000 characters (60,000 in total).
 - Replies are capped at 1,000 tokens because Google Chat waits at most 30 seconds; a slow model means Chat reports that the app did not respond.
 - `users` accepts e-mail addresses only, not groups.
 - No automatic retry when OpenRouter fails (429/5xx).
-- The `./gasclaw` CLI currently targets macOS (it uses Homebrew, `open`, and `pbcopy`).
+- Only macOS installs the missing tools for you (with Homebrew). On Linux and Windows gasclaw tells you the exact command and you run it.
 - The Google Chat app needs Google Workspace. On a personal Gmail everything else works (panel, web chat, agents, Google tools), and the daily Apps Script trigger budget is 90 min instead of 6 h.
 
 ## Security
@@ -195,7 +205,7 @@ Current limits:
 - No `eval` and no code loaded from Drive: an agent is markdown only.
 - Only the owner (the account that published) can open the gasclaw screen; each agent answers only the owner and the people the owner approved on that screen.
 - ⚠️ Access change ([ADR-021](docs/adr/021-acesso-aprovado-no-painel.md)): who can talk to an agent and which tools it may use only take effect after being approved in the gasclaw panel. `users:` and `tools:` in the folder, the editor or the `config` sheet are now suggestions. After this version every agent answers only the owner and has no tools until you click **Approve** in the panel. If you used `users:` to give other people access, approve them in the panel.
-- Google tools (Calendar, Gmail, Contacts, Tasks, Drive/Docs/Sheets) work only for the gasclaw owner. People approved in the panel can still talk to the agent, but their requests that would use these tools are refused, and only the owner approves those cards. The approval card shows every field in full (recipients, attendees, ids); only long text is summarized ([ADR-023](docs/adr/023-ferramentas-do-workspace-rest.md)).
+- Google tools (Calendar, Gmail, Contacts, Tasks, Drive/Docs/Sheets) work only for the gasclaw owner. People approved in the panel can still talk to the agent, but their requests that would use these tools are refused, and only the owner approves those cards. The approval card shows every field in full (recipients, attendees, ids); only long text is summarized ([ADR-023](docs/adr/023-ferramentas-do-workspace.md)).
 - Actions with side effects (`./gasclaw poc`, `eval`, `down`) are POST requests with a CLI secret created by `./gasclaw up` in `.env.local` ([ADR-022](docs/adr/022-csrf-segredo-da-cli.md)).
 - `./gasclaw down` or "Pause" on the screen stops every agent immediately.
 
