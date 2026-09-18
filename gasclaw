@@ -198,7 +198,7 @@ ensure_cli_secret() { # M1: segredo da CLI gerado no PC (.env.local, gitignored;
 }
 
 ensure_tools() {
-  command -v brew >/dev/null || die "Homebrew not found: install it from https://brew.sh and run again"
+  command -v brew >/dev/null || die "Homebrew not found. Install it from https://brew.sh, then run ./gasclaw again — everything else is installed for you."
   command -v node >/dev/null || brew install node
   command -v gcloud >/dev/null || brew install --cask google-cloud-sdk
   [ -x node_modules/.bin/clasp ] || npm ci
@@ -608,6 +608,24 @@ step_done() { # $1 numero do passo -> 0 se ja esta feito
   esac
 }
 
+# O que falta num passo que AINDA nao foi feito. So o passo 1 precisa disto hoje: numa maquina zerada ele e
+# o unico que pode parar por falta de coisa externa, e descobrir isso depois de apertar `a` e o pior momento.
+step_missing() {
+  case "$1" in
+    1)
+      local falta=""
+      command -v brew >/dev/null || falta="Homebrew (install it from https://brew.sh first)"
+      if [ -z "$falta" ]; then
+        command -v node >/dev/null   || falta="node"
+        command -v gcloud >/dev/null || falta="${falta:+$falta, }gcloud"
+        [ -x node_modules/.bin/clasp ] || falta="${falta:+$falta, }npm deps"
+        [ -n "$falta" ] && falta="will install: $falta"
+      fi
+      printf '%s' "$falta" ;;
+    *) printf '' ;;
+  esac
+}
+
 step_detail() { # confirmacao curta do passo FEITO — repetir o "porque" numa linha com ✓ so confunde
   case "$1" in
     1) printf 'installed' ;;
@@ -660,7 +678,7 @@ step_run() {
 }
 
 onboard_menu() {
-  local i done=0 total=7 mark title why detail
+  local i done=0 total=7 mark title why detail falta
   printf '\n\033[1m🦀 gasclaw\033[0m — agents that live in your Google Drive\n'
   for i in $(seq 1 $total); do step_done "$i" >/dev/null 2>&1 && done=$((done + 1)); done
   local acct
@@ -679,7 +697,8 @@ onboard_menu() {
       detail=$(step_detail "$i")
       printf '  \033[32m✓\033[0m %s  %-22s \033[2m%s\033[0m\n' "$i" "$title" "${detail:-$why}"
     else
-      printf '  \033[33m○\033[0m %s  %-22s \033[2m%s\033[0m\n' "$i" "$title" "$why"
+      falta=$(step_missing "$i")
+      printf '  \033[33m○\033[0m %s  %-22s \033[2m%s\033[0m\n' "$i" "$title" "${falta:-$why}"
     fi
   done
   if [ "$done" -eq "$total" ]; then
