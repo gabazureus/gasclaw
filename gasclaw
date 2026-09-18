@@ -295,8 +295,13 @@ deploy() {
 }
 
 same_as_build() { # $1 pasta baixada → "" se o motor, as telas e o manifesto (escopos ordenados + webapp + chat) batem com o dist/
-  local f bad=""
-  for f in _motor.js settings.html chat.html; do
+  # A lista SAI do dist/, nao e escrita a mao: era `_motor.js settings.html chat.html` enquanto o build ja
+  # emitia hub.html tambem, entao o gate imprimia "identicos ao build" sem ter conferido uma das telas.
+  local f bad="" lista
+  lista=$(cd dist && ls *.js *.html 2>/dev/null)
+  # Lista vazia faria o gate passar por vacuo — que e a propria falha que ele existe para pegar.
+  [ -n "$lista" ] || { printf '%s' " dist-vazio"; return 0; }
+  for f in $lista; do
     cmp -s "$1/$f" "dist/$f" || bad="$bad $f"
   done
   node -e 'const k=(p)=>{const m=JSON.parse(require("fs").readFileSync(p,"utf8"));return JSON.stringify([[...(m.oauthScopes||[])].sort(),m.webapp,m.chat])};process.exit(k(process.argv[1])===k("dist/appsscript.json")?0:1)' "$1/appsscript.json" 2>/dev/null || bad="$bad appsscript.json"

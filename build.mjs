@@ -26,8 +26,16 @@ await esbuild.build({
   },
   minify: false,
 });
-const names = [...readFileSync('src/main.ts', 'utf8').matchAll(/^export function (\w+)/gm)].map((m) => m[1]);
-if (names.length === 0) throw new Error('build: nenhum "export function" em src/main.ts');
+// O Apps Script só enxerga funções no escopo global, e o bundle é um módulo: cada export do main.ts precisa de
+// um invólucro. A lista saía de um regex que só casava `export function` — uma global escrita como
+// `export const x = () => …` ficava de fora, o build passava, o deploy passava, e o Apps Script dizia
+// "function not found" em produção. Agora as duas formas contam.
+const src = readFileSync('src/main.ts', 'utf8');
+const names = [
+  ...[...src.matchAll(/^export function (\w+)/gm)].map((m) => m[1]),
+  ...[...src.matchAll(/^export const (\w+)\s*(?::[^=]+)?=\s*(?:async\s*)?(?:<[^>]*>)?\(/gm)].map((m) => m[1]),
+];
+if (names.length === 0) throw new Error('build: nenhum export chamável em src/main.ts');
 appendFileSync(`${OUT}/_motor.js`, '\n' + names.map((n) => `function ${n}(...a) { return gasclaw.${n}(...a); }`).join('\n') + '\n');
 const manifest = JSON.parse(readFileSync('appsscript.json', 'utf8'));
 const iamScope = 'https://www.googleapis.com/auth/iam';
