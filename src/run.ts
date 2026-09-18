@@ -8,9 +8,18 @@
 // A borda (runStore.ts) guarda o estado no Drive e o ponteiro na fila das Script Properties.
 import type { Decision, Pending, Snapshot, TurnResult } from './agent';
 import type { ApprovalGrant } from './approval';
+import { parseChatDelivery, type ChatDelivery } from './chatDelivery';
 
 /** Prefixo próprio na fila das Script Properties: separado do `Q:` do trace (perder trace custa um log; perder run custa a resposta). */
 export const RUN_PREFIX = 'R:';
+/**
+ * Registro de autoridade do run (ADR-029), nas Script Properties.
+ *
+ * Separado do ponteiro `R:` de propósito: o ponteiro morre quando o run sai da fila para esperar o usuário,
+ * e é justamente aí — enquanto uma aprovação fica pendente — que o atacante tem mais tempo para editar o
+ * arquivo na pasta compartilhada. A autoridade precisa viver enquanto o RUN viver, não enquanto a fila viver.
+ */
+export const AUTH_PREFIX = 'A:';
 /** Uma execução do Apps Script morre em 6 min: passado isso, quem reivindicou não volta mais. */
 export const LEASE_MS = 360_000;
 /** Depois de 4 tentativas o run para de tentar e vira falha honesta, em vez de repetir efeito para sempre. */
@@ -31,7 +40,46 @@ export type RunPointer = {
   at: number;
   attempts: number;
   leaseUntil?: number;
+  /** Hora marcada: antes dela o ponteiro nao e reivindicavel. Esperar a hora nao e trabalho nem falha. */
+  notBefore?: number;
 };
+
+/**
+ * O que o gasclaw sabe sobre um run sem precisar acreditar no arquivo dele.
+ *
+ * `space`/`thread`: para onde a resposta pode ir, fixado na criação (imutável durante o run).
+ * `auth`: assinatura dos campos de autoridade do estado que NÓS gravamos por último (muda a cada passo).
+ */
+export type RunAuthority = { space?: string; thread?: string; auth: string };
+
+export const authKey = (runId: string): string => `${AUTH_PREFIX}${runId}`;
+
+/**
+ * Campos do run que NÃO entram na assinatura, cada um com motivo. Tudo o mais entra: o padrão é
+ * "verifica", para um campo novo nascer protegido em vez de nascer esquecido três meses depois.
+ */
+export const RUN_UNSIGNED_FIELDS = [
+  'delivery', // muda por `save` fora do enqueue (recibo, desistência); o DESTINO é protegido por `space`/`thread` acima
+  'inflight', // gravado por `beforeEffect` no meio do passo, fora do enqueue
+  'updatedAt', // carimbo desses mesmos saves fora de banda
+] as const;
+
+/**
+ * String canônica dos campos de autoridade, para a borda assinar.
+ *
+ * Normaliza pelo MESMO `parseRun` dos dois lados antes de serializar: a assinatura não pode depender de
+ * ordem de chave nem de coerção de número, senão uma diferença inócua viraria recusa de um run legítimo.
+ */
+export function runAuthority(r: DurableRun): string {
+  const normal = parseRun(JSON.stringify(r)) ?? r;
+  const pular = new Set<string>(RUN_UNSIGNED_FIELDS);
+  const campos = Object.keys(normal).filter((k) => !pular.has(k)).sort();
+  return JSON.stringify(campos.map((k) => [k, (normal as unknown as Record<string, unknown>)[k]]));
+}
+
+/** Acabou de vez: respondeu (ou falhou) e não há entrega pendente. Só aqui a autoridade pode ser esquecida. */
+export const isFinished = (r: DurableRun): boolean =>
+  (r.status === 'done' || r.status === 'failed') && r.delivery?.status !== 'pending';
 
 /** Uma tool com efeito que começou e não se sabe se terminou (a execução morreu no meio). */
 export type Inflight = { name: string; at: number };
@@ -56,6 +104,7 @@ export type DurableRun = {
   done: Record<string, string>;
   granted: string[];
   inflight?: Inflight;
+  delivery?: ChatDelivery;
   budget: { usedUsd: number; capUsd: number };
   answer?: string;
   error?: string;
@@ -63,7 +112,7 @@ export type DurableRun = {
   updatedAt: number;
 };
 
-export const newRun = (i: { runId: string; session: string; folderId: string; user: string; text: string; now: number; ownerDm?: boolean; capUsd?: number }): DurableRun => ({
+export const newRun = (i: { runId: string; session: string; folderId: string; user: string; text: string; now: number; ownerDm?: boolean; capUsd?: number; delivery?: ChatDelivery }): DurableRun => ({
   runId: i.runId,
   session: i.session,
   folderId: i.folderId,
@@ -73,12 +122,21 @@ export const newRun = (i: { runId: string; session: string; folderId: string; us
   status: 'queued',
   done: {},
   granted: [],
+  ...(i.delivery ? { delivery: i.delivery } : {}),
   budget: { usedUsd: 0, capUsd: i.capUsd ?? RUN_BUDGET_USD },
   startedAt: i.now,
   updatedAt: i.now,
 });
 
-export const pointerOf = (r: DurableRun, now: number): RunPointer => ({ runId: r.runId, folderId: r.folderId, session: r.session, at: now, attempts: 0 });
+export const pointerOf = (r: DurableRun, now: number): RunPointer => ({
+  runId: r.runId,
+  folderId: r.folderId,
+  session: r.session,
+  at: now,
+  attempts: 0,
+  // Entrega agendada para o futuro: o pump nao deve girar em falso ate a hora chegar (regressao da P2).
+  ...(r.delivery?.status === 'pending' && Number.isFinite(r.delivery.notBefore) ? { notBefore: r.delivery.notBefore } : {}),
+});
 
 /** Um run só é trabalho para o pump enquanto não terminou; `waiting` espera o usuário, não o pump. */
 export const isOpen = (s: RunStatus): boolean => s === 'queued' || s === 'running';
@@ -101,7 +159,7 @@ function parsePointer(raw: string): RunPointer | null {
   try {
     const o = JSON.parse(raw) as Partial<RunPointer>;
     if (typeof o.runId !== 'string' || !o.runId || typeof o.folderId !== 'string' || !o.folderId) return null;
-    return { runId: o.runId, folderId: o.folderId, session: String(o.session ?? ''), at: Number(o.at) || 0, attempts: Number(o.attempts) || 0, ...(o.leaseUntil ? { leaseUntil: Number(o.leaseUntil) } : {}) };
+    return { runId: o.runId, folderId: o.folderId, session: String(o.session ?? ''), at: Number(o.at) || 0, attempts: Number(o.attempts) || 0, ...(o.leaseUntil ? { leaseUntil: Number(o.leaseUntil) } : {}), ...(o.notBefore ? { notBefore: Number(o.notBefore) } : {}) };
   } catch {
     return null;
   }
@@ -127,9 +185,12 @@ export function claim(p: RunPointer, now: number): Claim {
   return { ok: true, pointer: { ...p, attempts: p.attempts + 1, leaseUntil: now + LEASE_MS } };
 }
 
-/** O próximo run a trabalhar: o mais antigo que dá para reivindicar agora. */
+/** Chegou a hora? Ponteiro sem `notBefore` esta sempre pronto. */
+export const due = (p: RunPointer, now: number): boolean => !p.notBefore || p.notBefore <= now;
+
+/** O próximo run a trabalhar: o mais antigo que dá para reivindicar agora e cuja hora já chegou. */
 export function nextClaimable(queue: RunPointer[], now: number): RunPointer | null {
-  return queue.find((p) => leaseExpired(p, now) && !exhausted(p)) ?? null;
+  return queue.find((p) => leaseExpired(p, now) && !exhausted(p) && due(p, now)) ?? null;
 }
 
 /**
@@ -240,6 +301,7 @@ export function parseRun(raw: string | null | undefined): DurableRun | null {
       done: o.done && typeof o.done === 'object' ? (o.done as Record<string, string>) : {},
       granted: Array.isArray(o.granted) ? o.granted.filter((g): g is string => typeof g === 'string') : [],
       ...(o.inflight && typeof o.inflight.name === 'string' ? { inflight: { name: o.inflight.name, at: Number(o.inflight.at) || 0 } } : {}),
+      ...(parseChatDelivery(o.delivery) ? { delivery: parseChatDelivery(o.delivery) } : {}),
       budget: { usedUsd: Number(o.budget?.usedUsd) || 0, capUsd: Number(o.budget?.capUsd) || RUN_BUDGET_USD },
       ...(typeof o.answer === 'string' ? { answer: o.answer } : {}),
       ...(typeof o.error === 'string' ? { error: o.error } : {}),

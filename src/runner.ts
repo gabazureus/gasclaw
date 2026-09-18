@@ -3,7 +3,8 @@
 // A unidade durável é o passo, como no Eve: uma volta do laço termina, o estado vai para o Drive, e a execução pode
 // morrer em seguida sem prejuízo — a próxima retoma exatamente dali. O gatilho de 1 min chama este worker; a P3
 // mede se o trabalho cabe na cota diária de gatilhos do Workspace.
-import { afterFailure, afterStep, charge, interrupted, isOpen, MAX_ATTEMPTS, type DurableRun } from './run';
+import { afterFailure, afterStep, charge, interrupted, isFinished, isOpen, MAX_ATTEMPTS, type DurableRun } from './run';
+import { deliveryGivenUp } from './chatDelivery';
 import type { RunIO } from './runStore';
 import type { TurnResult } from './agent';
 
@@ -17,12 +18,27 @@ export type StepDeps = {
   clock: () => number;
 };
 
-/** Grava o desfecho: quem continua volta para a fila, quem terminou (ou espera o usuário) sai dela. */
+/**
+ * Grava o desfecho: quem continua volta para a fila, quem terminou (ou espera o usuário) sai dela.
+ *
+ * A entrega só segura na fila um run TERMINAL, porque só `done`/`failed` chegam a ficar `due` (`deliveryDue`).
+ * Segurar também `waiting`/`paused` travava a fila inteira: eles esperam o usuário, nunca ficam due, e como
+ * `enqueue` limpa o lease e preserva o `at`, o mesmo run voltava a ser o mais antigo reivindicável a cada
+ * volta — o pump só pegava ele, e nenhuma outra mensagem do Chat era atendida. Sair da fila é seguro: o
+ * `io.decide` recoloca o ponteiro assim que o usuário responde.
+ */
 function settle(d: StepDeps, r: DurableRun, progressed: boolean): DurableRun {
-  if (isOpen(r.status)) d.io.enqueue(r, d.clock(), progressed);
+  const aguardandoEntrega = r.delivery?.status === 'pending' && (r.status === 'done' || r.status === 'failed');
+  // `progressed` zera as tentativas, e isso só vale para um run que ainda TRABALHA. Um run terminal está na
+  // fila apenas pela entrega: zerar ali fazia uma entrega impossível (o 400 da v83) girar para sempre, porque
+  // `MAX_ATTEMPTS` nunca chegava. Aqui a tentativa conta de verdade.
+  if (isOpen(r.status) || aguardandoEntrega) d.io.enqueue(r, d.clock(), progressed && isOpen(r.status));
   else {
     d.io.save(r);
     d.io.dequeue(r.runId);
+    // Acabou de vez: a autoridade pode ser esquecida. Um run que só saiu da fila para ESPERAR o usuário
+    // (`waiting`/`paused`) mantém a dele — é exatamente nessa janela que ela precisa sobreviver.
+    if (isFinished(r)) d.io.forget(r.runId);
   }
   return r;
 }
@@ -45,16 +61,44 @@ export function pumpById(d: StepDeps, runId: string): DurableRun | null {
   return c ? runClaim(d, c, now) : null;
 }
 
-function runClaim(d: StepDeps, c: { pointer: import('./run').RunPointer; run: DurableRun; exhausted?: true }, now: number): DurableRun {
+function runClaim(d: StepDeps, c: { pointer: import('./run').RunPointer; run: DurableRun; exhausted?: true; tampered?: true }, now: number): DurableRun {
+
+  // O arquivo do run diverge do que NÓS gravamos: alguém editou a pasta compartilhada por fora. Não dá para
+  // saber o que mais mudou, então não se executa nada — nem se entrega, porque o conteúdo também é suspeito.
+  if (c.tampered) {
+    const recusado: DurableRun = {
+      ...c.run,
+      status: 'failed',
+      error: 'esta tarefa foi alterada fora do gasclaw (a pasta do agente pode estar compartilhada); não vou executá-la',
+      ...(c.run.delivery ? { delivery: { ...c.run.delivery, status: 'failed' as const } } : {}),
+      updatedAt: now,
+    };
+    d.io.save(recusado);
+    d.io.dequeue(recusado.runId);
+    d.io.forget(recusado.runId);
+    return recusado;
+  }
 
   // Gastou as tentativas: não trabalha mais, só conta ao usuário que não deu (a fila já o soltou).
-  if (c.exhausted) return settle(d, afterFailure(c.run, c.run.error ?? 'não consegui completar depois de várias tentativas', MAX_ATTEMPTS, now), false);
+  if (c.exhausted) {
+    // Se o que esgotou foi a ENTREGA de um run que já respondeu, a resposta não pode ser jogada fora:
+    // `afterFailure` sobrescreveria `answer` com "Não consegui terminar". Desistimos só da entrega.
+    if (c.run.delivery?.status === 'pending' && !isOpen(c.run.status)) {
+      const parado = deliveryGivenUp(c.run, `não consegui entregar no Google Chat depois de ${MAX_ATTEMPTS} tentativas; a resposta está no painel`, now);
+      d.io.save(parado);
+      d.io.dequeue(parado.runId);
+      return parado;
+    }
+    return settle(d, afterFailure(c.run, c.run.error ?? 'não consegui completar depois de várias tentativas', MAX_ATTEMPTS, now), false);
+  }
 
   // A execução anterior morreu com uma tool de efeito em voo. Não dá para saber se o e-mail saiu: não repete.
   if (c.run.inflight) return settle(d, interrupted(c.run), false);
 
   // Ponteiro de um run que já acabou ou foi esperar o usuário (corrida entre o clique e o pump): só limpa a fila.
-  if (!isOpen(c.run.status)) return settle(d, c.run, false);
+  // `progressed: true` de propósito: o pump nao tentou nada aqui, entao isto NAO pode contar como tentativa falha.
+  // Sem isso o run girava ate esgotar MAX_ATTEMPTS no mesmo tique e virava 'failed' tendo entregue a resposta (P2).
+  if (!isOpen(c.run.status)) return settle(d, c.run, true);
 
   try {
     const o = d.step(c.run);
@@ -69,13 +113,18 @@ function runClaim(d: StepDeps, c: { pointer: import('./run').RunPointer; run: Du
   }
 }
 
-/** Uma execução do pump pode dar vários passos enquanto houver tempo: cada um já ficou durável antes do próximo. */
-export function pump(d: StepDeps, maxSteps: number, deadlineMs: number): DurableRun[] {
+/**
+ * Uma execução do pump pode dar vários passos enquanto houver tempo: cada um já ficou durável antes do próximo.
+ * `after` roda logo depois de CADA passo — é onde a entrega acontece, para uma resposta pronta não ficar
+ * esperando os outros runs da mesma execução (ver `workRuns` no main.ts).
+ */
+export function pump(d: StepDeps, maxSteps: number, deadlineMs: number, after?: (r: DurableRun) => void): DurableRun[] {
   const touched: DurableRun[] = [];
   for (let i = 0; i < maxSteps && d.clock() < deadlineMs; i++) {
     const r = pumpOnce(d);
     if (!r) break;
     touched.push(r);
+    after?.(r);
   }
   return touched;
 }

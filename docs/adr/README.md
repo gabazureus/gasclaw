@@ -32,3 +32,4 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [026](026-run-duravel.md) | Run durável: o passo é a unidade e o estado mora no Drive | Aceito; P4 no dev v66 e P19 no v72 |
 | [027](027-gatilho-worker.md) | O gatilho de 1 min é o worker do run durável | Aceito; P3 passou 4/4 no dev v60 |
 | [028](028-aprovacao-duravel.md) | Aprovação durável pertence ao run no Drive | Aceito; P20 passou 5/5 no dev v74 |
+| [029](029-autoridade-do-run-no-ponteiro.md) | Autoridade do run mora nas Script Properties, não no arquivo | Fatias 1, 2 e 3 implementadas; falta medir no dev |

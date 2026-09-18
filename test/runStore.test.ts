@@ -4,6 +4,11 @@ import { LEASE_MS, MAX_ATTEMPTS, newRun, queueKey, type DurableRun } from '../sr
 import { runCacheKey, runFile, runIO, type RunFiles } from '../src/runStore';
 
 const NOW = 1_700_000_000_000;
+const fakeSign = (v: string) => {
+  let h = 5381n;
+  for (let i = 0; i < v.length; i++) h = ((h * 33n) ^ BigInt(v.charCodeAt(i))) & 0xffffffffffffffffn;
+  return h.toString(16).padStart(16, '0');
+};
 
 /** Fakes no mesmo estilo do approvalStore.test: o Drive vira um Map atrás da porta RunFiles. */
 function fakes() {
@@ -14,6 +19,7 @@ function fakes() {
   let failSet = false;
   let failCachePut = false;
   const props = {
+    getProperty: (k: string) => store.get(k) ?? null,
     getProperties: () => Object.fromEntries(store),
     setProperty: (k: string, v: string) => { if (failSet) throw new Error('properties indisponível'); store.set(k, v); },
     deleteProperty: (k: string) => void store.delete(k),
@@ -21,7 +27,7 @@ function fakes() {
   const cache = { get: (k: string) => cached.get(k) ?? null, put: (k: string, v: string) => { if (failCachePut) throw new Error('cache indisponível'); cached.set(k, v); }, remove: (k: string) => void cached.delete(k) };
   const lock = { tryLock: () => free, releaseLock: () => {} };
   const files: RunFiles = { read: (f, n) => disk.get(`${f}/${n}`) ?? null, write: (f, n, raw) => void disk.set(`${f}/${n}`, raw) };
-  return { store, cached, disk, files, busy: () => void (free = false), failSet: () => void (failSet = true), failCachePut: () => void (failCachePut = true), io: runIO(props as never, cache as never, lock as never, files) };
+  return { store, cached, disk, files, busy: () => void (free = false), failSet: () => void (failSet = true), failCachePut: () => void (failCachePut = true), io: runIO(props as never, cache as never, lock as never, files, fakeSign) };
 }
 
 const mk = (runId: string, over: Partial<DurableRun> = {}): DurableRun => ({
@@ -232,5 +238,56 @@ describe('P20 decide: consumo atômico e Drive autoritativo', () => {
     f.failCachePut();
     expect(f.io.decide('f1', 'r1', { tokenHash: HASH, actor: 'dono@x.com', decision: { approved: true }, replacementHash: NEXT_HASH }, NOW + 1).kind).toBe('accepted');
     expect(f.io.claimById('r1', NOW + 2)?.run).toMatchObject({ status: 'queued', decision: { approved: true } });
+  });
+});
+
+// Fatia 1 da Opcao 2 (auditoria 2026-09-18): o destino da entrega e autoridade e mora no ponteiro, fora da
+// pasta compartilhavel. Se `enqueue` o rederivasse do arquivo, a guarda se autodestruiria — bastaria ao
+// atacante editar o JSON e esperar o proximo enfileiramento reescrever o ponteiro com o destino dele.
+describe('destino da entrega no ponteiro', () => {
+  const comEntrega = (space: string) => mk('r1', {
+    status: 'done',
+    delivery: { kind: 'google-chat', space, requestId: '123e4567-e89b-42d3-a456-426614174000', notBefore: NOW, status: 'pending' },
+  });
+
+  it('grava o destino na primeira vez que o run entra na fila', () => {
+    const h = fakes();
+    h.io.enqueue(comEntrega('spaces/AAA'), NOW);
+    expect(h.io.authority('r1')?.space).toBe('spaces/AAA');
+  });
+
+  it('NAO adota o destino do arquivo em gravacoes seguintes', () => {
+    const h = fakes();
+    h.io.enqueue(comEntrega('spaces/AAA'), NOW);
+    // o atacante editou a pasta compartilhada; o run volta para a fila por qualquer motivo
+    h.io.enqueue(comEntrega('spaces/ATACANTE'), NOW + 1);
+    expect(h.io.authority('r1')?.space).toBe('spaces/AAA');
+    expect(JSON.stringify(Object.fromEntries(h.store))).not.toContain('ATACANTE');
+  });
+
+  // O furo que a fatia 1 tinha: o ponteiro `R:` morre quando o run vai esperar o usuario, e com ele morria
+  // o destino. Na aprovacao o destino era relido do ARQUIVO — justamente a janela mais longa do atacante.
+  it('a autoridade sobrevive ao run sair da fila para esperar o usuario', () => {
+    const h = fakes();
+    h.io.enqueue(comEntrega('spaces/AAA'), NOW);
+    h.io.dequeue('r1'); // foi para `waiting`
+    expect(h.io.authority('r1')?.space).toBe('spaces/AAA');
+  });
+
+  it('a autoridade e esquecida quando o run acaba de vez (limpeza das Properties)', () => {
+    const h = fakes();
+    h.io.enqueue(comEntrega('spaces/AAA'), NOW);
+    h.io.dequeue('r1');
+    h.io.forget('r1');
+    expect(h.io.authority('r1')).toBeNull();
+    expect([...h.store.keys()].filter((k) => k.startsWith('A:') || k.startsWith('R:'))).toEqual([]);
+  });
+
+  // Requisito (b): Properties cheias nao pode virar execucao sem autoridade.
+  it('sem espaco nas Properties a operacao FALHA com recado compreensivel, nunca cai no Drive', () => {
+    const h = fakes();
+    h.failSet();
+    expect(() => h.io.enqueue(comEntrega('spaces/AAA'), NOW)).toThrow(/Script Properties/);
+    expect(h.io.authority('r1')).toBeNull(); // nada de autoridade meia-boca
   });
 });
