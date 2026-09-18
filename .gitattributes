@@ -1,0 +1,19 @@
+# Fim de linha: LF sempre, para tudo que é executado por um shell.
+#
+# O Git para Windows vem com core.autocrlf=true e converte LF em CRLF no checkout. Um script bash com CRLF
+# falha na PRIMEIRA linha, com `$'\r': command not found` — o `./gasclaw` nem chegaria a mostrar o menu.
+# Marcar aqui vence a configuração local de quem clona, que é o ponto: o usuário não deveria precisar saber
+# disso para instalar.
+* text=auto eol=lf
+
+# Executados por shell: LF é obrigatório, não preferência.
+gasclaw text eol=lf
+*.sh    text eol=lf
+
+# Binários: o Git não deve tocar.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
