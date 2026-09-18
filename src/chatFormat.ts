@@ -13,3 +13,14 @@ export const CHAT_FORMAT_RULES = `
 - Listas aninhadas usam quatro espaços por nível.
 - Não use títulos com #, tabelas, listas de tarefas, HTML, notas de rodapé ou imagens Markdown; esses formatos não são renderizados corretamente pelo Google Chat.
 - Para um título curto, use uma linha em **negrito**.`;
+
+/**
+ * Prompt do agente para a superfície em que a resposta vai aparecer. No Google Chat as regras de
+ * formatação entram SEMPRE; na tela, nunca.
+ *
+ * Existe como função porque a regra tem dois donos: o `handleChat` (evento síncrono) e o passo do run
+ * durável (`stepDeps` no main.ts). Quando a P2 tirou a mensagem normal do `handleChat`, só um dos dois
+ * acrescentava as regras — e toda resposta do Chat passou a chegar sem elas (os `**` literais).
+ */
+export const withChatFormatRules = <T extends { system: string }>(spec: T, markdown: boolean): T =>
+  markdown ? { ...spec, system: `${spec.system}${CHAT_FORMAT_RULES}` } : spec;
