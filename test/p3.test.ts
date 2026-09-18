@@ -53,6 +53,7 @@ describe('P3: gatilho como worker dentro da cota do Workspace', () => {
       save: () => undefined,
       dequeue: () => undefined,
       enqueue: () => undefined,
+      forget: () => undefined, // ADR-029: run que acaba de vez tem a autoridade esquecida
     } as never;
     const pointers = [p3, real].map((r) => ({ runId: r.runId, session: r.session }));
     expect(runP3SyntheticWorker('p3', pointers, { io, step, clock: () => 10 }, 100).map((r) => r.runId)).toEqual(['p3']);
@@ -67,6 +68,7 @@ describe('P3: gatilho como worker dentro da cota do Workspace', () => {
       save: () => undefined,
       dequeue: () => undefined,
       enqueue: () => undefined,
+      forget: () => undefined, // ADR-029: run que acaba de vez tem a autoridade esquecida
     } as never;
     expect(runP3SyntheticWorker('p3', pointers, { io: racedIo, step: racedStep, clock: () => 10 }, 100)).toEqual([]);
     expect(racedStep).not.toHaveBeenCalled();

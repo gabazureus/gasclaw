@@ -7,8 +7,10 @@ import { runP3SyntheticWorker, syntheticTurn } from '../poc/p3-pump/worker';
 import { pocP4 } from '../poc/p4-run/harness';
 import { pocP19 } from '../poc/p19-inflight/harness';
 import { pocP20 } from '../poc/p20-approval/harness';
+import { pocP22, TICK_REQ as P22_TICK_REQ, TICK_RESULT as P22_TICK_RESULT, WAKE_REQ as P22_WAKE_REQ, WAKE_RESULT as P22_WAKE_RESULT } from '../poc/p22-proatividade/harness';
+import { dueAgenda, evaluateAgenda, syntheticAgenda } from '../poc/p22-proatividade/probe';
 import { deliverP2Probe, pocP2, startP2Event } from '../poc/p2-chat-async/harness';
-import { createAsChatApp } from './chatApiGas';
+import { chatAppAvailable, createAsChatApp } from './chatApiGas';
 import { acceptChatMessage } from './chatAsync';
 import { deliveryDue, sendChatDelivery } from './chatDelivery';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
@@ -16,6 +18,7 @@ import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, reply } from './agent';
 import { approvalCard, decisionFrom, issue, issueGrant } from './approval';
 import { cacheTickets, decideChatApproval, decideScreenApproval, durableTickets, hashToken, newToken } from './approvalStore';
 import { chatTurn, handleChat, type ChatDeps, type ChatEvent, type ChatReply } from './chat';
+import { withChatFormatRules } from './chatFormat';
 import { extendBudget, markInflight, newRun, resumeOf, RUN_BUDGET_USD, view, withDecision, type DurableRun } from './run';
 import { asEnv, panelList } from './panels';
 import { pump, pumpById, type StepDeps } from './runner';
@@ -34,16 +37,17 @@ import { isFree } from './freeModels';
 import { runFree } from './freeRun';
 import { complete, type Completion, type Message, type ToolDef } from './llm';
 import { gasGoogle, zone } from './tools/googleHttp';
+import { offsetMinutes } from './agenda';
 import { getOverride, listModels as openRouterModels, setOverride, validateChoice } from './models';
 import * as observe from './observe';
 import * as runlog from './runlog';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
-import { allowedTools } from './tools/registry';
+import { allowedTools, toolCatalog } from './tools/registry';
 import { coverage, redact } from './trace';
 import { agentInfo, llmInfo, traceDeps } from './traced';
 import { webClick, webSend, webSpace } from './webchat';
-import { agentFolderPath, canUse, effectiveAccess, ensureFolderPath, extractFolderId, loadAgent, parseAccess, pendingSuggestions, seedAgent, validAgentName, withAccess, type Access, type LoadedAgent } from './workspace';
+import { agentFolderPath, canUse, effectiveAccess, enabledTools, ensureFolderPath, extractFolderId, loadAgent, parseAccess, pendingSuggestions, seedAgent, validAgentName, withAccess, withTool, type Access, type LoadedAgent } from './workspace';
 
 const CHAT_MAX_TOKENS = 1000; // resposta síncrona precisa caber em 30 s
 
@@ -307,11 +311,23 @@ export function onMessage(e: ChatEvent) {
   const typed = (e.message?.argumentText ?? e.message?.text ?? '').trim().toLowerCase();
   if (isDev() && e.type === 'MESSAGE' && typed === '/poc p2') {
     if (e.user.email.toLowerCase() !== ownerEmail()) return { text: 'A POC P2 so pode ser iniciada pelo dono do gasclaw.' };
-    startP2Event(e.space.name, e.message?.thread?.name, runIO());
+    startP2Event(e.space.name, undefined, runIO()); // sem thread: tudo no fluxo do espaco
     return {}; // `pensando...` ja foi criado como o app e confirmado por message.name na POC
   }
   const d = chatDeps();
   if (e.type === 'MESSAGE') {
+    // Sem a identidade do app no Chat não existe entrega posterior: o caminho assíncrono deixaria o usuário
+    // no "pensando..." para sempre (é como o build de prod sai hoje — `build.mjs` tira o escopo IAM e não
+    // embute a service account). Então cai no síncrono, que é exatamente como a prod da v1 responde.
+    if (!chatAppAvailable()) {
+      const ts = runlog.begin('chat', { question: (e.message?.argumentText ?? e.message?.text ?? '').trim(), user: e.user.email });
+      ts.mark('entrada_sincrona', { motivo: 'identidade do app no Chat indisponivel' });
+      const sincrono = handleChat(e, traced(ts, d));
+      ts.mark('reply');
+      ts.end({ answer: sincrono.text });
+      observe.maybeDrain();
+      return sincrono;
+    }
     const io = runIO();
     return acceptChatMessage(e, {
       enabled: d.enabled,
@@ -323,6 +339,7 @@ export function onMessage(e: ChatEvent) {
       enqueue: io.enqueue,
       clock: Date.now,
       uuid: () => Utilities.getUuid(),
+      postToSpace: (space, text, requestId) => !!createAsChatApp({ space, requestId, message: { text } }).name,
     });
   }
   if (e.type !== 'CARD_CLICKED') return handleChat(e, d);
@@ -380,7 +397,11 @@ function stepDeps(budgetMs = STEP_BUDGET_MS, io = runIO()): StepDeps {
     clock: Date.now,
     step: (r: DurableRun) => {
       const me = ownerEmail();
-      const spec = loadAgentForTurn(r.folderId);
+      const loaded = loadAgentForTurn(r.folderId);
+      // `r.delivery` é o mesmo discriminador que escolhe 'chat' ou 'webchat' no trace: run com entrega
+      // vai para o Google Chat e precisa das regras de formatação; run da tela, não. Sem isto, a P2 tirou
+      // a mensagem normal do `handleChat` e toda resposta do Chat passou a sair sem as regras.
+      const spec = withChatFormatRules(loaded, !!r.delivery);
       if (!canUse(spec.access, r.user, me)) throw new Error(`${r.user} não tem acesso ao agente ${spec.name}`); // acesso aprovado no painel (ADR-021)
       const apiKey = store.getApiKey();
       if (!apiKey) throw new Error('Falta a chave do OpenRouter. Cole-a na tela gasclaw.');
@@ -391,6 +412,11 @@ function stepDeps(budgetMs = STEP_BUDGET_MS, io = runIO()): StepDeps {
       // O acesso ao Google só entra no contexto de quem é o dono, igual à conversa (ADR-023).
       const kit = { ...base, ctx: { ...base.ctx, isOwner, google: isOwner ? base.ctx.google : undefined } };
       const t = runlog.begin(r.delivery ? 'chat' : 'webchat', { question: r.text.slice(0, 2000), user: r.user });
+      // TODA chamada ao modelo deste passo passa por aqui. O resumo da sessão e o flush de memória também
+      // custam dinheiro: fora do `llm_call` eles não apareciam no trace nem entravam no `usedUsd`, e o teto
+      // de US$ 0,10 por run cobria só parte do gasto real.
+      const llm = (m: Message[], defs?: ToolDef[]) =>
+        t.step('llm_call', () => d.llm(apiKey, spec.config.model, m, defs), llmInfo(spec.config.model, m), true);
       try {
         const { turn, ritualDone } = chatTurn({
           spec,
@@ -400,7 +426,7 @@ function stepDeps(budgetMs = STEP_BUDGET_MS, io = runIO()): StepDeps {
           ownerDm,
           runId: r.runId,
           budgetMs,
-          llm: (m, defs) => t.step('llm_call', () => d.llm(apiKey, spec.config.model, m, defs), llmInfo(spec.config.model, m), true),
+          llm,
           resume: resumeOf(r),
           done: r.done,
           granted: r.granted,
@@ -409,9 +435,9 @@ function stepDeps(budgetMs = STEP_BUDGET_MS, io = runIO()): StepDeps {
         // Fim do run = não ficou pendência nem parada. Só aqui a conversa é gravada, compactada e o ritual consumido.
         if (!turn.pending && !turn.stopped) {
           if (ritualDone) kit.bootstrap?.consume();
-          if (ownerDm && turn.history.length >= MAX_HISTORY && kit.ctx.memory.saveDay && kit.ctx.memory.today) flushMemory(turn.history, kit.ctx, (m) => d.llm(apiKey, spec.config.model, m));
+          if (ownerDm && turn.history.length >= MAX_HISTORY && kit.ctx.memory.saveDay && kit.ctx.memory.today) flushMemory(turn.history, kit.ctx, (m) => llm(m));
           d.saveHistory(r.session, turn.history);
-          d.compact?.(r.session, (m) => d.llm(apiKey, spec.config.model, m));
+          d.compact?.(r.session, (m) => llm(m));
         }
         t.mark('reply');
         return { turn, usd: t.end({ answer: turn.text }).cost ?? 0 };
@@ -576,6 +602,70 @@ function runP3WorkerProbe(): boolean {
 }
 
 /**
+ * Sonda da P22: quanto a agenda acrescenta a um tique. Só no dev, e só quando pedida.
+ *
+ * O valor pedido é quantos compromissos sintéticos avaliar: `0` mede o tique ocioso (C1) e `20`
+ * mede o mesmo tique carregando uma agenda cheia que NÃO vence nada (C2) — que é o preço que a
+ * proatividade cobra em todos os 1.440 tiques do dia, mesmo sem nada a fazer.
+ *
+ * A agenda vem de uma string, não do Drive: pela decisão H3 ela é aprovada no painel e mora nas
+ * Properties, como o `Access`. Ler a pasta a cada tique é justamente o que tornaria isto caro.
+ */
+function runP22TickProbe(): boolean {
+  if (!isDev()) return false;
+  const cache = CacheService.getScriptCache();
+  const requested = cache.get(P22_TICK_REQ);
+  if (requested === null) return false;
+  cache.remove(P22_TICK_REQ);
+  const t0 = Date.now();
+  try {
+    const n = Number(requested) || 0;
+    const tz = offsetMinutes(zone().offset);
+    const text = n > 0 ? syntheticAgenda(n, Date.now(), tz) : '';
+    runlog.reconcileStaleRuns();
+    observe.drain();
+    const agenda = evaluateAgenda(text, {}, Date.now(), tz);
+    const pointers = runIO().pointers();
+    if (!pointers.length) workRuns(pointers);
+    cache.put(P22_TICK_RESULT, JSON.stringify({ ok: true, ms: Date.now() - t0, jobs: agenda.jobs, due: agenda.due, errors: agenda.errors }), 21_600);
+  } catch (err) {
+    cache.put(P22_TICK_RESULT, JSON.stringify({ ok: false, error: redactMsg(err), ms: Date.now() - t0 }), 21_600);
+  }
+  return true;
+}
+
+/**
+ * Sonda da P22: um despertar inteiro, do compromisso vencido ao run terminal, com passo SINTÉTICO.
+ * Mede o overhead da proatividade — nunca o custo real do turno, que não passa por aqui e por isso
+ * entra na projeção como número observado de fora (`--turno`).
+ */
+function runP22WakeProbe(): boolean {
+  if (!isDev()) return false;
+  const cache = CacheService.getScriptCache();
+  if (cache.get(P22_WAKE_REQ) !== '1') return false;
+  cache.remove(P22_WAKE_REQ);
+  const t0 = Date.now();
+  try {
+    const agent = store.listAgents()[0];
+    if (!agent) throw new Error('nenhum agente cadastrado: cadastre um na tela antes de rodar a P22');
+    const due = evaluateAgenda(dueAgenda(), {}, Date.now(), offsetMinutes(zone().offset));
+    if (!due.dueList.length) throw new Error('a agenda sintética de despertar não venceu: medição inválida');
+    const io = runIO();
+    const runId = `p22-wake-${Date.now().toString(36)}`;
+    const r = newRun({ runId, session: `${agent.folderId}:poc/p22`, folderId: agent.folderId, user: store.getOwner() ?? '', text: due.dueList[0].intent, now: Date.now() });
+    io.enqueue(r, Date.now());
+    // Só o run pedido avança; a fila compartilhada não é tocada (mesma trava que a P3 precisou adotar).
+    const targeted: StepDeps = { ...syntheticStepDeps(), io: { ...io, claimNext: (now) => io.claimById(runId, now) } };
+    const touched = pump(targeted, 1, Date.now() + PUMP_BUDGET_MS);
+    const done = touched[0];
+    cache.put(P22_WAKE_RESULT, JSON.stringify({ ok: true, ms: Date.now() - t0, completed: done?.runId === runId && done.status === 'done' }), 21_600);
+  } catch (err) {
+    cache.put(P22_WAKE_RESULT, JSON.stringify({ ok: false, error: redactMsg(err), ms: Date.now() - t0 }), 21_600);
+  }
+  return true;
+}
+
+/**
  * O gatilho é o worker do run durável. O produto exige Workspace, cuja cota de gatilhos é 6 h/dia; a P3 mede
  * o consumo real antes de aceitar este desenho. A fila vazia não abre Drive nem chama modelo.
  */
@@ -583,26 +673,40 @@ function workRuns(pointers = runIO().pointers()): void {
   try {
     if (!pointers.length) return;
     const io = runIO();
-    const touched = pump(stepDeps(STEP_BUDGET_MS, io), PUMP_MAX_STEPS, Date.now() + PUMP_BUDGET_MS);
-    for (const run of touched) {
-      if (!run.delivery || run.delivery.status !== 'pending') continue;
-      const now = Date.now();
-      if (!deliveryDue(run, now)) {
-        io.enqueue(run, now, true);
-        continue;
-      }
-      try {
-        const sent = isDev() && run.delivery.probe === 'p2'
-          ? deliverP2Probe(run, io, now)
-          : sendChatDelivery(run, now, createAsChatApp, io.save);
-        if (sent.delivery?.status === 'sent') io.dequeue(sent.runId);
-      } catch (err) {
-        io.enqueue(run, now, true); // requestId estavel torna o retry seguro se o POST ja tiver sido aceito
-        console.warn(`entrega do Chat falhou: ${redactMsg(err)}`);
-      }
-    }
+    // A entrega acontece assim que CADA run fica pronto, dentro do laco do pump. Antes ela esperava o pump
+    // inteiro terminar (ate 20 runs / 240 s), entao uma resposta pronta em 36 s so saia minutos depois,
+    // refem do trabalho dos outros runs — o usuario lia isso como "travado no pensando...".
+    pump(stepDeps(STEP_BUDGET_MS, io), PUMP_MAX_STEPS, Date.now() + PUMP_BUDGET_MS, (run) => deliverIfDue(run, io));
   } catch (err) {
     console.warn(`pump do gatilho falhou: ${redactMsg(err)}`);
+  }
+}
+
+/** Entrega um run terminal cuja hora chegou. Falha de entrega nunca derruba o pump: o run volta para a fila. */
+function deliverIfDue(run: DurableRun, io: RunIO): void {
+  if (!run.delivery || run.delivery.status !== 'pending') return;
+  const now = Date.now();
+  if (!deliveryDue(run, now)) {
+    // Só um run TERMINAL ainda vai ficar `due` — o que falta a ele é a hora. `waiting`/`paused` esperam o
+    // usuário e nunca ficam due: recolocá-los aqui desfaz o que o `settle` decidiu e os faz girar na fila
+    // sem fim. O ponteiro deles volta pelo `io.decide`, quando o usuário responde.
+    if (run.status === 'done' || run.status === 'failed') io.enqueue(run, now, true);
+    return;
+  }
+  try {
+    const sent = isDev() && run.delivery.probe === 'p2'
+      ? deliverP2Probe(run, io, now)
+      : sendChatDelivery(run, now, createAsChatApp, io.save, io.authority(run.runId));
+    if (sent.delivery?.status !== 'pending') {
+      io.dequeue(sent.runId); // entregue ou recusado de vez: sai da fila
+      io.forget(sent.runId); // e a autoridade some junto, para o `A:` não se acumular nas Properties
+    }
+  } catch (err) {
+    // `progressed: false`: falha de entrega É tentativa falha. Com `true`, `attempts` zerava a cada volta e o
+    // mesmo run indelivravel queimava as 20 voltas de PUMP_MAX_STEPS por tique, sem MAX_ATTEMPTS nunca cortar
+    // e sem nenhum outro run ser atendido. O requestId estavel mantem o retry seguro.
+    io.enqueue(run, now, false);
+    console.warn(`entrega do Chat falhou: ${redactMsg(err)}`);
   }
 }
 
@@ -718,12 +822,39 @@ const asAccess = (a: Partial<Access> | null | undefined): Access => ({
 const agentName = (folderId: string) => store.listAgents().find((a) => a.folderId === folderId)?.name ?? folderId;
 const describeAccess = (a: Access) => `${a.users.length ? a.users.join(', ') : 'só o dono'} · ${a.tools.length ? a.tools.join(', ') : 'sem ferramentas'}`;
 
-/** O que a pasta sugere, o que está aprovado e o que falta aprovar. */
+/** O que a pasta sugere, o que está aprovado, o que falta aprovar e o catálogo para o liga/desliga por ferramenta. */
 export function agentAccess(folderId: string) {
   assertOwner();
   const spec = loadAgent(folderId);
   const approved = approvedOf(folderId);
-  return { folderId, name: spec.name, suggested: spec.config.suggested, approved: effectiveAccess(approved), pending: pendingSuggestions(spec.config.suggested, approved) };
+  return {
+    folderId,
+    name: spec.name,
+    suggested: spec.config.suggested,
+    approved: effectiveAccess(approved),
+    pending: pendingSuggestions(spec.config.suggested, approved),
+    enabled: enabledTools(approved), // grupo já expandido: é isto que as caixas marcam
+    catalog: toolCatalog(),
+  };
+}
+
+/**
+ * Liga/desliga UMA ferramenta do agente (ADR-021 continua valendo: o efetivo mora em ACCESS:<folderId>).
+ *
+ * O cliente manda **um nome e um booleano**, nunca a lista inteira: o próximo estado é derivado aqui, do que
+ * está gravado, e `withTool` recusa qualquer nome que `allowedTools` não reconheça.
+ */
+export function setAgentTool(folderId: string, tool: string, enabled: boolean) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
+  const on = enabled === true; // estrito: qualquer coisa que não seja `true` desliga
+  const next = withTool(before, String(tool), on); // lança antes de qualquer gravação
+  const name = agentName(folderId);
+  const t = runlog.begin('config', { question: `ferramenta ${tool} de ${name}: ${on ? 'ligar' : 'desligar'}`, agent: name });
+  t.step('set_tool', () => props.setProperty(`ACCESS:${folderId}`, JSON.stringify(next)), () => ({ folderId, tool, enabled: on, before, after: next }));
+  t.end({ answer: `ferramentas: ${next.tools.length ? next.tools.join(', ') : 'nenhuma'}` });
+  return { folderId, approved: next, enabled: enabledTools(next) };
 }
 
 /** Grava o acesso aprovado (normalizado por effectiveAccess) e registra a mudança como run config no trace. */
@@ -803,6 +934,8 @@ export function runDetail(id: string) {
 export function drainRuns() {
   if (runP3WorkerProbe()) return { n: 0, ms: 0, oldest: null };
   if (runP3IdleProbe()) return { n: 0, ms: 0, oldest: null };
+  if (runP22TickProbe()) return { n: 0, ms: 0, oldest: null };
+  if (runP22WakeProbe()) return { n: 0, ms: 0, oldest: null };
   runlog.reconcileStaleRuns();
   const drained = observe.drain();
   workRuns(); // mesmo gatilho, dois trabalhos: gravar o trace em lote e avançar o run durável (ADR-027)
@@ -891,6 +1024,7 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p4: (step) => pocP4(step),
   p19: (step) => pocP19(step),
   p20: (step) => pocP20(step),
+  p22: (step, params = {}) => pocP22(step, params),
   p6: (step) => pocP6(step, ownerEmail()),
   p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),

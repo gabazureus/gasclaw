@@ -29,8 +29,10 @@
 | Memória | Fatos duráveis sobre o dono, em `MEMORY.md` (ou Doc `MEMORY`) na pasta do agente | `tools/memory`, `memoryIO` | Só na DM do dono; entra como mensagem do usuário, não no system |
 | Skill **(planejado)** | `skills/<nome>/SKILL.md`; só nome+descrição no prompt, corpo lido sob demanda | — | — |
 | Ritual de estreia **(planejado)** | Execução única de `BOOTSTRAP.md` na primeira conversa | — | Arquivo é apagado ao concluir |
-| Heartbeat **(planejado)** | Turno proativo periódico guiado por `HEARTBEAT.md` | — | Resposta `NO_REPLY` = não enviar nada |
-| Job **(planejado)** | Linha de `jobs.md`: `cron \| mensagem` | — | — |
+| Compromisso **(planejado)** | Uma linha de `jobs.md`: quando acordar e o que fazer. **Única fonte de despertar** | — | Gramática fechada e legível, não cron completo (G2) |
+| Heartbeat **(planejado)** | Um compromisso cujo horário vem do frontmatter e cuja intenção é o corpo de `HEARTBEAT.md` | — | **Não é máquina separada**: é uma linha da agenda (G1) |
+| `NO_REPLY` **(planejado)** | Resposta do modelo que significa "nada a dizer" | — | Nada é enviado; o despertar mesmo assim vira span no trace (G4) |
+| Standing orders | Ordens permanentes do dono, no corpo do `AGENTS.md` | `buildSpec` (já existe) | **Não é feature nova**: todo turno já lê o corpo do AGENTS |
 
 ## Turno, tools e aprovação
 
@@ -39,11 +41,11 @@
 | Turno | Da mensagem do usuário à resposta: LLM com tools → valida → executa → repete até a resposta, uma pendência ou o limite | `runTurn`, `TurnResult` | Núcleo puro; o mesmo `handleChat` serve Chat, tela e eval |
 | Passo (step) | Uma chamada ao LLM mais as tools que ela pediu | `TurnInput.steps` | Limite padrão 10 (`DEFAULT_STEPS`), 1–50 pelo `steps` do agente |
 | Orçamento | Prazo do turno | `CHAT_BUDGET_MS` (20 s), `SCREEN_BUDGET_MS` (300 s) | Checado antes de cada chamada |
-| Sessão | Histórico de conversa de um agente num espaço | `h:<pasta>:<espaço>` no CacheService, `getHistory`/`saveHistory` | Volátil (6 h), 20 mensagens; nunca em Properties |
+| Sessão | Histórico de conversa de um agente num espaço: resumo do que foi compactado + cauda recente | `Session`, `sessionIO`, `.gasclaw/sessions/<espaço>.json` | Fonte da verdade no Drive (cache é atalho); compacta acima de `SESSION_MAX_CHARS` preservando `SESSION_TAIL`. Chave `<folderId>:<espaço>` |
 | Tool | Função da lista fechada que o agente pode pedir | `TOOLS`, `Tool` | Nova tool exige deploy (ADR-002) |
 | Allowlist | Tools que o agente pode usar (`tools:`; `memory` libera `memory.*`) | `allowedTools` | Padrão seguro: nenhuma |
 | Toolkit | Tools filtradas, contexto (`now`, memória, DM do dono) e limite de passos de um turno | `Toolkit` | Montado por `chatDeps().toolkit` |
-| Política de aprovação | `never`, `once` ou `always` por tool | `Approval` | `once` ainda sem tool que use |
+| Grau de aprovação | `never`, `once` ou `always`, fixo por tool no registro | `Approval` | Em uso: `once` em `gmail.draft`, `docs.create`, `sheets.append`, `tasks.*`; `always` em `gmail.send`, `calendar.create/update`, `memory.remove` |
 | Pendência | Onde o turno parou esperando aprovação ou resposta | `Pending`, `Snapshot` | Retomada pela fila de chamadas restante |
 | Ask | Pergunta do agente ao usuário; a próxima mensagem ou o botão responde | tool `ask`, `Tickets.open` | Só quem perguntou responde |
 | Aprovação durável | Consentimento pendente para uma tool dentro de um run durável | `DurableRun.approval`, `RunIO.decide` | Fonte da verdade no Drive; vale 24 h; ligada à pendência e ao solicitante; expirar não executa nem refaz o turno |
@@ -51,7 +53,23 @@
 | Ticket legado | Snapshot completo de uma pergunta `ask` guardado no CacheService | `Ticket`, `cacheTickets` | 10 min; aprovações de tools não dependem mais dele |
 | Kill switch | Property que pausa todos os agentes | `RUNTIME_ENABLED`, `setEnabled` | `./gasclaw down` |
 | Chave de idempotência | `runId:step:callId` de cada tool já executada no turno | `TurnResult.done`, `DurableRun.done` | Persiste no checkpoint do run; P4 provou uma execução de efeito em três execuções GAS |
+| Hora marcada | Instante antes do qual um ponteiro da fila não pode ser reivindicado | `RunPointer.notBefore`, `due` | Reivindicar sem poder avançar **não** conta tentativa; é a primitiva de tempo que a agenda reaproveita |
 | Efeito em voo | Ação externa iniciada cujo resultado ficou incerto porque a execução morreu antes do checkpoint final | `DurableRun.inflight`, `beforeEffect`, `markInflight` | Persiste antes de `tool.run`; a retomada não repete e avisa o usuário (P19) |
+
+## Proatividade e governança **(planejado — esta track)**
+
+| Term | Definition | In code as | Notes / invariants |
+|------|------------|-----------|--------------------|
+| Agenda | A tabela de compromissos de um agente, lida de `jobs.md` | — | Avaliada a cada tique; nenhum gatilho novo (ADR-027) |
+| Tique | Uma execução do gatilho de 1 min que já existe | `drainRuns` | Passa a também perguntar "venceu algum compromisso?" |
+| Último disparo | Quando um compromisso disparou pela última vez | Script Properties | **Nunca** na pasta do Drive: um editor da pasta não força redisparo (ADR-002) |
+| Run proativo | Run que ninguém pediu (agenda ou heartbeat) | `DurableRun` com proveniência de gatilho | `ownerDm: false` por padrão; teto próprio; **nunca** `paused` — falha honesta e registrada |
+| Teto de proatividade | Limite diário agregado de gasto e de despertares por agente | — | Ajustável no painel, não constante de código |
+| Política de aprovação | Regra declarativa determinística que decide pedir/negar/auto-aprovar uma chamada de tool | — | Avaliada **em código**, nunca pelo modelo; erro de parse = fail-closed; padrão = pedir |
+| Política sugerida × vigente | A pasta *sugere* a política; ela só vale depois de aprovada no painel | mesmo padrão de `ACCESS:<folderId>` | Mantém a pasta compartilhável fora da fronteira de confiança |
+| Tool nunca auto-aprovável | Tool que a política jamais pode liberar sozinha | — | `gmail.send`, `calendar.update`, `memory.remove` |
+| Serialização por espaço | No máximo um run aberto por `<folderId>:<espaço>` | — | **Não confundir com reentrega**: aqui as mensagens são diferentes |
+| Reentrega | O mesmo evento do Chat chegando duas vezes | `runId` estável do nome da mensagem | Já resolvido na pista P2 |
 
 ## Trace e observabilidade
 
@@ -97,6 +115,10 @@
 - "workspace": no OpenClaw = pasta do agente; no Google = Google Workspace → usar **pasta do agente** para o primeiro.
 - "session" (Eve) vs. "run": aqui sessão = conversa; run = registro do trace. A tarefa durável da F2 será **run durável**.
 - "step": no turno = uma chamada ao LLM com suas tools; no trace o nome é **span**.
+- "fila deduplicada por espaço" (OpenClaw) junta dois problemas: **reentrega** (mesmo evento, já resolvido) e **serialização** (mensagens diferentes, run em voo). Usar os dois nomes separados; "dedupe" sozinho é ambíguo.
+- "schedules/" (Eve), "cron", "agendamento" e "heartbeat" são **o mesmo mecanismo**: usar **compromisso** e **agenda**. Heartbeat é um compromisso, não um sistema.
+- "policy" (Eve, `approval: policy`) aqui é sempre **regra determinística em código**, nunca texto avaliado pelo modelo. Se alguém disser "política em linguagem natural", é outra coisa e está recusada.
+- "hook" (Eve, `hooks/`) **não existe aqui**: seria código lido da pasta do Drive, proibido pela ADR-002. Não reutilizar a palavra para outra coisa.
 
 ### Relationships
 - Agente tem muitas sessões; cada mensagem gera um turno e um run de trace; o turno tem até N passos; cada passo pode gerar spans `llm_call` e `tool_call`.

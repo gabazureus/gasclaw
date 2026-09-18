@@ -489,5 +489,61 @@
       "safety": "Preservar claims Drive-fresh para toda transi\u00e7\u00e3o de autoriza\u00e7\u00e3o.",
       "clarity": "Atualizar Beads e docs a cada POC medida."
     }
+  },
+  {
+    "phase": "P21 Implement",
+    "summary": "Menu de secoes no painel, hub de paineis (?page=hub) e rotulo de ambiente; URL do irmao embutida no build. Suite 86 arquivos / 787 testes verde, tsc limpo.",
+    "scores": {
+      "correctness": {
+        "score": 8,
+        "note": "tsc limpo; 787/787 verdes; +14 testes novos; nenhuma verificacao real no dev ainda"
+      },
+      "design": {
+        "score": 8,
+        "note": "nucleo puro panels.ts separado da borda; link do irmao em build time, sem acoplamento runtime"
+      },
+      "testing": {
+        "score": 7,
+        "note": "nucleo com 5 casos incl. bordas; telas por asser\u00e7\u00e3o estrutural; sem teste de navegador"
+      },
+      "safety": {
+        "score": 8,
+        "note": "sem innerHTML novo; panelsState com assertOwner; prod intocado; P2 nao commitada preservada"
+      },
+      "clarity": {
+        "score": 8,
+        "note": "spec/plan/decisions escritos antes do codigo; comentarios explicam o porque, em pt-BR"
+      }
+    }
+  },
+  {
+    "phase": "P21 Review",
+    "summary": "Painel revisado por 3 revisores (complexidade x2 + acessibilidade); achados convergentes corrigidos e reverificados.",
+    "scores": {
+      "correctness": {
+        "score": 9,
+        "note": "tsc limpo; 791/791 verdes; hub do ambiente atual deixou de ser inalcancavel"
+      },
+      "design": {
+        "score": 8,
+        "note": "panelList explicita a ordem e valida esquema da URL; nav deixou de imitar tablist pela metade"
+      },
+      "testing": {
+        "score": 8,
+        "note": "asser\u00e7\u00f5es frouxas por invariante no lugar de texto de implementacao; build prova a substituicao comparando dois bundles"
+      },
+      "safety": {
+        "score": 9,
+        "note": "foco visivel, contraste 1.4.11, sr-only do ambiente; P2 intacta; nada publicado"
+      },
+      "clarity": {
+        "score": 9,
+        "note": "D9-D11 registram o que a revisao mudou e por que; spec corrigida onde se contradizia"
+      }
+    },
+    "recommendations": {
+      "correctness": "ver rodando no dev: verde local nao prova navegacao real",
+      "testing": "se um dia entrar jsdom no projeto, testar selectPage de verdade em vez de grep"
+    }
   }
 ]

@@ -25,8 +25,11 @@
 | ↳ P14 — trace do agente (lote de 1 min) | `[~]` | [POC P14](../poc/p14-trace/README.md) · [ADR-014](../docs/adr/014-trace-do-agente.md) | `gasclaw-exl` (duplicata aberta: `gasclaw-5rn`) |
 | ↳ P15/P16 — painel de limites, modelos e custo | `[~]` código pronto, medição pendente | [ADR-016](../docs/adr/016-painel-de-limites.md) · [ADR-018](../docs/adr/018-modelos-e-custo.md) | `gasclaw-cmx` |
 | ↳ P17 — tela de chat (texto) e voz | `[~]` texto no dev; voz adiada | [POC P17](../poc/p17-voz/README.md) · [ADR-019](../docs/adr/019-tela-de-chat-e-voz.md) | `gasclaw-zkt` |
+| ↳ P21 — navegação do painel e hub de painéis | `[~]` código verde local; falta ver rodando no dev | [spec](tracks/p21-navegacao-e-hub/spec.md) · [plano](tracks/p21-navegacao-e-hub/plan.md) | — |
 | F2 — execução durável (P2–P5) | `[~]` em andamento; P3, P4, P19 e P20 medidas | [ADR-026](../docs/adr/026-run-duravel.md) · [ADR-027](../docs/adr/027-gatilho-worker.md) · [ADR-028](../docs/adr/028-aprovacao-duravel.md) | `gasclaw-lwn` · `gasclaw-7yt` |
-| F3 — proatividade + dados (inbox Excel = POC P8) | `[ ]` planejada | Parte D do plano F0 | — |
+| F3 — proatividade + dados (inbox Excel = POC P8) | `[~]` em andamento | Parte D do plano F0 | — |
+| ↳ F3a — proatividade e governança de ferramentas | `[~]` spec escrita, implementação não começou | [spec](tracks/f3-proatividade-e-governanca/spec.md) · [plano](tracks/f3-proatividade-e-governanca/plan.md) · [decisões](tracks/f3-proatividade-e-governanca/decisions.md) | — |
+| ↳ P22 — custo da proatividade na cota de gatilho | `[ ]` gate de viabilidade da F3a | [plano](tracks/f3-proatividade-e-governanca/plan.md) · [ADR-027](../docs/adr/027-gatilho-worker.md) | — |
 | F4 — canais extras + `npx gasclaw` | `[ ]` planejada | Parte D do plano F0 | — |
 
 Ressalvas da F0 ainda abertas: verificar o haicai no `SOUL.md` sem deploy, o histórico no Chat e a
