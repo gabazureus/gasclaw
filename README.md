@@ -120,6 +120,53 @@ subscription does **not** change this: it is storage, not Workspace.
 (pt-BR) — written from a real from-scratch install, with the Portuguese button names and what changes on a
 personal account. Shorter guide: [docs/como-usar.md](docs/como-usar.md). Stuck? Run `./gasclaw doctor`.
 
+## First run: from the panel to a working agent
+
+After `./gasclaw` finishes, open the panel (`./gasclaw open`). Four steps, in this order.
+
+### 1 · Home — paste the OpenRouter key
+
+**Home** tab → **OpenRouter key** → paste `sk-or-v1-…` → **Save key**.
+
+Skip this and the agent has no model to think with. If step 4 of the setup already asked for the key, it is
+saved and there is nothing to do here.
+
+### 2 · Agents — create the agent
+
+**Agents** tab → type a name in **New agent** → **New agent**.
+
+gasclaw creates `My Drive/gasclaw/agents/<name>/` with four markdown files and **never overwrites** one that
+already exists. Already have a folder? Paste its URL in **Use an existing folder**.
+
+### 3 · Access — turn the tools on
+
+This is the step people miss, and nothing works without it: **every agent starts with no tools and talks to
+nobody but you** ([ADR-021](docs/adr/021-acesso-aprovado-no-painel.md)).
+
+Click **Access** next to the agent. You get:
+
+| Control | What it does |
+|---|---|
+| **Select all** / **Clear all** | Turns every tool on or off in one click. Start here. |
+| The checkbox list | One tool at a time. Each line says whether it asks for approval and whether it is owner-only. |
+| **Allow** (people) | Lets one more person talk to this agent. You always can, even without being listed. |
+| **Max steps** | Model calls allowed per answer (1–50). Each step costs money; empty means "use the folder's value". |
+| **Approve suggestion** | Approves what the **folder** asked for — the `users:` and `tools:` lines in `AGENTS.md`. Greyed out when the folder asks for nothing, which is the normal case. It has nothing to do with the checkboxes above. |
+| **Remove access** | Back to square one: owner only, no tools. |
+
+Tools are **off by default on purpose**. The agent folder is meant to be shared, so a file in it can only
+*suggest* — the panel decides. That is why "Approve suggestion" exists and why it is usually disabled.
+
+### 4 · Talk to it
+
+`./gasclaw open --chat`, or the **Chat with the agent** link at the top of the panel. On Google Workspace the
+agent also answers in Google Chat.
+
+To test quickly without leaving the panel, the **Test** tab sends one message to the ⭐ default agent.
+
+> **The agent never answers?** Open the panel once and reload it. The 1-minute worker — the thing that makes
+> the agent reply — is created when the panel loads.
+
 ## Create your first agent
 
 Create an empty Drive folder (for example "Assistant") and add its URL on the gasclaw screen (`./gasclaw open`). gasclaw creates these files from templates and **never overwrites** a file that already exists:

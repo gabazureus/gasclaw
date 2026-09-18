@@ -120,6 +120,54 @@ Em conta pessoal o passo 7 aparece como indisponível e o setup termina sem ele.
 escrito a partir de uma instalação real do zero, com os nomes dos botões em português e o que muda em conta
 pessoal. Guia mais curto: [docs/como-usar.md](docs/como-usar.md). Travou? Rode `./gasclaw doctor`.
 
+## Primeiros passos: do painel a um agente funcionando
+
+Depois que o `./gasclaw` terminar, abra o painel (`./gasclaw open`). Quatro passos, nesta ordem.
+
+### 1 · Home — cole a chave do OpenRouter
+
+Aba **Home** → **OpenRouter key** → cole `sk-or-v1-…` → **Save key**.
+
+Sem isso o agente não tem com o que pensar. Se o passo 4 do setup já pediu a chave, ela está salva e não há
+nada a fazer aqui.
+
+### 2 · Agents — crie o agente
+
+Aba **Agents** → escreva um nome em **New agent** → **New agent**.
+
+O gasclaw cria `Meu Drive/gasclaw/agents/<nome>/` com quatro arquivos markdown e **nunca sobrescreve** um que
+já exista. Já tem uma pasta? Cole a URL dela em **Use an existing folder**.
+
+### 3 · Access — ligue as ferramentas
+
+É o passo que todo mundo pula, e sem ele nada funciona: **todo agente começa sem ferramenta nenhuma e só
+conversa com você** ([ADR-021](docs/adr/021-acesso-aprovado-no-painel.md)).
+
+Clique em **Access** ao lado do agente. Você vê:
+
+| Controle | O que faz |
+|---|---|
+| **Select all** / **Clear all** | Liga ou desliga todas as ferramentas de uma vez. Comece por aqui. |
+| A lista de caixinhas | Uma ferramenta por vez. Cada linha diz se ela pede aprovação e se é só do dono. |
+| **Allow** (pessoas) | Libera mais uma pessoa a conversar com este agente. Você sempre pode, mesmo sem estar na lista. |
+| **Max steps** | Chamadas ao modelo por resposta (1 a 50). Cada passo custa dinheiro; vazio significa "use o valor da pasta". |
+| **Approve suggestion** | Aprova o que a **pasta** pediu — as linhas `users:` e `tools:` do `AGENTS.md`. Fica apagado quando a pasta não pede nada, que é o caso normal. Não tem relação com as caixinhas acima. |
+| **Remove access** | Volta à estaca zero: só o dono, sem ferramentas. |
+
+As ferramentas vêm **desligadas de propósito**. A pasta do agente foi feita para ser compartilhada, então um
+arquivo dentro dela só pode *sugerir* — quem decide é o painel. É para isso que serve o "Approve suggestion",
+e é por isso que ele quase sempre está desabilitado.
+
+### 4 · Converse
+
+`./gasclaw open --chat`, ou o link **Chat with the agent** no topo do painel. Em Google Workspace o agente
+também responde no Google Chat.
+
+Para testar rápido sem sair do painel, a aba **Test** manda uma mensagem para o agente padrão ⭐.
+
+> **O agente nunca responde?** Abra o painel uma vez e recarregue. O worker de 1 minuto — o que faz o agente
+> responder — é criado quando o painel carrega.
+
 ## Crie seu primeiro agente
 
 Crie uma pasta vazia no Drive (por exemplo "Assistente") e adicione a URL dela na tela gasclaw (`./gasclaw open`). O gasclaw cria estes arquivos a partir de modelos e **nunca sobrescreve** um arquivo que já exista:
