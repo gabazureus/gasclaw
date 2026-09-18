@@ -79,7 +79,7 @@ Aperte `a` e ele faz tudo que falta. Aperte um número para fazer um passo por v
 fica registrado, então rodar de novo nunca repete trabalho — e o `[d]` diz o que está quebrado e como
 consertar.
 
-Três dos sete passos exigem que você clique numa página do Google — ligar a API do Apps Script (passo 2), a
+Quatro dos sete passos exigem que você clique numa página do Google — ligar a API do Apps Script (passo 2), a
 tela de consentimento OAuth (passo 3) e a primeira autorização (passo 5) — mais o app do Google Chat (passo
 7), se você estiver no Workspace. O gasclaw pausa, abre a página certa, diz exatamente o que marcar e espera
 o Enter.
@@ -116,7 +116,9 @@ O que difere:
 Em conta pessoal o passo 7 aparece como indisponível e o setup termina sem ele. Assinatura do Google One
 **não** muda isso: é armazenamento, não Workspace.
 
-Guia passo a passo: [docs/como-usar.md](docs/como-usar.md). Travou? Rode `./gasclaw doctor` e veja o [runbook de setup inicial](docs/runbooks/setup-inicial.md).
+**Cada clique, cada tela do Google e cada permissão** estão no [runbook de setup inicial](docs/runbooks/setup-inicial.md),
+escrito a partir de uma instalação real do zero, com os nomes dos botões em português e o que muda em conta
+pessoal. Guia mais curto: [docs/como-usar.md](docs/como-usar.md). Travou? Rode `./gasclaw doctor`.
 
 ## Crie seu primeiro agente
 

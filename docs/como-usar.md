@@ -3,11 +3,16 @@
 > **Estado atual:** F0 concluída e F1 em andamento (ferramentas `now`, `memory.*` e `ask`, aprovação, trace e painel de limites no dev). Este guia descreve o que já funciona. A publicação automática pelo GitHub/CI foi adiada; publique com `./gasclaw`. Veja o [CHANGELOG](../CHANGELOG.md).
 
 ## 1. O que é
-O gasclaw roda agentes de IA dentro do Google Apps Script da sua conta Workspace, sem servidor.
-Cada agente é uma pasta do Google Drive com arquivos markdown, e você conversa com ele pelo Google Chat.
+O gasclaw roda agentes de IA dentro do Google Apps Script da sua própria conta Google — Workspace ou Gmail pessoal —, sem servidor.
+Cada agente é uma pasta do Google Drive com arquivos markdown. Você conversa com ele na tela de conversa do
+próprio gasclaw (`./gasclaw open --chat`) e, se tiver Google Workspace, também pelo Google Chat.
 O modelo de IA vem do OpenRouter; seu computador só publica.
 
 ## 2. Publicar pela primeira vez
+
+> **Primeira instalação?** O passo a passo com cada clique, cada tela do Google e cada permissão está no
+> [runbook de setup inicial](runbooks/setup-inicial.md) — inclusive os nomes dos botões em português e o que
+> muda em conta pessoal. Esta seção é o resumo.
 Crie `.env.local` na raiz do projeto com `OPENROUTER_API_KEY=sk-or-...` (a chave nova). Depois rode:
 
 ```bash
@@ -15,7 +20,9 @@ Crie `.env.local` na raiz do projeto com `OPENROUTER_API_KEY=sk-or-...` (a chave
 ./gasclaw up --prod   # ambiente prod (uma vez, depois do dev)
 ```
 
-O `up` instala o que falta (Node e gcloud, pelo Homebrew, que precisa estar instalado), cria o projeto e o script e publica. Nos passos abaixo ele **pausa**, abre a página e espera você apertar Enter.
+O `up` cria o projeto e o script e publica. No macOS ele ainda instala o que falta (Node e gcloud) pelo
+Homebrew; no **Windows e no Linux ele não instala** — confere e diz o comando exato, porque os gerenciadores
+de pacote variam demais para o chute ser seguro. Nos passos abaixo ele **pausa**, abre a página e espera você apertar Enter.
 Cada passo feito fica anotado em `gasclaw.env`, então rodar de novo não repete nada.
 
 1. **Login no Google Cloud e no clasp:** o navegador abre duas vezes. Escolha sua conta e clique em **Permitir**.

@@ -79,7 +79,7 @@ Press `a` and it runs everything that is missing. Press a number to do one step 
 step is recorded, so running it again never repeats work — and `[d]` tells you what is broken and how to
 fix it.
 
-Three of the seven steps need you to click in a Google page — turning on the Apps Script API (step 2), the
+Four of the seven steps need you to click in a Google page — turning on the Apps Script API (step 2), the
 OAuth consent screen (step 3) and the first authorization (step 5) — plus the Google Chat app (step 7) if
 you are on Workspace. gasclaw pauses, opens the right page, tells you exactly what to set, and waits for
 Enter.
@@ -116,7 +116,9 @@ What differs:
 On a personal account step 7 is shown as not available and the setup completes without it. A Google One
 subscription does **not** change this: it is storage, not Workspace.
 
-Step-by-step guide (pt-BR): [docs/como-usar.md](docs/como-usar.md). Stuck? Run `./gasclaw doctor` and see the [initial setup runbook](docs/runbooks/setup-inicial.md).
+**Every click, every Google screen and every permission** is documented in the [initial setup runbook](docs/runbooks/setup-inicial.md)
+(pt-BR) — written from a real from-scratch install, with the Portuguese button names and what changes on a
+personal account. Shorter guide: [docs/como-usar.md](docs/como-usar.md). Stuck? Run `./gasclaw doctor`.
 
 ## Create your first agent
 

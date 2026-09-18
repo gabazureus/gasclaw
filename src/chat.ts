@@ -103,8 +103,8 @@ export function chatTurn(i: ChatTurnInput): ChatTurnResult {
 export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
   const markdown = d.surface !== 'screen';
   if (e.type === 'ADDED_TO_SPACE') return markdown
-    ? { text: 'Olá! Sou o gasclaw 🦀. Me mande uma mensagem para falar com seu agente.', markupSyntax: CHAT_MARKUP_SYNTAX }
-    : { text: 'Olá! Sou o gasclaw 🦀. Me mande uma mensagem para falar com seu agente.' };
+    ? { text: 'Hi! I am gasclaw 🦀. Send me a message to talk to your agent.', markupSyntax: CHAT_MARKUP_SYNTAX }
+    : { text: 'Hi! I am gasclaw 🦀. Send me a message to talk to your agent.' };
   const click = e.type === 'CARD_CLICKED';
   if (e.type !== 'MESSAGE' && !click) return {};
   // Clique atualiza o próprio card (tira os botões); mensagem responde normalmente.
@@ -120,7 +120,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
   try {
     const loaded = d.load(entry.folderId);
     const spec = withChatFormatRules(loaded, markdown);
-    if (!canUse(spec.access, e.user.email, d.owner())) return reply(`Você (${e.user.email}) não tem acesso ao agente ${spec.name}.`); // acesso aprovado no painel (ADR-021)
+    if (!canUse(spec.access, e.user.email, d.owner())) return reply(`You (${e.user.email}) do not have access to agent ${spec.name}.`); // acesso aprovado no painel (ADR-021)
     const hk = `${entry.folderId}:${e.space.name}`;
     const ownerDm = isOwnerDm(e, d.owner());
     const isOwner = e.user.email.toLowerCase() === d.owner().toLowerCase();

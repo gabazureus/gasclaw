@@ -11,7 +11,7 @@ Comece por aqui. Tudo que existe no projeto está indexado nesta página.
 | Retomar numa nova conversa | [plans/2026-09-18-handoff.md](plans/2026-09-18-handoff.md) (histórico: [17](plans/2026-09-17-handoff.md) · [15](plans/2026-09-15-handoff.md) · [14](plans/2026-09-14-handoff.md)) |
 | Implementar (passo a passo, com código) | [plans/2026-09-14-gasclaw-f0-plano-implementacao.md](plans/2026-09-14-gasclaw-f0-plano-implementacao.md) |
 | Saber por que decidimos algo | [adr/](adr/README.md) |
-| Fazer o setup inicial (uma vez) | [runbooks/setup-inicial.md](runbooks/setup-inicial.md) |
+| Fazer o setup inicial: cada clique, tela e permissão do Google (uma vez) | [runbooks/setup-inicial.md](runbooks/setup-inicial.md) |
 | Atualizar o devmode sem quebrar o hub | [runbooks/devmode-update.md](runbooks/devmode-update.md) |
 | Ver fases e andamento | [../conductor/tracks.md](../conductor/tracks.md) · detalhe em [../PROGRESS.md](../PROGRESS.md) |
 | Rodar ou ler uma POC (critérios e resultados) | [../poc/](../poc/) (`./gasclaw poc <id>`) |

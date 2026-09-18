@@ -23,7 +23,7 @@ export type GrantResult =
 
 export function issueGrant(pending: Pending, user: string, tokenHash: string, now: number): ApprovalGrant {
   const normalizedUser = user.trim().toLowerCase();
-  if (pending.kind !== 'approval' || !pending.key || !normalizedUser || !HASH_RE.test(tokenHash) || !Number.isFinite(now)) throw new Error('credencial de aprovação inválida');
+  if (pending.kind !== 'approval' || !pending.key || !normalizedUser || !HASH_RE.test(tokenHash) || !Number.isFinite(now)) throw new Error('invalid approval credential');
   return { tokenHash, pendingKey: pending.key, user: normalizedUser, issuedAt: now, expiresAt: now + APPROVAL_TTL_MS };
 }
 
@@ -38,7 +38,7 @@ function sameHash(a: string, b: string): boolean {
 /** Transição pura da aprovação. A borda lê/grava o run no Drive sob trava. */
 export function redeemGrant(r: DurableRun, tokenHash: string, actor: string, decision: Decision, now: number, replacementHash: string): GrantResult {
   if (r.status !== 'waiting' || r.pending?.kind !== 'approval' || !r.snapshot || !r.approval) {
-    return { kind: 'rejected', error: 'este pedido já foi respondido ou não está esperando aprovação', run: r };
+    return { kind: 'rejected', error: 'this request was already answered, or is not waiting for approval', run: r };
   }
   const g = r.approval;
   const owner = r.user.toLowerCase();
@@ -50,13 +50,13 @@ export function redeemGrant(r: DurableRun, tokenHash: string, actor: string, dec
     && Number.isFinite(now)
     && now >= g.issuedAt
     && g.expiresAt - g.issuedAt === APPROVAL_TTL_MS;
-  if (!validGrant || !sameHash(g.tokenHash, tokenHash)) return { kind: 'rejected', error: 'pedido inválido', run: r };
-  if (actor.toLowerCase() !== owner) return { kind: 'rejected', error: 'só quem fez o pedido pode responder', run: r };
+  if (!validGrant || !sameHash(g.tokenHash, tokenHash)) return { kind: 'rejected', error: 'invalid request', run: r };
+  if (actor.toLowerCase() !== owner) return { kind: 'rejected', error: 'only the person who made the request can answer it', run: r };
   if (now >= g.expiresAt) {
     try {
       return { kind: 'refreshed', run: { ...r, approval: issueGrant(r.pending, owner, replacementHash, now), updatedAt: now } };
     } catch {
-      return { kind: 'rejected', error: 'não consegui renovar este pedido', run: r };
+      return { kind: 'rejected', error: 'could not renew this request', run: r };
     }
   }
   return { kind: 'accepted', run: { ...r, status: 'queued', decision, approval: undefined, answer: undefined, updatedAt: now } };
@@ -86,18 +86,18 @@ export type Ticket = {
 export type TicketStore = { put: (t: Ticket) => void; take: (token: string) => Ticket | null };
 
 export function issue(t: Omit<Ticket, 'token' | 'expiresAt'>, token: string, now: number): Ticket {
-  if (!TOKEN_RE.test(token)) throw new Error('token de aprovação fraco ou malformado');
+  if (!TOKEN_RE.test(token)) throw new Error('weak or malformed approval token');
   return { ...t, user: t.user.toLowerCase(), token, issuedAt: now, expiresAt: now + TICKET_TTL_MS };
 }
 
 export function redeem(store: TicketStore, token: string, user: string, now: number): { ok: true; ticket: Ticket } | { ok: false; error: string } {
-  if (!TOKEN_RE.test(token)) return { ok: false, error: 'pedido inválido' };
+  if (!TOKEN_RE.test(token)) return { ok: false, error: 'invalid request' };
   const t = store.take(token);
-  if (!t) return { ok: false, error: 'este pedido já foi respondido ou expirou' };
-  if (now > t.expiresAt) return { ok: false, error: 'este pedido expirou (10 min): peça de novo' };
+  if (!t) return { ok: false, error: 'this request was already answered, or it expired' };
+  if (now > t.expiresAt) return { ok: false, error: 'this request expired (10 min): ask again' };
   if (t.user !== user.toLowerCase()) {
     store.put(t);
-    return { ok: false, error: 'só quem fez o pedido pode responder' };
+    return { ok: false, error: 'only the person who made the request can answer it' };
   }
   return { ok: true, ticket: t };
 }
@@ -125,7 +125,7 @@ export function approvalCard(t: Pick<Ticket, 'token' | 'pending' | 'runId' | 'fo
     : [];
   const buttons = ask
     ? options.map((o) => button(o.slice(0, 40), t.token, 'answer', o))
-    : [button('Aprovar', t.token, 'decision', 'approve', ref), button('Negar', t.token, 'decision', 'deny', ref)];
+    : [button('Approve', t.token, 'decision', 'approve', ref), button('Deny', t.token, 'decision', 'deny', ref)];
   const widgets: Widget[] = [{ textParagraph: { text: escape(text) } }, ...(buttons.length ? [{ buttonList: { buttons } }] : [])];
-  return { text: ask ? 'Pergunta do agente.' : 'Esta ação precisa de aprovação.', cardsV2: [{ cardId: ask ? 'pergunta' : 'aprovacao', card: { header: { title: ask ? 'Pergunta do agente' : `Aprovação necessária (vale ${ref ? '24 h' : '10 min'})` }, sections: [{ widgets }] } }] };
+  return { text: ask ? 'The agent has a question.' : 'This action needs your approval.', cardsV2: [{ cardId: ask ? 'pergunta' : 'aprovacao', card: { header: { title: ask ? 'The agent has a question' : `Approval needed (valid for ${ref ? '24 h' : '10 min'})` }, sections: [{ widgets }] } }] };
 }

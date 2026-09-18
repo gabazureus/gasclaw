@@ -436,7 +436,7 @@ function stepDeps(budgetMs = STEP_BUDGET_MS, io = runIO()): StepDeps {
       // vai para o Google Chat e precisa das regras de formatação; run da tela, não. Sem isto, a P2 tirou
       // a mensagem normal do `handleChat` e toda resposta do Chat passou a sair sem as regras.
       const spec = withChatFormatRules(loaded, !!r.delivery);
-      if (!canUse(spec.access, r.user, me)) throw new Error(`${r.user} não tem acesso ao agente ${spec.name}`); // acesso aprovado no painel (ADR-021)
+      if (!canUse(spec.access, r.user, me)) throw new Error(`${r.user} has no access to agent ${spec.name}`); // acesso aprovado no painel (ADR-021)
       const apiKey = store.getApiKey();
       if (!apiKey) throw new Error('Falta a chave do OpenRouter. Cole-a na tela gasclaw.');
       const d = chatDeps();
@@ -510,9 +510,9 @@ function runResponse(io: RunIO, r: DurableRun, now: number, token?: string) {
 export function runAsk(text: string) {
   const me = assertOwner();
   const entry = store.listAgents()[0];
-  if (!entry) return { ok: false, error: 'Nenhum agente configurado. Cole a URL de uma pasta do Drive na tela gasclaw.' };
+  if (!entry) return { ok: false, error: 'No agent set up yet. Paste the URL of a Drive folder into the gasclaw panel.' };
   const t = String(text ?? '').slice(0, 4000).trim();
-  if (!t) return { ok: false, error: 'Mande um texto para eu responder.' };
+  if (!t) return { ok: false, error: 'Send me some text and I will answer.' };
   const now = Date.now();
   const r = newRun({ runId: `tela-${now}-${Utilities.getUuid().slice(0, 8)}`, session: screenSession(entry.folderId, me), folderId: entry.folderId, user: me, text: t, now, ownerDm: true });
   const io = runIO();
