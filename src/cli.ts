@@ -2,7 +2,9 @@
 // O segredo nasce no PC (openssl rand -hex 32), mora em .env.local (gitignored) e em ScriptProperties; nunca na URL.
 
 // `step` = uma volta do pump do run durável (ADR-026). Tem efeito (executa ferramentas), então entra aqui.
-export const MUTATING: ReadonlySet<string> = new Set(['eval', 'poc', 'enable', 'disable', 'drain', 'step']);
+// `tools` = liga/desliga ferramentas do agente pela CLI. O painel continua sendo a autoridade (ADR-021); isto é
+// a mesma autoridade por outra porta — o dono, provado pelo segredo — para que o dev não dependa de 23 cliques.
+export const MUTATING: ReadonlySet<string> = new Set(['eval', 'poc', 'enable', 'disable', 'drain', 'step', 'tools']);
 
 /** Comparação em tempo constante para strings do mesmo tamanho (não revela o prefixo certo pelo tempo). */
 export function safeEqual(a: string, b: string): boolean {

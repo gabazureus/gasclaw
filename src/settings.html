@@ -265,8 +265,92 @@
       remove.title = remove.disabled ? 'Não há acesso aprovado para remover' : 'Volta o agente para só o dono, sem ferramentas';
       const resumo = line('Aprovado: ' + fmt(x.approved));
       resumo.setAttribute('aria-live', 'polite'); // só o resumo é anunciado; a lista de ferramentas abaixo, não
-      holder.replaceChildren(line('Sugerido pela pasta (falta aprovar): ' + (hasPending ? fmt(x.pending) : 'nada novo')), resumo, approve, document.createTextNode(' '), remove, toolsBox(folderId, x, resumo, fmt));
+      // Uma resposta por vez vale para o RESUMO: duas caixinhas diferentes podem responder fora de ordem, e a
+      // mais antiga reescreveria o resumo com um estado que já não é o do servidor.
+      const guard = { seq: 0 };
+      holder.replaceChildren(
+        line('Sugerido pela pasta (falta aprovar): ' + (hasPending ? fmt(x.pending) : 'nada novo')),
+        resumo, approve, document.createTextNode(' '), remove,
+        usersBox(folderId, x, holder),
+        stepsBox(folderId, x),
+        toolsBox(folderId, x, resumo, fmt, guard));
     }).withFailureHandler((e) => { holder.textContent = e.message; }).agentAccess(folderId);
+  }
+
+  // Pessoa a pessoa: revogar UMA pessoa sem desligar junto todas as ferramentas do agente.
+  // Recarrega a seção a cada mudança — mexer em gente é raro, e o estado inteiro vindo do servidor é o mais simples de acertar.
+  function usersBox(folderId, x, holder) {
+    const box = document.createElement('fieldset');
+    const legend = document.createElement('legend');
+    legend.textContent = 'Quem conversa com o agente (' + x.approved.users.length + ')';
+    box.append(legend);
+    const nota = document.createElement('p');
+    nota.className = 'muted';
+    nota.textContent = 'O dono sempre pode, mesmo sem estar na lista.';
+    box.append(nota);
+    const mudou = (msg) => () => { $('msg').textContent = msg; showAccess(folderId, holder); };
+    x.approved.users.forEach((u) => {
+      const row = document.createElement('div');
+      row.className = 'tool';
+      const nome = document.createElement('span');
+      nome.textContent = u;
+      const tirar = button('Revogar', () => call('setAgentUser', folderId, u, false).then(mudou(u + ' não fala mais com o agente.')));
+      tirar.setAttribute('aria-label', 'Revogar ' + u);
+      row.append(nome, ' ', tirar);
+      box.append(row);
+    });
+    const campo = document.createElement('input');
+    campo.type = 'email';
+    campo.placeholder = 'pessoa@empresa.com';
+    campo.id = 'novaPessoa-' + folderId;
+    const rot = document.createElement('label');
+    rot.htmlFor = campo.id;
+    rot.textContent = 'Liberar pessoa';
+    const add = button('Liberar', () => {
+      const e = campo.value.trim();
+      if (!e) { $('msg').textContent = 'Digite o e-mail da pessoa.'; return; }
+      call('setAgentUser', folderId, e, true).then(mudou(e + ' já pode falar com o agente.'));
+    });
+    const linha = document.createElement('div');
+    linha.className = 'tool';
+    linha.append(rot, ' ', campo, ' ', add);
+    box.append(linha);
+    return box;
+  }
+
+  // Teto de passos do turno: cada passo é uma chamada paga ao modelo, então isto é limite de gasto, não preferência.
+  function stepsBox(folderId, x) {
+    const box = document.createElement('fieldset');
+    const legend = document.createElement('legend');
+    legend.textContent = 'Passos por resposta';
+    box.append(legend);
+    const campo = document.createElement('input');
+    campo.type = 'number';
+    campo.min = '1';
+    campo.max = '50';
+    campo.id = 'passos-' + folderId;
+    campo.value = x.steps.tela === null ? '' : String(x.steps.tela);
+    const rot = document.createElement('label');
+    rot.htmlFor = campo.id;
+    rot.textContent = 'Máximo de passos';
+    const de = document.createElement('p');
+    de.className = 'muted';
+    de.setAttribute('aria-live', 'polite');
+    const vindoDe = (v) => 'Em uso: ' + (v.tela !== null ? v.tela + ' (desta tela)' : v.pasta !== null ? v.pasta + ' (da pasta)' : v.padrao + ' (padrão)') + '. Campo vazio devolve a decisão para a pasta.';
+    de.textContent = vindoDe(x.steps);
+    const salvar = button('Salvar', () => {
+      const v = campo.value.trim();
+      call('setAgentSteps', folderId, v === '' ? null : Number(v)).then((r) => {
+        campo.value = r.steps.tela === null ? '' : String(r.steps.tela);
+        de.textContent = vindoDe(r.steps);
+        $('msg').textContent = 'Passos: ' + (r.steps.tela === null ? 'voltou para o valor da pasta.' : r.steps.tela + ' por resposta.');
+      });
+    });
+    const linha = document.createElement('div');
+    linha.className = 'tool';
+    linha.append(rot, ' ', campo, ' ', salvar);
+    box.append(linha, de);
+    return box;
   }
 
   // Liga/desliga POR ferramenta. Checkbox nativo de propósito: teclado, foco visível e leitura de rótulo
@@ -274,7 +358,7 @@
   const APPROVAL = { never: 'sem pedir aprovação', once: 'pede aprovação na 1ª vez', always: 'pede aprovação sempre' };
   const GROUP_LABEL = { '': 'Gerais', memory: 'Memória', calendar: 'Agenda', gmail: 'Gmail', contacts: 'Contatos', tasks: 'Tarefas', drive: 'Drive, Docs e Sheets' };
 
-  function toolsBox(folderId, x, resumo, fmt) {
+  function toolsBox(folderId, x, resumo, fmt, guard) {
     const box = document.createElement('fieldset');
     const legend = document.createElement('legend');
     legend.textContent = 'Ferramentas (' + x.enabled.length + ' de ' + x.catalog.length + ' ligadas)';
@@ -289,13 +373,12 @@
       head.className = 'grp';
       head.textContent = GROUP_LABEL[g.name] || g.name;
       box.append(head);
-      g.tools.forEach((t) => box.append(toolRow(folderId, t, x.enabled.indexOf(t.name) >= 0, resumo, fmt, legend, x.catalog.length)));
+      g.tools.forEach((t) => box.append(toolRow(folderId, t, x.enabled.indexOf(t.name) >= 0, resumo, fmt, legend, x.catalog.length, guard)));
     });
     return box;
   }
 
-  function toolRow(folderId, t, on, resumo, fmt, legend, total) {
-    let seq = 0; // dois cliques rápidos na MESMA caixa: vale a resposta do último, mesmo se ela voltar antes
+  function toolRow(folderId, t, on, resumo, fmt, legend, total, guard) {
     const row = document.createElement('div');
     row.className = 'tool';
     const cb = document.createElement('input');
@@ -311,20 +394,20 @@
     hint.textContent = APPROVAL[t.approval] + (t.ownerOnly ? ' · só o dono' : '');
     label.title = t.description;
     cb.onchange = () => {
-      const n = ++seq;
+      const n = ++guard.seq; // dois cliques rápidos, na mesma caixa ou em caixas diferentes: vale a última resposta
       const want = cb.checked;
       $('msg').className = '';
       $('msg').textContent = 'Trabalhando…';
       google.script.run
         .withSuccessHandler((a) => {
-          if (n !== seq) return;
+          if (n !== guard.seq) return;
           cb.checked = a.enabled.indexOf(t.name) >= 0;
           resumo.textContent = 'Aprovado: ' + fmt(a.approved);
           legend.textContent = 'Ferramentas (' + a.enabled.length + ' de ' + total + ' ligadas)';
           $('msg').textContent = t.name + (cb.checked ? ' ligada.' : ' desligada: o agente não consegue mais usá-la.');
         })
         .withFailureHandler((e) => {
-          if (n !== seq) return;
+          if (n !== guard.seq) return;
           cb.checked = !want; // nada foi gravado: a caixa volta para o que o servidor tem
           $('msg').className = 'err';
           $('msg').textContent = e.message;

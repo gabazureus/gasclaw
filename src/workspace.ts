@@ -95,6 +95,17 @@ export function signature(folderId: string, sources: Sources): string {
   return [folderId, ...keys.map((k) => (sources[k] ? `${k}:${sources[k].kind}:${sources[k].entry.id}@${sources[k].entry.modified}` : `${k}:-`))].join('|');
 }
 
+/**
+ * Teto de passos do turno, venha da pasta ou da tela: inteiro de 1 a 50; qualquer outra coisa é `null`.
+ *
+ * O teto existe porque cada passo é uma chamada paga ao modelo: sem limite, um agente em laço queima o
+ * orçamento do run. 50 é o máximo que ainda cabe no tempo de execução do Apps Script.
+ */
+export const parseSteps = (raw: string | number | null | undefined): number | null => {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 && n <= 50 ? n : null;
+};
+
 /** Linhas `chave | valor` da planilha config sobrepõem o frontmatter (model, users, tools, steps). */
 export function mergeConfig(frontmatter: Record<string, string | string[]>, rows: string[][] = []): AgentConfig {
   const data = { ...frontmatter };
@@ -110,9 +121,8 @@ export function mergeConfig(frontmatter: Record<string, string | string[]>, rows
   const model = typeof data.model === 'string' && data.model ? data.model : DEFAULT_MODEL;
   const users = Array.isArray(data.users) ? data.users.map((u) => u.toLowerCase()) : [];
   const tools = Array.isArray(data.tools) ? data.tools : []; // padrão seguro: agente sem tools
-  const n = Number(data.steps);
-  const steps = Number.isInteger(n) && n >= 1 && n <= 50 ? n : undefined;
-  return { model, suggested: { users, tools }, ...(steps === undefined ? {} : { steps }) };
+  const steps = parseSteps(data.steps as string | undefined);
+  return { model, suggested: { users, tools }, ...(steps === null ? {} : { steps }) };
 }
 
 export function buildSpec(folderId: string, name: string, texts: Partial<Record<Role, string>>, configRows?: string[][]): AgentSpec {
@@ -156,6 +166,28 @@ export function withTool(approved: Access | null | undefined, tool: string, on: 
   if (on) names.add(tool);
   else names.delete(tool);
   return { users: a.users, tools: allowedTools([...names]).map((t) => t.name) }; // ordem canônica do registry, não a dos cliques
+}
+
+/** Um endereço só: sem espaço, com `@` e um domínio com ponto. Não valida se existe — só recusa o que nunca poderia ser um e-mail. */
+const EMAIL = /^[^\s@,;]+@[^\s@,;.]+(\.[^\s@,;.]+)+$/;
+
+/**
+ * Libera/revoga UMA pessoa no aprovado, sem tocar nas ferramentas (ADR-021: o painel decide, a pasta só sugere).
+ *
+ * Existe pelo mesmo motivo do `withTool`: antes, tirar uma pessoa só era possível removendo o acesso inteiro,
+ * o que desligava junto todas as ferramentas do agente.
+ *
+ * Fail closed: o que não parece um e-mail é recusado ANTES de gravar — a lista de quem conversa com o agente
+ * não pode virar depósito de lixo digitado na tela.
+ */
+export function withUser(approved: Access | null | undefined, email: string, on: boolean): Access {
+  const e = String(email).trim().toLowerCase();
+  if (!EMAIL.test(e)) throw new Error(`e-mail inválido: ${email}`);
+  const a = effectiveAccess(approved);
+  const users = new Set(a.users);
+  if (on) users.add(e);
+  else users.delete(e);
+  return { users: [...users].sort(), tools: a.tools }; // ordem alfabética, não a ordem dos cliques
 }
 
 /** Recalcula o acesso efetivo do agente a partir do aprovado (ACCESS:<folderId>, lido pela borda). */

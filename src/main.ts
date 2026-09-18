@@ -47,7 +47,7 @@ import { allowedTools, toolCatalog } from './tools/registry';
 import { coverage, redact } from './trace';
 import { agentInfo, llmInfo, traceDeps } from './traced';
 import { webClick, webSend, webSpace } from './webchat';
-import { agentFolderPath, canUse, effectiveAccess, enabledTools, ensureFolderPath, extractFolderId, loadAgent, parseAccess, pendingSuggestions, seedAgent, validAgentName, withAccess, withTool, type Access, type LoadedAgent } from './workspace';
+import { agentFolderPath, canUse, effectiveAccess, enabledTools, ensureFolderPath, extractFolderId, loadAgent, parseAccess, parseSteps, pendingSuggestions, seedAgent, validAgentName, withAccess, withTool, withUser, type Access, type LoadedAgent } from './workspace';
 
 const CHAT_MAX_TOKENS = 1000; // resposta síncrona precisa caber em 30 s
 
@@ -69,10 +69,15 @@ function json(o: unknown): GoogleAppsScript.Content.TextOutput {
   return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
 }
 
-/** ADR-018: o modelo escolhido na tela (MODEL:<folderId>) vence a planilha config e o AGENTS. */
+/** Teto de passos escolhido na tela; ausente ou fora de 1..50 → vale o da pasta (mesma precedência do modelo). */
+const stepsOf = (folderId: string): number | null => parseSteps(PropertiesService.getScriptProperties().getProperty(`STEPS:${folderId}`));
+
+/** ADR-018: o que foi escolhido na tela (MODEL:/STEPS:<folderId>) vence a planilha config e o AGENTS. */
 function withOverride(spec: LoadedAgent): LoadedAgent & { modelSource: 'tela' | 'pasta' } {
+  const steps = stepsOf(spec.folderId);
+  const withSteps = steps === null ? spec : { ...spec, config: { ...spec.config, steps } };
   const o = getOverride(spec.folderId);
-  return o ? { ...spec, config: { ...spec.config, model: o }, modelSource: 'tela' } : { ...spec, modelSource: 'pasta' };
+  return o ? { ...withSteps, config: { ...withSteps.config, model: o }, modelSource: 'tela' } : { ...withSteps, modelSource: 'pasta' };
 }
 /** ADR-021: acesso e tools valem só o que o dono aprovou no painel (ACCESS:<folderId>); sem aprovação, fechado. */
 const approvedOf = (folderId: string) => parseAccess(PropertiesService.getScriptProperties().getProperty(`ACCESS:${folderId}`));
@@ -138,6 +143,7 @@ function mutate(action: string, p: Record<string, string>): unknown {
     return { ok: true, enabled: store.isEnabled() };
   }
   if (action === 'drain') return { ok: true, trigger: observe.ensureTrigger(), ...observe.drain() };
+  if (action === 'tools') return setTools(p.folder || '', p.set ?? '');
   return { ok: false, status: 400, error: `ação desconhecida: ${action}` };
 }
 
@@ -815,6 +821,23 @@ export function removeAgent(folderId: string) {
 }
 
 // ---------- Acesso e ferramentas aprovados no painel (ADR-021) ----------
+/**
+ * Serializa a leitura-modificação-escrita de ACCESS:<folderId>.
+ *
+ * Cada caixinha do painel é um `google.script.run` próprio e o Apps Script atende chamadas em paralelo:
+ * marcar cinco ferramentas depressa fazia cinco leituras do MESMO estado antigo, e a última gravação apagava
+ * as outras quatro — em silêncio, com a tela mostrando um resultado plausível. Aqui a perda vira erro visível.
+ */
+function underAccessLock<T>(fn: () => T): T {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10_000)) throw new Error('outra mudança de acesso está em andamento; tente de novo');
+  try {
+    return fn();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 const asAccess = (a: Partial<Access> | null | undefined): Access => ({
   users: Array.isArray(a?.users) ? a!.users.map(String) : [],
   tools: Array.isArray(a?.tools) ? a!.tools.map(String) : [],
@@ -835,7 +858,28 @@ export function agentAccess(folderId: string) {
     pending: pendingSuggestions(spec.config.suggested, approved),
     enabled: enabledTools(approved), // grupo já expandido: é isto que as caixas marcam
     catalog: toolCatalog(),
+    steps: { tela: stepsOf(folderId), pasta: spec.config.steps ?? null, padrao: DEFAULT_STEPS },
   };
+}
+
+/**
+ * Teto de passos do agente escolhido na tela (STEPS:<folderId>); `null` devolve a decisão para a pasta.
+ *
+ * Não entra no ACCESS nem na trava dele: passos não são acesso, e uma chave própria evita que mexer no teto
+ * concorra com o liga/desliga de ferramenta.
+ */
+export function setAgentSteps(folderId: string, steps: number | null) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const vazio = steps === null || steps === undefined || String(steps).trim() === ''; // campo limpo na tela = volta para a pasta
+  const next = vazio ? null : parseSteps(steps);
+  if (!vazio && next === null) throw new Error('passos: use um número inteiro de 1 a 50');
+  const name = agentName(folderId);
+  const before = stepsOf(folderId);
+  const t = runlog.begin('config', { question: `passos de ${name}: ${before ?? 'da pasta'} → ${next ?? 'da pasta'}`, agent: name });
+  t.step('set_steps', () => (next === null ? props.deleteProperty(`STEPS:${folderId}`) : props.setProperty(`STEPS:${folderId}`, String(next))), () => ({ folderId, before, after: next }));
+  t.end({ answer: `passos: ${next ?? 'da pasta'}` });
+  return agentAccess(folderId);
 }
 
 /**
@@ -847,39 +891,92 @@ export function agentAccess(folderId: string) {
 export function setAgentTool(folderId: string, tool: string, enabled: boolean) {
   assertOwner();
   const props = PropertiesService.getScriptProperties();
-  const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
   const on = enabled === true; // estrito: qualquer coisa que não seja `true` desliga
-  const next = withTool(before, String(tool), on); // lança antes de qualquer gravação
-  const name = agentName(folderId);
-  const t = runlog.begin('config', { question: `ferramenta ${tool} de ${name}: ${on ? 'ligar' : 'desligar'}`, agent: name });
-  t.step('set_tool', () => props.setProperty(`ACCESS:${folderId}`, JSON.stringify(next)), () => ({ folderId, tool, enabled: on, before, after: next }));
-  t.end({ answer: `ferramentas: ${next.tools.length ? next.tools.join(', ') : 'nenhuma'}` });
-  return { folderId, approved: next, enabled: enabledTools(next) };
+  return underAccessLock(() => {
+    const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
+    const next = withTool(before, String(tool), on); // lança antes de qualquer gravação
+    const name = agentName(folderId);
+    const t = runlog.begin('config', { question: `ferramenta ${tool} de ${name}: ${on ? 'ligar' : 'desligar'}`, agent: name });
+    t.step('set_tool', () => props.setProperty(`ACCESS:${folderId}`, JSON.stringify(next)), () => ({ folderId, tool, enabled: on, before, after: next }));
+    t.end({ answer: `ferramentas: ${next.tools.length ? next.tools.join(', ') : 'nenhuma'}` });
+    return { folderId, approved: next, enabled: enabledTools(next) };
+  });
+}
+
+/**
+ * Libera/revoga UMA pessoa do agente, sem mexer nas ferramentas (ADR-021).
+ *
+ * Mesmo contrato do `setAgentTool`: o cliente manda **um e-mail e um booleano**, nunca a lista inteira, e o
+ * próximo estado é derivado aqui do que está gravado. Assim dois painéis abertos não escrevem um por cima do outro.
+ */
+export function setAgentUser(folderId: string, email: string, allowed: boolean) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const on = allowed === true; // estrito: qualquer coisa que não seja `true` revoga
+  return underAccessLock(() => {
+    const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
+    const next = withUser(before, String(email), on); // lança antes de qualquer gravação
+    const name = agentName(folderId);
+    const t = runlog.begin('config', { question: `pessoa ${email} em ${name}: ${on ? 'liberar' : 'revogar'}`, agent: name });
+    t.step('set_user', () => props.setProperty(`ACCESS:${folderId}`, JSON.stringify(next)), () => ({ folderId, email, allowed: on, before, after: next }));
+    t.end({ answer: `pessoas: ${next.users.length ? next.users.join(', ') : 'só o dono'}` });
+    return { folderId, approved: next, enabled: enabledTools(next) };
+  });
+}
+
+/**
+ * Define a lista INTEIRA de ferramentas do agente pela CLI (`./gasclaw tools all`).
+ *
+ * Existe porque "deixe tudo ligado no dev" por 23 cliques é operação manual, e o projeto não aceita operação
+ * manual depois do setup. Passa pela mesma trava e pelo mesmo `withTool` do painel: um nome fora do registry
+ * derruba a chamada inteira, antes de qualquer gravação.
+ */
+function setTools(folder: string, set: string) {
+  const folderId = folder || store.listAgents()[0]?.folderId || '';
+  if (!folderId) return { ok: false, status: 400, error: 'nenhum agente registrado' };
+  const pedido = set.trim();
+  if (!pedido) return { ok: false, status: 400, error: 'use set=all, set=none ou set=<nomes separados por vírgula>' };
+  const names = pedido === 'all' ? toolCatalog().map((t) => t.name) : pedido === 'none' ? [] : pedido.split(',').map((x) => x.trim()).filter(Boolean);
+  const props = PropertiesService.getScriptProperties();
+  return underAccessLock(() => {
+    const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
+    // reduce sobre o withTool do painel: valida nome a nome e sai na ordem canônica do registry
+    const next = names.reduce<Access>((acc, n) => withTool(acc, n, true), { users: before.users, tools: [] });
+    const name = agentName(folderId);
+    const t = runlog.begin('config', { question: `ferramentas de ${name} pela CLI: ${before.tools.length} → ${next.tools.length}`, agent: name });
+    t.step('set_tools', () => props.setProperty(`ACCESS:${folderId}`, JSON.stringify(next)), () => ({ folderId, before, after: next }));
+    t.end({ answer: `ferramentas: ${next.tools.length}` });
+    return { ok: true, folderId, agent: name, enabled: enabledTools(next), users: next.users };
+  });
 }
 
 /** Grava o acesso aprovado (normalizado por effectiveAccess) e registra a mudança como run config no trace. */
 export function approveAccess(folderId: string, access: Partial<Access>) {
   assertOwner();
   const props = PropertiesService.getScriptProperties();
-  const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
-  const next = effectiveAccess(asAccess(access));
-  const name = agentName(folderId);
-  const t = runlog.begin('config', { question: `acesso de ${name}: ${describeAccess(before)} → ${describeAccess(next)}`, agent: name });
-  t.step('approve_access', () => props.setProperty(`ACCESS:${folderId}`, JSON.stringify(next)), () => ({ folderId, before, after: next }));
-  t.end({ answer: `aprovado: ${describeAccess(next)}` });
-  return settingsState();
+  return underAccessLock(() => {
+    const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
+    const next = effectiveAccess(asAccess(access));
+    const name = agentName(folderId);
+    const t = runlog.begin('config', { question: `acesso de ${name}: ${describeAccess(before)} → ${describeAccess(next)}`, agent: name });
+    t.step('approve_access', () => props.setProperty(`ACCESS:${folderId}`, JSON.stringify(next)), () => ({ folderId, before, after: next }));
+    t.end({ answer: `aprovado: ${describeAccess(next)}` });
+    return settingsState();
+  });
 }
 
 /** Remove a aprovação: o agente volta a responder só ao dono, sem ferramentas. */
 export function removeAccess(folderId: string) {
   assertOwner();
   const props = PropertiesService.getScriptProperties();
-  const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
-  const name = agentName(folderId);
-  const t = runlog.begin('config', { question: `acesso de ${name}: ${describeAccess(before)} → só o dono, sem ferramentas`, agent: name });
-  t.step('remove_access', () => props.deleteProperty(`ACCESS:${folderId}`), () => ({ folderId, before }));
-  t.end({ answer: 'acesso removido' });
-  return settingsState();
+  return underAccessLock(() => {
+    const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
+    const name = agentName(folderId);
+    const t = runlog.begin('config', { question: `acesso de ${name}: ${describeAccess(before)} → só o dono, sem ferramentas`, agent: name });
+    t.step('remove_access', () => props.deleteProperty(`ACCESS:${folderId}`), () => ({ folderId, before }));
+    t.end({ answer: 'acesso removido' });
+    return settingsState();
+  });
 }
 
 export function makeDefault(folderId: string) {

@@ -151,6 +151,11 @@ export function stubGas(over: Partial<GasEnv> = {}): GasEnv {
   vi.stubGlobal('CacheService', { getScriptCache: () => cacheStore, getUserCache: () => cacheStore });
   vi.stubGlobal('LockService', { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => undefined, waitLock: () => undefined }) });
   vi.stubGlobal('UrlFetchApp', { fetch, fetchAll: (reqs: { url: string }[]) => reqs.map((r) => fetch(r.url, r as Record<string, unknown>)) });
+  // Resposta do web app: o doPost devolve TextOutput, e o teste precisa ler o JSON que sairia de verdade.
+  vi.stubGlobal('ContentService', {
+    createTextOutput: (text: string) => ({ setMimeType: () => ({ getContent: () => text, getMimeType: () => 'application/json' }) }),
+    MimeType: { JSON: 'application/json', TEXT: 'text/plain' },
+  });
   vi.stubGlobal('DriveApp', makeDrive(env));
   vi.stubGlobal('ScriptApp', { getOAuthToken: () => 'owner-token', getScriptId: () => 'script1', getProjectTriggers: () => [], newTrigger: () => ({ timeBased: () => ({ everyMinutes: () => ({ create: () => undefined }) }) }) });
   vi.stubGlobal('Session', {

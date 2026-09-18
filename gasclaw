@@ -142,7 +142,9 @@ ghop() { # um único pedido ao web app: $1 token · $2 URL · $3 corpo do POST (
 remote_to() { # $1 URL base (…/exec ou …/dev) · $2 "acao&a=b" (já no formato de querystring) · $3 token (opcional, reaproveitado)
   local t="${3:-}" action="${2%%&*}"
   [ -n "$t" ] || t=$(gcloud auth print-access-token 2>/dev/null) || return 1
-  case " eval poc enable disable drain " in
+  # Espelho do MUTATING de src/cli.ts. São duas listas porque o shell não lê o TS; se divergirem, a ação sai por
+  # GET e o web app responde 405 — foi o que aconteceu com `tools`. Mexeu lá, mexe aqui.
+  case " eval poc enable disable drain step tools " in
     *" $action "*) # M1: ação com efeito → POST; parâmetros no corpo; token e segredo pelo stdin, nunca em argv nem na URL
       [ -n "${CLI_SECRET:-}" ] || { die "sem CLI_SECRET no .env.local: rode ./gasclaw up (ele gera e registra o segredo)"; return 1; }
       gfetch "$t" "$1" "action=$2" "$CLI_SECRET" ;;
@@ -501,6 +503,15 @@ const c=r.check;console.log(`\nconferência (dia UTC ${c.dayUtc}): medido US$ ${
 
 cmd_eval() { lock_dev; [ "$TARGET" = dev ] || die "evals rodam só no dev"; node scripts/eval.mjs "$(url)" "$@"; }
 
+cmd_tools() { # ferramentas do agente: ./gasclaw tools all | none | <nomes,separados,por,vírgula> [pasta]
+  local set="${1:-}" folder="${2:-}"
+  [ -n "$set" ] || die "uso: ./gasclaw tools all|none|<nomes separados por vírgula> [folderId]"
+  printf '%s' "$set" | grep -qE '^[a-z0-9_.,-]+$' || die "lista inválida: $set"
+  remote "tools&set=$set${folder:+&folder=$folder}" | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);if(!r.ok){console.error(r.error);process.exit(1)}
+console.log(`${r.agent}: ${r.enabled.length} ferramenta(s) ligada(s)`);for(const t of r.enabled)console.log("  "+t);
+console.log(`pessoas: ${r.users.length?r.users.join(", "):"só o dono"}`)})'
+}
+
 cmd_rollback() {
   lock_dev # B4
   local d cur
@@ -513,7 +524,7 @@ cmd_rollback() {
 }
 
 case "$CMD" in
-  up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs|eval|limits|usage) "cmd_$CMD" "$@" ;;
+  up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs|eval|limits|usage|tools) "cmd_$CMD" "$@" ;;
   *) cat <<'TXT'
 gasclaw — agentes do Drive rodando no Google Apps Script
 
@@ -532,6 +543,7 @@ gasclaw — agentes do Drive rodando no Google Apps Script
   ./gasclaw limits [--fresh]  painel de limites (Google, OpenRouter e medido pelo gasclaw)
   ./gasclaw usage [AAAA-MM-DD]  custo por modelo: 7 dias, ou as 24 h do dia
   ./gasclaw eval <cenário|--all> [--model id]  roda evals/*.md no dev (exit ≠ 0 em falha)
+  ./gasclaw tools all|none|<a,b,c> [pasta]     liga/desliga as ferramentas do agente
 TXT
   ;;
 esac
