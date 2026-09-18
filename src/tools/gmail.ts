@@ -1,5 +1,5 @@
 // Gmail (E6): Gmail API v1 por REST, escopos gmail.readonly (ler) e gmail.compose (rascunho e envio; doc de messages.send).
-import { asData, base64, enc, fromBase64, gcall, type Google, headerValue, ownerGoogle, parseEmails, qs } from './google';
+import { asData, base64, enc, fromBase64, gcall, type Google, headerValue, incompleta, ownerGoogle, parseEmails, qs } from './google';
 import type { Schema, Tool, ToolCtx } from './registry';
 
 const GM = 'https://gmail.googleapis.com/gmail/v1/users/me';
@@ -49,15 +49,19 @@ export const GMAIL_TOOLS: Tool[] = [
     parameters: schema({ query: str('busca do Gmail', 500), max: { type: 'integer', description: 'quantos (até 10)' } }, ['query']),
     approval: 'never',
     run: (a, ctx) => {
+      // `qs` descarta valor vazio: com query '', o `q` SUMIA da URL e a busca devolvia a caixa de entrada
+      // inteira. "Procure os e-mails do fornecedor X" virava "leia meus e-mails". Recusar é o correto aqui.
+      const query = String(a.query ?? '').trim();
+      if (!query) throw new Error('"query" vazia: diga o que procurar (ex.: "from:ana newer_than:7d")');
       const g = api(ctx);
       const max = Math.min(MAX_LIST, Math.max(1, Number(a.max) || MAX_LIST));
-      const ids = ((gcall(g, { method: 'get', url: `${GM}/messages?${qs({ q: String(a.query), maxResults: max })}` }, 'buscar e-mails').messages ?? []) as { id: string }[]).slice(0, max);
+      const ids = ((gcall(g, { method: 'get', url: `${GM}/messages?${qs({ q: query, maxResults: max })}` }, 'buscar e-mails').messages ?? []) as { id: string }[]).slice(0, max);
       const lines = ids.map(({ id }) => {
         const m = gcall(g, { method: 'get', url: `${GM}/messages/${enc(id)}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date` }, 'ler o e-mail');
         const hs = m.payload?.headers as Header[] | undefined;
         return `${id} | ${header(hs, 'Date')} | ${header(hs, 'From')} | ${header(hs, 'Subject').slice(0, 200)} | ${String(m.snippet ?? '').slice(0, 200)}`;
       });
-      return asData('gmail', lines.join('\n'));
+      return asData('gmail', incompleta(lines, max));
     },
   },
   {

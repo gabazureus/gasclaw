@@ -1,5 +1,5 @@
 // Tarefas (E6): Google Tasks API v1 por REST, escopo tasks, sempre na lista padrão (@default).
-import { asData, enc, gcall, type Google, ownerGoogle } from './google';
+import { asData, enc, gcall, type Google, incompleta, ownerGoogle } from './google';
 import type { Schema, Tool, ToolCtx } from './registry';
 
 export const TASKS_URL = 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks';
@@ -22,9 +22,14 @@ export const TASKS_TOOLS: Tool[] = [
     parameters: schema({ showCompleted: { type: 'boolean', description: 'incluir concluídas' } }, []),
     approval: 'never',
     run: (a, ctx) => {
-      const items = (gcall(api(ctx), { method: 'get', url: `${TASKS_URL}?showCompleted=${a.showCompleted === true}&maxResults=20` }, 'ler as tarefas').items ?? []) as Record<string, string>[];
+      // No Google Tasks, tarefa marcada como feita na tela fica *hidden*. `showCompleted` sozinho não a traz:
+      // a resposta vem 200 e vazia, e "já terminei aquilo?" era respondido com "não". Os dois andam juntos.
+      const completas = a.showCompleted === true;
+      const cap = 20;
+      const r = gcall(api(ctx), { method: 'get', url: `${TASKS_URL}?showCompleted=${completas}&showHidden=${completas}&maxResults=${cap}` }, 'ler as tarefas');
+      const items = (r.items ?? []) as Record<string, string>[];
       const lines = items.map((t) => `${t.id} | ${String(t.title ?? '').slice(0, 200)} | ${t.due ? `vence ${t.due.slice(0, 10)}` : 'sem prazo'} | ${t.status === 'completed' ? 'concluída' : 'pendente'}`);
-      return asData('tarefas', lines.join('\n'));
+      return asData('tarefas', incompleta(lines, cap, r.nextPageToken));
     },
   },
   {

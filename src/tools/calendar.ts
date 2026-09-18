@@ -1,5 +1,5 @@
 // Agenda (E6): Google Calendar API v3 por REST, escopos calendar.events e calendar.events.freebusy (ADR-015).
-import { asData, enc, gcall, type Google, localDateTime, ownerGoogle, parseEmails as emails, qs } from './google';
+import { asData, enc, gcall, type Google, incompleta, localDateTime, ownerGoogle, parseEmails as emails, qs } from './google';
 import type { Schema, Tool, ToolCtx } from './registry';
 
 const CAL = 'https://www.googleapis.com/calendar/v3';
@@ -47,8 +47,10 @@ export const CALENDAR_TOOLS: Tool[] = [
     approval: 'never',
     run: (a, ctx) => {
       const { timeMin, timeMax } = period(a.from, a.to, ctx);
-      const url = `${CAL}/calendars/primary/events?${qs({ timeMin, timeMax, singleEvents: true, orderBy: 'startTime', maxResults: 25, q: a.query as string | undefined })}`;
-      const items = (gcall(api(ctx), { method: 'get', url }, 'ler a agenda').items ?? []) as Record<string, any>[];
+      const cap = 25;
+      const url = `${CAL}/calendars/primary/events?${qs({ timeMin, timeMax, singleEvents: true, orderBy: 'startTime', maxResults: cap, q: a.query as string | undefined })}`;
+      const r = gcall(api(ctx), { method: 'get', url }, 'ler a agenda');
+      const items = (r.items ?? []) as Record<string, any>[];
       const lines = items.map((e) =>
         [
           `${e.id} | ${e.start?.dateTime ?? e.start?.date ?? '?'} → ${e.end?.dateTime ?? e.end?.date ?? '?'} | ${String(e.summary ?? '(sem título)').slice(0, 200)}`,
@@ -58,7 +60,7 @@ export const CALENDAR_TOOLS: Tool[] = [
           .filter(Boolean)
           .join(' | '),
       );
-      return asData('agenda', lines.join('\n'));
+      return asData('agenda', incompleta(lines, cap, r.nextPageToken));
     },
   },
   {

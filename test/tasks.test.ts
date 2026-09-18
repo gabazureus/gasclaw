@@ -27,7 +27,7 @@ describe('grupo tasks (Google Tasks, lista padrão)', () => {
     ];
     const { c, reqs } = ctx(() => ({ code: 200, body: JSON.stringify({ items }) }));
     const out = run('tasks.list', {}, c);
-    expect(reqs[0]).toEqual({ method: 'get', url: `${TL}?showCompleted=false&maxResults=20` });
+    expect(reqs[0]).toEqual({ method: 'get', url: `${TL}?showCompleted=false&showHidden=false&maxResults=20` });
     expect(out).toMatch(/^\[DADO EXTERNO de tarefas/);
     expect(out).toContain('task001 | Pagar conta | vence 2030-01-15 | pendente');
     expect(out).toContain('task002 |');
@@ -37,7 +37,9 @@ describe('grupo tasks (Google Tasks, lista padrão)', () => {
   test('tasks.list com concluídas', () => {
     const { c, reqs } = ctx(() => ({ code: 200, body: '{"items":[{"id":"task003","title":"X","status":"completed"}]}' }));
     expect(run('tasks.list', { showCompleted: true }, c)).toContain('task003 | X | sem prazo | concluída');
-    expect(reqs[0].url).toBe(`${TL}?showCompleted=true&maxResults=20`);
+    // showHidden anda junto: no Google Tasks a tarefa marcada como feita na tela fica *hidden*, e sem ele a
+    // resposta vinha 200 e vazia — "já terminei aquilo?" era respondido com "não".
+    expect(reqs[0].url).toBe(`${TL}?showCompleted=true&showHidden=true&maxResults=20`);
   });
 
   test('tasks.create: título, notas e prazo (só data, doc Tasks); devolve id', () => {

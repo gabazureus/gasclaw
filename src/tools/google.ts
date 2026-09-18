@@ -112,6 +112,21 @@ export function fromBase64(s: string): string {
   return out;
 }
 
+/**
+ * Para de mentir sobre o tamanho da lista.
+ *
+ * Toda ferramenta de listagem tem um teto (agenda 25, tarefas 20, Gmail 10, contatos 10, planilha 200 linhas)
+ * e nenhuma lê o `nextPageToken`. O modelo recebia uma lista plausível e respondia com convicção — "some a
+ * coluna C" devolvia um número certo para as 200 primeiras linhas e errado para a planilha.
+ *
+ * Paginar seria a resposta completa, mas custa chamadas e tempo dentro dos 6 min do Apps Script. O mínimo que
+ * resolve o dano é o agente SABER que a lista está cortada e poder dizer isso a quem perguntou.
+ */
+export const incompleta = (lines: string[], cap: number, nextPageToken?: unknown): string => {
+  const cortada = Boolean(nextPageToken) || (lines.length > 0 && lines.length >= cap);
+  return lines.join('\n') + (cortada ? `\n(lista incompleta: mostrei ${lines.length}; há mais resultados — peça um período menor ou uma busca mais específica)` : '');
+};
+
 export const enc = encodeURIComponent;
 export const qs = (params: Record<string, string | number | boolean | undefined>): string =>
   Object.entries(params)
