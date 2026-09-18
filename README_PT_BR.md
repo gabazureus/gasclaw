@@ -15,7 +15,7 @@
 
 ## Por que gasclaw
 
-- **Nada para hospedar.** O runtime roda na sua própria conta do Google Workspace, no Apps Script. Seu computador só compila o TypeScript e publica com o clasp.
+- **Nada para hospedar.** O runtime roda na sua própria conta do Google, no Apps Script. Seu computador só compila o TypeScript e publica com o clasp.
 - **Agentes são documentos, não código.** Cada agente é uma pasta do Drive com arquivos markdown (regras, personalidade, identidade, notas sobre o usuário). Editou um arquivo? A próxima mensagem já usa a versão nova, sem publicar de novo.
 - **Onde seu time já conversa.** As conversas acontecem no Google Chat, em DM ou num espaço.
 - **Qualquer modelo.** O LLM vem do OpenRouter, então um agente troca de modelo mudando uma linha.
@@ -45,17 +45,57 @@ Detalhes do design: [spec de design](docs/specs/2026-09-14-gasclaw-design.md) e 
 
 **A etapa F0 está concluída, mas o gasclaw ainda não está pronto para produção.** Os dois ambientes (dev e prod) estão publicados no Google, e o agente de dev já responde no Google Chat. A publicação automática pelo GitHub/CI foi adiada; por enquanto, toda publicação passa pelo `./gasclaw`. A próxima etapa, F1, começa com uma prova de conceito de agentes escritos em Google Docs e Sheets nativos. Veja no [CHANGELOG.md](CHANGELOG.md) exatamente o que funciona, o que está em construção e o que está planejado.
 
-## Início rápido
+## Instalação
 
-Requisitos: macOS com [Homebrew](https://brew.sh), Node.js 22.12+ (ou 24+), uma conta do Google Workspace e uma chave de API do [OpenRouter](https://openrouter.ai).
+Dois comandos. O segundo mostra um mapa e conduz você por ele.
 
 ```bash
-npm ci
-echo 'OPENROUTER_API_KEY=sk-or-...' > .env.local   # nunca commite este arquivo
-./gasclaw up
+git clone https://github.com/gabazureus/gasclaw.git && cd gasclaw
+./gasclaw
 ```
 
-Na primeira execução, o `./gasclaw up` instala as ferramentas que faltam, cria o projeto do Google Cloud e o projeto do Apps Script e publica. Nos poucos passos que só dão para fazer clicando, ele pausa, abre a página certa e espera você apertar Enter. Cada passo concluído fica registrado, então rodar de novo não repete nada.
+Esse segundo comando abre o menu de setup:
+
+```
+🦀 gasclaw — agents that live in your Google Drive
+
+  Setup · 0 of 7 done · environment: dev
+  account not detected yet — run step 2
+
+  ○ 1  Local tools            node, gcloud and clasp on this machine
+  ○ 2  Google account         the account that will own the agents
+  ○ 3  Google Cloud project   hosts the Apps Script project and its APIs
+  ○ 4  OpenRouter key         the model provider — without it the agent cannot think
+  ○ 5  Web app (dev)          puts the panel and the 1-minute worker online
+  ○ 6  Your first agent       a Drive folder with four markdown files
+  ○ 7  Google Chat            optional: talk to your agent from Google Chat
+
+  [1-7] run a step   [a] run everything missing   [r] refresh   [d] diagnose   [q] quit
+```
+
+Aperte `a` e ele faz tudo que falta. Aperte um número para fazer um passo por vez. Cada passo concluído
+fica registrado, então rodar de novo nunca repete trabalho — e o `[d]` diz o que está quebrado e como
+consertar.
+
+Dois dos sete passos exigem que você clique numa página do Google (a tela de consentimento OAuth e a
+primeira autorização). O gasclaw pausa, abre a página certa, diz exatamente o que marcar e espera o Enter.
+
+**O que você precisa:** macOS com [Homebrew](https://brew.sh), uma conta do Google e uma chave de API do
+[OpenRouter](https://openrouter.ai) (o passo 4 pergunta por ela e grava em `.env.local`, que nunca é
+commitado). O Node.js e o resto são instalados pelo passo 1.
+
+### Workspace ou Gmail pessoal?
+
+Os dois funcionam, e o gasclaw detecta qual é o seu no passo 2. Uma coisa difere:
+
+| | Google Workspace | Gmail pessoal |
+|---|---|---|
+| Painel, conversa na tela, agentes, ferramentas do Google | ✅ | ✅ |
+| **App do Google Chat** | ✅ | ❌ exige Workspace |
+| Tempo diário de gatilho no Apps Script | 6 h | 90 min |
+
+Em conta pessoal o passo 7 aparece como indisponível e o setup termina sem ele. Assinatura do Google One
+**não** muda isso: é armazenamento, não Workspace.
 
 Guia passo a passo: [docs/como-usar.md](docs/como-usar.md). Travou? Rode `./gasclaw doctor` e veja o [runbook de setup inicial](docs/runbooks/setup-inicial.md).
 
@@ -143,7 +183,7 @@ Limites atuais:
 - `users` aceita só e-mails, não grupos.
 - Sem nova tentativa automática quando o OpenRouter falha (429/5xx).
 - O CLI `./gasclaw` hoje é voltado para macOS (usa Homebrew, `open` e `pbcopy`).
-- Feito para contas do Google Workspace (consentimento OAuth interno, app do Chat restrito ao domínio).
+- O app do Google Chat exige Google Workspace. Em Gmail pessoal todo o resto funciona (painel, conversa na tela, agentes, ferramentas do Google), e a cota diária de gatilho do Apps Script é de 90 min em vez de 6 h.
 
 ## Segurança
 
