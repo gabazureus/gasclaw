@@ -12,7 +12,7 @@ const obs = (): P14Obs => ({
   real: [{ runId: 'r1', spans: ['resolve_agent', 'llm_call', 'reply'], coverage: 0.97 }],
   traceText: 'r1 · test · ok\n├─ resolve_agent 10 ms\n├─ llm_call 900 ms\n└─ reply 5 ms',
   burst: { runs: 20, runsMs: 9000, enfileirados: 20, drained: 20, drainMs: 6000, linhas: 20, sobraNaFila: 0 },
-  drainbench: { vazioMaxMs: 400, gatilho: 'ativo' },
+  drainbench: { vazioMaxMs: 400, gatilho: 'active' },
 });
 
 describe('summarizeP14 (lote de 1 min)', () => {
@@ -64,7 +64,7 @@ describe('summarizeP14 (lote de 1 min)', () => {
 test('a tela para o polling quando a aba fica oculta ou a Observabilidade sai da vista (C7)', () => {
   const html = readFileSync('src/settings.html', 'utf8');
   expect(html).toContain("addEventListener('visibilitychange'");
-  expect(html).toMatch(/document\.hidden[\s\S]{0,60}pg-observabilidade/); // as duas condições, em qualquer ordem
+  expect(html).toMatch(/document\.hidden[\s\S]{0,60}pg-observability/); // as duas condições, em qualquer ordem
   expect(html).toMatch(/if \(!\w+\(\)\) return;/); // nada de polling com a seção fora da vista
   expect(html).toContain('EVERY = { live: 5000, cost: 60000, limits: 60000, batch: 60000 }');
   expect(html).toMatch(/setInterval\(\(\) => \{ if \(\w+\(\)\) LOADERS\[tab\]\(\); \}/);

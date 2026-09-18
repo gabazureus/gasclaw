@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <base target="_top">
 <meta charset="utf-8">
@@ -20,14 +20,14 @@
 </head>
 <body>
 <main>
-  <h1>Conversa com o agente</h1>
-  <div id="log" role="log" aria-live="polite" aria-label="Conversa"></div>
+  <h1>Chat with your agent</h1>
+  <div id="log" role="log" aria-live="polite" aria-label="Conversation"></div>
   <form id="form">
-    <label for="texto" class="sr">Mensagem</label>
-    <input id="texto" autocomplete="off" placeholder="Escreva uma mensagem" required>
-    <button type="submit" id="enviar">Enviar</button>
+    <label for="texto" class="sr">Message</label>
+    <input id="texto" autocomplete="off" placeholder="Type a message" required>
+    <button type="submit" id="enviar">Send</button>
   </form>
-  <p class="meta">Tarefas longas continuam sozinhas, mesmo se você fechar esta aba: volte depois e a resposta estará na conversa.</p>
+  <p class="meta">Long tasks keep running on their own, even if you close this tab: come back later and the answer will be here.</p>
 </main>
 <script>
 // Tudo que vem do modelo entra por textContent: nada é interpretado como HTML ou código (ADR-002).
@@ -51,7 +51,7 @@ function add(cls, text) {
 /** Desenha o desfecho de um run: texto, custo e, se ele parou esperando você, os botões. */
 function render(p, r, runId) {
   p.className = 'agente';
-  p.textContent = 'Agente: ' + (r.text || '');
+  p.textContent = 'Agent: ' + (r.text || '');
   if (r.spent && r.spent !== 'US$ 0.00') {
     const m = document.createElement('span');
     m.className = 'meta';
@@ -67,7 +67,7 @@ function render(p, r, runId) {
       const params = {};
       params[c.key] = c.value;
       if (r.approvalToken) params.token = r.approvalToken;
-      const next = add('andamento', 'Agente: trabalhando…');
+      const next = add('andamento', 'Agent: working…');
       await acompanhar(next, await call('runDecide', runId, params).catch(erro), runId);
     };
     p.append(' ', btn);
@@ -79,19 +79,19 @@ const erro = (e) => ({ ok: false, error: (e && e.message) || String(e) });
 
 /** Acompanha um run até ele terminar, falhar ou parar esperando você. */
 async function acompanhar(p, r, runId, knownApprovalToken) {
-  if (!r || r.ok === false) { p.className = 'agente'; p.textContent = 'Agente: ' + (r && r.error ? r.error : 'não consegui responder'); return; }
+  if (!r || r.ok === false) { p.className = 'agente'; p.textContent = 'Agent: ' + (r && r.error ? r.error : "I couldn't answer"); return; }
   const id = r.runId || runId;
   let approvalToken = r.approvalToken || knownApprovalToken || '';
   for (let i = 0; i < POLL_MAX; i++) {
     if (r.approvalToken) approvalToken = r.approvalToken;
     if (r.status === 'done' || r.status === 'failed' || r.waiting) return render(p, { ...r, ...(approvalToken ? { approvalToken } : {}) }, id);
-    p.textContent = 'Agente: trabalhando…' + (r.spent && r.spent !== 'US$ 0.00' ? ' (' + r.spent + ')' : '');
+    p.textContent = 'Agent: working…' + (r.spent && r.spent !== 'US$ 0.00' ? ' (' + r.spent + ')' : '');
     await sleep(POLL_MS);
     r = await call('runState', id, approvalToken).catch(erro);
-    if (!r || r.ok === false) { p.className = 'agente'; p.textContent = 'Agente: ' + (r && r.error ? r.error : 'perdi o contato com a tarefa'); return; }
+    if (!r || r.ok === false) { p.className = 'agente'; p.textContent = 'Agent: ' + (r && r.error ? r.error : 'I lost contact with the task'); return; }
   }
   p.className = 'agente';
-  p.textContent = 'Agente: a tarefa continua rodando no servidor. Recarregue a página daqui a pouco para ver o resultado.';
+  p.textContent = 'Agent: the task is still running on the server. Reload this page in a moment to see the result.';
 }
 
 $('form').onsubmit = async (ev) => {
@@ -100,7 +100,7 @@ $('form').onsubmit = async (ev) => {
   if (!text) return;
   $('texto').value = '';
   $('enviar').disabled = true;
-  add('eu', 'Você: ' + text);
+  add('eu', 'You: ' + text);
   const p = add('andamento', 'Agente: trabalhando…');
   await acompanhar(p, await call('runAsk', text).catch(erro));
   $('enviar').disabled = false;

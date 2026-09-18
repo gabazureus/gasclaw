@@ -3,7 +3,7 @@ import { summarizeP15, type P15Obs } from '../poc/p15-limites/summary';
 
 const ids = ['freeDay', 'freeMin', 'orDaily', 'drive', 'urlfetch', 'runtime', 'props', 'processes', 'mail', 'triggers', 'monitoring'];
 const obs = (): P15Obs => ({
-  read: { freshMs: 2500, cachedMaxMs: 40, trigger: 'aguardando autorização', erros: [], pendentesForaDaReautorizacao: [], itens: ids.map((id) => ({ id, status: 'ok', source: 'google' })) },
+  read: { freshMs: 2500, cachedMaxMs: 40, trigger: 'awaiting authorization', erros: [], pendentesForaDaReautorizacao: [], itens: ids.map((id) => ({ id, status: 'ok', source: 'google' })) },
   dailyrow: { linhasHoje: 11, skipped: null },
   whose: { efetivo: 'dono@x.com', ativo: 'dono@x.com', dono: 'dono@x.com' },
   cli: { exit: 0, linhas: 11 },
@@ -21,12 +21,12 @@ describe('summarizeP15', () => {
   });
   test('C1: Monitoring indisponível por faturamento (decisão do usuário) não reprova; outro erro reprova', () => {
     const o = obs();
-    o.read.itens = o.read.itens.map((i) => (i.id === 'monitoring' ? { ...i, status: 'erro', note: 'precisa de faturamento ativo no projeto do Google Cloud (decisão sua)' } : i));
+    o.read.itens = o.read.itens.map((i) => (i.id === 'monitoring' ? { ...i, status: 'error', note: 'precisa de faturamento ativo no projeto do Google Cloud (decisão sua)' } : i));
     o.read.erros = ['monitoring'];
     const s = summarizeP15(o);
     expect(s.c1.pass).toBe(true);
     expect(s.c1.indisponiveisPorDecisao).toEqual(['monitoring']);
-    o.read.itens = o.read.itens.map((i) => (i.id === 'drive' ? { ...i, status: 'erro', note: 'Drive 500' } : i));
+    o.read.itens = o.read.itens.map((i) => (i.id === 'drive' ? { ...i, status: 'error', note: 'Drive 500' } : i));
     o.read.erros = ['monitoring', 'drive'];
     expect(summarizeP15(o).c1.pass).toBe(false);
   });

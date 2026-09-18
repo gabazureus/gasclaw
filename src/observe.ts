@@ -181,7 +181,7 @@ export function oldestQueued(): number | null {
 
 // ---------- gatilho de 1 min (script.scriptapp) ----------
 
-export type TriggerStatus = 'ativo' | 'inativo' | 'aguardando autorização';
+export type TriggerStatus = 'active' | 'inactive' | 'awaiting authorization';
 
 export function triggerStatus(fresh = false): TriggerStatus {
   if (!fresh) {
@@ -190,25 +190,25 @@ export function triggerStatus(fresh = false): TriggerStatus {
   }
   let s: TriggerStatus;
   try {
-    s = ScriptApp.getProjectTriggers().some((t) => t.getHandlerFunction() === 'drainRuns') ? 'ativo' : 'inativo';
+    s = ScriptApp.getProjectTriggers().some((t) => t.getHandlerFunction() === 'drainRuns') ? 'active' : 'inactive';
   } catch {
-    s = 'aguardando autorização';
+    s = 'awaiting authorization';
   }
-  cache().put('obs:trigger', s, 60); // 60 s: com 600 s a tela mostrou "aguardando autorização" depois de autorizado
+  cache().put('obs:trigger', s, 60); // 60 s: com 600 s a tela mostrou "awaiting authorization" depois de autorizado
   return s;
 }
 
 /** Idempotente: cria o gatilho só se não existir (com trava); sem autorização, não faz nada. */
 export function ensureTrigger(): TriggerStatus {
   const s = triggerStatus(true);
-  if (s !== 'inativo') return s;
+  if (s !== 'inactive') return s;
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5_000)) return s;
   try {
     if (!ScriptApp.getProjectTriggers().some((t) => t.getHandlerFunction() === 'drainRuns')) ScriptApp.newTrigger('drainRuns').timeBased().everyMinutes(1).create();
     return triggerStatus(true);
   } catch {
-    return 'aguardando autorização';
+    return 'awaiting authorization';
   } finally {
     lock.releaseLock();
   }
@@ -218,7 +218,7 @@ export function ensureTrigger(): TriggerStatus {
 export function maybeDrain(): DrainResult | null {
   try {
     reconcileStaleRuns();
-    if (!shouldDrain(oldestQueued(), Date.now(), triggerStatus() === 'ativo')) return null;
+    if (!shouldDrain(oldestQueued(), Date.now(), triggerStatus() === 'active')) return null;
     return drain(20, true);
   } catch (err) {
     console.warn(`observe maybeDrain: ${msg(err)}`);
@@ -244,7 +244,7 @@ export function usageView(apiKey: string | null, day?: string) {
     table,
     day: shownDay,
     queue: splitQueue(p).length,
-    check: { dayUtc: today, measured, informed, diffPct: informed ? Math.round(((measured - informed) / informed) * 1000) / 10 : null, error: or.ok ? null : or.error, nota: 'o dia do OpenRouter é UTC: vira às 21:00 em São Paulo' },
+    check: { dayUtc: today, measured, informed, diffPct: informed ? Math.round(((measured - informed) / informed) * 1000) / 10 : null, error: or.ok ? null : or.error, nota: "OpenRouter's day is UTC: it rolls over at 21:00 in São Paulo" },
   };
 }
 

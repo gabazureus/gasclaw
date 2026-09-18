@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
   <base target="_top">
   <meta charset="utf-8">
@@ -52,120 +52,120 @@
 <body>
 <main>
   <!-- "ambiente:" é oculto só visualmente: sem ele, o leitor de tela anuncia "gasclaw dev" e a palavra fica órfã -->
-  <h1>🦀 gasclaw <span class="env" id="envBadge"><span class="sr">ambiente: </span><span id="envName"></span></span></h1>
+  <h1>🦀 gasclaw <span class="env" id="envBadge"><span class="sr">environment: </span><span id="envName"></span></span></h1>
   <p class="links">
-    <a id="chatLink" target="_top" hidden>Conversar com o agente</a>
-    <a id="hubLink" target="_top" hidden>Painéis</a>
+    <a id="chatLink" target="_top" hidden>Chat with the agent</a>
+    <a id="hubLink" target="_top" hidden>Panels</a>
     <!-- link do ambiente, não do agente: é o mesmo projeto para todos eles (P21) -->
     <a id="scriptLink" target="_blank" rel="noopener" hidden>Apps Script</a>
   </p>
 
   <!-- nav, não tablist: a Observabilidade já tem um tablist logo abaixo, e dois contratos de teclado
        iguais na mesma tela confundem. Aqui os quatro botões são paradas normais do Tab. -->
-  <nav class="tabs" aria-label="Seções do painel">
-    <button id="nav-inicio" aria-current="page">Início</button>
-    <button id="nav-agentes">Agentes</button>
-    <button id="nav-observabilidade">Observabilidade</button>
-    <button id="nav-testar">Testar</button>
+  <nav class="tabs" aria-label="Panel sections">
+    <button id="nav-home" aria-current="page">Home</button>
+    <button id="nav-agents">Agents</button>
+    <button id="nav-observability">Observability</button>
+    <button id="nav-test">Test</button>
   </nav>
 
   <section id="authBox" role="alert" hidden>
-    <h2>Faltam permissões do Google</h2>
-    <p>O Google agora pede cada permissão separadamente, e algumas partes do gasclaw (gatilho de 1 min, execuções, e-mails restantes, métricas) só funcionam depois que você autorizar.</p>
-    <p><a id="authLink" target="_blank" rel="noopener">Autorizar permissões</a></p>
+    <h2>Missing Google permissions</h2>
+    <p>Google now asks for each permission separately, and some parts of gasclaw (the 1-minute trigger, runs, remaining emails, metrics) only work after you authorize them.</p>
+    <p><a id="authLink" target="_blank" rel="noopener">Authorize permissions</a></p>
     <p class="muted" id="authHow"></p>
   </section>
-  <p id="msg" role="status" aria-live="polite">Carregando…</p>
+  <p id="msg" role="status" aria-live="polite">Loading…</p>
 
-  <div id="pg-inicio">
+  <div id="pg-home">
   <section>
     <h2>Status</h2>
     <div class="row"><span id="status"></span><button class="sec" id="toggle">…</button></div>
-    <div class="row"><span id="secretInfo" class="muted"></span><button class="sec" id="resetSecret">Redefinir segredo</button></div>
+    <div class="row"><span id="secretInfo" class="muted"></span><button class="sec" id="resetSecret">Reset secret</button></div>
   </section>
 
   <section>
-    <h2><label for="key">Chave OpenRouter</label></h2>
+    <h2><label for="key">OpenRouter key</label></h2>
     <input id="key" type="password" placeholder="sk-or-v1-…" autocomplete="off">
-    <button id="saveKey">Salvar chave</button>
+    <button id="saveKey">Save key</button>
   </section>
   </div>
 
-  <div id="pg-agentes" hidden>
+  <div id="pg-agents" hidden>
   <section>
-    <h2><label for="url">Agentes</label></h2>
-    <p>O agente com ⭐ responde no Google Chat.</p>
-    <label for="newName">Novo agente (cria a pasta Meu Drive/gasclaw/agentes/&lt;nome&gt;)</label>
-    <input id="newName" placeholder="assistente" autocomplete="off">
-    <button id="create">Novo agente</button>
-    <label for="url">Usar pasta existente</label>
+    <h2><label for="url">Agents</label></h2>
+    <p>The agent marked ⭐ answers in Google Chat.</p>
+    <label for="newName">New agent (creates the folder My Drive/gasclaw/agents/&lt;name&gt;)</label>
+    <input id="newName" placeholder="assistant" autocomplete="off">
+    <button id="create">New agent</button>
+    <label for="url">Use an existing folder</label>
     <input id="url" placeholder="https://drive.google.com/drive/folders/…">
-    <button id="add" class="sec">Usar pasta existente</button>
+    <button id="add" class="sec">Use existing folder</button>
     <div id="agents"></div>
   </section>
   </div>
 
-  <div id="pg-observabilidade" hidden>
+  <div id="pg-observability" hidden>
   <section aria-labelledby="obsTitle">
-    <div class="row"><h2 id="obsTitle">Observabilidade</h2><a id="sheet" target="_blank" rel="noopener" hidden>abrir planilha</a></div>
-    <div role="tablist" aria-label="Observabilidade" class="tabs">
-      <button role="tab" id="tab-live" aria-controls="panel-live" aria-selected="true">Ao vivo</button>
-      <button role="tab" id="tab-cost" aria-controls="panel-cost" aria-selected="false" tabindex="-1">Modelos e custo</button>
-      <button role="tab" id="tab-limits" aria-controls="panel-limits" aria-selected="false" tabindex="-1">Limites</button>
-      <button role="tab" id="tab-batch" aria-controls="panel-batch" aria-selected="false" tabindex="-1">Lote</button>
+    <div class="row"><h2 id="obsTitle">Observability</h2><a id="sheet" target="_blank" rel="noopener" hidden>open spreadsheet</a></div>
+    <div role="tablist" aria-label="Observability" class="tabs">
+      <button role="tab" id="tab-live" aria-controls="panel-live" aria-selected="true">Live</button>
+      <button role="tab" id="tab-cost" aria-controls="panel-cost" aria-selected="false" tabindex="-1">Models and cost</button>
+      <button role="tab" id="tab-limits" aria-controls="panel-limits" aria-selected="false" tabindex="-1">Limits</button>
+      <button role="tab" id="tab-batch" aria-controls="panel-batch" aria-selected="false" tabindex="-1">Batch</button>
     </div>
 
     <div role="tabpanel" id="panel-live" aria-labelledby="tab-live">
-      <p id="liveStatus" aria-live="polite">Carregando…</p>
+      <p id="liveStatus" aria-live="polite">Loading…</p>
       <div id="running"></div>
-      <h3>Últimos 10 runs</h3>
+      <h3>Last 10 runs</h3>
       <div id="recent"></div>
     </div>
 
     <div role="tabpanel" id="panel-cost" aria-labelledby="tab-cost" hidden>
-      <label for="modelAgent">Agente</label>
+      <label for="modelAgent">Agent</label>
       <select id="modelAgent"></select>
       <p id="modelNow" aria-live="polite"></p>
-      <label for="modelPick">Escolher modelo na tela (preço por 1M tokens: entrada / saída)</label>
-      <input id="modelPick" list="modelList" placeholder="ex.: openai/gpt-4o-mini · ou free" autocomplete="off">
-      <p class="hint">Escreva <code>free</code> para o rodízio: o gasclaw usa o melhor modelo gratuito que servir e passa para o próximo se ele falhar.</p>
+      <label for="modelPick">Pick a model here (price per 1M tokens: input / output)</label>
+      <input id="modelPick" list="modelList" placeholder="e.g. openai/gpt-4o-mini · or free" autocomplete="off">
+      <p class="hint">Type <code>free</code> for the rotation: gasclaw uses the best free model that works and moves on to the next one if it fails.</p>
       <datalist id="modelList"></datalist>
-      <button id="modelSave">Usar este modelo</button>
-      <button id="modelReset" class="sec">Voltar ao do AGENTS</button>
-      <h3 id="chartTitle">Custo por modelo · 7 dias</h3>
-      <button id="chartBack" class="sec" hidden>← 7 dias</button>
+      <button id="modelSave">Use this model</button>
+      <button id="modelReset" class="sec">Back to the AGENTS one</button>
+      <h3 id="chartTitle">Cost per model · 7 days</h3>
+      <button id="chartBack" class="sec" hidden>← 7 days</button>
       <div id="chart"></div>
       <div id="legend" class="legend"></div>
-      <details><summary>Ver como tabela</summary><div id="chartTable"></div></details>
+      <details><summary>View as a table</summary><div id="chartTable"></div></details>
       <p id="costCheck" class="muted"></p>
     </div>
 
     <div role="tabpanel" id="panel-limits" aria-labelledby="tab-limits" hidden>
-      <p id="limitsStatus" aria-live="polite">Carregando…</p>
+      <p id="limitsStatus" aria-live="polite">Loading…</p>
       <div id="limits"></div>
-      <button id="limitsFresh" class="sec">Ler de novo agora</button>
+      <button id="limitsFresh" class="sec">Read again now</button>
     </div>
 
     <div role="tabpanel" id="panel-batch" aria-labelledby="tab-batch" hidden>
-      <p id="batchStatus" aria-live="polite">Carregando…</p>
-      <button id="drainNow" class="sec">Gravar a fila agora</button>
+      <p id="batchStatus" aria-live="polite">Loading…</p>
+      <button id="drainNow" class="sec">Flush the queue now</button>
       <div id="drains"></div>
     </div>
   </section>
   </div>
 
-  <div id="pg-testar" hidden>
+  <div id="pg-test" hidden>
   <section>
-    <h2><label for="prompt">Testar</label></h2>
-    <textarea id="prompt" rows="2">Quem é você?</textarea>
-    <button id="test">Enviar ao agente ⭐</button>
+    <h2><label for="prompt">Test</label></h2>
+    <textarea id="prompt" rows="2">Who are you?</textarea>
+    <button id="test">Send to the ⭐ agent</button>
     <pre id="answer" hidden aria-live="polite"></pre>
   </section>
 
   <section>
-    <h2>POC P1 — UrlFetch longo</h2>
-    <p>Pede uma resposta longa ao OpenRouter e mede o tempo. Aceite: mais de 60 s sem erro.</p>
-    <button class="sec" id="poc">Rodar POC P1</button>
+    <h2>POC P1 — long UrlFetch</h2>
+    <p>Asks OpenRouter for a long answer and measures the time. Pass: over 60 s without an error.</p>
+    <button class="sec" id="poc">Run POC P1</button>
     <pre id="pocOut" hidden></pre>
   </section>
   </div>
@@ -177,7 +177,7 @@
 
   function call(fn, ...args) {
     $('msg').className = '';
-    $('msg').textContent = 'Trabalhando…';
+    $('msg').textContent = 'Working…';
     return new Promise((ok, fail) =>
       google.script.run
         .withSuccessHandler(ok)
@@ -194,14 +194,14 @@
 
   function render(s) {
     state = s;
-    $('msg').textContent = 'Conectado como ' + s.me;
+    $('msg').textContent = 'Connected as ' + s.me;
     // consentimento granular: sem autorização, o Google não pede sozinho; a tela mostra o link e o caminho pelo editor
     const auth = s.auth || { required: false };
     $('authBox').hidden = !auth.required;
     if (auth.required) {
       $('authLink').hidden = !auth.url;
       if (auth.url) $('authLink').href = auth.url;
-      $('authHow').textContent = 'Se o link não abrir o pedido: abra o editor do Apps Script → arquivo _motor.gs → no menu de funções escolha "' + auth.editorFunction + '" → ▶ Executar → Permitir.';
+      $('authHow').textContent = 'If the link does not open the prompt: open the Apps Script editor → file _motor.gs → pick "' + auth.editorFunction + '" in the function menu → ▶ Run → Allow.';
     }
     // link absoluto: a tela roda num iframe em googleusercontent.com, onde "?page=chat" relativo não chega ao web app
     if (s.appUrl) {
@@ -213,10 +213,10 @@
     $('envBadge').className = 'env ' + s.env;
     $('scriptLink').href = s.scriptUrl;
     $('scriptLink').hidden = false; // como os outros links: só aparece depois de ter destino
-    $('status').textContent = (s.enabled ? '🟢 Ativo' : '⏸ Pausado') + ' · chave ' + (s.hasKey ? 'salva' : 'faltando') + ' · ' + s.agents.length + ' agente(s)';
-    $('toggle').textContent = s.enabled ? 'Pausar' : 'Ativar';
+    $('status').textContent = (s.enabled ? '🟢 Active' : '⏸ Paused') + ' · key ' + (s.hasKey ? 'saved' : 'missing') + ' · ' + s.agents.length + ' agent(s)';
+    $('toggle').textContent = s.enabled ? 'Pause' : 'Activate';
     if (typeof fillAgents === 'function') fillAgents();
-    $('secretInfo').textContent = s.cliSecretAt ? 'Segredo da CLI registrado em ' + new Date(s.cliSecretAt).toLocaleString('pt-BR') : 'Segredo da CLI ainda não registrado (rode ./gasclaw up)';
+    $('secretInfo').textContent = s.cliSecretAt ? 'CLI secret registered on ' + new Date(s.cliSecretAt).toLocaleString('en-US') : 'CLI secret not registered yet (run ./gasclaw up)';
     $('resetSecret').disabled = !s.cliSecretAt;
     $('agents').replaceChildren(...s.agents.map((a, i) => {
       const box = document.createElement('div');
@@ -234,7 +234,7 @@
       // o aria-live mora na LINHA de resumo, não aqui: com a lista de ferramentas dentro, o leitor de tela
       // releria a seção inteira a cada toque de caixinha (ver showAccess)
       holder.hidden = true;
-      const accessBtn = button('Acesso', () => {
+      const accessBtn = button('Access', () => {
         holder.hidden = !holder.hidden;
         accessBtn.setAttribute('aria-expanded', String(!holder.hidden));
         if (!holder.hidden) showAccess(a.folderId, holder);
@@ -242,8 +242,8 @@
       accessBtn.setAttribute('aria-controls', holder.id);
       accessBtn.setAttribute('aria-expanded', 'false');
       actions.append(accessBtn, ' ');
-      if (i > 0) actions.append(button('Tornar padrão', () => call('makeDefault', a.folderId).then(render)), ' ');
-      actions.append(button('Remover', () => call('removeAgent', a.folderId).then(render)));
+      if (i > 0) actions.append(button('Make default', () => call('makeDefault', a.folderId).then(render)), ' ');
+      actions.append(button('Remove', () => call('removeAgent', a.folderId).then(render)));
       row.append(folder, actions);
       box.append(row, holder);
       return box;
@@ -252,24 +252,24 @@
 
   // ----- Acesso e ferramentas aprovados no painel (ADR-021): a pasta só sugere -----
   function showAccess(folderId, holder) {
-    holder.textContent = 'Carregando acesso…';
+    holder.textContent = 'Loading access…';
     google.script.run.withSuccessHandler((x) => {
-      const fmt = (a) => (a.users.length ? 'pessoas: ' + a.users.join(', ') : 'só o dono') + ' · ' + (a.tools.length ? 'ferramentas: ' + a.tools.join(', ') : 'sem ferramentas');
+      const fmt = (a) => (a.users.length ? 'people: ' + a.users.join(', ') : 'owner only') + ' · ' + (a.tools.length ? 'tools: ' + a.tools.join(', ') : 'no tools');
       const hasPending = x.pending.users.length > 0 || x.pending.tools.length > 0;
       const line = (text) => { const d = document.createElement('div'); d.textContent = text; return d; };
-      const approve = button('Aprovar sugestão', () => call('approveAccess', folderId, { users: x.approved.users.concat(x.pending.users), tools: x.approved.tools.concat(x.pending.tools) }).then(() => { $('msg').textContent = 'Acesso aprovado.'; showAccess(folderId, holder); }));
+      const approve = button('Approve suggestion', () => call('approveAccess', folderId, { users: x.approved.users.concat(x.pending.users), tools: x.approved.tools.concat(x.pending.tools) }).then(() => { $('msg').textContent = 'Access approved.'; showAccess(folderId, holder); }));
       approve.disabled = !hasPending;
-      approve.title = hasPending ? 'Aprova o que a pasta sugeriu' : 'Nada novo a aprovar: a pasta não sugere nada além do que já está aprovado';
-      const remove = button('Remover acesso', () => call('removeAccess', folderId).then(() => { $('msg').textContent = 'Acesso removido: só o dono, sem ferramentas.'; showAccess(folderId, holder); }));
+      approve.title = hasPending ? 'Approves what the folder suggested' : 'Nothing new to approve: the folder suggests nothing beyond what is already approved';
+      const remove = button('Remove access', () => call('removeAccess', folderId).then(() => { $('msg').textContent = 'Access removed: owner only, no tools.'; showAccess(folderId, holder); }));
       remove.disabled = x.approved.users.length === 0 && x.approved.tools.length === 0;
-      remove.title = remove.disabled ? 'Não há acesso aprovado para remover' : 'Volta o agente para só o dono, sem ferramentas';
-      const resumo = line('Aprovado: ' + fmt(x.approved));
+      remove.title = remove.disabled ? 'There is no approved access to remove' : 'Takes the agent back to owner only, with no tools';
+      const resumo = line('Approved: ' + fmt(x.approved));
       resumo.setAttribute('aria-live', 'polite'); // só o resumo é anunciado; a lista de ferramentas abaixo, não
       // Uma resposta por vez vale para o RESUMO: duas caixinhas diferentes podem responder fora de ordem, e a
       // mais antiga reescreveria o resumo com um estado que já não é o do servidor.
       const guard = { seq: 0 };
       holder.replaceChildren(
-        line('Sugerido pela pasta (falta aprovar): ' + (hasPending ? fmt(x.pending) : 'nada novo')),
+        line('Suggested by the folder (needs approval): ' + (hasPending ? fmt(x.pending) : 'nothing new')),
         resumo, approve, document.createTextNode(' '), remove,
         usersBox(folderId, x, holder),
         stepsBox(folderId, x),
@@ -282,11 +282,11 @@
   function usersBox(folderId, x, holder) {
     const box = document.createElement('fieldset');
     const legend = document.createElement('legend');
-    legend.textContent = 'Quem conversa com o agente (' + x.approved.users.length + ')';
+    legend.textContent = 'Who talks to the agent (' + x.approved.users.length + ')';
     box.append(legend);
     const nota = document.createElement('p');
     nota.className = 'muted';
-    nota.textContent = 'O dono sempre pode, mesmo sem estar na lista.';
+    nota.textContent = 'The owner always can, even without being on the list.';
     box.append(nota);
     const mudou = (msg) => () => { $('msg').textContent = msg; showAccess(folderId, holder); };
     x.approved.users.forEach((u) => {
@@ -294,22 +294,22 @@
       row.className = 'tool';
       const nome = document.createElement('span');
       nome.textContent = u;
-      const tirar = button('Revogar', () => call('setAgentUser', folderId, u, false).then(mudou(u + ' não fala mais com o agente.')));
-      tirar.setAttribute('aria-label', 'Revogar ' + u);
+      const tirar = button('Revoke', () => call('setAgentUser', folderId, u, false).then(mudou(u + ' no longer talks to the agent.')));
+      tirar.setAttribute('aria-label', 'Revoke ' + u);
       row.append(nome, ' ', tirar);
       box.append(row);
     });
     const campo = document.createElement('input');
     campo.type = 'email';
-    campo.placeholder = 'pessoa@empresa.com';
+    campo.placeholder = 'person@company.com';
     campo.id = 'novaPessoa-' + folderId;
     const rot = document.createElement('label');
     rot.htmlFor = campo.id;
-    rot.textContent = 'Liberar pessoa';
-    const add = button('Liberar', () => {
+    rot.textContent = 'Allow a person';
+    const add = button('Allow', () => {
       const e = campo.value.trim();
-      if (!e) { $('msg').textContent = 'Digite o e-mail da pessoa.'; return; }
-      call('setAgentUser', folderId, e, true).then(mudou(e + ' já pode falar com o agente.'));
+      if (!e) { $('msg').textContent = 'Enter the person\'s email.'; return; }
+      call('setAgentUser', folderId, e, true).then(mudou(e + ' can now talk to the agent.'));
     });
     const linha = document.createElement('div');
     linha.className = 'tool';
@@ -322,7 +322,7 @@
   function stepsBox(folderId, x) {
     const box = document.createElement('fieldset');
     const legend = document.createElement('legend');
-    legend.textContent = 'Passos por resposta';
+    legend.textContent = 'Steps per answer';
     box.append(legend);
     const campo = document.createElement('input');
     campo.type = 'number';
@@ -332,18 +332,18 @@
     campo.value = x.steps.tela === null ? '' : String(x.steps.tela);
     const rot = document.createElement('label');
     rot.htmlFor = campo.id;
-    rot.textContent = 'Máximo de passos';
+    rot.textContent = 'Maximum steps';
     const de = document.createElement('p');
     de.className = 'muted';
     de.setAttribute('aria-live', 'polite');
-    const vindoDe = (v) => 'Em uso: ' + (v.tela !== null ? v.tela + ' (desta tela)' : v.pasta !== null ? v.pasta + ' (da pasta)' : v.padrao + ' (padrão)') + '. Campo vazio devolve a decisão para a pasta.';
+    const vindoDe = (v) => 'In use: ' + (v.tela !== null ? v.tela + ' (from this screen)' : v.pasta !== null ? v.pasta + ' (from the folder)' : v.padrao + ' (default)') + '. An empty field hands the decision back to the folder.';
     de.textContent = vindoDe(x.steps);
-    const salvar = button('Salvar', () => {
+    const salvar = button('Save', () => {
       const v = campo.value.trim();
       call('setAgentSteps', folderId, v === '' ? null : Number(v)).then((r) => {
         campo.value = r.steps.tela === null ? '' : String(r.steps.tela);
         de.textContent = vindoDe(r.steps);
-        $('msg').textContent = 'Passos: ' + (r.steps.tela === null ? 'voltou para o valor da pasta.' : r.steps.tela + ' por resposta.');
+        $('msg').textContent = 'Steps: ' + (r.steps.tela === null ? 'back to the folder value.' : r.steps.tela + ' per answer.');
       });
     });
     const linha = document.createElement('div');
@@ -355,13 +355,13 @@
 
   // Liga/desliga POR ferramenta. Checkbox nativo de propósito: teclado, foco visível e leitura de rótulo
   // já vêm prontos, e um "switch" de ARIA feito à mão só teria como reinventá-los pior.
-  const APPROVAL = { never: 'sem pedir aprovação', once: 'pede aprovação na 1ª vez', always: 'pede aprovação sempre' };
-  const GROUP_LABEL = { '': 'Gerais', memory: 'Memória', calendar: 'Agenda', gmail: 'Gmail', contacts: 'Contatos', tasks: 'Tarefas', drive: 'Drive, Docs e Sheets' };
+  const APPROVAL = { never: 'no approval needed', once: 'asks for approval the 1st time', always: 'always asks for approval' };
+  const GROUP_LABEL = { '': 'General', memory: 'Memory', calendar: 'Calendar', gmail: 'Gmail', contacts: 'Contacts', tasks: 'Tasks', drive: 'Drive, Docs and Sheets' };
 
   function toolsBox(folderId, x, resumo, fmt, guard) {
     const box = document.createElement('fieldset');
     const legend = document.createElement('legend');
-    legend.textContent = 'Ferramentas (' + x.enabled.length + ' de ' + x.catalog.length + ' ligadas)';
+    legend.textContent = 'Tools (' + x.enabled.length + ' of ' + x.catalog.length + ' on)';
     box.append(legend);
     const groups = [];
     x.catalog.forEach((t) => {
@@ -391,20 +391,20 @@
     const hint = document.createElement('span');
     hint.className = 'muted';
     // o que a pessoa precisa para decidir: se a ferramenta age sozinha e se ela usa a conta do dono
-    hint.textContent = APPROVAL[t.approval] + (t.ownerOnly ? ' · só o dono' : '');
+    hint.textContent = APPROVAL[t.approval] + (t.ownerOnly ? ' · owner only' : '');
     label.title = t.description;
     cb.onchange = () => {
       const n = ++guard.seq; // dois cliques rápidos, na mesma caixa ou em caixas diferentes: vale a última resposta
       const want = cb.checked;
       $('msg').className = '';
-      $('msg').textContent = 'Trabalhando…';
+      $('msg').textContent = 'Working…';
       google.script.run
         .withSuccessHandler((a) => {
           if (n !== guard.seq) return;
           cb.checked = a.enabled.indexOf(t.name) >= 0;
-          resumo.textContent = 'Aprovado: ' + fmt(a.approved);
-          legend.textContent = 'Ferramentas (' + a.enabled.length + ' de ' + total + ' ligadas)';
-          $('msg').textContent = t.name + (cb.checked ? ' ligada.' : ' desligada: o agente não consegue mais usá-la.');
+          resumo.textContent = 'Approved: ' + fmt(a.approved);
+          legend.textContent = 'Tools (' + a.enabled.length + ' of ' + total + ' on)';
+          $('msg').textContent = t.name + (cb.checked ? ' turned on.' : ' turned off: the agent can no longer use it.');
         })
         .withFailureHandler((e) => {
           if (n !== guard.seq) return;
@@ -418,31 +418,31 @@
     return row;
   }
   $('resetSecret').onclick = () => {
-    if (!confirm('Apagar o segredo da CLI? Até o próximo ./gasclaw up, poc, eval e down vão falhar.')) return;
-    call('resetCliSecret').then((s) => { render(s); $('msg').textContent = 'Segredo apagado. Rode ./gasclaw up para registrar de novo.'; });
+    if (!confirm('Delete the CLI secret? Until the next ./gasclaw up, poc, eval and down will fail.')) return;
+    call('resetCliSecret').then((s) => { render(s); $('msg').textContent = 'Secret deleted. Run ./gasclaw up to register it again.'; });
   };
   $('toggle').onclick = () => call('setRuntimeEnabled', !state.enabled).then(render);
   $('saveKey').onclick = () => call('saveKey', $('key').value).then((s) => { $('key').value = ''; render(s); });
   const added = (field) => (r) => {
     $(field).value = '';
     render(r.state);
-    $('msg').textContent = r.created.length ? 'Pasta verificada. Criados: ' + r.created.join(', ') : 'Pasta verificada.';
+    $('msg').textContent = r.created.length ? 'Folder checked. Created: ' + r.created.join(', ') : 'Folder checked.';
   };
   $('create').onclick = () => call('createAgent', $('newName').value).then(added('newName'));
   $('add').onclick = () => call('addAgent', $('url').value).then(added('url'));
   $('test').onclick = () => {
-    if (!state.agents.length) { $('msg').textContent = 'Adicione um agente primeiro.'; return; }
+    if (!state.agents.length) { $('msg').textContent = 'Add an agent first.'; return; }
     call('testAgent', state.agents[0].folderId, $('prompt').value).then((r) => {
       $('answer').hidden = false;
       $('answer').textContent = r.text + '\n\n— ' + r.model + ' · ' + r.ms + ' ms';
-      $('msg').textContent = 'Resposta recebida.';
+      $('msg').textContent = 'Answer received.';
       if (r.runId) { pendingOpen = r.runId; poll(); }
     });
   };
   $('poc').onclick = () => call('pocUrlFetchTimeout').then((r) => {
     $('pocOut').hidden = false;
     $('pocOut').textContent = JSON.stringify(r, null, 2);
-    $('msg').textContent = r.pass ? 'POC P1 aprovada ✅' : 'POC P1 não atingiu o critério';
+    $('msg').textContent = r.pass ? 'POC P1 passed ✅' : 'POC P1 did not meet the criterion';
   });
 
   // ---------- Ao vivo: polling de 5 s só com a aba visível ----------
@@ -474,17 +474,17 @@
     document.querySelectorAll('button[data-id]').forEach((b) => b.setAttribute('aria-expanded', String(b.dataset.id === openId)));
     if (!openId) { detail.remove(); return; }
     placeDetail();
-    detail.textContent = 'Carregando…';
+    detail.textContent = 'Loading…';
     google.script.run.withSuccessHandler((d) => {
       if (openId !== id) return;
-      const full = d.run ? '\n\npergunta:\n' + (d.run.question || '') + '\n\nresposta:\n' + (d.run.answer || d.run.error || '') : '';
+      const full = d.run ? '\n\nquestion:\n' + (d.run.question || '') + '\n\nanswer:\n' + (d.run.answer || d.run.error || '') : '';
       detail.textContent = d.tree + full;
     }).withFailureHandler((e) => { if (openId === id) detail.textContent = e.message; }).runDetail(id);
   }
   function poll() {
     if (document.hidden) return;
     google.script.run.withSuccessHandler((l) => {
-      $('liveStatus').textContent = l.running.length + ' em andamento · atualizado ' + new Date().toLocaleTimeString();
+      $('liveStatus').textContent = l.running.length + ' in progress · updated ' + new Date().toLocaleTimeString();
       const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.id : null;
       const y = window.scrollY;
       $('running').replaceChildren(...l.running.map(runButton));
@@ -494,7 +494,7 @@
       window.scrollTo(0, y);
       if (pendingOpen && rowOf(pendingOpen)) { const id = pendingOpen; pendingOpen = null; if (openId !== id) toggleRun(id); }
       if (l.sheetUrl) { $('sheet').href = l.sheetUrl; $('sheet').hidden = false; }
-    }).withFailureHandler((e) => { $('liveStatus').textContent = 'Ao vivo indisponível: ' + e.message; }).liveRuns();
+    }).withFailureHandler((e) => { $('liveStatus').textContent = 'Live unavailable: ' + e.message; }).liveRuns();
   }
   // ---------- Observabilidade: abas; Ao vivo a cada 5 s, as outras a cada 60 s, só a aba visível e a página visível ----------
   const TABS = ['live', 'cost', 'limits', 'batch'];
@@ -520,7 +520,7 @@
     };
   });
   // ----- Menu do painel (P21): troca a seção visível sem recarregar, como as abas acima -----
-  const PAGES = ['inicio', 'agentes', 'observabilidade', 'testar'];
+  const PAGES = ['home', 'agents', 'observability', 'test'];
   function selectPage(name) {
     PAGES.forEach((p) => {
       const on = p === name;
@@ -530,13 +530,13 @@
     });
     // o foco fica no botão; quem não vê a tela precisa ouvir que o conteúdo abaixo trocou
     $('msg').className = '';
-    $('msg').textContent = 'Seção: ' + $('nav-' + name).textContent;
+    $('msg').textContent = 'Section: ' + $('nav-' + name).textContent;
     startLive(); // a Observabilidade só consulta o servidor enquanto estiver à vista
   }
   // sem setas aqui de propósito: não há tabindex rotativo, então Tab já percorre os quatro (ver o comentário do <nav>)
   PAGES.forEach((p) => { $('nav-' + p).onclick = () => selectPage(p); });
 
-  const watching = () => !document.hidden && !$('pg-observabilidade').hidden;
+  const watching = () => !document.hidden && !$('pg-observability').hidden;
   function startLive() { clearInterval(liveTimer); if (!watching()) return; LOADERS[tab](); liveTimer = setInterval(() => { if (watching()) LOADERS[tab](); }, EVERY[tab]); }
   function stopLive() { clearInterval(liveTimer); liveTimer = null; }
   document.addEventListener('visibilitychange', () => (document.hidden ? stopLive() : startLive()));
@@ -557,25 +557,25 @@
   }
   function showModel(m) {
     modelCache = m;
-    $('modelNow').textContent = 'Da pasta (AGENTS/planilha): ' + m.fromFolder + ' · Escolhido na tela: ' + (m.override || '— (usa o da pasta)')
-      + (m.tools.length ? ' · ferramentas: ' + m.tools.join(', ') : '')
-      + (m.lastModel ? ' · último run: ' + m.lastModel : '');
+    $('modelNow').textContent = 'From the folder (AGENTS/spreadsheet): ' + m.fromFolder + ' · Picked here: ' + (m.override || '— (uses the folder one)')
+      + (m.tools.length ? ' · tools: ' + m.tools.join(', ') : '')
+      + (m.lastModel ? ' · last run: ' + m.lastModel : '');
     $('modelReset').disabled = !m.override;
     if ($('modelList').children.length !== m.models.length + 1) {
       $('modelList').replaceChildren(
-        el('option', { value: 'free', label: 'rodízio entre os gratuitos (troca sozinho se um falhar)' }),
-        ...m.models.map((x) => el('option', { value: x.id, label: (x.free ? 'grátis' : 'US$ ' + x.inM + ' / ' + x.outM) + (x.tools ? ' · tools' : '') + ' · ' + Math.round(x.ctx / 1000) + 'k' })),
+        el('option', { value: 'free', label: 'rotation across the free ones (switches by itself if one fails)' }),
+        ...m.models.map((x) => el('option', { value: x.id, label: (x.free ? 'free' : 'US$ ' + x.inM + ' / ' + x.outM) + (x.tools ? ' · tools' : '') + ' · ' + Math.round(x.ctx / 1000) + 'k' })),
       );
     }
   }
   function loadModel() { if ($('modelAgent').value) quiet('agentModel', $('modelAgent').value).then(showModel).catch((e) => { $('modelNow').textContent = e.message; }); }
   $('modelAgent').onchange = loadModel;
-  $('modelSave').onclick = () => call('setAgentModel', $('modelAgent').value, $('modelPick').value).then((m) => { showModel(m); $('modelPick').value = ''; $('msg').textContent = 'Modelo trocado (vale na próxima mensagem).'; });
-  $('modelReset').onclick = () => call('setAgentModel', $('modelAgent').value, null).then((m) => { showModel(m); $('msg').textContent = 'Voltou ao modelo do AGENTS.'; });
+  $('modelSave').onclick = () => call('setAgentModel', $('modelAgent').value, $('modelPick').value).then((m) => { showModel(m); $('modelPick').value = ''; $('msg').textContent = 'Model switched (applies to the next message).'; });
+  $('modelReset').onclick = () => call('setAgentModel', $('modelAgent').value, null).then((m) => { showModel(m); $('msg').textContent = 'Back to the AGENTS model.'; });
   function loadCost() {
     fillAgents();
     if (!modelCache && $('modelAgent').value) loadModel();
-    quiet('usageChart', chartDay || '').then(drawChart).catch((e) => { $('chart').textContent = 'Uso indisponível: ' + e.message; });
+    quiet('usageChart', chartDay || '').then(drawChart).catch((e) => { $('chart').textContent = 'Usage unavailable: ' + e.message; });
   }
   function drawChart(u) {
     const bars = u.chart.bars, series = u.chart.series;
@@ -585,7 +585,7 @@
     svg.setAttribute('viewBox', '0 0 ' + W + ' ' + (H + 24));
     svg.setAttribute('width', '100%');
     svg.setAttribute('role', 'img');
-    svg.setAttribute('aria-label', (chartDay ? 'Custo por hora em ' + chartDay : 'Custo por dia nos últimos 7 dias') + ', empilhado por modelo. Total: ' + money(bars.reduce((t, b) => t + b.total, 0)));
+    svg.setAttribute('aria-label', (chartDay ? 'Cost per hour on ' + chartDay : 'Cost per day over the last 7 days') + ', stacked by model. Total: ' + money(bars.reduce((t, b) => t + b.total, 0)));
     const NS = 'http://www.w3.org/2000/svg';
     bars.forEach((b, i) => {
       const g = document.createElementNS(NS, 'g');
@@ -616,26 +616,26 @@
       svg.append(g);
     });
     $('chart').replaceChildren(svg);
-    $('chartTitle').textContent = chartDay ? 'Custo por hora · ' + chartDay + ' (São Paulo)' : 'Custo por modelo · 7 dias (São Paulo)';
+    $('chartTitle').textContent = chartDay ? 'Cost per hour · ' + chartDay + ' (São Paulo)' : 'Cost per model · 7 days (São Paulo)';
     $('chartBack').hidden = !chartDay;
     $('legend').replaceChildren(...series.map((s, k) => el('span', {}, el('i', { style: 'background:' + COLORS[s === 'outros' ? 5 : Math.min(k, 4)] }), s)));
-    const head = el('tr', {}, el('th', { textContent: chartDay ? 'hora' : 'dia' }), ...series.map((s) => el('th', { textContent: s })), el('th', { textContent: 'total' }));
+    const head = el('tr', {}, el('th', { textContent: chartDay ? 'hour' : 'day' }), ...series.map((s) => el('th', { textContent: s })), el('th', { textContent: 'total' }));
     const rows = bars.map((b) => el('tr', {}, el('td', { textContent: b.key }), ...series.map((s) => el('td', { textContent: b.parts[s] ? money(b.parts[s]) : '' })), el('td', { textContent: money(b.total) })));
-    $('chartTable').replaceChildren(el('table', {}, el('caption', { textContent: 'Custo por modelo' }), el('thead', {}, head), el('tbody', {}, ...rows)));
+    $('chartTable').replaceChildren(el('table', {}, el('caption', { textContent: 'Cost per model' }), el('thead', {}, head), el('tbody', {}, ...rows)));
     const c = u.check;
-    $('costCheck').textContent = 'Hoje (dia UTC ' + c.dayUtc + '): medido pelo gasclaw ' + money(c.measured) + ' × informado pelo OpenRouter ' + (c.informed === null ? '(' + (c.error || '?') + ')' : money(c.informed)) + (c.diffPct === null ? '' : ' · diferença ' + c.diffPct + '%') + '. ' + c.nota + '. Fila ainda não gravada: ' + u.queue + '.';
+    $('costCheck').textContent = 'Today (UTC day ' + c.dayUtc + '): measured by gasclaw ' + money(c.measured) + ' × reported by OpenRouter ' + (c.informed === null ? '(' + (c.error || '?') + ')' : money(c.informed)) + (c.diffPct === null ? '' : ' · difference ' + c.diffPct + '%') + '. ' + c.nota + '. Queue not flushed yet: ' + u.queue + '.';
   }
   $('chartBack').onclick = () => { chartDay = null; loadCost(); $('chart').focus && $('chart').focus(); };
 
   // ----- Limites -----
-  const LEVEL = { verde: '#2e9e6b', amarelo: '#d9a52b', vermelho: '#c43b31', 'sem limite': '#c9c7c0' };
-  const SRC = { google: 'informado pelo Google', openrouter: 'informado pelo OpenRouter', gasclaw: 'medido pelo gasclaw' };
+  const LEVEL = { green: '#2e9e6b', yellow: '#d9a52b', red: '#c43b31', 'no limit': '#c9c7c0' };
+  const SRC = { google: 'reported by Google', openrouter: 'reported by OpenRouter', gasclaw: 'measured by gasclaw' };
   function loadLimits(fresh) {
     quiet('limitsPanel', fresh).then((l) => {
-      $('limitsStatus').textContent = 'Gatilho de 1 min: ' + l.trigger + (l.trigger === 'aguardando autorização' ? ' (use "Autorizar permissões" no topo da tela)' : '') + ' · ' + (l.cached ? 'lido há até 10 min' : 'lido agora') + ' (' + new Date(l.at).toLocaleTimeString() + ')';
+      $('limitsStatus').textContent = '1-minute trigger: ' + l.trigger + (l.trigger === 'awaiting authorization' ? ' (use "Authorize permissions" at the top of the screen)' : '') + ' · ' + (l.cached ? 'read up to 10 min ago' : 'read just now') + ' (' + new Date(l.at).toLocaleTimeString() + ')';
       $('limits').replaceChildren(...l.items.map((i) => {
         const pct = i.total && i.used !== null ? Math.min(100, Math.round((i.used / i.total) * 100)) : null;
-        const value = i.status === 'ok' ? (i.used + ' / ' + (i.total === null ? '∞' : i.total) + ' ' + i.unit + (pct === null ? '' : ' (' + pct + '%)')) : (i.status === 'pendente' ? 'aguardando autorização' : 'erro');
+        const value = i.status === 'ok' ? (i.used + ' / ' + (i.total === null ? '∞' : i.total) + ' ' + i.unit + (pct === null ? '' : ' (' + pct + '%)')) : (i.status === 'pending' ? 'waiting for authorization' : 'error');
         const bar = el('div', { className: 'bar', role: 'progressbar' }, el('span', { style: 'width:' + (pct || 0) + '%;background:' + LEVEL[i.level] }));
         bar.setAttribute('aria-label', i.label); if (pct !== null) { bar.setAttribute('aria-valuenow', String(pct)); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100'); }
         return el('div', { className: 'limit' },
@@ -643,19 +643,19 @@
           bar,
           el('div', { className: 'muted', textContent: value + ' · ' + i.level + (i.reset ? ' · reset ' + i.reset : '') + (i.note ? ' · ' + i.note : '') }));
       }));
-    }).catch((e) => { $('limitsStatus').textContent = 'Limites indisponíveis: ' + e.message; });
+    }).catch((e) => { $('limitsStatus').textContent = 'Limits unavailable: ' + e.message; });
   }
   $('limitsFresh').onclick = () => loadLimits(true);
 
   // ----- Lote -----
   function showBatch(o) {
     const age = o.oldestQueued ? Math.round((Date.now() - o.oldestQueued) / 1000) + ' s' : '—';
-    $('batchStatus').textContent = 'Gatilho de 1 min: ' + o.trigger + (o.trigger === 'ativo' ? '' : ' (enquanto isso, a fila é gravada ao abrir a tela ou no próximo turno, se tiver mais de 1 min)') + (o.trigger === 'aguardando autorização' ? ' — use "Autorizar permissões" no topo da tela' : '') + ' · entrada mais antiga na fila: ' + age;
-    $('drains').replaceChildren(el('table', {}, el('thead', {}, el('tr', {}, ...['quando', 'runs', 'ms', 'JSON', 'obs.'].map((h) => el('th', { textContent: h })))),
+    $('batchStatus').textContent = '1-minute trigger: ' + o.trigger + (o.trigger === 'active' ? '' : ' (meanwhile, the queue is flushed when this screen opens or on the next turn, if it is over 1 min old)') + (o.trigger === 'awaiting authorization' ? ' — use "Authorize permissions" at the top of the screen' : '') + ' · oldest entry in the queue: ' + age;
+    $('drains').replaceChildren(el('table', {}, el('thead', {}, el('tr', {}, ...['when', 'runs', 'ms', 'JSON', 'notes'].map((h) => el('th', { textContent: h })))),
       el('tbody', {}, ...(o.drains || []).map((d) => el('tr', {}, el('td', { textContent: new Date(d.at).toLocaleTimeString() }), el('td', { textContent: d.drained }), el('td', { textContent: d.ms }), el('td', { textContent: d.json }), el('td', { textContent: d.skipped || '' }))))));
   }
   function loadBatch() { quiet('observability').then(showBatch).catch((e) => { $('batchStatus').textContent = e.message; }); }
-  $('drainNow').onclick = () => call('drainNow').then(() => { $('msg').textContent = 'Fila gravada.'; loadBatch(); });
+  $('drainNow').onclick = () => call('drainNow').then(() => { $('msg').textContent = 'Queue flushed.'; loadBatch(); });
 
   call('settingsState').then(render);
 </script>

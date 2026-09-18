@@ -43,7 +43,7 @@ describe('withUser: libera/revoga UMA pessoa sem mexer nas ferramentas', () => {
   // A lista de quem conversa com o agente não pode virar depósito do que foi digitado na tela.
   test('recusa o que não é e-mail, antes de gravar', () => {
     for (const bad of ['', 'ana', 'ana@x', 'a b@x.com', 'ana@x.com, bia@x.com', '@x.com', 'ana@']) {
-      expect(() => withUser(null, bad, true)).toThrow(/inválido/);
+      expect(() => withUser(null, bad, true)).toThrow(/invalid/i);
     }
   });
 });
@@ -93,7 +93,7 @@ describe('setAgentUser: a borda que o painel chama', () => {
   test('e-mail inválido não grava nada', async () => {
     const m = await main();
     m.setAgentTool('f1', 'now', true);
-    expect(() => m.setAgentUser('f1', 'não é e-mail', true)).toThrow(/inválido/);
+    expect(() => m.setAgentUser('f1', 'não é e-mail', true)).toThrow(/invalid/i);
     expect(access()).toEqual({ users: [], tools: ['now'] }); // intacto
   });
 });
@@ -105,9 +105,9 @@ describe('setAgentSteps: teto de passos pela tela, sem editar a pasta', () => {
     expect(env.props['STEPS:f1']).toBe('12');
     expect(m.setAgentSteps('f1', null).steps).toMatchObject({ tela: null });
     expect(env.props['STEPS:f1']).toBeUndefined(); // campo limpo devolve a decisão para a pasta
-    expect(() => m.setAgentSteps('f1', 0)).toThrow(/1 a 50/);
-    expect(() => m.setAgentSteps('f1', 51)).toThrow(/1 a 50/);
-    expect(() => m.setAgentSteps('f1', 'dez' as never)).toThrow(/1 a 50/);
+    expect(() => m.setAgentSteps('f1', 0)).toThrow(/1 to 50/);
+    expect(() => m.setAgentSteps('f1', 51)).toThrow(/1 to 50/);
+    expect(() => m.setAgentSteps('f1', 'dez' as never)).toThrow(/1 to 50/);
   });
 
   test('só o dono', async () => {
@@ -131,7 +131,7 @@ describe('ACCESS é gravado sob trava — mudança perdida vira erro visível, n
     const m = await main();
     m.setAgentTool('f1', 'now', true);
     semTrava();
-    expect(() => m.setAgentTool('f1', 'ask', true)).toThrow(/em andamento/);
+    expect(() => m.setAgentTool('f1', 'ask', true)).toThrow(/in progress/);
     expect(access().tools).toEqual(['now']); // a gravação concorrente não passou por cima
   });
 
@@ -139,9 +139,9 @@ describe('ACCESS é gravado sob trava — mudança perdida vira erro visível, n
     const m = await main();
     m.setAgentTool('f1', 'now', true);
     semTrava();
-    expect(() => m.setAgentUser('f1', 'ana@x.com', true)).toThrow(/em andamento/);
-    expect(() => m.approveAccess('f1', { users: ['ana@x.com'], tools: [] })).toThrow(/em andamento/);
-    expect(() => m.removeAccess('f1')).toThrow(/em andamento/);
+    expect(() => m.setAgentUser('f1', 'ana@x.com', true)).toThrow(/in progress/);
+    expect(() => m.approveAccess('f1', { users: ['ana@x.com'], tools: [] })).toThrow(/in progress/);
+    expect(() => m.removeAccess('f1')).toThrow(/in progress/);
     expect(access().tools).toEqual(['now']);
   });
 
@@ -149,7 +149,7 @@ describe('ACCESS é gravado sob trava — mudança perdida vira erro visível, n
     let solturas = 0;
     vi.stubGlobal('LockService', { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => void solturas++, waitLock: () => undefined }) });
     const m = await main();
-    expect(() => m.setAgentTool('f1', 'ferramenta-que-não-existe', true)).toThrow(/desconhecida/);
+    expect(() => m.setAgentTool('f1', 'ferramenta-que-não-existe', true)).toThrow(/unknown tool/);
     expect(solturas).toBe(1);
   });
 });

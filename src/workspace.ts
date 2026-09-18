@@ -194,7 +194,7 @@ export const enabledTools = (approved: Access | null | undefined): string[] => a
  * Fail closed: nome fora do registry — ou um grupo, que não é ferramenta — é recusado, nunca gravado.
  */
 export function withTool(approved: Access | null | undefined, tool: string, on: boolean): Access {
-  if (!allowedTools([tool]).some((t) => t.name === tool)) throw new Error(`ferramenta desconhecida: ${tool}`);
+  if (!allowedTools([tool]).some((t) => t.name === tool)) throw new Error(`unknown tool: ${tool}`);
   const a = effectiveAccess(approved);
   const names = new Set(enabledTools(a));
   if (on) names.add(tool);
@@ -216,7 +216,7 @@ const EMAIL = /^[^\s@,;]+@[^\s@,;.]+(\.[^\s@,;.]+)+$/;
  */
 export function withUser(approved: Access | null | undefined, email: string, on: boolean): Access {
   const e = String(email).trim().toLowerCase();
-  if (!EMAIL.test(e)) throw new Error(`e-mail inválido: ${email}`);
+  if (!EMAIL.test(e)) throw new Error(`invalid e-mail: ${email}`);
   const a = effectiveAccess(approved);
   const users = new Set(a.users);
   if (on) users.add(e);

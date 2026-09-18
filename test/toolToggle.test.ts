@@ -43,12 +43,12 @@ describe('withTool: liga/desliga UMA ferramenta sem mexer nas outras', () => {
   });
   // A UI não pode virar caminho para ligar algo que allowedTools não reconheça.
   test('recusa nome que não existe no registry', () => {
-    expect(() => withTool(null, 'http.get', true)).toThrow(/desconhecida/);
-    expect(() => withTool(null, '', true)).toThrow(/desconhecida/);
+    expect(() => withTool(null, 'http.get', true)).toThrow(/unknown tool/);
+    expect(() => withTool(null, '', true)).toThrow(/unknown tool/);
   });
   test('recusa um GRUPO como se fosse ferramenta: o liga/desliga é por ferramenta', () => {
-    expect(() => withTool(null, 'gmail', true)).toThrow(/desconhecida/);
-    expect(() => withTool(null, 'memory', true)).toThrow(/desconhecida/);
+    expect(() => withTool(null, 'gmail', true)).toThrow(/unknown tool/);
+    expect(() => withTool(null, 'memory', true)).toThrow(/unknown tool/);
   });
 });
 

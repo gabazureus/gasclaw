@@ -5,7 +5,7 @@ const NOW = Date.UTC(2026, 8, 15, 12, 0);
 
 describe('level', () => {
   test('verde < 70%, amarelo < 90%, vermelho ≥ 90%; sem total = sem limite', () => {
-    expect([level(0, 100), level(69, 100), level(70, 100), level(89, 100), level(90, 100), level(150, 100), level(5, null)]).toEqual(['verde', 'verde', 'amarelo', 'amarelo', 'vermelho', 'vermelho', 'sem limite']);
+    expect([level(0, 100), level(69, 100), level(70, 100), level(89, 100), level(90, 100), level(150, 100), level(5, null)]).toEqual(['green', 'green', 'yellow', 'yellow', 'red', 'red', 'no limit']);
   });
 });
 
@@ -18,10 +18,12 @@ const input = (over: Partial<LimitsInput> = {}): LimitsInput => ({
   drive: { ok: true, value: { limit: 100, usage: 75 } },
   key: { ok: true, value: { limit: null, usage: 3.2, usage_daily: 0.4, is_free_tier: false } },
   measured: { freeToday: 800, freePerMinuteMax: 4, urlFetchToday: 1200, tokensToday: 5000, costToday: 0.39, longestMs: 42_000, propsBytes: 50_000 },
-  processes: { ok: false, error: 'aguardando autorização' },
-  mail: { ok: false, error: 'aguardando autorização' },
-  monitoring: { ok: false, error: 'aguardando autorização' },
-  triggers: { ok: false, error: 'aguardando autorização' },
+  // Mensagem REAL do Apps Script quando o escopo ainda não foi autorizado — não o nosso vocabulário de status.
+  // É ela que o regex PENDING precisa reconhecer; trocar isto por texto nosso faria o teste medir a si mesmo.
+  ...(() => {
+    const negado = { ok: false as const, error: 'You do not have permission to call this method. Required permissions: https://www.googleapis.com/auth/script.external_request' };
+    return { processes: negado, mail: negado, monitoring: negado, triggers: negado };
+  })(),
   ...over,
 });
 const byId = (items: ReturnType<typeof buildLimits>) => Object.fromEntries(items.map((i) => [i.id, i]));
@@ -29,41 +31,41 @@ const byId = (items: ReturnType<typeof buildLimits>) => Object.fromEntries(items
 describe('buildLimits', () => {
   test('selo por fonte: informado pelo Google/OpenRouter × medido pelo gasclaw', () => {
     const l = byId(buildLimits(input()));
-    expect(l.drive).toMatchObject({ used: 75, total: 100, level: 'amarelo', source: 'google', status: 'ok' });
-    expect(l.urlfetch).toMatchObject({ used: 1200, total: 100_000, source: 'gasclaw', level: 'verde' });
+    expect(l.drive).toMatchObject({ used: 75, total: 100, level: 'yellow', source: 'google', status: 'ok' });
+    expect(l.urlfetch).toMatchObject({ used: 1200, total: 100_000, source: 'gasclaw', level: 'green' });
     expect(l.props).toMatchObject({ used: 50_000, total: 500_000, source: 'gasclaw' });
     expect(l.runtime).toMatchObject({ used: 42_000, total: 360_000, source: 'gasclaw' });
   });
   test('requisições :free: 1000/dia com créditos, 50/dia sem; 20/min; reset à meia-noite UTC', () => {
-    expect(byId(buildLimits(input())).freeDay).toMatchObject({ used: 800, total: 1000, level: 'amarelo', source: 'gasclaw', reset: '2026-09-16T00:00:00.000Z' });
+    expect(byId(buildLimits(input())).freeDay).toMatchObject({ used: 800, total: 1000, level: 'yellow', source: 'gasclaw', reset: '2026-09-16T00:00:00.000Z' });
     const semCredito = byId(buildLimits(input({ key: { ok: true, value: { limit: null, usage: 0, usage_daily: 0, is_free_tier: true } } })));
-    expect(semCredito.freeDay).toMatchObject({ total: 50, level: 'vermelho' });
+    expect(semCredito.freeDay).toMatchObject({ total: 50, level: 'red' });
     expect(semCredito.freeMin).toMatchObject({ used: 4, total: 20 });
   });
   test('gasto do dia informado pelo OpenRouter, com o medido ao lado', () => {
-    expect(byId(buildLimits(input())).orDaily).toMatchObject({ used: 0.4, total: null, source: 'openrouter', level: 'sem limite', note: 'medido pelo gasclaw: US$ 0.39' });
+    expect(byId(buildLimits(input())).orDaily).toMatchObject({ used: 0.4, total: null, source: 'openrouter', level: 'no limit', note: 'medido pelo gasclaw: US$ 0.39' });
   });
   test('gasto do dia sem barra contra o limite total da chave (não é diário); o limite aparece na nota', () => {
     const l = byId(buildLimits(input({ key: { ok: true, value: { limit: 10, usage: 3.2, usage_daily: 0.4, is_free_tier: false } } })));
-    expect(l.orDaily).toMatchObject({ used: 0.4, total: null, level: 'sem limite' });
+    expect(l.orDaily).toMatchObject({ used: 0.4, total: null, level: 'no limit' });
     expect(l.orDaily.note).toContain('limite de crédito');
   });
   test('fontes que dependem da reautorização aparecem como pendentes, sem quebrar', () => {
     const l = byId(buildLimits(input()));
-    for (const id of ['processes', 'mail', 'monitoring', 'triggers']) expect(l[id]).toMatchObject({ status: 'pendente', level: 'sem limite' });
+    for (const id of ['processes', 'mail', 'monitoring', 'triggers']) expect(l[id]).toMatchObject({ status: 'pending', level: 'no limit' });
   });
   test('mensagem do Apps Script em português ("Você não tem permissão…") também é pendente, não erro', () => {
     const l = byId(buildLimits(input({ mail: { ok: false, error: 'Você não tem permissão para chamar MailApp.getRemainingDailyQuota. Permissões necessárias: https://www.googleapis.com/auth/script.send_mail' } })));
-    expect(l.mail).toMatchObject({ status: 'pendente', level: 'sem limite' });
+    expect(l.mail).toMatchObject({ status: 'pending', level: 'no limit' });
   });
-  test('403 por falta de faturamento no projeto GCP (Monitoring) é erro com nota clara, não "pendente" de autorização', () => {
+  test('403 por falta de faturamento no projeto GCP (Monitoring) é erro com nota clara, não "pending" de autorização', () => {
     const l = byId(buildLimits(input({ monitoring: { ok: false, error: 'monitoring 403: {"error":{"code":403,"message":"This API method requires billing to be enabled. Please enable billing on project #000000000001"}}' } })));
-    expect(l.monitoring).toMatchObject({ status: 'erro', level: 'sem limite' });
+    expect(l.monitoring).toMatchObject({ status: 'error', level: 'no limit' });
     expect(l.monitoring.note).toMatch(/faturamento/);
   });
   test('falha de uma fonte que já funcionava vira erro só nela', () => {
     const l = byId(buildLimits(input({ drive: { ok: false, error: 'Drive 500' } })));
-    expect(l.drive).toMatchObject({ status: 'erro', note: 'Drive 500' });
+    expect(l.drive).toMatchObject({ status: 'error', note: 'Drive 500' });
     expect(l.urlfetch.status).toBe('ok');
   });
   test('cotas pela conta dona do script: Workspace (padrão) × pessoal (gmail.com)', () => {
@@ -73,7 +75,7 @@ describe('buildLimits', () => {
     expect(ws.urlfetch.total).toBe(100_000);
     expect(ws.processes.total).toBe(21_600_000);
     const p = byId(buildLimits(input({ ...auth, account: 'pessoal', mail: { ok: true, value: 100 } })));
-    expect(p.mail).toMatchObject({ used: 0, total: 100, level: 'verde' });
+    expect(p.mail).toMatchObject({ used: 0, total: 100, level: 'green' });
     expect(p.urlfetch.total).toBe(20_000);
     expect(p.processes.total).toBe(5_400_000);
   });

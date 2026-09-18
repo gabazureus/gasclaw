@@ -106,7 +106,7 @@ export function pocP2(step: string | undefined, params: Record<string, string>, 
   if (step === 'auth') {
     const spaces = spacesAsChatApp();
     const trigger = ensureTrigger();
-    return { poc: 'P2', step, pass: spaces.some((s) => s.type === 'DIRECT_MESSAGE') && trigger === 'ativo', spaces: spaces.length, trigger };
+    return { poc: 'P2', step, pass: spaces.some((s) => s.type === 'DIRECT_MESSAGE') && trigger === 'active', spaces: spaces.length, trigger };
   }
   if (step === 'reset') {
     props().deleteProperty(LOCATOR); props().deleteProperty(FIRST); props().deleteProperty(RETRY);

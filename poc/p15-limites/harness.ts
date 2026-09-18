@@ -18,8 +18,8 @@ export function pocP15(step: string | undefined, _p: Record<string, string>, d: 
     return {
       poc: 'P15', step, pass: true, freshMs, cachedMaxMs: Math.max(...cached), trigger: l.trigger,
       itens: l.items.map((i) => ({ id: i.id, status: i.status, source: i.source, level: i.level, used: i.used, total: i.total, note: i.note ?? null })),
-      erros: l.items.filter((i) => i.status === 'erro').map((i) => i.id),
-      pendentesForaDaReautorizacao: l.items.filter((i) => i.status === 'pendente' && !REAUTH.includes(i.id)).map((i) => i.id),
+      erros: l.items.filter((i) => i.status === 'error').map((i) => i.id),
+      pendentesForaDaReautorizacao: l.items.filter((i) => i.status === 'pending' && !REAUTH.includes(i.id)).map((i) => i.id),
     };
   }
   if (step === 'dailyrow') {

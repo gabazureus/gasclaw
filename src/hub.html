@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <base target="_top">
 <meta charset="utf-8">
-<title>gasclaw · painéis</title>
+<title>gasclaw · panels</title>
 <style>
   body { font: 15px/1.45 system-ui, sans-serif; margin: 0; background: #f7f7f5; color: #1d1d1b; }
   main { max-width: 34rem; margin: 0 auto; padding: 1rem; }
@@ -11,18 +11,18 @@
   ul { list-style: none; padding: 0; }
   li { border-bottom: 1px solid #e5e5e0; padding: .6rem 0; }
   a:focus-visible { outline: 3px solid #0b4f8a; outline-offset: 2px; }
-  .aqui { font-weight: 600; }
+  .here { font-weight: 600; }
   .muted { color: #6b6b66; font-size: .85rem; }
   .err { color: #b3261e; font-weight: 600; }
 </style>
 </head>
 <body>
 <main>
-  <h1>🦀 gasclaw · painéis</h1>
-  <p id="msg" role="status" aria-live="polite">Carregando…</p>
+  <h1>🦀 gasclaw · panels</h1>
+  <p id="msg" role="status" aria-live="polite">Loading…</p>
   <!-- role="list": o WebKit descarta a semântica de lista quando list-style some, e aqui a contagem é o conteúdo -->
   <ul id="panels" role="list"></ul>
-  <p class="muted">Os ambientes são isolados: este hub só guarda o caminho de um para o outro — nenhum dado atravessa.</p>
+  <p class="muted">Environments are isolated: this hub only keeps the path from one to the other — no data crosses over.</p>
 </main>
 <script>
 // Nada aqui entra como HTML: só textContent e href montado a partir da URL que o servidor embutiu no build.
@@ -30,22 +30,22 @@ const $ = (id) => document.getElementById(id);
 
 function render(s) {
   // Você está no hub, não num painel: dizer "você está no painel de X" seria mentira justo na tela
-  // que existe para não confundir os ambientes.
+  // que existe para não confundir os ambientes. (Comentário em pt-BR de propósito: é documentação interna.)
   $('msg').className = '';
-  $('msg').textContent = 'Hub do ambiente ' + s.env + '.';
+  $('msg').textContent = 'Hub for the ' + s.env + ' environment.';
   $('panels').replaceChildren(...s.panels.map((p) => {
     const li = document.createElement('li');
     // todo painel é um link, inclusive o do ambiente atual: quem favorita o hub precisa de caminho para os dois
     const a = document.createElement('a');
     a.href = p.url;
     a.target = '_top';
-    a.textContent = 'Abrir o painel de ' + p.env;
+    a.textContent = 'Open the ' + p.env + ' panel';
     li.append(a);
     if (p.current) {
-      const aqui = document.createElement('span');
-      aqui.className = 'aqui';
-      aqui.textContent = ' · este é o ambiente deste hub';
-      li.append(aqui);
+      const here = document.createElement('span');
+      here.className = 'here';
+      here.textContent = ' · this is the environment this hub lives in';
+      li.append(here);
     }
     return li;
   }));

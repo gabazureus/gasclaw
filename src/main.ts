@@ -790,7 +790,7 @@ export function resetCliSecret() {
 
 export function saveKey(key: string) {
   assertOwner();
-  if (!/^sk-or-[\w-]{10,}$/.test(key.trim())) throw new Error('Chave inválida: a chave do OpenRouter começa com sk-or-');
+  if (!/^sk-or-[\w-]{10,}$/.test(key.trim())) throw new Error('Invalid key: an OpenRouter key starts with sk-or-');
   store.setApiKey(key);
   return settingsState();
 }
@@ -798,7 +798,7 @@ export function saveKey(key: string) {
 export function addAgent(url: string) {
   const me = assertOwner();
   const id = extractFolderId(url);
-  if (!id) throw new Error('URL de pasta inválida. Copie a URL da pasta no Google Drive.');
+  if (!id) throw new Error('Invalid folder URL. Copy the folder URL from Google Drive.');
   const created = seedAgent(id, me);
   const spec = loadAgent(id);
   store.saveAgents([...store.listAgents().filter((a) => a.folderId !== id), { folderId: id, name: spec.name }]);
@@ -809,7 +809,7 @@ export function addAgent(url: string) {
 export function createAgent(name: string) {
   assertOwner();
   const n = name.trim();
-  if (!validAgentName(n)) throw new Error('Nome inválido: use letras minúsculas, números e hífen (ex.: assistente).');
+  if (!validAgentName(n)) throw new Error('Invalid name: use lowercase letters, numbers and hyphens (e.g. assistant).');
   return addAgent(ensureFolderPath(agentFolderPath(n)).getId());
 }
 
@@ -830,7 +830,7 @@ export function removeAgent(folderId: string) {
  */
 function underAccessLock<T>(fn: () => T): T {
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(10_000)) throw new Error('outra mudança de acesso está em andamento; tente de novo');
+  if (!lock.tryLock(10_000)) throw new Error('another access change is in progress; try again');
   try {
     return fn();
   } finally {
@@ -873,7 +873,7 @@ export function setAgentSteps(folderId: string, steps: number | null) {
   const props = PropertiesService.getScriptProperties();
   const vazio = steps === null || steps === undefined || String(steps).trim() === ''; // campo limpo na tela = volta para a pasta
   const next = vazio ? null : parseSteps(steps);
-  if (!vazio && next === null) throw new Error('passos: use um número inteiro de 1 a 50');
+  if (!vazio && next === null) throw new Error('steps: use a whole number from 1 to 50');
   const name = agentName(folderId);
   const before = stepsOf(folderId);
   const t = runlog.begin('config', { question: `passos de ${name}: ${before ?? 'da pasta'} → ${next ?? 'da pasta'}`, agent: name });
@@ -933,9 +933,9 @@ export function setAgentUser(folderId: string, email: string, allowed: boolean) 
  */
 function setTools(folder: string, set: string) {
   const folderId = folder || store.listAgents()[0]?.folderId || '';
-  if (!folderId) return { ok: false, status: 400, error: 'nenhum agente registrado' };
+  if (!folderId) return { ok: false, status: 400, error: 'no agent registered' };
   const pedido = set.trim();
-  if (!pedido) return { ok: false, status: 400, error: 'use set=all, set=none ou set=<nomes separados por vírgula>' };
+  if (!pedido) return { ok: false, status: 400, error: 'use set=all, set=none or set=<comma-separated names>' };
   const names = pedido === 'all' ? toolCatalog().map((t) => t.name) : pedido === 'none' ? [] : pedido.split(',').map((x) => x.trim()).filter(Boolean);
   const props = PropertiesService.getScriptProperties();
   return underAccessLock(() => {

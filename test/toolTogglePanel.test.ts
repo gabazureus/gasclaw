@@ -45,8 +45,8 @@ describe('setAgentTool: liga/desliga UMA ferramenta', () => {
   test('recusa nome fora do registry, e não grava nada (a tela não pode ligar o que o motor não conhece)', async () => {
     env.props['ACCESS:f1'] = '{"users":[],"tools":["now"]}';
     const { setAgentTool } = await main();
-    expect(() => setAgentTool('f1', 'http.get', true)).toThrow(/desconhecida/);
-    expect(() => setAgentTool('f1', 'gmail', true)).toThrow(/desconhecida/); // grupo não é ferramenta
+    expect(() => setAgentTool('f1', 'http.get', true)).toThrow(/unknown tool/);
+    expect(() => setAgentTool('f1', 'gmail', true)).toThrow(/unknown tool/); // grupo não é ferramenta
     expect(access().tools).toEqual(['now']);
   });
 

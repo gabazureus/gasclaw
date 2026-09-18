@@ -403,12 +403,12 @@ cmd_up() {
   # O gatilho de 1 min e o worker: sem ele o agente e instalado e NUNCA responde. `up` dizia "pronto" do mesmo
   # jeito, porque nada aqui olhava para isso.
   case "$limites" in
-    *'"trigger":"ativo"'*) ok "gatilho de 1 min ativo" ;;
+    *'"trigger":"active"'*) ok "gatilho de 1 min ativo" ;;
     '') warn "nao consegui conferir o gatilho de 1 min (abra a tela do gasclaw uma vez: ela cria o gatilho)" ;;
     *) warn "gatilho de 1 min NAO esta ativo: os agentes nao vao responder. Abra $(url) — a tela cria o gatilho ao abrir" ;;
   esac
   # consentimento granular: escopo sem autorização vira exceção capturada, e o Google não pede sozinho
-  if printf '%s' "$limites" | grep -q '"status":"pendente"'; then
+  if printf '%s' "$limites" | grep -q '"status":"pending"'; then
     warn "faltam permissões do Google: abra https://script.google.com/home/projects/$(var "SCRIPT_ID_$UP")/edit → arquivo _motor.gs → no menu de funções escolha \"authorize\" → ▶ Executar → Permitir (ou use \"Autorizar permissões\" no topo da tela)"
   fi
   if [ -n "${OPENROUTER_API_KEY:-}" ]; then
@@ -505,7 +505,7 @@ cmd_limits() { # painel de limites no terminal (cache de 10 min; --fresh ignora)
   local fresh=""
   for a in "$@"; do [ "$a" = "--fresh" ] && fresh="&fresh=1"; done
   remote "limits$fresh" | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);if(!r.ok){console.error(r.error);process.exit(1)}
-const C={verde:"\x1b[32m",amarelo:"\x1b[33m",vermelho:"\x1b[31m","sem limite":"\x1b[2m"},Z="\x1b[0m",S={google:"Google",openrouter:"OpenRouter",gasclaw:"medido"};
+const C={green:"\x1b[32m",yellow:"\x1b[33m",red:"\x1b[31m","no limit":"\x1b[2m"},Z="\x1b[0m",S={google:"Google",openrouter:"OpenRouter",gasclaw:"medido"};
 for(const i of r.items){const pct=i.total&&i.used!==null?Math.min(100,Math.round(i.used/i.total*100)):null;const bar=pct===null?"          ":"█".repeat(Math.round(pct/10)).padEnd(10,"░");
 console.log(`${C[i.level]}${bar}${Z} ${String(pct===null?"—":pct+"%").padStart(4)}  ${i.label} · ${i.status==="ok"?`${i.used} / ${i.total??"∞"} ${i.unit}`:i.status.toUpperCase()} · [${S[i.source]}]${i.reset?" · reset "+i.reset:""}${i.note?" · "+i.note:""}`)}
 console.log(`\ngatilho: ${r.trigger} · ${r.cached?"do cache (10 min)":"lido agora"} · ${new Date(r.at).toLocaleString("pt-BR")}`)})'

@@ -60,7 +60,7 @@ describe('P21 · telas', () => {
 
   test('o menu tem os quatro itens combinados e marca o ativo com aria-current', () => {
     const html = settings();
-    for (const id of ['nav-inicio', 'nav-agentes', 'nav-observabilidade', 'nav-testar']) expect(html).toContain(id);
+    for (const id of ['nav-home', 'nav-agents', 'nav-observability', 'nav-test']) expect(html).toContain(id);
     expect(html).toContain('aria-current');
   });
 
@@ -79,7 +79,7 @@ describe('P21 · telas', () => {
 
   test('o rótulo do ambiente é anunciado como tal e distingue prod visualmente', () => {
     const html = settings();
-    expect(html).toContain('<span class="sr">ambiente: </span>');
+    expect(html).toContain('<span class="sr">environment: </span>');
     expect(html).toMatch(/\.env\.prod \{/);
     expect(html).toMatch(/\$\('envBadge'\)\.className = 'env ' \+ s\.env/);
   });

@@ -1,9 +1,9 @@
 // Painel de limites (ADR-016), núcleo puro: junta leituras informadas (Google/OpenRouter) e medidas (gasclaw)
 // em itens com barra verde/amarela/vermelha, reset e selo da fonte. A borda que lê cada fonte fica em observe.ts.
 
-export type Level = 'verde' | 'amarelo' | 'vermelho' | 'sem limite';
+export type Level = 'green' | 'yellow' | 'red' | 'no limit';
 export type Source = 'google' | 'openrouter' | 'gasclaw';
-export type Status = 'ok' | 'pendente' | 'erro';
+export type Status = 'ok' | 'pending' | 'error';
 export type Read<T> = { ok: true; value: T } | { ok: false; error: string };
 export type LimitItem = { id: string; label: string; used: number | null; total: number | null; unit: string; level: Level; reset: string | null; source: Source; status: Status; note?: string };
 
@@ -31,9 +31,9 @@ export type LimitsInput = {
 };
 
 export function level(used: number | null, total: number | null): Level {
-  if (total === null || used === null || total <= 0) return 'sem limite';
+  if (total === null || used === null || total <= 0) return 'no limit';
   const r = used / total;
-  return r < 0.7 ? 'verde' : r < 0.9 ? 'amarelo' : 'vermelho';
+  return r < 0.7 ? 'green' : r < 0.9 ? 'yellow' : 'red';
 }
 
 export const nextUtcMidnight = (now: number) => {
@@ -48,10 +48,10 @@ const BILLING = /billing/i; // Cloud Monitoring responde 403 "requires billing t
 
 function item(id: string, label: string, unit: string, source: Source, r: Read<unknown>, used: number | null, total: number | null, reset: string | null, note?: string): LimitItem {
   const err = r.ok ? '' : (r as { error: string }).error;
-  const status: Status = r.ok ? 'ok' : BILLING.test(err) ? 'erro' : PENDING.test(err) ? 'pendente' : 'erro';
+  const status: Status = r.ok ? 'ok' : BILLING.test(err) ? 'error' : PENDING.test(err) ? 'pending' : 'error';
   const ok = status === 'ok';
   const errNote = BILLING.test(err) ? `precisa de faturamento ativo no projeto do Google Cloud (decisão sua); ${err.slice(0, 120)}` : err;
-  return { id, label, used: ok ? used : null, total, unit, level: ok ? level(used, total) : 'sem limite', reset, source, status, ...(ok ? (note ? { note } : {}) : { note: errNote }) };
+  return { id, label, used: ok ? used : null, total, unit, level: ok ? level(used, total) : 'no limit', reset, source, status, ...(ok ? (note ? { note } : {}) : { note: errNote }) };
 }
 
 const OK: Read<null> = { ok: true, value: null };
