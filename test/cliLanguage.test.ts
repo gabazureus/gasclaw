@@ -23,13 +23,41 @@ const PT_WORDS = new RegExp(
     'implantaca?o|implantacoes|versao|versoes|permissoes|funcoes|orfao|entrada|saida|corrigir|mente|precisa|' +
     'tentativa|tentativas|desconhecid[oa]|inesperad[oa]|recusad[oa]|indisponivel|pendente|conta|ambiente|projeto|' +
     'sucesso|configurad[oa]|salvo|salva|erro|usando|seu|sua|seus|suas|este|esta|isso|pelo|pela|quando|' +
-    'todos|todas|nov[oa]|mensagem|mensagens|resposta|respostas|primeiro|primeira|segunda)' + // sem `agente(s)`: e identificador aqui (o prefixo legado `agentes/` das pastas), nao prosa
+    'todos|todas|nov[oa]|mensagem|mensagens|resposta|respostas|primeiro|primeira|segunda|' +
+    // Palavras de função e verbos de instrução, que a morfologia não pega porque a terminação é banal
+    // (`aguarde`, `instante`). Nenhuma colide com inglês — `ate` ficou DE FORA de propósito: é o passado
+    // de "eat". Pelo mesmo motivo não entram `um`/`uma` sozinhos aqui, e sim como palavra inteira.
+    'um|uma|nenhum|nenhuma|nada|tudo|aqui|abaixo|acima|desde|onde|agora|voce|sera|serao|foi|foram|sao|' +
+    'seja|pode|podem|deve|devem|muito|muita|cada|outro|outra|apenas|talvez|aguarde|aguarda|digite|' +
+    'escolha|selecione|copie|informe|instante|codigo|endereco|estado|nuvem|modelo|painel|servidor)' + // sem `agente(s)`: e identificador aqui (o prefixo legado `agentes/` das pastas), nao prosa
     '(?:[^a-zA-Z]|$)',
   'i',
 );
 
+// A lista de palavras é uma peneira: ela só pega o português que alguém JÁ escreveu e lembrou de listar.
+// Um ataque com 26 frases novas (português inteiro, sem um acento) passou 24. O buraco não é de conteúdo,
+// é de método — lista não generaliza. O que generaliza é MORFOLOGIA: gerúndio (`-ando/-endo/-indo`),
+// substantivo em `-ção/-ções` sem acento (`-cao/-coes`), `-mente`, `-agem`, `-ncia`, `-ível/-ável` e o
+// pretérito em `-iu`. Essas terminações quase não existem em inglês, então pegam palavra que ninguém listou.
+// O pretérito (`-ou`, `-eu`, `-iu`: expirou, respondeu, abriu) entra junto. `you` só não vira português
+// porque o `(?=.{5,})` exige 5 letras — é essa guarda que torna `-ou` seguro, não a sorte.
+// Particípio (`-ado/-ada/-ido/-ida`: concluida, configurado) fecha a última família. Ele é o mais
+// arriscado do conjunto — `tornado` e `armada` são inglesas — por isso vem com a lista de exceção abaixo.
+const PT_SUFFIX =
+  /^(?=.{5,})[a-z]+(?:ando|endo|indo|acao|acoes|coes|mente|agem|agens|ncia|ncias|ivel|avel|ado|ada|ido|ida|ou|eu|iu)$/;
+// As poucas palavras inglesas que caem nas terminações acima. Sem isto, `travel` viraria português.
+const ENGLISH_OK = new Set([
+  'travel', 'unravel', 'commando', 'crescendo', 'innuendo', 'tornado', 'avocado', 'aficionado',
+  'bayou', 'caribou', 'manitou', 'milieu', 'adieu', 'thankyou',
+  'tornado', 'bravado', 'desperado', 'armada', 'canada', 'florida', 'candida', 'valid', 'rapid',
+]);
+
+function hasPortugueseMorphology(text: string): boolean {
+  return (text.toLowerCase().match(/[a-z]+/g) ?? []).some((w) => PT_SUFFIX.test(w) && !ENGLISH_OK.has(w));
+}
+
 function isPortuguese(text: string): boolean {
-  return ACCENTED.test(text) || PT_WORDS.test(text);
+  return ACCENTED.test(text) || PT_WORDS.test(text) || hasPortugueseMorphology(text);
 }
 
 // Corta o comentário do fim da linha ANTES de olhar as aspas. Sem isto, o `#` dentro de aspas (`${bad# }`)
@@ -110,6 +138,37 @@ describe('idioma da CLI (a vitrine é em inglês; comentário de código continu
     expect(isPortuguese('nova mensagem salva')).toBe(true);
   });
 
+  // Segundo ataque (18/09), com frases DIFERENTES das de cima: 26 frases, 24 passaram pela lista de
+  // palavras. Nenhuma tem acento e nenhuma usa palavra listada — o que as denuncia é a TERMINAÇÃO.
+  // Ficam aqui inteiras: é este o corpus que a próxima mexida no detector tem que continuar pegando.
+  test('pega português que a lista de palavras deixou passar (morfologia)', () => {
+    for (const frase of [
+      'o agente respondeu',
+      'aguarde um instante',
+      'iniciando o servidor',
+      'nenhum agente encontrado',
+      'aplicando as mudancas',
+      'digite o nome do agente',
+      'escolha uma opcao',
+      'leitura concluida',
+      'publicando o codigo',
+      'baixando dependencias',
+      'verificando se o worker existe',
+      'o painel abriu normalmente',
+      'reiniciando em cinco segundos',
+      'copie o endereco abaixo',
+      'selecione um modelo',
+      'removendo o bloqueio',
+      'a autorizacao expirou',
+      'sincronizando com a nuvem',
+      'gravando o estado',
+      'carregando as definicoes',
+      'nenhuma alteracao detectada',
+    ]) {
+      expect(isPortuguese(frase), `escapou do detector: ${frase}`).toBe(true);
+    }
+  });
+
   // O outro lado do mesmo risco: uma lista ampla demais acusa inglês legítimo e a trava vira ruído.
   test('não acusa inglês nem o que parece português mas não é', () => {
     for (const ingles of [
@@ -118,8 +177,14 @@ describe('idioma da CLI (a vitrine é em inglês; comentário de código continu
       'error: the OpenRouter key must start with sk-or-',
       'run ./gasclaw onboard to see the setup map',
       'deployment 87 verified: identical to the build',
+      // Inglês que cai nas terminações novas: `travel` casa com `-avel`, `commando` com `-ando`.
+      'travel time is not measured here',
+      'no agent found on this account',
+      'choose a model and press Enter',
+      'nothing changed since the last run',
+      'waiting for the lock: another deploy is running',
     ]) {
-      expect(isPortuguese(ingles)).toBe(false);
+      expect(isPortuguese(ingles), `acusou inglês legítimo: ${ingles}`).toBe(false);
     }
   });
 

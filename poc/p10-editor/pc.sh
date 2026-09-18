@@ -51,7 +51,7 @@ HEAD_TRIES=0 # a execução 2 levou um 404 isolado no /dev; 24 chamadas seguidas
 until [ "$HEAD_TRIES" -ge 3 ]; do
   HEAD_TRIES=$((HEAD_TRIES + 1))
   HEAD_ID=$(clasp_ list-deployments | grep '@HEAD' | grep -oE 'AKfy[A-Za-z0-9_-]+' | head -1)
-  if at "https://script.google.com/a/macros/${DOMAIN:-}/s/$HEAD_ID/dev" "&mark=$MARK&runs=1" > "$T/c4-head.json"; then break; fi
+  if at "$(dev_url "$HEAD_ID")" "&mark=$MARK&runs=1" > "$T/c4-head.json"; then break; fi
   warn "read (@HEAD) falhou (tentativa $HEAD_TRIES de 3)"
   [ "$HEAD_TRIES" -lt 3 ] && sleep 5
 done
