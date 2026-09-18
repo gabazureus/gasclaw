@@ -125,15 +125,44 @@ export function mergeConfig(frontmatter: Record<string, string | string[]>, rows
   return { model, suggested: { users, tools }, ...(steps === null ? {} : { steps }) };
 }
 
+/**
+ * Reparte o orçamento entre os papéis presentes sem deixar um papel guloso zerar o seguinte (max-min fair).
+ *
+ * Quem pede menos que a cota leva tudo que pediu; a sobra é redividida entre os que ainda querem mais. A
+ * divisão anterior era gulosa e em ORDEM: 20 KB por arquivo × 4 papéis não cabem nos 60 KB do total, então
+ * três arquivos cheios zeravam o quarto — e o quarto é o USER.md. Como a pasta é compartilhável (ADR-021),
+ * bastava alguém encher o AGENTS.md para apagar do prompt quem é o usuário, sem tocar no arquivo dele.
+ */
+function fairShare(wants: number[], total: number): number[] {
+  const alloc = wants.map(() => 0);
+  let pendentes = wants.map((w, i) => ({ i, w })).filter((x) => x.w > 0);
+  let restante = total;
+  while (pendentes.length > 0) {
+    const cota = Math.floor(restante / pendentes.length);
+    const cabem = pendentes.filter((x) => x.w <= cota);
+    if (cabem.length === 0) {
+      pendentes.forEach((x) => (alloc[x.i] = cota));
+      break;
+    }
+    cabem.forEach((x) => {
+      alloc[x.i] = x.w;
+      restante -= x.w;
+    });
+    pendentes = pendentes.filter((x) => x.w > cota);
+  }
+  return alloc;
+}
+
 export function buildSpec(folderId: string, name: string, texts: Partial<Record<Role, string>>, configRows?: string[][]): AgentSpec {
   const { data, body } = parseFrontmatter(texts.AGENTS ?? '');
-  let total = 0;
-  const parts = ROLES.map((r) => {
-    const text = r === 'AGENTS' ? (texts.AGENTS === undefined ? undefined : body) : texts[r];
+  const textos = ROLES.map((r) => (r === 'AGENTS' ? (texts.AGENTS === undefined ? undefined : body) : texts[r]));
+  const cotas = fairShare(textos.map((t) => (t === undefined ? 0 : Math.min(t.length, MAX_FILE))), MAX_TOTAL);
+  const parts = ROLES.map((r, k) => {
+    const text = textos[k];
     if (text === undefined) return `## ${r}.md\n(missing)`;
-    const cut = text.slice(0, Math.max(0, Math.min(MAX_FILE, MAX_TOTAL - total)));
-    total += cut.length;
-    return `## ${r}.md\n${cut}`;
+    const cut = text.slice(0, cotas[k]);
+    // Cortar em silêncio era metade do defeito: nem o modelo nem o dono sabiam que faltava pedaço.
+    return `## ${r}.md\n${cut}${cut.length < text.length ? '\n(cortado: o arquivo não cabe no orçamento do prompt)' : ''}`;
   });
   return { folderId, name, config: mergeConfig(data, configRows), system: parts.join('\n\n'), access: effectiveAccess(null) };
 }
