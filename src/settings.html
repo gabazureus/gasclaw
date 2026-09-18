@@ -163,12 +163,6 @@
     <pre id="answer" hidden aria-live="polite"></pre>
   </section>
 
-  <section>
-    <h2>POC P1 — long UrlFetch</h2>
-    <p>Asks OpenRouter for a long answer and measures the time. Pass: over 60 s without an error.</p>
-    <button class="sec" id="poc">Run POC P1</button>
-    <pre id="pocOut" hidden></pre>
-  </section>
   </div>
 
 </main>
@@ -440,12 +434,6 @@
       if (r.runId) { pendingOpen = r.runId; poll(); }
     });
   };
-  $('poc').onclick = () => call('pocUrlFetchTimeout').then((r) => {
-    $('pocOut').hidden = false;
-    $('pocOut').textContent = JSON.stringify(r, null, 2);
-    $('msg').textContent = r.pass ? 'POC P1 passed ✅' : 'POC P1 did not meet the criterion';
-  });
-
   // ---------- Ao vivo: polling de 5 s só com a aba visível ----------
   const ICON = { running: '⏳', ok: '✅', error: '❌' };
   let liveTimer = null;

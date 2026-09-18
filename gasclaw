@@ -82,6 +82,16 @@ TARGET=dev
 for a in "$@"; do [ "$a" = "--prod" ] && TARGET=prod; done
 UP=$(printf '%s' "$TARGET" | tr '[:lower:]' '[:upper:]')
 
+# `set -E` + `trap ERR`: sem isto, QUALQUER comando com codigo != 0 fora de um `if`/`||` mata o script em
+# silencio, por causa do `set -e` la em cima. Foi assim que a instalacao nova morria no `find` do
+# keep_editor_agents — terminal mudo, indistinguivel de "ainda processando", e 10 minutos para descobrir.
+# O `ERR` nao dispara em `a || b`, dentro de `if`, nem em comando negado, que e exatamente o que queremos:
+# so falha NAO TRATADA fala. `die` usa `exit`, que nao e ERR, entao a mensagem dele nao duplica.
+set -E
+# `BASH_SUBSHELL`: quando a falha acontece dentro de `$( )`, o ERR dispara no subshell E no pai, e a mensagem
+# saia duplicada. So o nivel de cima fala.
+trap 'rc=$?; if [ "${BASH_SUBSHELL:-0}" -eq 0 ]; then printf "\033[31m✗ gasclaw stopped unexpectedly near line %s (exit %s). Logs are in .tmp/ — please report this with the lines above.\033[0m\n" "$LINENO" "$rc" >&2; fi' ERR
+
 say()  { printf '\033[1;36m▸ %s\033[0m\n' "$*"; }
 ok()   { printf '\033[32m✓ %s\033[0m\n' "$*"; }
 warn() { printf '\033[33m! %s\033[0m\n' "$*"; }
@@ -411,7 +421,11 @@ keep_editor_agents() { # ADR-013: o push --force troca o HEAD inteiro; antes, tr
   mkdir -p "$r"
   pull_into "$r"
   if [ -d "$r/agentes" ]; then cp -R "$r/agentes" dist/; fi
-  n=$(find dist/agentes -type f 2>/dev/null | wc -l | tr -d ' ')
+  # Numa instalacao NOVA o script remoto nao tem `agentes/`, entao `dist/agentes` nao existe e o `find` sai
+  # != 0. Com `pipefail` o pipe inteiro vira != 0 e o `set -e` matava o `./gasclaw up` AQUI, sem imprimir
+  # nada: o log parava em "build (right before the push)" e nada era publicado. O `2>/dev/null` escondia a
+  # mensagem do find, mas nao o codigo de saida — quem silencia o erro tem de tratar o codigo.
+  n=$( { find dist/agentes -type f 2>/dev/null || true; } | wc -l | tr -d ' ')
   ok "editor files preserved: $n"
 }
 

@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, test } from 'vitest';
+import { baseEnv } from './cliEnv';
 
 // O `gasclaw` é um arquivo bash de 43 KB e NENHUM teste de vitest o executava: a suíte inteira olhava o TS,
 // e a conta pessoal (Gmail) — a forma da URL do web app, o tipo de conta, o sistema operacional — mora só
@@ -21,6 +22,7 @@ const DEFS = LINES.slice(0, DISPATCH).join('\n');
 const dirs: string[] = [];
 afterAll(() => dirs.forEach((d) => rmSync(d, { recursive: true, force: true })));
 
+
 function sh(snippet: string, env: Record<string, string> = {}, envFile = ''): string {
   const dir = mkdtempSync(join(tmpdir(), 'gasclaw-cli-'));
   dirs.push(dir);
@@ -29,7 +31,7 @@ function sh(snippet: string, env: Record<string, string> = {}, envFile = ''): st
   return execFileSync('bash', ['-c', `source ./gasclaw; ${snippet}`], {
     cwd: dir,
     encoding: 'utf8',
-    env: { ...process.env, ...env, HOME: dir },
+    env: { ...baseEnv(), ...env, HOME: dir }, // `...env` continua sobrepondo: há teste que passa GASCLAW_OS de propósito
   }).trim();
 }
 
@@ -179,7 +181,7 @@ describe('Windows: executável com sufixo .cmd/.exe', () => {
     return execFileSync('bash', ['-c', `export PATH="${bin}:$PATH"; source ./gasclaw; ${snippet}`], {
       cwd: dir,
       encoding: 'utf8',
-      env: { ...process.env, ...env, HOME: dir },
+      env: { ...baseEnv(), ...env, HOME: dir },
     }).trim();
   }
 
