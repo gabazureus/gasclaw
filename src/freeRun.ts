@@ -33,7 +33,7 @@ export function runFree(call: (model: string) => Completion, o: { tools: boolean
   const q = quota(freeQuotaNow());
   if (q.blocked) throw new Error(`rodízio gratuito indisponível agora: ${q.note}`);
   const candidates = freeOrder(listModels(), { tools: o.tools, minCtx: MIN_CTX, now, failed: freeFailures() }).map((m) => m.id);
-  const r = rotate(candidates, call, MAX_TRIES);
-  for (const f of r.fallback) noteFreeFailure(f.model, now);
+  // Avisado tentativa a tentativa, e não pelo retorno: quando os 3 falham, `rotate` lança e o retorno nunca vem.
+  const r = rotate(candidates, call, MAX_TRIES, (f) => noteFreeFailure(f.model, now));
   return r.fallback.length ? { ...r.value, model: r.value.model ?? r.model, fallback: r.fallback } : r.value;
 }

@@ -47,7 +47,15 @@ export type Rotated<T> = { value: T; model: string; fallback: Attempt[] };
  * Chama `call` com cada candidato até um responder, no máximo `max` tentativas.
  * Devolve o modelo que respondeu e o caminho percorrido (`fallback[]`, que vai para o span llm_call).
  */
-export function rotate<T>(candidates: string[], call: (model: string) => T, max: number): Rotated<T> {
+/**
+ * `onFail` avisa CADA tentativa falha no momento em que ela falha.
+ *
+ * Antes, quem chamava só via as falhas pelo `fallback` do retorno — e quando TODOS os candidatos falhavam a
+ * função lançava, então o retorno nunca chegava e a penalização nunca acontecia. Os mesmos modelos mortos
+ * voltavam a ser tentados a cada turno, para sempre. Registrar é secundário; responder não é, então um aviso
+ * que lance é engolido aqui — quem chama não precisa lembrar de se proteger.
+ */
+export function rotate<T>(candidates: string[], call: (model: string) => T, max: number, onFail?: (a: Attempt) => void): Rotated<T> {
   if (!candidates.length) throw new Error('rodízio: nenhum modelo gratuito serve para este agente (veja a aba Modelos e custo)');
   const fallback: Attempt[] = [];
   let last: Error | null = null;
@@ -57,8 +65,14 @@ export function rotate<T>(candidates: string[], call: (model: string) => T, max:
     } catch (err) {
       const error = (err as Error).message;
       last = err as Error;
-      if (classify(error) === 'para') throw err;
-      fallback.push({ model, error });
+      if (classify(error) === 'para') throw err; // não é falha do modelo: não penaliza
+      const attempt = { model, error };
+      fallback.push(attempt);
+      try {
+        onFail?.(attempt);
+      } catch {
+        // penalizar um modelo nunca pode impedir a próxima tentativa
+      }
     }
   }
   throw last ?? new Error('rodízio: nenhuma tentativa foi feita');
