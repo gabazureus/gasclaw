@@ -258,3 +258,31 @@ describe('chegar ao agente sem digitar o link', () => {
     expect(FULL).toContain('./gasclaw open --chat');
   });
 });
+
+// O `build.mjs` embute cinco valores no bundle a partir do AMBIENTE (`process.env`). Um `npm run build`
+// solto, num shell onde `CHAT_SA_EMAIL` ficou exportado de uma sessão anterior, embute aquele valor —
+// medido: ele aparece duas vezes no `_motor.js`. O que impede isso de chegar à produção é o `deploy()`
+// EXPORTAR cada um deles explicitamente por ambiente, inclusive vazio: o valor herdado nunca sobrevive.
+//
+// É uma invariante frágil por natureza (some se alguém apagar uma linha), e o custo de perdê-la é um
+// bundle de prod carregando a identidade do dev. Por isso ela é travada aqui, e não só comentada.
+describe('o build não herda valor do shell', () => {
+  test('o deploy define TODAS as variáveis embutidas no bundle, por ambiente', () => {
+    const deploy = FULL.slice(FULL.indexOf('\ndeploy() {'), FULL.indexOf('OUT_DIR=dist npm run build'));
+    expect(deploy.length).toBeGreaterThan(100);
+    for (const v of ['GCP_NUMBER', 'CHAT_SA_EMAIL', 'GASCLAW_DEV', 'GASCLAW_ENV', 'SIBLING_URL']) {
+      expect(deploy, `o deploy não exporta ${v}: o build passaria a herdar o valor do shell`).toMatch(
+        new RegExp(`export ${v}=`),
+      );
+    }
+  });
+
+  // Só o que é EMBUTIDO no bundle (bloco `define`) entra nesta conta. O `OUT_DIR` também vem do ambiente,
+  // mas é caminho de saída: o deploy o passa na própria linha de comando e ele não vai para dentro do .js.
+  test('as embutidas no bundle são exatamente as cinco que o deploy exporta', () => {
+    const build = readFileSync('build.mjs', 'utf8');
+    const define = build.slice(build.indexOf('define: {'), build.indexOf('minify:'));
+    const lidas = [...define.matchAll(/process\.env\.([A-Z_]+)/g)].map((m) => m[1]);
+    expect([...new Set(lidas)].sort()).toEqual(['CHAT_SA_EMAIL', 'GASCLAW_DEV', 'GASCLAW_ENV', 'GCP_NUMBER', 'SIBLING_URL']);
+  });
+});
