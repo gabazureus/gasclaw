@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/cover.png" alt="gasclaw — AI agents that live entirely inside Google Apps Script: an agent is a Google Drive folder of markdown files, and you talk to it in Google Chat" width="100%">
+</p>
+
 # gasclaw
 
 **Agentes de IA que vivem inteiramente dentro do Google Apps Script. Sem servidor, sem hospedagem: um agente é uma pasta do Google Drive, e você conversa com ele pelo Google Chat.**
