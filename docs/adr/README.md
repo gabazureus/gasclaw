@@ -38,3 +38,4 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [032](032-portabilidade-linux-e-windows.md) | A CLI sai do macOS: Linux e Windows (WSL e Git Bash) | Aceito no código; falta rodar em Linux e Windows |
 | [033](033-cli-e-painel-em-ingles.md) | A vitrine em inglês: CLI e painel | Aceito; amplia a exceção de idioma do ADR-011 |
 | [034](034-modelo-da-pasta-conferido.md) | O modelo pedido pela pasta é conferido, e cai no padrão quando não serve | Aceito |
+| [035](035-procedencia-dos-papeis-no-painel.md) | A procedência de cada papel aparece no painel | Aceito |

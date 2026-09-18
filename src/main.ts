@@ -1098,6 +1098,11 @@ export function agentModel(folderId: string) {
     folderId,
     name: spec.name,
     fromFolder: spec.config.model,
+    // ADR-035: de onde veio CADA papel (editor, Doc, .md ou ausente). Renomear a pasta desliga os papéis do
+    // editor em silêncio e a precedência desce para os `.md`, que são editáveis por quem tem a pasta. O dado
+    // já existia e parava no trace; sem ele na tela, a queda de confiança das instruções é invisível.
+    origem: spec.origem,
+    ...(spec.editorError ? { editorError: spec.editorError } : {}),
     override: getOverride(folderId),
     tools: spec.access.tools,
     models: openRouterModels(),

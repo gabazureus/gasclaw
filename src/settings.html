@@ -126,6 +126,7 @@
       <label for="modelAgent">Agent</label>
       <select id="modelAgent"></select>
       <p id="modelNow" aria-live="polite"></p>
+<p id="modelOrigin" aria-live="polite" class="dim"></p>
       <label for="modelPick">Pick a model here (price per 1M tokens: input / output)</label>
       <input id="modelPick" list="modelList" placeholder="e.g. openai/gpt-4o-mini · or free" autocomplete="off">
       <p class="hint">Type <code>free</code> for the rotation: gasclaw uses the best free model that works and moves on to the next one if it fails.</p>
@@ -560,6 +561,7 @@
     $('modelNow').textContent = 'From the folder (AGENTS/spreadsheet): ' + m.fromFolder + ' · Picked here: ' + (m.override || '— (uses the folder one)')
       + (m.tools.length ? ' · tools: ' + m.tools.join(', ') : '')
       + (m.lastModel ? ' · last run: ' + m.lastModel : '');
+    showOrigin(m);
     $('modelReset').disabled = !m.override;
     if ($('modelList').children.length !== m.models.length + 1) {
       $('modelList').replaceChildren(
@@ -567,6 +569,21 @@
         ...m.models.map((x) => el('option', { value: x.id, label: (x.free ? 'free' : 'US$ ' + x.inM + ' / ' + x.outM) + (x.tools ? ' · tools' : '') + ' · ' + Math.round(x.ctx / 1000) + 'k' })),
       );
     }
+  }
+  // De onde veio cada papel. Renomear a pasta desliga os papéis do editor em silêncio: a precedência desce
+  // para os arquivos da pasta, que qualquer pessoa com acesso a ela pode editar. Por PALAVRA, nunca só por
+  // cor — quem lê a tela com leitor de tela, ou não distingue cores, precisa da mesma informação.
+  const ORIGIN_LABEL = { editor: 'Apps Script editor', doc: 'Google Doc', md: 'Drive file (.md)', missing: 'not found' };
+  function showOrigin(m) {
+    const o = m.origem || {};
+    const roles = ['AGENTS', 'SOUL', 'IDENTITY', 'USER'].filter((r) => o[r]);
+    if (!roles.length) { $('modelOrigin').textContent = ''; return; }
+    const partes = roles.map((r) => r + ': ' + (ORIGIN_LABEL[o[r]] || o[r]));
+    // O aviso só aparece quando há papel vindo da pasta — é aí que ele tem consequência.
+    const daPasta = roles.some((r) => o[r] === 'md' || o[r] === 'doc');
+    $('modelOrigin').textContent = 'Where each role comes from — ' + partes.join(' · ')
+      + (daPasta ? ' · Files in the folder can be edited by anyone you share the folder with; roles written in the Apps Script editor cannot.' : '')
+      + (m.editorError ? ' · Could not read the Apps Script editor: ' + m.editorError : '');
   }
   function loadModel() { if ($('modelAgent').value) quiet('agentModel', $('modelAgent').value).then(showModel).catch((e) => { $('modelNow').textContent = e.message; }); }
   $('modelAgent').onchange = loadModel;
