@@ -146,7 +146,10 @@ remote_to() { # $1 URL base (…/exec ou …/dev) · $2 "acao&a=b" (já no forma
   # GET e o web app responde 405 — foi o que aconteceu com `tools`. Mexeu lá, mexe aqui.
   case " eval poc enable disable drain step tools " in
     *" $action "*) # M1: ação com efeito → POST; parâmetros no corpo; token e segredo pelo stdin, nunca em argv nem na URL
-      [ -n "${CLI_SECRET:-}" ] || { die "sem CLI_SECRET no .env.local: rode ./gasclaw up (ele gera e registra o segredo)"; return 1; }
+      # `return 1`, nunca `die`: quem chama guarda com `|| true` e `die` faz `exit`, que `|| true` NAO captura.
+      # Com o `2>&1` do chamador engolindo a mensagem, o ./gasclaw up morria mudo aqui e pulava health,
+      # aviso de permissoes e a copia da chave do OpenRouter — parecendo que tinha terminado.
+      [ -n "${CLI_SECRET:-}" ] || { printf 'sem CLI_SECRET no .env.local: rode ./gasclaw up (ele gera e registra o segredo)\n' >&2; return 1; }
       gfetch "$t" "$1" "action=$2" "$CLI_SECRET" ;;
     *) # leitura → GET; token pelo stdin
       gfetch "$t" "$1?action=$2" "" ;;
@@ -335,7 +338,9 @@ check_bundle() { # $1 sha do build. A v18 saiu com o bundle da v17 porque o dist
   done
   [ -z "$missing" ] || die "bundle desatualizado: faltam em dist/_motor.js:$missing"
   [ "$(shasum -a 256 dist/_motor.js dist/appsscript.json | cut -d' ' -f1 | tr '\n' ' ')" = "$1" ] || die "dist/ mudou entre o build e o push (npm test, build ou clasp rodando em paralelo?): não publico"
-  ok "bundle conferido: $(grep -c '^export function' src/main.ts) funções globais, $(wc -c < dist/_motor.js | tr -d ' ') bytes"
+  # Conta os INVOLUCROS que o build realmente emitiu, nao um regex proprio sobre o main.ts: essa era a terceira
+  # copia da mesma regra (build.mjs e o proprio main.ts sao as outras) e ja divergia — dizia 39 para 41.
+  ok "bundle conferido: $(grep -c '^function .*return gasclaw\.' dist/_motor.js) funções globais, $(wc -c < dist/_motor.js | tr -d ' ') bytes"
 }
 
 version_label() { # SHA do commit, com -dirty se src/ ou o manifesto têm mudança não commitada
@@ -392,8 +397,18 @@ cmd_up() {
   authorize
   remote enable >/dev/null 2>&1 || true
   health
+  # Uma leitura so, usada para as duas conferencias.
+  local limites
+  limites=$(remote "limits&fresh=1" 2>/dev/null || true)
+  # O gatilho de 1 min e o worker: sem ele o agente e instalado e NUNCA responde. `up` dizia "pronto" do mesmo
+  # jeito, porque nada aqui olhava para isso.
+  case "$limites" in
+    *'"trigger":"ativo"'*) ok "gatilho de 1 min ativo" ;;
+    '') warn "nao consegui conferir o gatilho de 1 min (abra a tela do gasclaw uma vez: ela cria o gatilho)" ;;
+    *) warn "gatilho de 1 min NAO esta ativo: os agentes nao vao responder. Abra $(url) — a tela cria o gatilho ao abrir" ;;
+  esac
   # consentimento granular: escopo sem autorização vira exceção capturada, e o Google não pede sozinho
-  if remote "limits&fresh=1" 2>/dev/null | grep -q '"status":"pendente"'; then
+  if printf '%s' "$limites" | grep -q '"status":"pendente"'; then
     warn "faltam permissões do Google: abra https://script.google.com/home/projects/$(var "SCRIPT_ID_$UP")/edit → arquivo _motor.gs → no menu de funções escolha \"authorize\" → ▶ Executar → Permitir (ou use \"Autorizar permissões\" no topo da tela)"
   fi
   if [ -n "${OPENROUTER_API_KEY:-}" ]; then
