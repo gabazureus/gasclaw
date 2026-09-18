@@ -35,7 +35,7 @@ const names = [
   ...[...src.matchAll(/^export function (\w+)/gm)].map((m) => m[1]),
   ...[...src.matchAll(/^export const (\w+)\s*(?::[^=]+)?=\s*(?:async\s*)?(?:<[^>]*>)?\(/gm)].map((m) => m[1]),
 ];
-if (names.length === 0) throw new Error('build: nenhum export chamável em src/main.ts');
+if (names.length === 0) throw new Error('build: no callable export in src/main.ts');
 appendFileSync(`${OUT}/_motor.js`, '\n' + names.map((n) => `function ${n}(...a) { return gasclaw.${n}(...a); }`).join('\n') + '\n');
 const manifest = JSON.parse(readFileSync('appsscript.json', 'utf8'));
 const iamScope = 'https://www.googleapis.com/auth/iam';
@@ -45,4 +45,4 @@ writeFileSync(`${OUT}/appsscript.json`, JSON.stringify(manifest, null, 2) + '\n'
 copyFileSync('src/settings.html', `${OUT}/settings.html`);
 copyFileSync('src/chat.html', `${OUT}/chat.html`); // tela de conversa (doGet?page=chat)
 copyFileSync('src/hub.html', `${OUT}/hub.html`); // hub de painéis (doGet?page=hub)
-console.log(`build: ${OUT}/_motor.js com ${names.length} funções globais: ${names.join(', ')}`);
+console.log(`build: ${OUT}/_motor.js with ${names.length} global functions: ${names.join(', ')}`);

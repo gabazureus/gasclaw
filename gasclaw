@@ -30,10 +30,10 @@ setvar() {
 }
 pause() { # $1 chave de concluído · $2 URL a abrir (ou vazio) · $3 instrução
   [ -n "$(var "$1")" ] && return 0
-  [ -n "${CI:-}" ] && die "passo manual pendente: $3"
+  [ -n "${CI:-}" ] && die "manual step pending: $3"
   printf '\n\033[33m⏸  %s\033[0m\n' "$3"
   [ -n "$2" ] && open "$2"
-  printf '   Pressione Enter quando terminar… '
+  printf '   Press Enter when you are done… '
   read -r _
   setvar "$1" 1
 }
@@ -45,15 +45,15 @@ lock_dev() { # lock POR MÁQUINA (A4): os worktrees usam o mesmo SCRIPT_ID_DEV; 
   until mkdir "$lock" 2>/dev/null; do
     pid=$(cat "$lock/pid" 2>/dev/null || true)
     if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
-      stale="$lock.orfao.$$" # B3: mv atômico; se outro processo já pegou o órfão, o mv falha e seguimos esperando
+      stale="$lock.orphan.$$" # B3: mv atômico; se outro processo já pegou o órfão, o mv falha e seguimos esperando
       if mv "$lock" "$stale" 2>/dev/null; then
-        warn "lock órfão do PID $pid removido"
+        warn "stale lock from PID $pid removed"
         rm -rf "$stale"
       fi
       continue
     fi
-    [ "$waited" -ge "${GASCLAW_LOCK_TIMEOUT:-1200}" ] && die "dev ocupado pelo PID ${pid:-?} (esperei ${waited}s; lock em $lock)"
-    [ $((waited % 30)) -eq 0 ] && say "dev ocupado pelo PID ${pid:-?}: aguardando o lock"
+    [ "$waited" -ge "${GASCLAW_LOCK_TIMEOUT:-1200}" ] && die "dev is busy with PID ${pid:-?} (waited ${waited}s; lock at $lock)"
+    [ $((waited % 30)) -eq 0 ] && say "dev is busy with PID ${pid:-?}: waiting for the lock"
     sleep 5
     waited=$((waited + 5))
   done
@@ -98,19 +98,19 @@ gfetch() { # $1 token · $2 URL · $3 corpo do POST ("" = GET) · $4 segredo (s�
   fi
   job=$(openssl rand -hex 8)
   if r=$(ghop "$t" "$u" "$d&job=$job" "$s"); then printf '%s' "$r"; return 0; fi
-  printf 'a resposta do POST se perdeu no Google: buscando o resultado do job %s\n' "$job" >&2
+  printf 'the POST response was lost inside Google: fetching the result of job %s\n' "$job" >&2
   base="${u%%\?*}"; t0=$(date +%s); unknown_since=$t0
   while [ $(( $(date +%s) - t0 )) -lt 360 ]; do
     sleep 5
     r=$(ghop "$t" "$base?action=job&id=$job" "" "") || continue
     st=$(printf '%s' "$r" | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{try{const j=JSON.parse(s);if(j.status==="done"){process.stdout.write(JSON.stringify(j.result));process.exit(0)}console.error(j.status||"?");process.exit(3)}catch{process.exit(4)}})' 2>/dev/null) && { printf '%s' "$st"; return 0; }
     if printf '%s' "$r" | grep -q '"status":"unknown"'; then
-      [ $(( $(date +%s) - unknown_since )) -ge 60 ] && { printf 'job %s desconhecido no servidor depois de 60 s: o POST não chegou\n' "$job" >&2; return 22; }
+      [ $(( $(date +%s) - unknown_since )) -ge 60 ] && { printf 'job %s unknown on the server after 60 s: the POST never arrived\n' "$job" >&2; return 22; }
     else
       unknown_since=$(date +%s)
     fi
   done
-  printf 'job %s sem resultado em 6 min\n' "$job" >&2
+  printf 'job %s produced no result in 6 min\n' "$job" >&2
   return 22
 }
 
@@ -131,7 +131,7 @@ ghop() { # um único pedido ao web app: $1 token · $2 URL · $3 corpo do POST (
       https://script.googleusercontent.com/*)
         meta=$(printf 'header = "Authorization: Bearer %s"\n' "$t" | curl -sS --config - -o "$out" -w '%{http_code} %{redirect_url}' "$loc") || rc=$?
         code="${meta%% *}" ;;
-      *) rc=22; printf 'redirecionamento para host inesperado recusado (o token não sai do Google)\n' >&2 ;;
+      *) rc=22; printf 'redirect to an unexpected host refused (the token never leaves Google)\n' >&2 ;;
     esac
   fi
   if [ "$rc" -eq 0 ] && [ "$code" = 200 ]; then cat "$out"; else rc=${rc/#0/22}; printf 'web app respondeu HTTP %s\n' "${code:-?}" >&2; fi
@@ -149,7 +149,7 @@ remote_to() { # $1 URL base (…/exec ou …/dev) · $2 "acao&a=b" (já no forma
       # `return 1`, nunca `die`: quem chama guarda com `|| true` e `die` faz `exit`, que `|| true` NAO captura.
       # Com o `2>&1` do chamador engolindo a mensagem, o ./gasclaw up morria mudo aqui e pulava health,
       # aviso de permissoes e a copia da chave do OpenRouter — parecendo que tinha terminado.
-      [ -n "${CLI_SECRET:-}" ] || { printf 'sem CLI_SECRET no .env.local: rode ./gasclaw up (ele gera e registra o segredo)\n' >&2; return 1; }
+      [ -n "${CLI_SECRET:-}" ] || { printf 'no CLI_SECRET in .env.local: run ./gasclaw up (it generates and registers the secret)\n' >&2; return 1; }
       gfetch "$t" "$1" "action=$2" "$CLI_SECRET" ;;
     *) # leitura → GET; token pelo stdin
       gfetch "$t" "$1?action=$2" "" ;;
@@ -166,40 +166,40 @@ ensure_cli_secret() { # M1: segredo da CLI gerado no PC (.env.local, gitignored;
     if [ -s .env.local ] && [ -n "$(tail -c1 .env.local)" ]; then printf '\n' >> .env.local; fi
     printf 'CLI_SECRET=%s\n' "$CLI_SECRET" >> .env.local
     export CLI_SECRET
-    ok "segredo da CLI gerado em .env.local"
+    ok "CLI secret generated in .env.local"
   fi
   t=$(gcloud auth print-access-token 2>/dev/null || true)
   r=$(gfetch "$t" "$(url)" "action=setsecret" "$CLI_SECRET" 2>/dev/null || true)
   case "$r" in
-    *'"ok":true'*) ok "segredo da CLI registrado no web app" ;;
-    *) warn "segredo da CLI não registrado (${r:0:120}): as ações com efeito (poc, eval, down) falham até o próximo up" ;;
+    *'"ok":true'*) ok "CLI secret registered with the web app" ;;
+    *) warn "CLI secret not registered (${r:0:120}): actions with effects (poc, eval, down) will fail until the next up" ;;
   esac
 }
 
 ensure_tools() {
-  command -v brew >/dev/null || die "Homebrew não encontrado: instale em https://brew.sh e rode de novo"
+  command -v brew >/dev/null || die "Homebrew not found: install it from https://brew.sh and run again"
   command -v node >/dev/null || brew install node
   command -v gcloud >/dev/null || brew install --cask google-cloud-sdk
   [ -x node_modules/.bin/clasp ] || npm ci
-  ok "ferramentas"
+  ok "tools installed"
 }
 
 ensure_auth() {
   local acct
   acct=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1)
   if [ -z "$acct" ]; then
-    say "login no Google Cloud (abre o navegador)"
+    say "signing in to Google Cloud (opens the browser)"
     gcloud auth login --enable-gdrive-access
     acct=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -1)
   fi
   setvar ACCOUNT "$acct"
   setvar DOMAIN "${acct#*@}"
   if [ ! -f "$HOME/.clasprc.json" ]; then
-    say "login no clasp (abre o navegador)"
+    say "signing in to clasp (opens the browser)"
     npx --no-install clasp login
   fi
-  pause APPS_SCRIPT_API_OK "https://script.google.com/home/usersettings" "Ligue 'Google Apps Script API' (On)."
-  ok "autenticado como $ACCOUNT"
+  pause APPS_SCRIPT_API_OK "https://script.google.com/home/usersettings" "Turn on the 'Google Apps Script API'."
+  ok "signed in as $ACCOUNT"
 }
 
 ensure_gcp() {
@@ -207,15 +207,15 @@ ensure_gcp() {
   p=$(var "GCP_PROJECT_$UP")
   if [ -z "$p" ]; then
     p="gasclaw-$TARGET-$(openssl rand -hex 3)"
-    say "criando projeto GCP $p"
+    say "creating GCP project $p"
     gcloud projects create "$p" --name="gasclaw $TARGET"
     setvar "GCP_PROJECT_$UP" "$p"
   fi
   gcloud services enable script.googleapis.com chat.googleapis.com iamcredentials.googleapis.com drive.googleapis.com sheets.googleapis.com logging.googleapis.com monitoring.googleapis.com tasks.googleapis.com people.googleapis.com calendar-json.googleapis.com gmail.googleapis.com --project "$p" >/dev/null
   setvar "GCP_NUMBER_$UP" "$(gcloud projects describe "$p" --format='value(projectNumber)')"
   pause "CONSENT_OK_$UP" "https://console.cloud.google.com/auth/branding?project=$p" \
-    "Tela de consentimento OAuth: público INTERNO, nome 'gasclaw', e-mail de suporte $ACCOUNT. Salve."
-  ok "projeto GCP $p"
+    "OAuth consent screen: audience INTERNAL, app name 'gasclaw', support email $ACCOUNT. Save."
+  ok "GCP project $p"
 }
 
 ensure_chat_identity() { # P2: identidade do app por impersonacao; nenhuma chave e criada ou baixada
@@ -224,15 +224,15 @@ ensure_chat_identity() { # P2: identidade do app por impersonacao; nenhuma chave
   sa="gasclaw-chat@$p.iam.gserviceaccount.com"
   role="projects/$p/roles/gasclawChatTokenMinter"
   if ! gcloud iam service-accounts describe "$sa" --project "$p" >/dev/null 2>&1; then
-    say "criando identidade do Google Chat"
+    say "creating the Google Chat identity"
     gcloud iam service-accounts create gasclaw-chat --display-name="gasclaw Chat app" --project "$p" >/dev/null
   fi
   if ! gcloud iam roles describe gasclawChatTokenMinter --project "$p" >/dev/null 2>&1; then
     gcloud iam roles create gasclawChatTokenMinter --project "$p" --title="gasclaw Chat token minter" \
-      --description="Somente emite access token efemero para o Chat app" --permissions=iam.serviceAccounts.getAccessToken --stage=GA >/dev/null
+      --description="Only mints an ephemeral access token for the Chat app" --permissions=iam.serviceAccounts.getAccessToken --stage=GA >/dev/null
   else
     gcloud iam roles update gasclawChatTokenMinter --project "$p" --title="gasclaw Chat token minter" \
-      --description="Somente emite access token efemero para o Chat app" --permissions=iam.serviceAccounts.getAccessToken --stage=GA >/dev/null
+      --description="Only mints an ephemeral access token for the Chat app" --permissions=iam.serviceAccounts.getAccessToken --stage=GA >/dev/null
   fi
   # Conta dedicada: substitui a policy inteira por um unico principal e um unico papel minimo.
   policy=$(mktemp "${TMPDIR:-/tmp}/gasclaw-chat-policy.XXXXXX")
@@ -240,7 +240,7 @@ ensure_chat_identity() { # P2: identidade do app por impersonacao; nenhuma chave
   gcloud iam service-accounts set-iam-policy "$sa" "$policy" --project "$p" --quiet >/dev/null
   rm -f "$policy"
   setvar "CHAT_SA_EMAIL_$UP" "$sa"
-  ok "identidade do Chat sem chave: $sa"
+  ok "Chat identity, no key: $sa"
 }
 
 ensure_script() {
@@ -251,7 +251,7 @@ ensure_script() {
     setvar "SCRIPT_ID_$UP" "$(node -p 'require("./.clasp.json").scriptId')"
   fi
   pause "GCP_LINKED_$UP" "https://script.google.com/home/projects/$(var "SCRIPT_ID_$UP")/settings" \
-    "Configurações do projeto → Projeto do Google Cloud → Alterar projeto → cole o número $(var "GCP_NUMBER_$UP") → Definir projeto."
+    "Project Settings → Google Cloud Platform (GCP) Project → Change project → paste the number $(var "GCP_NUMBER_$UP") → Set project."
   ok "script $(var "SCRIPT_ID_$UP")"
 }
 
@@ -259,10 +259,10 @@ pull_into() { # $1 pasta; o pull do HEAD falha às vezes por rede: 3 tentativas
   local i
   for i in 1 2 3; do
     CLASP_ROOT="$1" clasp_ pull >/dev/null && return 0
-    warn "clasp pull falhou (tentativa $i de 3)"
+    warn "clasp pull failed (attempt $i of 3)"
     sleep 3
   done
-  die "clasp pull falhou 3 vezes: não publico para não apagar edições feitas no editor"
+  die "clasp pull failed 3 times: not publishing, so edits made in the editor are not erased"
 }
 
 keep_editor_agents() { # ADR-013: o push --force troca o HEAD inteiro; antes, traz os arquivos agentes/** editados no editor
@@ -272,21 +272,21 @@ keep_editor_agents() { # ADR-013: o push --force troca o HEAD inteiro; antes, tr
   pull_into "$r"
   if [ -d "$r/agentes" ]; then cp -R "$r/agentes" dist/; fi
   n=$(find dist/agentes -type f 2>/dev/null | wc -l | tr -d ' ')
-  ok "arquivos do editor preservados: $n"
+  ok "editor files preserved: $n"
 }
 
 deploy() {
   lock_dev
   mkdir -p .tmp
-  say "testes"
-  npm test > .tmp/test.log 2>&1 || die "testes falharam: veja .tmp/test.log" # o build.test gera numa pasta temporária
-  say "build (logo antes do push)"
+  say "tests"
+  npm test > .tmp/test.log 2>&1 || die "tests failed: see .tmp/test.log" # o build.test gera numa pasta temporária
+  say "build (right before the push)"
   export GCP_NUMBER="$(var "GCP_NUMBER_$UP")" # Monitoring (ADR-016)
   export CHAT_SA_EMAIL="$(var "CHAT_SA_EMAIL_$UP")" # P2: email publico da identidade, nunca credencial
   if [ "$TARGET" = dev ]; then export GASCLAW_DEV=1; else export GASCLAW_DEV=0; fi # POCs só no build do dev (M1)
   export GASCLAW_ENV="$TARGET"          # P21: rótulo do ambiente no cabeçalho do painel
   export SIBLING_URL="$(sibling_url)"   # P21: link para o painel irmão (vazio enquanto o outro não tiver implantação)
-  OUT_DIR=dist npm run build > .tmp/build.log 2>&1 || die "build falhou: veja .tmp/build.log"
+  OUT_DIR=dist npm run build > .tmp/build.log 2>&1 || die "build failed: see .tmp/build.log"
   local built
   built=$(shasum -a 256 dist/_motor.js dist/appsscript.json | cut -d' ' -f1 | tr '\n' ' ')
   keep_editor_agents # depois do build: o build.mjs apaga o dist/ inteiro, e os agentes/** do editor precisam ir junto
@@ -317,18 +317,18 @@ verify_head() { # depois do push e antes da versão: o HEAD remoto (pull isolado
   pull_into "$dir"
   bad=$(same_as_build "$dir")
   rm -rf "$dir" # B2
-  [ -z "$bad" ] || die "HEAD remoto diferente do build depois do push (${bad# }): não crio a versão"
-  ok "HEAD remoto conferido: motor, telas e manifesto idênticos ao build ($(node -p 'JSON.parse(require("fs").readFileSync("dist/appsscript.json","utf8")).oauthScopes.length') escopos)"
+  [ -z "$bad" ] || die "remote HEAD differs from the build after the push (${bad# }): not creating the version"
+  ok "remote HEAD verified: engine, screens and manifest identical to the build ($(node -p 'JSON.parse(require("fs").readFileSync("dist/appsscript.json","utf8")).oauthScopes.length') scopes)"
 }
 
 verify_version() { # A5: a VERSÃO criada (imutável) é o build, antes de apontar a implantação para ela
   local v="$1" dir=".tmp/version-$1-$$" bad
   mkdir -p "$dir"
-  CLASP_ROOT="$dir" clasp_ pull --versionNumber "$v" >/dev/null || { rm -rf "$dir"; die "não consegui baixar a versão $v: implantação NÃO apontada"; }
+  CLASP_ROOT="$dir" clasp_ pull --versionNumber "$v" >/dev/null || { rm -rf "$dir"; die "could not download version $v: deployment NOT pointed at it"; }
   bad=$(same_as_build "$dir")
   rm -rf "$dir"
-  [ -z "$bad" ] || die "versão $v diferente do build (${bad# }): implantação NÃO apontada"
-  ok "versão $v conferida: idêntica ao build"
+  [ -z "$bad" ] || die "version $v differs from the build (${bad# }): deployment NOT pointed at it"
+  ok "version $v verified: identical to the build"
 }
 
 check_bundle() { # $1 sha do build. A v18 saiu com o bundle da v17 porque o dist/ foi regravado entre o build e o push
@@ -336,11 +336,11 @@ check_bundle() { # $1 sha do build. A v18 saiu com o bundle da v17 porque o dist
   for n in $(grep -oE '^export function [A-Za-z0-9_]+' src/main.ts | awk '{print $3}'); do
     grep -q "^function $n(" dist/_motor.js || missing="$missing $n"
   done
-  [ -z "$missing" ] || die "bundle desatualizado: faltam em dist/_motor.js:$missing"
-  [ "$(shasum -a 256 dist/_motor.js dist/appsscript.json | cut -d' ' -f1 | tr '\n' ' ')" = "$1" ] || die "dist/ mudou entre o build e o push (npm test, build ou clasp rodando em paralelo?): não publico"
+  [ -z "$missing" ] || die "bundle out of date: missing from dist/_motor.js:$missing"
+  [ "$(shasum -a 256 dist/_motor.js dist/appsscript.json | cut -d' ' -f1 | tr '\n' ' ')" = "$1" ] || die "dist/ changed between the build and the push (npm test, build or clasp running in parallel?): not publishing"
   # Conta os INVOLUCROS que o build realmente emitiu, nao um regex proprio sobre o main.ts: essa era a terceira
   # copia da mesma regra (build.mjs e o proprio main.ts sao as outras) e ja divergia — dizia 39 para 41.
-  ok "bundle conferido: $(grep -c '^function .*return gasclaw\.' dist/_motor.js) funções globais, $(wc -c < dist/_motor.js | tr -d ' ') bytes"
+  ok "bundle verified: $(grep -c '^function .*return gasclaw\.' dist/_motor.js) global functions, $(wc -c < dist/_motor.js | tr -d ' ') bytes"
 }
 
 version_label() { # SHA do commit, com -dirty se src/ ou o manifesto têm mudança não commitada
@@ -354,26 +354,26 @@ publish() { # versão nova do HEAD + implantação fixa apontando para ela (mesm
   local out v d
   out=$(clasp_ create-version "$(version_label)")
   v=$(printf '%s' "$out" | grep -oE 'ersion [0-9]+' | grep -oE '[0-9]+' | head -1 || true) # M19: sem || true, o pipefail matava o script calado
-  [ -n "$v" ] || die "não consegui ler o número da versão: $out"
+  [ -n "$v" ] || die "could not read the version number: $out"
   verify_version "$v"
   d=$(var "DEPLOY_ID_$UP")
   if [ -z "$d" ]; then
     out=$(clasp_ create-deployment -V "$v" -d "gasclaw $TARGET")
     d=$(printf '%s' "$out" | grep -oE 'AKfy[A-Za-z0-9_-]+' | head -1 || true)
-    [ -n "$d" ] || die "não consegui ler o ID da implantação: $out"
+    [ -n "$d" ] || die "could not read the deployment id: $out"
     setvar "DEPLOY_ID_$UP" "$d"
   else
     clasp_ create-deployment -i "$d" -V "$v" -d "gasclaw $TARGET" >/dev/null
   fi
-  ok "$TARGET na versão $v → $(url)"
+  ok "$TARGET on version $v → $(url)"
 }
 
 authorize() {
   local label="gasclaw"
   [ "$TARGET" = dev ] && label="gasclaw dev"
-  pause "WEBAPP_AUTH_$UP" "$(url)" "Na aba aberta, escolha sua conta e clique em Permitir (primeira autorização)."
+  pause "WEBAPP_AUTH_$UP" "$(url)" "In the tab that just opened, choose your account and click Allow (first authorization)."
   pause "CHAT_OK_$UP" "https://console.cloud.google.com/apis/api/chat.googleapis.com/hangouts-chat?project=$(var "GCP_PROJECT_$UP")" \
-    "Chat API → Configuração: nome '$label'; avatar https://fonts.gstatic.com/s/e/notoemoji/latest/1f980/512.png; descrição 'Agentes do Drive'; DESMARQUE 'Criar como complemento do Google Workspace'; Funcionalidade: receber mensagens 1:1 e participar de espaços; Conexão: Projeto do Apps Script → ID de implantação $(var "DEPLOY_ID_$UP"); Visibilidade: pessoas específicas do domínio $DOMAIN (ou o domínio todo); Salvar."
+    "Chat API → Configuration: App name '$label'; avatar https://fonts.gstatic.com/s/e/notoemoji/latest/1f980/512.png; description 'Agents that live in your Drive'; UNCHECK 'Build this Chat app as a Google Workspace add-on'; Functionality: receive 1:1 messages and join spaces; Connection settings: Apps Script project → Deployment ID $(var "DEPLOY_ID_$UP"); Visibility: specific people in $DOMAIN (or the whole domain); Save."
 }
 
 health() {
@@ -384,7 +384,7 @@ health() {
       # Grava o que o menu do onboarding precisa saber, para ele nao ter que perguntar pela rede (A6).
       case "$r" in *'"agents":0'*) ;; *'"agents":'*) setvar "AGENT_OK_$UP" 1 ;; esac
       ok "health: $r" ;;
-    *) warn "health não confirmado automaticamente (abra $(url)). Resposta: ${r:0:160}" ;;
+    *) warn "health not confirmed automatically (open $(url)). Response: ${r:0:160}" ;;
   esac
 }
 
@@ -401,38 +401,38 @@ cmd_up() {
   remote enable >/dev/null 2>&1 || true
   health
   # Uma leitura so, usada para as duas conferencias.
-  local limites
-  limites=$(remote "limits&fresh=1" 2>/dev/null || true)
+  local limits
+  limits=$(remote "limits&fresh=1" 2>/dev/null || true)
   # O gatilho de 1 min e o worker: sem ele o agente e instalado e NUNCA responde. `up` dizia "pronto" do mesmo
   # jeito, porque nada aqui olhava para isso.
-  case "$limites" in
-    *'"trigger":"active"'*) ok "gatilho de 1 min ativo" ;;
-    '') warn "nao consegui conferir o gatilho de 1 min (abra a tela do gasclaw uma vez: ela cria o gatilho)" ;;
-    *) warn "gatilho de 1 min NAO esta ativo: os agentes nao vao responder. Abra $(url) — a tela cria o gatilho ao abrir" ;;
+  case "$limits" in
+    *'"trigger":"active"'*) ok "1-minute worker active" ;;
+    '') warn "could not check the 1-minute worker (open the gasclaw panel once: it creates the trigger)" ;;
+    *) warn "the 1-minute worker is NOT active: agents will never answer. Open $(url) — the panel creates the trigger when it loads" ;;
   esac
   # consentimento granular: escopo sem autorização vira exceção capturada, e o Google não pede sozinho
-  if printf '%s' "$limites" | grep -q '"status":"pending"'; then
-    warn "faltam permissões do Google: abra https://script.google.com/home/projects/$(var "SCRIPT_ID_$UP")/edit → arquivo _motor.gs → no menu de funções escolha \"authorize\" → ▶ Executar → Permitir (ou use \"Autorizar permissões\" no topo da tela)"
+  if printf '%s' "$limits" | grep -q '"status":"pending"'; then
+    warn "missing Google permissions: open https://script.google.com/home/projects/$(var "SCRIPT_ID_$UP")/edit → file _motor.gs → pick \"authorize\" in the function menu → ▶ Run → Allow (or use \"Authorize permissions\" at the top of the panel)"
   fi
   if [ -n "${OPENROUTER_API_KEY:-}" ]; then
     printf '%s' "$OPENROUTER_API_KEY" | pbcopy
     # segurança baixa: a chave sai do clipboard em 90 s, se ainda for ela que estiver lá
     (sleep 90; [ "$(pbpaste 2>/dev/null)" = "$OPENROUTER_API_KEY" ] && printf '' | pbcopy) >/dev/null 2>&1 &
-    say "chave OpenRouter copiada por 90 s — cole em 'Chave OpenRouter' na tela (só na primeira vez)"
+    say "OpenRouter key copied for 90 s — paste it into 'OpenRouter key' on the panel (first time only)"
   else
-    warn "sem OPENROUTER_API_KEY no .env.local — cole a chave direto na tela"
+    warn "no OPENROUTER_API_KEY in .env.local — paste the key straight into the panel"
   fi
   open "$(url)"
-  ok "pronto ($TARGET): $(url)"
+  ok "ready ($TARGET): $(url)"
 }
 
-cmd_down()    { remote disable && echo && ok "agentes pausados ($TARGET)"; }
+cmd_down()    { remote disable && echo && ok "agents paused ($TARGET)"; }
 cmd_restart() { cmd_down || true; cmd_up; }
 cmd_open()    { open "$(url)"; }
 
 cmd_ship() {
   TARGET=prod; UP=PROD
-  [ -n "$(var SCRIPT_ID_PROD)" ] || die "prod ainda não existe: rode ./gasclaw up --prod uma vez"
+  [ -n "$(var SCRIPT_ID_PROD)" ] || die "prod does not exist yet: run ./gasclaw up --prod once"
   deploy
   health
 }
@@ -448,10 +448,10 @@ cmd_ci() { # usado pelo GitHub Actions: sem pausas, sem gcloud
 cmd_logs() { clasp_ tail-logs --watch | grep -v '^PAST'; }
 
 cmd_status() {
-  printf 'ambiente:     %s\nconta:        %s\nprojeto GCP:  %s\neditor:       https://script.google.com/home/projects/%s/edit\nweb app:      %s\n\n' \
+  printf 'environment:  %s\naccount:      %s\nGCP project:  %s\neditor:       https://script.google.com/home/projects/%s/edit\nweb app:      %s\n\n' \
     "$TARGET" "${ACCOUNT:-?}" "$(var "GCP_PROJECT_$UP")" "$(var "SCRIPT_ID_$UP")" "$(url)"
   clasp_ list-deployments || true
-  remote health && echo || warn "health indisponível"
+  remote health && echo || warn "health unavailable"
 }
 
 check() { # $1 descrição · $2 comando · $3 correção
@@ -459,33 +459,33 @@ check() { # $1 descrição · $2 comando · $3 correção
 }
 cmd_doctor() {
   check "Node ≥ 20" 'node -e "process.exit(Number(process.versions.node.split(\".\")[0]) < 20 ? 1 : 0)"' "brew install node"
-  check "gcloud instalado" 'command -v gcloud' "brew install --cask google-cloud-sdk"
+  check "gcloud installed" 'command -v gcloud' "brew install --cask google-cloud-sdk"
   check "login gcloud" 'gcloud auth list --filter=status:ACTIVE --format="value(account)" | grep -q @' "gcloud auth login --enable-gdrive-access"
   check "login clasp" '[ -f "$HOME/.clasprc.json" ]' "npx clasp login"
-  check "dependências npm" '[ -x node_modules/.bin/clasp ]' "npm ci"
-  check "build e testes" 'npm run build && npm test' "rode 'npm test' para ver o erro"
-  check "script $TARGET criado" '[ -n "$(var "SCRIPT_ID_$UP")" ]' "./gasclaw up"
-  check "web app $TARGET publicado" '[ -n "$(var "DEPLOY_ID_$UP")" ]' "./gasclaw up"
-  check "OPENROUTER_API_KEY no .env.local" '[ -n "${OPENROUTER_API_KEY:-}" ]' "crie .env.local com OPENROUTER_API_KEY=sk-or-…"
-  check "health remoto" 'remote health | grep -q "\"ok\":true"' "abra a tela e autorize, ou: gcloud auth login --enable-gdrive-access"
+  check "npm dependencies" '[ -x node_modules/.bin/clasp ]' "npm ci"
+  check "build and tests" 'npm run build && npm test' "run 'npm test' to see the error"
+  check "script $TARGET created" '[ -n "$(var "SCRIPT_ID_$UP")" ]' "./gasclaw up"
+  check "web app $TARGET published" '[ -n "$(var "DEPLOY_ID_$UP")" ]' "./gasclaw up"
+  check "OPENROUTER_API_KEY no .env.local" '[ -n "${OPENROUTER_API_KEY:-}" ]' "create .env.local with OPENROUTER_API_KEY=sk-or-…"
+  check "remote health" 'remote health | grep -q "\"ok\":true"' "open the panel and authorize, or: gcloud auth login --enable-gdrive-access"
 }
 
 cmd_poc() { # POCs automáticas, só no dev: cria fixtures, mede e sai ≠ 0 se algum critério falhar
   local id="${1:-}" step="${2:-}" r trace=""
-  [ "$TARGET" = dev ] || die "POCs rodam só no dev"
-  printf '%s' "$id" | grep -qE '^p[0-9]+$' || die "uso: ./gasclaw poc <id> [etapa]  (ex.: ./gasclaw poc p6)"
-  [ -z "$step" ] || printf '%s' "$step" | grep -qE '^[a-z0-9]+$' || die "etapa inválida: $step"
+  [ "$TARGET" = dev ] || die "POCs run on dev only"
+  printf '%s' "$id" | grep -qE '^p[0-9]+$' || die "usage: ./gasclaw poc <id> [step]  (e.g. ./gasclaw poc p6)"
+  [ -z "$step" ] || printf '%s' "$step" | grep -qE '^[a-z0-9]+$' || die "invalid step: $step"
   lock_dev # a POC inteira (deploy + medições) sem push de outra pista no meio
   local hook
   hook=$(ls poc/"$id"-*/pc.sh 2>/dev/null | head -1 || true)
   if [ -n "$hook" ]; then # POC com etapas no PC (clasp): pc.sh (tudo) ou <etapa>.sh orquestra e decide o exit
     # subshell + die: no bash 3.2, erro implícito do hook (ex.: set -u) com o trap do lock_dev saía com 0 (a P16 "passou" sem medir)
-    if [ -z "$step" ]; then ( . "./$hook" ) || die "POC $id falhou (veja a saída acima)"; return 0; fi
-    if [ -f "${hook%pc.sh}$step.sh" ]; then ( . "./${hook%pc.sh}$step.sh" ) || die "POC $id $step falhou (veja a saída acima)"; return 0; fi
+    if [ -z "$step" ]; then ( . "./$hook" ) || die "POC $id failed (see the output above)"; return 0; fi
+    if [ -f "${hook%pc.sh}$step.sh" ]; then ( . "./${hook%pc.sh}$step.sh" ) || die "POC $id $step failed (see the output above)"; return 0; fi
   fi
-  say "POC $id no dev (pode levar alguns minutos)"
+  say "POC $id on dev (may take a few minutes)"
   case "$id" in p3|p22) trace="&trace=0" ;; esac # a própria POC não pode contaminar a medição do gatilho ocioso
-  r=$(remote "poc&id=$id${step:+&step=$step}$trace") || die "chamada ao web app falhou (rode ./gasclaw doctor)"
+  r=$(remote "poc&id=$id${step:+&step=$step}$trace") || die "the web app call failed (run ./gasclaw doctor)"
   printf '%s' "$r" | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{let r;try{r=JSON.parse(s)}catch{console.error(s.slice(0,500));process.exit(2)}console.log(JSON.stringify(r,null,2));process.exit(r.pass===true?0:1)})'
 }
 
@@ -493,57 +493,57 @@ jsfield() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>
 
 cmd_trace() { # árvore de um run (sem id: o mais recente)
   local id="${1:-}"
-  [ -z "$id" ] || printf '%s' "$id" | grep -qE '^[0-9A-Za-z-]+$' || die "id de run inválido: $id"
+  [ -z "$id" ] || printf '%s' "$id" | grep -qE '^[0-9A-Za-z-]+$' || die "invalid run id: $id"
   remote "trace${id:+&run=$id}" | jsfield tree
 }
 
 cmd_runs() { # abre a planilha "gasclaw — execuções"
   local u
-  u=$(remote runs | jsfield url) || die "não consegui obter a planilha (rode ./gasclaw doctor)"
+  u=$(remote runs | jsfield url) || die "could not get the spreadsheet (run ./gasclaw doctor)"
   open "$u"
-  ok "planilha: $u"
+  ok "spreadsheet: $u"
 }
 
 cmd_limits() { # painel de limites no terminal (cache de 10 min; --fresh ignora)
   local fresh=""
   for a in "$@"; do [ "$a" = "--fresh" ] && fresh="&fresh=1"; done
   remote "limits$fresh" | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);if(!r.ok){console.error(r.error);process.exit(1)}
-const C={green:"\x1b[32m",yellow:"\x1b[33m",red:"\x1b[31m","no limit":"\x1b[2m"},Z="\x1b[0m",S={google:"Google",openrouter:"OpenRouter",gasclaw:"medido"};
+const C={green:"\x1b[32m",yellow:"\x1b[33m",red:"\x1b[31m","no limit":"\x1b[2m"},Z="\x1b[0m",S={google:"reported by Google",openrouter:"reported by OpenRouter",gasclaw:"measured by gasclaw"};
 for(const i of r.items){const pct=i.total&&i.used!==null?Math.min(100,Math.round(i.used/i.total*100)):null;const bar=pct===null?"          ":"█".repeat(Math.round(pct/10)).padEnd(10,"░");
 console.log(`${C[i.level]}${bar}${Z} ${String(pct===null?"—":pct+"%").padStart(4)}  ${i.label} · ${i.status==="ok"?`${i.used} / ${i.total??"∞"} ${i.unit}`:i.status.toUpperCase()} · [${S[i.source]}]${i.reset?" · reset "+i.reset:""}${i.note?" · "+i.note:""}`)}
-console.log(`\ngatilho: ${r.trigger} · ${r.cached?"do cache (10 min)":"lido agora"} · ${new Date(r.at).toLocaleString("pt-BR")}`)})'
+console.log(`\n1-minute worker: ${r.trigger} · ${r.cached?"from cache (10 min)":"read just now"} · ${new Date(r.at).toLocaleString("pt-BR")}`)})'
 }
 
 cmd_usage() { # custo por modelo: 7 dias, ou as 24 h de um dia (AAAA-MM-DD, fuso de São Paulo)
   local day="${1:-}"
-  [ -z "$day" ] || printf '%s' "$day" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || die "dia inválido: $day (use AAAA-MM-DD)"
+  [ -z "$day" ] || printf '%s' "$day" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || die "invalid day: $day (use YYYY-MM-DD)"
   remote "usage${day:+&day=$day}" | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);if(!r.ok){console.error(r.error);process.exit(1)}
 const max=Math.max(...r.chart.bars.map((b)=>b.total),1e-9);
 for(const b of r.chart.bars)console.log(`${b.key.padEnd(10)} ${"█".repeat(Math.round(b.total/max*30)).padEnd(30)} US$ ${b.total}`);
-console.log(`\n${r.day} por modelo:`);for(const t of r.table)console.log(`  ${t.model.padEnd(45)} ${String(t.req).padStart(5)} req ${String(t.tok).padStart(8)} tok  US$ ${t.cost}`);
-const c=r.check;console.log(`\nconferência (dia UTC ${c.dayUtc}): medido US$ ${c.measured} × OpenRouter US$ ${c.informed??"?"}${c.diffPct!==null?` (${c.diffPct}%)`:""} · ${c.nota} · fila: ${r.queue}`)})'
+console.log(`\n${r.day} by model:`);for(const t of r.table)console.log(`  ${t.model.padEnd(45)} ${String(t.req).padStart(5)} req ${String(t.tok).padStart(8)} tok  US$ ${t.cost}`);
+const c=r.check;console.log(`\ncross-check (UTC day ${c.dayUtc}): measured by gasclaw US$ ${c.measured} × reported by OpenRouter US$ ${c.informed??"?"}${c.diffPct!==null?` (${c.diffPct}%)`:""} · ${c.nota} · queue: ${r.queue}`)})'
 }
 
-cmd_eval() { lock_dev; [ "$TARGET" = dev ] || die "evals rodam só no dev"; node scripts/eval.mjs "$(url)" "$@"; }
+cmd_eval() { lock_dev; [ "$TARGET" = dev ] || die "evals run on dev only"; node scripts/eval.mjs "$(url)" "$@"; }
 
 cmd_tools() { # ferramentas do agente: ./gasclaw tools all | none | <nomes,separados,por,vírgula> [pasta]
   local set="${1:-}" folder="${2:-}"
-  [ -n "$set" ] || die "uso: ./gasclaw tools all|none|<nomes separados por vírgula> [folderId]"
-  printf '%s' "$set" | grep -qE '^[a-z0-9_.,-]+$' || die "lista inválida: $set"
+  [ -n "$set" ] || die "usage: ./gasclaw tools all|none|<comma,separated,names> [folderId]"
+  printf '%s' "$set" | grep -qE '^[a-z0-9_.,-]+$' || die "invalid list: $set"
   remote "tools&set=$set${folder:+&folder=$folder}" | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);if(!r.ok){console.error(r.error);process.exit(1)}
-console.log(`${r.agent}: ${r.enabled.length} ferramenta(s) ligada(s)`);for(const t of r.enabled)console.log("  "+t);
-console.log(`pessoas: ${r.users.length?r.users.join(", "):"só o dono"}`)})'
+console.log(`${r.agent}: ${r.enabled.length} tool(s) enabled`);for(const t of r.enabled)console.log("  "+t);
+console.log(`people: ${r.users.length?r.users.join(", "):"owner only"}`)})'
 }
 
 cmd_rollback() {
   lock_dev # B4
   local d cur
   d=$(var "DEPLOY_ID_$UP")
-  [ -n "$d" ] || die "sem implantação em $TARGET"
+  [ -n "$d" ] || die "no deployment in $TARGET"
   cur=$(clasp_ list-deployments | grep "$d" | grep -oE '@[0-9]+' | tr -d @ | head -1 || true)
-  { [ -n "$cur" ] && [ "$cur" -gt 1 ]; } || die "sem versão anterior (atual: ${cur:-?})"
+  { [ -n "$cur" ] && [ "$cur" -gt 1 ]; } || die "no previous version (current: ${cur:-?})"
   clasp_ create-deployment -i "$d" -V "$((cur - 1))" -d "rollback" >/dev/null
-  ok "$TARGET voltou para a versão $((cur - 1))"
+  ok "$TARGET rolled back to version $((cur - 1))"
 }
 
 
@@ -668,25 +668,25 @@ cmd_onboard() {
 }
 
 cmd_help() { cat <<'TXT'
-gasclaw — agentes do Drive rodando no Google Apps Script
+gasclaw — agents that live in your Google Drive, running on Google Apps Script
 
-  ./gasclaw up [--prod]       configura (1ª vez), publica e abre a tela
-  ./gasclaw down [--prod]     pausa todos os agentes
+  ./gasclaw up [--prod]       set up (first time), publish, and open the panel
+  ./gasclaw down [--prod]     pause every agent
   ./gasclaw restart [--prod]  down + up
-  ./gasclaw ship              publica em prod (mesma URL)
-  ./gasclaw logs [--prod]     logs ao vivo
-  ./gasclaw status [--prod]   IDs, URLs, implantações e health
-  ./gasclaw doctor [--prod]   diagnostica e diz como corrigir
-  ./gasclaw rollback [--prod] volta para a versão anterior
-  ./gasclaw open [--prod]     abre a tela gasclaw
-  ./gasclaw poc <id> [etapa]  roda uma POC no dev e mostra o resultado (ex.: poc p6, poc p10)
-  ./gasclaw trace [id]        árvore de passos de um run do agente (sem id: o mais recente)
-  ./gasclaw runs              abre a planilha "gasclaw — execuções"
-  ./gasclaw limits [--fresh]  painel de limites (Google, OpenRouter e medido pelo gasclaw)
-  ./gasclaw usage [AAAA-MM-DD]  custo por modelo: 7 dias, ou as 24 h do dia
-  ./gasclaw eval <cenário|--all> [--model id]  roda evals/*.md no dev (exit ≠ 0 em falha)
-  ./gasclaw tools all|none|<a,b,c> [pasta]     liga/desliga as ferramentas do agente
-  ./gasclaw onboard           menu guiado do setup (o padrão quando nada foi publicado ainda)
+  ./gasclaw ship              publish to prod (same URL)
+  ./gasclaw logs [--prod]     live logs
+  ./gasclaw status [--prod]   ids, URLs, deployments and health
+  ./gasclaw doctor [--prod]   diagnose what is broken and how to fix it
+  ./gasclaw rollback [--prod] go back to the previous version
+  ./gasclaw open [--prod]     open the gasclaw panel
+  ./gasclaw poc <id> [step]   run a POC on dev and show the result (e.g. poc p6, poc p10)
+  ./gasclaw trace [id]        step tree of one agent run (no id: the most recent)
+  ./gasclaw runs              open the runs spreadsheet in Drive
+  ./gasclaw limits [--fresh]  limits panel (reported by Google and OpenRouter, measured by gasclaw)
+  ./gasclaw usage [YYYY-MM-DD]  cost per model: last 7 days, or the 24 h of one day
+  ./gasclaw eval <scenario|--all> [--model id]  run evals/*.md on dev (exit != 0 on failure)
+  ./gasclaw tools all|none|<a,b,c> [folder]     turn the agent's tools on and off
+  ./gasclaw onboard           guided setup menu (the default before anything is published)
 TXT
 }
 

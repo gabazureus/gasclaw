@@ -43,12 +43,12 @@ describe('buildLimits', () => {
     expect(semCredito.freeMin).toMatchObject({ used: 4, total: 20 });
   });
   test('gasto do dia informado pelo OpenRouter, com o medido ao lado', () => {
-    expect(byId(buildLimits(input())).orDaily).toMatchObject({ used: 0.4, total: null, source: 'openrouter', level: 'no limit', note: 'medido pelo gasclaw: US$ 0.39' });
+    expect(byId(buildLimits(input())).orDaily).toMatchObject({ used: 0.4, total: null, source: 'openrouter', level: 'no limit', note: 'measured by gasclaw: US$ 0.39' });
   });
   test('gasto do dia sem barra contra o limite total da chave (não é diário); o limite aparece na nota', () => {
     const l = byId(buildLimits(input({ key: { ok: true, value: { limit: 10, usage: 3.2, usage_daily: 0.4, is_free_tier: false } } })));
     expect(l.orDaily).toMatchObject({ used: 0.4, total: null, level: 'no limit' });
-    expect(l.orDaily.note).toContain('limite de crédito');
+    expect(l.orDaily.note).toContain('key credit limit');
   });
   test('fontes que dependem da reautorização aparecem como pendentes, sem quebrar', () => {
     const l = byId(buildLimits(input()));
@@ -61,7 +61,7 @@ describe('buildLimits', () => {
   test('403 por falta de faturamento no projeto GCP (Monitoring) é erro com nota clara, não "pending" de autorização', () => {
     const l = byId(buildLimits(input({ monitoring: { ok: false, error: 'monitoring 403: {"error":{"code":403,"message":"This API method requires billing to be enabled. Please enable billing on project #000000000001"}}' } })));
     expect(l.monitoring).toMatchObject({ status: 'error', level: 'no limit' });
-    expect(l.monitoring.note).toMatch(/faturamento/);
+    expect(l.monitoring.note).toMatch(/billing/);
   });
   test('falha de uma fonte que já funcionava vira erro só nela', () => {
     const l = byId(buildLimits(input({ drive: { ok: false, error: 'Drive 500' } })));

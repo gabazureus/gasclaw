@@ -41,7 +41,7 @@ export const nextUtcMidnight = (now: number) => {
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
 };
 
-const GOOGLE_DAY = '24 h (cota diária do Google)';
+const GOOGLE_DAY = '24 h (Google daily quota)';
 const PENDING = /autoriza|scope|escopo|permission|permiss|insufficient|401|403/i; // "Você não tem permissão… Permissões necessárias" (Apps Script em pt-BR)
 
 const BILLING = /billing/i; // Cloud Monitoring responde 403 "requires billing to be enabled": não é autorização
@@ -50,7 +50,7 @@ function item(id: string, label: string, unit: string, source: Source, r: Read<u
   const err = r.ok ? '' : (r as { error: string }).error;
   const status: Status = r.ok ? 'ok' : BILLING.test(err) ? 'error' : PENDING.test(err) ? 'pending' : 'error';
   const ok = status === 'ok';
-  const errNote = BILLING.test(err) ? `precisa de faturamento ativo no projeto do Google Cloud (decisão sua); ${err.slice(0, 120)}` : err;
+  const errNote = BILLING.test(err) ? `needs billing enabled on the Google Cloud project (your call); ${err.slice(0, 120)}` : err;
   return { id, label, used: ok ? used : null, total, unit, level: ok ? level(used, total) : 'no limit', reset, source, status, ...(ok ? (note ? { note } : {}) : { note: errNote }) };
 }
 
@@ -62,16 +62,16 @@ export function buildLimits(i: LimitsInput): LimitItem[] {
   const freeTier = i.key.ok ? i.key.value.is_free_tier : false;
   const q = QUOTAS[i.account ?? 'workspace'];
   return [
-    item('freeDay', 'OpenRouter: requisições :free hoje', 'req', 'gasclaw', i.key, m.freeToday, freeTier ? 50 : 1000, orReset, 'limite: 50/dia sem créditos, 1000/dia com US$ 10+'),
-    item('freeMin', 'OpenRouter: requisições :free por minuto (pico na última hora)', 'req/min', 'gasclaw', OK, m.freePerMinuteMax, 20, null),
-    item('orDaily', 'OpenRouter: gasto hoje (dia UTC)', 'US$', 'openrouter', i.key, i.key.ok ? i.key.value.usage_daily : null, null, orReset, `medido pelo gasclaw: US$ ${m.costToday}${i.key.ok && i.key.value.limit !== null ? ` · limite de crédito da chave (total, não diário): US$ ${i.key.value.limit}` : ''}`), // o limit da chave é total: não serve de barra para o dia
-    item('drive', 'Drive: armazenamento', 'bytes', 'google', i.drive, i.drive.ok ? i.drive.value.usage : null, i.drive.ok ? i.drive.value.limit : null, null),
-    item('urlfetch', 'Apps Script: chamadas UrlFetch hoje (estimado)', 'chamadas', 'gasclaw', OK, m.urlFetchToday, q.urlFetch, GOOGLE_DAY),
-    item('runtime', 'Apps Script: maior execução hoje', 'ms', 'gasclaw', OK, m.longestMs, 360_000, null, 'limite: 6 min por execução'),
-    item('props', 'Apps Script: Script Properties', 'bytes', 'gasclaw', OK, m.propsBytes, 500_000, null, 'limite: 500 KB no total, 9 KB por valor'),
-    item('processes', 'Apps Script: tempo de gatilhos hoje', 'ms', 'google', i.processes, i.processes.ok ? i.processes.value.triggerMsToday : null, q.triggerMs, GOOGLE_DAY),
-    item('mail', 'Apps Script: destinatários de e-mail hoje', 'destinatários', 'google', i.mail, i.mail.ok ? Math.max(0, q.mail - i.mail.value) : null, q.mail, GOOGLE_DAY),
-    item('triggers', 'Apps Script: gatilhos do projeto', 'gatilhos', 'google', i.triggers, i.triggers.ok ? i.triggers.value : null, 20, null),
-    item('monitoring', 'Google Cloud: requisições às APIs hoje (Monitoring)', 'req', 'google', i.monitoring, i.monitoring.ok ? i.monitoring.value.requests : null, null, null),
+    item('freeDay', 'OpenRouter: :free requests today', 'req', 'gasclaw', i.key, m.freeToday, freeTier ? 50 : 1000, orReset, 'limit: 50/day without credits, 1000/day with US$ 10+'),
+    item('freeMin', 'OpenRouter: :free requests per minute (peak in the last hour)', 'req/min', 'gasclaw', OK, m.freePerMinuteMax, 20, null),
+    item('orDaily', 'OpenRouter: spend today (UTC day)', 'US$', 'openrouter', i.key, i.key.ok ? i.key.value.usage_daily : null, null, orReset, `measured by gasclaw: US$ ${m.costToday}${i.key.ok && i.key.value.limit !== null ? ` · key credit limit (total, not daily): US$ ${i.key.value.limit}` : ''}`), // o limit da chave é total: não serve de barra para o dia
+    item('drive', 'Drive: storage', 'bytes', 'google', i.drive, i.drive.ok ? i.drive.value.usage : null, i.drive.ok ? i.drive.value.limit : null, null),
+    item('urlfetch', 'Apps Script: UrlFetch calls today (estimated)', 'calls', 'gasclaw', OK, m.urlFetchToday, q.urlFetch, GOOGLE_DAY),
+    item('runtime', 'Apps Script: longest execution today', 'ms', 'gasclaw', OK, m.longestMs, 360_000, null, 'limit: 6 min per execution'),
+    item('props', 'Apps Script: Script Properties', 'bytes', 'gasclaw', OK, m.propsBytes, 500_000, null, 'limit: 500 KB in total, 9 KB per value'),
+    item('processes', 'Apps Script: trigger time today', 'ms', 'google', i.processes, i.processes.ok ? i.processes.value.triggerMsToday : null, q.triggerMs, GOOGLE_DAY),
+    item('mail', 'Apps Script: email recipients today', 'recipients', 'google', i.mail, i.mail.ok ? Math.max(0, q.mail - i.mail.value) : null, q.mail, GOOGLE_DAY),
+    item('triggers', 'Apps Script: project triggers', 'triggers', 'google', i.triggers, i.triggers.ok ? i.triggers.value : null, 20, null),
+    item('monitoring', 'Google Cloud: API requests today (Monitoring)', 'req', 'google', i.monitoring, i.monitoring.ok ? i.monitoring.value.requests : null, null, null),
   ];
 }

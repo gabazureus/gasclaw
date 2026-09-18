@@ -545,5 +545,57 @@
       "correctness": "ver rodando no dev: verde local nao prova navegacao real",
       "testing": "se um dia entrar jsdom no projeto, testar selectPage de verdade em vez de grep"
     }
+  },
+  {
+    "phase": "Align \u2014 divida de idioma na CLI",
+    "overview": "Inventario medido do ./gasclaw: 104 linhas de texto para humano, 56 ainda em pt-BR, mais o bloco cmd_help e os rotulos de status/doctor. Nenhum teste afirma prosa em pt-BR (p2Setup.test.ts so afirma estrutura), entao traduzir e mudanca sem comportamento. Falta o usuario fechar o escopo das bordas e a trava de regressao.",
+    "scores": {
+      "correctness": {
+        "score": 7,
+        "note": "inventario medido linha a linha; nada implementado ainda"
+      },
+      "design": {
+        "score": 6,
+        "note": "fronteira interface/comentario clara; bordas (poc/, CI) em aberto"
+      },
+      "testing": {
+        "score": 5,
+        "note": "1009 testes verdes hoje, mas nenhum guarda o idioma da CLI"
+      },
+      "safety": {
+        "score": 8,
+        "note": "zero mudanca de comportamento; p2Setup.test.ts protege o contrato estrutural"
+      },
+      "clarity": {
+        "score": 6,
+        "note": "help usa tela/implantacao; onboarding ja diz panel/published \u2014 vocabulario divergente"
+      }
+    }
+  },
+  {
+    "phase": "Implement \u2014 CLI em ingles",
+    "overview": "Teste de idioma escrito primeiro (vermelho com 91 linhas), depois a traducao: 4 superficies do ./gasclaw (say/ok/warn/die, printf, help, status/doctor), as 2 mensagens do build.mjs e os rotulos do painel de limites em src/limits.ts \u2014 que sao impressos pelo ./gasclaw limits E pelo painel ja em ingles. Verificado com vitest 1012/1012, tsc exit 0, bash -n e o binario de verdade (help, menu do onboarding em pty, 4 caminhos de erro).",
+    "scores": {
+      "correctness": {
+        "score": 9,
+        "note": "1012/1012 verdes e tsc exit 0 num relatorio recem-gerado; binario rodado de verdade em 6 caminhos"
+      },
+      "design": {
+        "score": 8,
+        "note": "vocabulario unico (panel/published/1-minute worker/measured by gasclaw) entre CLI e painel; rename da planilha ficou como decisao, nao chute"
+      },
+      "testing": {
+        "score": 9,
+        "note": "red->green real; o teste ignora comentario, cobre o heredoc do help e tem teste do proprio detector"
+      },
+      "safety": {
+        "score": 9,
+        "note": "zero mudanca de comportamento; regex PENDING que le o erro pt-BR do Google preservada de proposito"
+      },
+      "clarity": {
+        "score": 8,
+        "note": "help reescrito no vocabulario do onboarding, nao traduzido palavra a palavra"
+      }
+    }
   }
 ]
