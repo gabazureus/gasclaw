@@ -15,6 +15,13 @@
     /* Sem isto, um botão desabilitado fica idêntico a um ativo: a pessoa clica e nada acontece, sem retorno. */
     button:disabled { background: #cfcdc7; color: #6b6b66; cursor: not-allowed; }
     .row { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 4px 0; }
+    /* sem isto, o `input { width: 100% }` acima estica a caixinha num retângulo da largura da tela: checkbox é controle, não campo */
+    input[type="checkbox"] { width: auto; flex: none; margin: 0; padding: 0; accent-color: #1d1d1b; }
+    fieldset { border: 1px solid #8f8d86; border-radius: 6px; margin: 12px 0 0; padding: 4px 12px 8px; }
+    legend { font-size: 13px; padding: 0 4px; }
+    .grp { font-size: 13px; font-weight: 600; margin: 10px 0 0; }
+    .tool { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; }
+    .tool label { flex: 1; }
     .err { color: #b3261e; }
     pre { white-space: pre-wrap; background: #f6f5f2; padding: 8px; border-radius: 6px; }
     select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font: inherit; }
@@ -224,7 +231,8 @@
       const holder = document.createElement('div');
       holder.className = 'muted';
       holder.id = 'access-' + a.folderId;
-      holder.setAttribute('aria-live', 'polite');
+      // o aria-live mora na LINHA de resumo, não aqui: com a lista de ferramentas dentro, o leitor de tela
+      // releria a seção inteira a cada toque de caixinha (ver showAccess)
       holder.hidden = true;
       const accessBtn = button('Acesso', () => {
         holder.hidden = !holder.hidden;
@@ -255,8 +263,76 @@
       const remove = button('Remover acesso', () => call('removeAccess', folderId).then(() => { $('msg').textContent = 'Acesso removido: só o dono, sem ferramentas.'; showAccess(folderId, holder); }));
       remove.disabled = x.approved.users.length === 0 && x.approved.tools.length === 0;
       remove.title = remove.disabled ? 'Não há acesso aprovado para remover' : 'Volta o agente para só o dono, sem ferramentas';
-      holder.replaceChildren(line('Sugerido pela pasta (falta aprovar): ' + (hasPending ? fmt(x.pending) : 'nada novo')), line('Aprovado: ' + fmt(x.approved)), approve, document.createTextNode(' '), remove);
+      const resumo = line('Aprovado: ' + fmt(x.approved));
+      resumo.setAttribute('aria-live', 'polite'); // só o resumo é anunciado; a lista de ferramentas abaixo, não
+      holder.replaceChildren(line('Sugerido pela pasta (falta aprovar): ' + (hasPending ? fmt(x.pending) : 'nada novo')), resumo, approve, document.createTextNode(' '), remove, toolsBox(folderId, x, resumo, fmt));
     }).withFailureHandler((e) => { holder.textContent = e.message; }).agentAccess(folderId);
+  }
+
+  // Liga/desliga POR ferramenta. Checkbox nativo de propósito: teclado, foco visível e leitura de rótulo
+  // já vêm prontos, e um "switch" de ARIA feito à mão só teria como reinventá-los pior.
+  const APPROVAL = { never: 'sem pedir aprovação', once: 'pede aprovação na 1ª vez', always: 'pede aprovação sempre' };
+  const GROUP_LABEL = { '': 'Gerais', memory: 'Memória', calendar: 'Agenda', gmail: 'Gmail', contacts: 'Contatos', tasks: 'Tarefas', drive: 'Drive, Docs e Sheets' };
+
+  function toolsBox(folderId, x, resumo, fmt) {
+    const box = document.createElement('fieldset');
+    const legend = document.createElement('legend');
+    legend.textContent = 'Ferramentas (' + x.enabled.length + ' de ' + x.catalog.length + ' ligadas)';
+    box.append(legend);
+    const groups = [];
+    x.catalog.forEach((t) => {
+      const g = groups.filter((o) => o.name === t.group)[0] || (groups.push({ name: t.group, tools: [] }), groups[groups.length - 1]);
+      g.tools.push(t);
+    });
+    groups.forEach((g) => {
+      const head = document.createElement('p');
+      head.className = 'grp';
+      head.textContent = GROUP_LABEL[g.name] || g.name;
+      box.append(head);
+      g.tools.forEach((t) => box.append(toolRow(folderId, t, x.enabled.indexOf(t.name) >= 0, resumo, fmt, legend, x.catalog.length)));
+    });
+    return box;
+  }
+
+  function toolRow(folderId, t, on, resumo, fmt, legend, total) {
+    let seq = 0; // dois cliques rápidos na MESMA caixa: vale a resposta do último, mesmo se ela voltar antes
+    const row = document.createElement('div');
+    row.className = 'tool';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.id = 'tool-' + folderId + '-' + t.name;
+    cb.checked = on;
+    const label = document.createElement('label');
+    label.htmlFor = cb.id;
+    label.textContent = t.name;
+    const hint = document.createElement('span');
+    hint.className = 'muted';
+    // o que a pessoa precisa para decidir: se a ferramenta age sozinha e se ela usa a conta do dono
+    hint.textContent = APPROVAL[t.approval] + (t.ownerOnly ? ' · só o dono' : '');
+    label.title = t.description;
+    cb.onchange = () => {
+      const n = ++seq;
+      const want = cb.checked;
+      $('msg').className = '';
+      $('msg').textContent = 'Trabalhando…';
+      google.script.run
+        .withSuccessHandler((a) => {
+          if (n !== seq) return;
+          cb.checked = a.enabled.indexOf(t.name) >= 0;
+          resumo.textContent = 'Aprovado: ' + fmt(a.approved);
+          legend.textContent = 'Ferramentas (' + a.enabled.length + ' de ' + total + ' ligadas)';
+          $('msg').textContent = t.name + (cb.checked ? ' ligada.' : ' desligada: o agente não consegue mais usá-la.');
+        })
+        .withFailureHandler((e) => {
+          if (n !== seq) return;
+          cb.checked = !want; // nada foi gravado: a caixa volta para o que o servidor tem
+          $('msg').className = 'err';
+          $('msg').textContent = e.message;
+        })
+        .setAgentTool(folderId, t.name, want);
+    };
+    row.append(cb, label, hint);
+    return row;
   }
   $('resetSecret').onclick = () => {
     if (!confirm('Apagar o segredo da CLI? Até o próximo ./gasclaw up, poc, eval e down vão falhar.')) return;

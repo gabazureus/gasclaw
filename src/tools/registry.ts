@@ -115,6 +115,20 @@ const GROUP_ALIASES: Record<string, string[]> = { drive: ['drive', 'docs', 'shee
 export const allowedTools = (list: string[], tools = TOOLS): Tool[] =>
   tools.filter((t) => list.some((e) => t.name === e || (GROUP_ALIASES[e] ?? [e]).some((g) => t.name.startsWith(`${g}.`))));
 
+/** Prefixo → grupo da allowlist (o inverso de GROUP_ALIASES): `docs.read` é do grupo `drive`, não do grupo `docs`. */
+const GROUP_OF: Record<string, string> = Object.fromEntries(Object.entries(GROUP_ALIASES).flatMap(([g, prefixes]) => prefixes.map((p) => [p, g])));
+
+/** Grupo de uma tool, como a allowlist agrupa; '' para as que não têm ponto (`now`, `ask`, `read_skill`). */
+export const toolGroup = (name: string): string => {
+  const prefix = name.split('.')[0];
+  return name.includes('.') ? (GROUP_OF[prefix] ?? prefix) : '';
+};
+
+/** O que o painel desenha no liga/desliga por ferramenta. Vem do registry: a tela não pode listar o que o motor não conhece. */
+export type ToolInfo = { name: string; group: string; description: string; approval: Approval; ownerOnly: boolean };
+export const toolCatalog = (tools = TOOLS): ToolInfo[] =>
+  tools.map((t) => ({ name: t.name, group: toolGroup(t.name), description: t.description, approval: t.approval, ownerOnly: t.ownerOnly === true }));
+
 /** O OpenRouter aceita só [a-zA-Z0-9_-] no nome da função. */
 export const wireName = (name: string) => name.replace(/\./g, '_');
 export const toDefs = (tools: Tool[]): ToolDef[] => tools.map((t) => ({ type: 'function', function: { name: wireName(t.name), description: t.description, parameters: t.parameters } }));

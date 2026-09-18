@@ -139,6 +139,25 @@ export function effectiveAccess(approved: Access | null | undefined): Access {
   };
 }
 
+/** Nomes das ferramentas efetivamente LIGADAS, pelo mesmo `allowedTools` que monta o toolkit do turno (grupo já expandido). */
+export const enabledTools = (approved: Access | null | undefined): string[] => allowedTools(effectiveAccess(approved).tools).map((t) => t.name);
+
+/**
+ * Liga/desliga UMA ferramenta no aprovado (ADR-021: o painel decide, a pasta só sugere).
+ *
+ * O formato gravado não muda; o conteúdo passa a listar nomes individuais, porque um grupo (`gmail`) não sabe
+ * dizer "gmail.read sim, gmail.send não". Um aprovado que ainda guarda o grupo é expandido no primeiro toque.
+ * Fail closed: nome fora do registry — ou um grupo, que não é ferramenta — é recusado, nunca gravado.
+ */
+export function withTool(approved: Access | null | undefined, tool: string, on: boolean): Access {
+  if (!allowedTools([tool]).some((t) => t.name === tool)) throw new Error(`ferramenta desconhecida: ${tool}`);
+  const a = effectiveAccess(approved);
+  const names = new Set(enabledTools(a));
+  if (on) names.add(tool);
+  else names.delete(tool);
+  return { users: a.users, tools: allowedTools([...names]).map((t) => t.name) }; // ordem canônica do registry, não a dos cliques
+}
+
 /** Recalcula o acesso efetivo do agente a partir do aprovado (ACCESS:<folderId>, lido pela borda). */
 export const withAccess = <T extends AgentSpec>(spec: T, approved: Access | null | undefined): T => ({ ...spec, access: effectiveAccess(approved) });
 
@@ -157,7 +176,13 @@ export function parseAccess(raw: string | null | undefined): Access | null {
 /** O que a pasta sugere e ainda não foi aprovado (lista "sugerido pela pasta" do painel). */
 export function pendingSuggestions(suggested: Access, approved: Access | null | undefined): Access {
   const a = effectiveAccess(approved);
-  return { users: suggested.users.filter((u) => !a.users.includes(u)), tools: suggested.tools.filter((t) => !a.tools.includes(t)) };
+  // Compara pelo EXPANDIDO: depois do liga/desliga por ferramenta, o aprovado guarda nomes individuais, e um
+  // grupo sugerido ('gmail') só continua pendente se alguma ferramenta dele estiver desligada.
+  const on = new Set(enabledTools(a));
+  return {
+    users: suggested.users.filter((u) => !a.users.includes(u)),
+    tools: suggested.tools.filter((t) => allowedTools([t]).some((x) => !on.has(x.name))),
+  };
 }
 
 /** Dono sempre pode; os outros só se estiverem no acesso efetivo. */
