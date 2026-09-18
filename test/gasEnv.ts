@@ -18,6 +18,8 @@ export type GasEnv = {
   llm: { content: string; cost?: number }[];
   /** Código HTTP que o Google Chat devolve (400 reproduz o incidente da v83). */
   chatCode: number;
+  /** Lista do OpenRouter (`/api/v1/models`); ausente = uma lista padrao que aceita o modelo dos testes. */
+  models?: { id: string; context_length: number; pricing: { prompt: string; completion: string }; supported_parameters: string[] }[];
   /** Arquivos da pasta do agente vistos pela Drive API (`files.list`). */
   folderFiles: { id: string; name: string; mimeType: string; text: string }[];
   fetched: (part: string) => Captured[];
@@ -85,6 +87,13 @@ function makeDrive(env: GasEnv) {
 
 /** Roteia a requisição pela URL e devolve a resposta que aquele sistema externo daria. */
 function route(env: GasEnv, url: string): ReturnType<typeof res> {
+  // A LISTA de modelos vem antes do ramo de completions, senao ela roubaria uma resposta da fila `env.llm`
+  // e todo teste que conta chamadas ao modelo passaria a medir outra coisa. O turno consulta esta lista para
+  // conferir o `model` pedido pela pasta (ADR-034); `listModels` guarda 6 h no cache.
+  if (url.includes('/api/v1/models')) {
+    const info = (id: string, tools: boolean) => ({ id, context_length: 8000, pricing: { prompt: '0.000001', completion: '0.000002' }, supported_parameters: tools ? ['tools'] : [] });
+    return res(200, JSON.stringify({ data: env.models ?? [info('openrouter/auto', true), info('test/model', true), info('gratis/modelo:free', true)] }));
+  }
   if (url.includes('openrouter.ai')) {
     const next = env.llm.shift() ?? { content: 'ok' };
     return res(200, JSON.stringify({
@@ -120,6 +129,12 @@ export function stubGas(over: Partial<GasEnv> = {}): GasEnv {
     fetched: (part) => env.calls.filter((c) => c.url.includes(part)),
     ...over,
   };
+
+  // Cache do OpenRouter JA QUENTE, que e o estado normal em producao: `listModels` guarda 6 h, entao a
+  // esmagadora maioria dos turnos nao faz chamada nenhuma para conferir o modelo da pasta. Sem isto, todo
+  // teste que CONTA chamadas ao modelo contaria tambem a leitura da lista e mediria outra coisa.
+  const info = (id: string, tools: boolean) => ({ id, ctx: 8000, inM: 1, outM: 2, tools, free: id.endsWith(':free') });
+  env.cache['or:models'] ??= JSON.stringify([info('openrouter/auto', true), info('test/model', true), info('gratis/modelo:free', true)]);
 
   const propStore = {
     getProperty: (k: string) => env.props[k] ?? null,

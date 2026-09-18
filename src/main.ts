@@ -38,7 +38,7 @@ import { runFree } from './freeRun';
 import { complete, type Completion, type Message, type ToolDef } from './llm';
 import { gasGoogle, zone } from './tools/googleHttp';
 import { offsetMinutes } from './agenda';
-import { getOverride, listModels as openRouterModels, setOverride, validateChoice } from './models';
+import { folderModel, getOverride, listModels as openRouterModels, type ModelInfo, setOverride, validateChoice } from './models';
 import * as observe from './observe';
 import * as runlog from './runlog';
 import * as store from './store';
@@ -72,16 +72,44 @@ function json(o: unknown): GoogleAppsScript.Content.TextOutput {
 /** Teto de passos escolhido na tela; ausente ou fora de 1..50 → vale o da pasta (mesma precedência do modelo). */
 const stepsOf = (folderId: string): number | null => parseSteps(PropertiesService.getScriptProperties().getProperty(`STEPS:${folderId}`));
 
-/** ADR-018: o que foi escolhido na tela (MODEL:/STEPS:<folderId>) vence a planilha config e o AGENTS. */
-function withOverride(spec: LoadedAgent): LoadedAgent & { modelSource: 'tela' | 'pasta' } {
+/** A lista do OpenRouter para DECIDIR, nunca para derrubar o turno: `null` quando não deu para ler.
+ *  `listModels` já guarda 6 h no cache e só busca com o cache frio — o caminho do turno é quente. */
+function modelsOrNull(): ModelInfo[] | null {
+  try {
+    return openRouterModels();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ADR-018: o que foi escolhido na tela (MODEL:/STEPS:<folderId>) vence a planilha config e o AGENTS.
+ *
+ * Sem escolha na tela, o modelo vem da PASTA — e aí ele é conferido (`folderModel`), porque a pasta é
+ * compartilhável e era a única entrada de modelo que nunca passava por `validateChoice`. `modelSource`
+ * passa a ter um terceiro valor, `padrao`, que é como quem for depurar "por que meu agente mudou de
+ * modelo?" acha a resposta: o span `resolve_agent` carrega a fonte e o motivo.
+ */
+function withOverride(spec: LoadedAgent): LoadedAgent & { modelSource: 'tela' | 'pasta' | 'padrao'; modelReason?: string } {
   const steps = stepsOf(spec.folderId);
   const withSteps = steps === null ? spec : { ...spec, config: { ...spec.config, steps } };
   const o = getOverride(spec.folderId);
-  return o ? { ...withSteps, config: { ...withSteps.config, model: o }, modelSource: 'tela' } : { ...withSteps, modelSource: 'pasta' };
+  if (o) return { ...withSteps, config: { ...withSteps.config, model: o }, modelSource: 'tela' };
+  // As ferramentas que valem são as APROVADAS no painel (ADR-021), não as sugeridas pela pasta: é com elas
+  // que o agente vai rodar, então é com elas que "este modelo aceita ferramentas?" tem de ser respondido.
+  const escolha = folderModel(withSteps.config.model, modelsOrNull(), withSteps.access?.tools ?? []);
+  return {
+    ...withSteps,
+    config: { ...withSteps.config, model: escolha.model },
+    modelSource: escolha.source,
+    ...(escolha.reason ? { modelReason: escolha.reason } : {}),
+  };
 }
 /** ADR-021: acesso e tools valem só o que o dono aprovou no painel (ACCESS:<folderId>); sem aprovação, fechado. */
 const approvedOf = (folderId: string) => parseAccess(PropertiesService.getScriptProperties().getProperty(`ACCESS:${folderId}`));
-const loadAgentForTurn = (folderId: string) => withAccess(withOverride(loadAgent(folderId)), approvedOf(folderId));
+// O acesso entra ANTES do override: o `withOverride` precisa das tools APROVADAS para decidir se o
+// modelo pedido pela pasta serve. Trocar a ordem e seguro: o `withAccess` nao olha `config.model`.
+const loadAgentForTurn = (folderId: string) => withOverride(withAccess(loadAgent(folderId), approvedOf(folderId)));
 
 /** A3/M16: Chat, tela de conversa e clique de aprovação registram os mesmos passos (resolve_agent, llm_call, tool_call). */
 const traced = (t: runlog.Tracer, d: ChatDeps): ChatDeps => traceDeps(t, d, loadAgentForTurn);

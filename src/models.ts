@@ -33,6 +33,32 @@ export function validateChoice(list: ModelInfo[], id: string, agentTools: string
   return null;
 }
 
+/**
+ * O `model` que veio da PASTA (AGENTS.md ou planilha `config`), já decidido contra a lista do OpenRouter.
+ *
+ * A pasta é a superfície compartilhável do agente, e era a única entrada de modelo que NÃO passava por
+ * `validateChoice` — só o painel (`setAgentModel`) e a CLI (`eval`) validavam. Quem tivesse acesso de
+ * edição podia apontar o agente para o modelo mais caro do OpenRouter, ou para um que não aceita
+ * ferramentas (e aí as tools falhavam sem explicação), sem passar por nenhuma tela do dono.
+ *
+ * `list === null` significa "não deu para ler a lista agora". Nesse caso cai no padrão: derrubar o turno
+ * puniria o usuário por uma falha passageira da rede, e aceitar o pedido da pasta seria confiar justamente
+ * quando não dá para conferir. O padrão conhecido é o seguro nos dois eixos, custo e disponibilidade.
+ *
+ * Esta proteção não precisa ser hermética: o teto de `RUN_BUDGET_USD` por run já limita o dano em dinheiro.
+ * Ela existe para o modelo da pasta parar de ser uma entrada não conferida, e para a troca ficar visível.
+ */
+export type ModelChoice = { model: string; source: 'pasta' | 'padrao'; reason?: string };
+
+export function folderModel(pedido: string | undefined, list: ModelInfo[] | null, agentTools: string[]): ModelChoice {
+  const id = (pedido ?? '').trim();
+  // Nada a recusar: o trace não deve acusar uma troca que não houve.
+  if (!id || id === DEFAULT_MODEL) return { model: DEFAULT_MODEL, source: 'pasta' };
+  if (list === null) return { model: DEFAULT_MODEL, source: 'padrao', reason: `a lista de modelos do OpenRouter não pôde ser lida agora; usando ${DEFAULT_MODEL} no lugar de ${id}` };
+  const err = validateChoice(list, id, agentTools);
+  return err ? { model: DEFAULT_MODEL, source: 'padrao', reason: err } : { model: id, source: 'pasta' };
+}
+
 // ---------- borda ----------
 
 const MODELS_URL = 'https://openrouter.ai/api/v1/models';

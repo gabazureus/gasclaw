@@ -7,11 +7,13 @@ import type { LoadedAgent } from './workspace';
 export type StepTracer = { step<T>(name: string, fn: () => T, info?: (v: T) => Record<string, unknown>, slow?: boolean): T };
 
 /** Dados do span resolve_agent: origem de cada papel (editor, doc, md, missing), cache e falha do editor. */
-export const agentInfo = (folderId: string) => (s: LoadedAgent & { modelSource?: string }) => ({
+export const agentInfo = (folderId: string) => (s: LoadedAgent & { modelSource?: string; modelReason?: string }) => ({
   agent: s.name,
   folderId,
   configModel: s.config.model,
   modelSource: s.modelSource ?? 'pasta',
+  // Por que o modelo da pasta nao foi usado. Sem isto, `modelSource: padrao` seria um fato sem causa.
+  ...(s.modelReason ? { modelReason: s.modelReason } : {}),
   origem: s.origem,
   cached: s.cached === true,
   ...(s.editorError ? { editorError: s.editorError } : {}),
