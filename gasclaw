@@ -422,13 +422,34 @@ ensure_script() {
   ok "script $(var "SCRIPT_ID_$UP")"
 }
 
-pull_into() { # $1 pasta; o pull do HEAD falha às vezes por rede: 3 tentativas
-  local i
+# Credencial expirada nao e falha passageira, e repetir nao renova nada. O clasp devolve `invalid_grant` /
+# `invalid_rapt` quando o Workspace exige reautenticacao periodica para escopos sensiveis; antes disto o
+# gasclaw tentava tres vezes, esperava 3 s entre elas, e terminava sem dizer o que fazer.
+#
+# A confusao que isso causa e especifica e cara: o cofre do clasp (~/.clasprc.json) e SEPARADO do cofre do
+# gcloud. Quem acabou de rodar `gcloud auth login` acha que ja resolveu, e o erro se repete igual.
+auth_expirada() {
+  case "$1" in
+    *invalid_grant*|*invalid_rapt*|*Unauthorized*|*'status code 401'*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+pull_into() { # $1 pasta; falha de rede e passageira e merece 3 tentativas — credencial expirada, nenhuma
+  local i saida
   for i in 1 2 3; do
-    CLASP_ROOT="$1" clasp_ pull >/dev/null && return 0
+    saida=$(CLASP_ROOT="$1" clasp_ pull 2>&1) && return 0
+    if auth_expirada "$saida"; then
+      printf '%s\n' "$saida" >&2
+      die "the clasp credential expired. Run: npx clasp login
+
+This is separate from gcloud: \`gcloud auth login\` does NOT renew it, and they expire on their own schedules.
+Nothing was published, so edits made in the Apps Script editor are untouched."
+    fi
     warn "clasp pull failed (attempt $i of 3)"
-    sleep 3
+    [ "$i" -lt 3 ] && sleep 3
   done
+  printf '%s\n' "$saida" >&2
   die "clasp pull failed 3 times: not publishing, so edits made in the editor are not erased"
 }
 
