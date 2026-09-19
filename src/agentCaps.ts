@@ -188,7 +188,7 @@ export const capsAfterCreation = (): Capability[] => newbornCapabilities();
  * `ensureFolderPath` reusa a primeira pasta com o mesmo nome, então remover e recriar devolveria
  * as capacidades **sem um clique**, e apagar o carimbo zeraria a trava de custo do Opus.
  */
-export const AGENT_PROP_PREFIXES = ['ACCESS', 'CAP', 'MODEL', 'STEPS', 'LASTGEN', 'STATUS'] as const;
+export const AGENT_PROP_PREFIXES = ['ACCESS', 'CAP', 'MODEL', 'STEPS', 'LASTGEN', 'STATUS', 'CFG', 'DREAMLOCK'] as const;
 
 /**
  * As chaves a apagar quando um agente sai. Recebe as chaves existentes para não depender de
