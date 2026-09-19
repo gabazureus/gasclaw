@@ -95,3 +95,77 @@ A sonda avalia a agenda a partir de uma string, não lendo `jobs.md` do Drive a 
 como o `Access` — o que fechou o furo de segurança (o editor da pasta fornecia o prompt e o destino
 de um run não supervisionado) **e**, de quebra, é o que torna a pergunta desta POC respondível.
 Ler a pasta do Drive a cada um dos 1.440 tiques do dia é exatamente o desenho que não caberia.
+
+---
+
+# MEDIÇÃO — 2026-09-19, dev v100. **REPROVADA — e não pelo motivo que o critério supunha**
+
+Primeira medição da P22 desde que ela foi escrita. Sequência: `reset` → `tick` ×6 → `wake` → `fim`.
+
+## Veredito do harness
+
+| # | Critério | Teto | Medido | |
+|---|---|---|---|---|
+| C1 | tique com agenda vazia | 1.000 ms | **974 ms de mediana**, 3 de 6 amostras acima | **no teto** |
+| C2 | tique avaliando 20 compromissos | 1.000 ms | **1.090 ms de mediana**, 5 de 6 acima | **reprova** |
+| C3 | projeção do custo fixo | ≤ 20% | **recusada pelo próprio harness** | ver abaixo |
+| C4 | gatilhos do projeto | exatamente 1 | **1** | passa |
+
+## A primeira amostra estava contaminada, e a P3 já tinha avisado
+
+A primeira leitura deu **1.448 ms** (ocioso) e **2.646 ms** (agenda). Repetindo depois de `reset`,
+os números caíram para a faixa de 517–1.160 ms. É exatamente o que a ADR-027 registrou na v58/v59:
+os primeiros ciclos pagam limpeza de marcadores órfãos.
+
+**Por isso este relatório usa seis amostras, não uma.** Uma amostra teria reprovado a POC com um
+número que não se sustenta — e teria reprovado pelo motivo errado.
+
+## O achado: a agenda é quase de graça; o que não cabe é o tique que já se paga hoje
+
+| | mediana | média | mín | máx | acima de 1.000 ms |
+|---|---:|---:|---:|---:|---:|
+| tique **ocioso** | 974 ms | 923 ms | 517 | 1.160 | 3 de 6 |
+| tique **avaliando 20 compromissos** | 1.090 ms | 1.148 ms | 903 | 1.550 | 5 de 6 |
+| **diferença (custo da agenda)** | **58 ms** | 224 ms | −35 | +722 | — |
+
+**Avaliar a agenda custa ~58 ms de mediana.** Em uma das amostras o tique com agenda foi até
+*mais rápido* que o ocioso (−35 ms), ou seja, o custo está dentro do ruído.
+
+O que está no teto é o **tique ocioso**, que já roda hoje, a cada minuto, sem proatividade nenhuma.
+
+### E ele regrediu
+
+A **ADR-027 mediu o tique ocioso em 716 ms** na v60. Agora, na v100, a mediana é **974 ms**:
+
+> **+258 ms de regressão no tique ocioso entre a v60 e a v100.**
+
+Isso não foi a proatividade que causou — ela não existe. Foi o que entrou no tique desde então
+(fila de runs, reconciliação, filhos). **O critério de 1.000 ms herdado da P3 está sendo raspado
+pelo sistema atual, antes de a proatividade acrescentar qualquer coisa.**
+
+## C3: o harness recusou projetar, e ele está certo
+
+> *"projeção recusada: só há o passo SINTÉTICO de 6.375 ms (piso, sem chamada ao modelo). Um piso
+> não decide se cabe na cota — informe um turno real observado"*
+
+O harness **se recusa a passar com um número sintético**. É a mesma disciplina que a P3 aprendeu
+na marra, embutida no veredito: um piso não prova que cabe. Para fechar o C3 é preciso um turno
+proativo real observado — que só existe depois de a proatividade existir.
+
+## O que isto muda no trabalho
+
+1. **Construir a proatividade agora seria somar 58 ms a algo que já está no teto.** A ordem certa
+   é investigar a regressão do tique ocioso primeiro — ou rever o teto de 1.000 ms com argumento,
+   em vez de herdá-lo.
+2. **O teto de 1.000 ms nunca foi justificado por necessidade de produto.** Ele veio da P3 como
+   régua de "tique barato". O que a cota realmente exige é a projeção do C3, e essa continua sem
+   número.
+3. **A decisão D16 (nenhum gatilho novo) sai reforçada:** com o tique único já no limite, um
+   segundo gatilho seria pior em todos os sentidos.
+
+## Defeito de ferramenta, de passagem
+
+Quando a POC reprova legitimamente, o `./gasclaw poc` sai com código 1 e o wrapper imprime
+`gasclaw stopped unexpectedly near line 677 (exit 1)`. **Uma POC que reprova não é um travamento** —
+e fazer reprovação parecer crash empurra quem mede a duvidar do resultado em vez de acreditar nele.
+Registrado; não consertado nesta rodada.
