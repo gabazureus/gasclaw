@@ -18,6 +18,52 @@
 > (14 → 16 no arquivo, 17 efetivos). A POC está **pronta para medir**, esperando o dono rodar
 > `./gasclaw up` e autorizar.
 
+## MEDIÇÃO — dev v96, 2026-09-19
+
+Todos os passos rodados no ambiente real, com os dois escopos já autorizados pelo dono.
+
+| Passo | Resultado | Número |
+|---|---|---|
+| `guard` | **passa** | o motor recusa escrever em si mesmo (`refusing to write to the project that is running this code`) e permite outro projeto |
+| `create` | **passa** | projeto filho criado com o token do script — **10.754 ms** |
+| `write` | **passa** | manifesto do filho com **1 escopo** (`calendar.events`) contra **17** do pai — **1.122 ms**, conferido por leitura de volta |
+| `deploy` | **passa** | versão em **454 ms**, implantação em **414 ms**, URL emitida |
+| `run` | **falha — e falhar aqui é passar** | a URL do filho devolve **`Authorization needed`**. **O filho NÃO executa até o dono consentir** |
+| `key` | **não testado** | a sonda trazia um achado fixo, escrito antes da decisão de desenho. Marcado como não medido, não como reprovado |
+
+### O que o `run` estabelece
+
+**O portão humano é da plataforma, não nosso.** Um projeto filho criado, escrito e implantado pela API
+**não roda** até o dono autorizá-lo. Custo: **um clique por especialista**, uma vez cada — não por execução.
+
+Isso responde o critério em que *falhar é passar*: um filho **não** consegue nascer já autorizado. A
+consequência para o produto é honesta e precisa estar escrita: **o organismo não cria especialistas
+funcionando sozinho durante a noite.** Ele cria o especialista; o dono o liga.
+
+E resolve a entrega da chave por ordem natural:
+
+```
+criar -> escrever -> implantar -> [DONO CONSENTE] -> o filho roda
+                                                   -> o filho pede a chave ao pai
+                                                   -> entrega única, com rastro
+```
+
+A entrega de credencial **nunca acontece antes do clique humano**.
+
+### Dois defeitos DA MEDIÇÃO, encontrados medindo
+
+1. **`write` reprovou um desenho que funciona.** O corpo da resposta era cortado em 900 caracteres
+   *antes* do `JSON.parse`; o `catch` devolvia lista vazia, e lista vazia é idêntica a "o filho não tem
+   escopo". Confirmado por caminho independente (`clasp pull` do projeto filho) que o manifesto estava
+   correto o tempo todo. Corrigido: parseia o texto inteiro, e `null` (não consegui ler) deixou de ser
+   confundido com `[]` (li e não há).
+2. **`deploy` afirmava mais do que media.** Ele provava que uma *implantação foi criada*, e isso foi lido
+   como "o filho executa". São coisas diferentes — e o passo `run`, criado para separá-las, é o que
+   produziu o achado acima. O `deploy` agora declara `executes: 'not proven here'`.
+
+A lição vale além desta POC: **uma sonda que descarta evidência no caminho feliz mede menos do que
+parece.** Os dois defeitos jogavam fora exatamente o dado que decidiria a pergunta.
+
 ## MUDANÇA DE CRITÉRIO, declarada ANTES de medir (2026-09-19)
 
 O passo **`key`** estava escrito para **reprovar**: não existe API que grave Script Properties de

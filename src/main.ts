@@ -1234,7 +1234,12 @@ function pocP24(step?: string): unknown {
       ...(payload ? { payload: JSON.stringify(payload) } : {}),
       muteHttpExceptions: true,
     });
-    return { code: res.getResponseCode(), ms: Date.now() - t0, body: res.getContentText().slice(0, 900) };
+    // `body` é para LER na tela e por isso vem cortado; `full` é o texto inteiro, para PARSEAR.
+    // Medido na P24: o GET de /content devolve manifesto + código e passa de 900 caracteres, então
+    // parsear o corte fazia o JSON.parse quebrar — e o `catch` devolvia lista vazia, indistinguível de
+    // "o filho não tem escopo". A medição quase reprovou um desenho que funciona.
+    const full = res.getContentText();
+    return { code: res.getResponseCode(), ms: Date.now() - t0, body: full.slice(0, 900), full };
   };
 
   if (step === 'guard') {
@@ -1268,16 +1273,21 @@ function pocP24(step?: string): unknown {
     ];
     const r = call(`${api}/${child}/content`, 'put', { files });
     const back = call(`${api}/${child}/content`, 'get');
-    let scopes: string[] = [];
+    // `null` = não consegui LER; `[]` = li e não há escopo. Confundir os dois foi o defeito que esta
+    // sonda teve na primeira medição, e é o tipo de engano que reprova um desenho correto.
+    let scopes: string[] | null = null;
+    let readError: string | undefined;
     try {
-      const got = (JSON.parse(back.body) as { files?: { name: string; source: string }[] }).files ?? [];
+      const got = (JSON.parse(back.full) as { files?: { name: string; source: string }[] }).files ?? [];
       const man = got.find((f) => f.name === 'appsscript');
-      scopes = man ? ((JSON.parse(man.source) as { oauthScopes?: string[] }).oauthScopes ?? []) : [];
-    } catch {
-      scopes = [];
+      if (!man) readError = 'manifest not found in the read-back';
+      else scopes = (JSON.parse(man.source) as { oauthScopes?: string[] }).oauthScopes ?? [];
+    } catch (e) {
+      readError = `read-back did not parse: ${(e as Error).message}`;
     }
-    // C4 do desenho: o filho tem MENOS escopo que o pai, e exatamente o que foi pedido.
-    return { pass: r.code === 200 && scopes.length === 1 && scopes[0].endsWith('calendar.events'), code: r.code, ms: r.ms, readBackScopes: scopes, parentScopes: 17 };
+    // C4 do desenho: o filho tem os escopos que foram PEDIDOS, e não os do pai.
+    const ok = r.code === 200 && back.code === 200 && scopes !== null && scopes.length === 1 && scopes[0].endsWith('calendar.events');
+    return { pass: ok, code: r.code, readBackCode: back.code, ms: r.ms, readBackScopes: scopes, parentScopes: 17, ...(readError ? { readError } : {}) };
   }
 
   if (step === 'deploy') {
@@ -1285,7 +1295,61 @@ function pocP24(step?: string): unknown {
     if (!child) return { pass: false, error: 'run `poc p24 create` first' };
     const ver = call(`${api}/${child}/versions`, 'post', { description: 'p24' });
     const dep = call(`${api}/${child}/deployments`, 'post', { versionNumber: 1, manifestFileName: 'appsscript', description: 'p24' });
-    return { pass: ver.code === 200 && dep.code === 200, version: { code: ver.code, ms: ver.ms }, deployment: { code: dep.code, ms: dep.ms, body: dep.code === 200 ? undefined : dep.body } };
+    // O corpo do sucesso era descartado — e é nele que vem o deploymentId. Medir e jogar fora a
+    // evidência foi o mesmo erro do corte em 900 caracteres, por outro caminho.
+    let deploymentId: string | null = null;
+    try {
+      deploymentId = (JSON.parse(dep.full) as { deploymentId?: string }).deploymentId ?? null;
+    } catch {
+      deploymentId = null;
+    }
+    if (deploymentId) PropertiesService.getScriptProperties().setProperty('P24_DEPLOY', deploymentId);
+    // ATENÇÃO ao que este `pass` afirma: que a IMPLANTAÇÃO foi criada. NÃO afirma que o filho executa —
+    // isso é o passo `run`, e confundir os dois daria um placar verde sem a propriedade que importa.
+    return { pass: ver.code === 200 && dep.code === 200, created: true, executes: 'not proven here — see step `run`', deploymentId, version: { code: ver.code, ms: ver.ms }, deployment: { code: dep.code, ms: dep.ms, body: dep.code === 200 ? undefined : dep.body } };
+  }
+
+  if (step === 'run') {
+    // A pergunta que decide o desenho: o filho EXECUTA sem o dono clicar em consentimento?
+    // Reescreve o filho como web app (doGet) e o chama pela URL. O que voltar é a resposta:
+    // o ping = executa; uma tela de autorização = precisa de clique, e aí o custo é por especialista.
+    const child = PropertiesService.getScriptProperties().getProperty('P24_CHILD');
+    if (!child) return { pass: false, error: 'run `poc p24 create` first' };
+    const guard = mayWriteProject(child, own);
+    if (!guard.ok) return { pass: false, error: guard.reason };
+    const files = [
+      {
+        name: 'appsscript',
+        type: 'JSON',
+        source: JSON.stringify({
+          timeZone: 'America/Sao_Paulo',
+          runtimeVersion: 'V8',
+          oauthScopes: ['https://www.googleapis.com/auth/calendar.events'],
+          webapp: { executeAs: 'USER_DEPLOYING', access: 'MYSELF' },
+        }),
+      },
+      { name: 'Code', type: 'SERVER_JS', source: 'function doGet() { return ContentService.createTextOutput("p24-ok"); }\n' },
+    ];
+    const w = call(`${api}/${child}/content`, 'put', { files });
+    const ver = call(`${api}/${child}/versions`, 'post', { description: 'p24-run' });
+    const dep = call(`${api}/${child}/deployments`, 'post', { versionNumber: 2, manifestFileName: 'appsscript', description: 'p24-run' });
+    let url: string | null = null;
+    try {
+      const entries = (JSON.parse(dep.full) as { entryPoints?: { webApp?: { url?: string } }[] }).entryPoints ?? [];
+      url = entries.map((e) => e.webApp?.url).find((u) => !!u) ?? null;
+    } catch {
+      url = null;
+    }
+    if (!url) return { pass: false, write: w.code, version: ver.code, deployment: dep.code, error: 'no web app URL in the deployment', body: dep.body };
+    const hit = call(url, 'get');
+    const executed = hit.code === 200 && hit.full.indexOf('p24-ok') >= 0;
+    return {
+      pass: executed,
+      url,
+      hit: { code: hit.code, ms: hit.ms, body: hit.body.slice(0, 200) },
+      // Se NÃO executou, o corpo diz o que o Google pediu: é aqui que se lê quantos cliques custam.
+      reading: executed ? 'the child ran with no consent click' : 'the child did NOT run — read `hit.body` for what Google asked for',
+    };
   }
 
   if (step === 'key') {
