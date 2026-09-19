@@ -28,10 +28,10 @@
     .tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
     /* a borda é o que diz que isto é um controle: só o preenchimento dá 1,18:1 contra o fundo (WCAG 1.4.11) */
     .tabs button { background: #e3e1db; color: #1d1d1b; margin-top: 0; border: 1px solid #8f8d86; }
-    .tabs button[aria-selected="true"], .tabs button[aria-current="page"] { background: #1d1d1b; color: #fff; border-color: #1d1d1b; }
+    .tabs button[aria-selected="true"], .tabs button[aria-current="page"], .tabs button[aria-pressed="true"] { background: #1d1d1b; color: #fff; border-color: #1d1d1b; }
     /* o anel padrão do Firefox some dentro do botão quase preto: foco explícito, claro por dentro e escuro por fora */
     a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid #0b4f8a; outline-offset: 2px; }
-    .tabs button[aria-selected="true"]:focus-visible, .tabs button[aria-current="page"]:focus-visible { outline-color: #7fb2e5; }
+    .tabs button[aria-selected="true"]:focus-visible, .tabs button[aria-current="page"]:focus-visible, .tabs button[aria-pressed="true"]:focus-visible { outline-color: #7fb2e5; }
     .env { font-size: 12px; padding: 1px 8px; border-radius: 8px; background: #e3e1db; vertical-align: middle; }
     .env.prod { background: #8c1d18; color: #fff; } /* prod precisa ser visível de relance, não lido com atenção */
     .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -47,9 +47,19 @@
     table { border-collapse: collapse; width: 100%; font-size: 13px; }
     th, td { text-align: left; padding: 4px; border-bottom: 1px solid #eee; }
     svg g[role="button"]:focus { outline: 2px solid #1d1d1b; }
+    svg [data-slice]:focus { outline: 2px solid #1d1d1b; }
+    /* O balao segue o ponteiro, entao nao pode capturar o proprio evento: sem `pointer-events:none` ele
+       entra debaixo do mouse, o `mouseout` dispara, o balao some — e volta. Pisca sem parar. */
+    #tip { position: fixed; z-index: 9; pointer-events: none; background: #1d1d1b; color: #fff; font-size: 12px;
+           padding: 4px 8px; border-radius: 6px; max-width: 260px; }
+    #tip[hidden] { display: none; }
+    .charts { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+    .charts > div:first-child { flex: 1 1 340px; }
+    #pie { flex: 0 0 180px; }
   </style>
 </head>
 <body>
+<div id="tip" role="status" hidden></div>
 <main>
   <!-- "ambiente:" é oculto só visualmente: sem ele, o leitor de tela anuncia "gasclaw dev" e a palavra fica órfã -->
   <h1>🦀 gasclaw <span class="env" id="envBadge"><span class="sr">environment: </span><span id="envName"></span></span></h1>
@@ -134,9 +144,18 @@
       <button id="modelSave">Use this model</button>
       <button id="modelReset" class="sec">Back to the AGENTS one</button>
       <h3 id="chartTitle">Cost per model · 7 days</h3>
-      <button id="chartBack" class="sec" hidden>← 7 days</button>
-      <div id="chart"></div>
+      <div role="group" aria-label="Period" class="tabs">
+        <button id="range-7d" aria-pressed="true">7 days</button>
+        <button id="range-30d" aria-pressed="false">30 days</button>
+        <button id="range-months" aria-pressed="false">By month</button>
+      </div>
+      <button id="chartBack" class="sec" hidden>← back</button>
+      <div class="charts">
+        <div id="chart"></div>
+        <div id="pie"></div>
+      </div>
       <div id="legend" class="legend"></div>
+      <p class="muted">Point at a bar segment or a pie slice to see how much that model cost. With the keyboard, Tab to it.</p>
       <details><summary>View as a table</summary><div id="chartTable"></div></details>
       <p id="costCheck" class="muted"></p>
     </div>
@@ -650,11 +669,48 @@
   startLive();
   const quiet = (fn, ...args) => new Promise((ok, fail) => google.script.run.withSuccessHandler(ok).withFailureHandler(fail)[fn](...args));
   const el = (tag, props, ...kids) => { const e = document.createElement(tag); Object.assign(e, props || {}); e.append(...kids); return e; };
-  const money = (x) => 'US$ ' + (Math.round((x || 0) * 10000) / 10000);
+  // Quatro casas transformam US$ 0,00004 em "US$ 0" — e o balao existe justamente para mostrar esse numero.
+  const money = (x) => { const v = x || 0; const casas = v && Math.abs(v) < 0.001 ? 7 : 4; return 'US$ ' + (Math.round(v * Math.pow(10, casas)) / Math.pow(10, casas)); };
+  const pct = (v, total) => (total ? Math.round((v / total) * 1000) / 10 : 0) + '%';
+
+  // ----- Balão do gráfico: o valor por modelo sem precisar abrir a tabela -----
+  //
+  // O `<title>` do SVG ja da o valor, mas so depois de ~1 s parado e com o texto do navegador; num grafico
+  // empilhado a pessoa passa o mouse por varios modelos seguidos e desiste antes. O balao responde na hora.
+  // Ele nao SUBSTITUI o `<title>`: quem le com leitor de tela continua ouvindo o mesmo texto.
+  const tip = $('tip');
+  const moveTip = (ev) => {
+    tip.style.left = Math.max(4, Math.min(window.innerWidth - 270, ev.clientX + 12)) + 'px';
+    tip.style.top = Math.max(4, Math.min(window.innerHeight - 40, ev.clientY + 16)) + 'px';
+  };
+  const hideTip = () => { tip.hidden = true; };
+  /** Liga o balão a um nó do SVG: mouse e — quando `focavel` — teclado, que precisa do mesmo dado. */
+  function hoverable(node, texto, focavel) {
+    const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    t.textContent = texto;
+    node.append(t);
+    node.addEventListener('mouseover', (ev) => { tip.textContent = texto; tip.hidden = false; moveTip(ev); });
+    node.addEventListener('mousemove', moveTip);
+    node.addEventListener('mouseout', hideTip);
+    if (!focavel) return node;
+    node.setAttribute('tabindex', '0');
+    node.setAttribute('role', 'img');
+    node.setAttribute('aria-label', texto);
+    node.addEventListener('focus', () => {
+      const r = node.getBoundingClientRect();
+      tip.textContent = texto;
+      tip.hidden = false;
+      moveTip({ clientX: r.left + r.width / 2, clientY: r.bottom });
+    });
+    node.addEventListener('blur', hideTip);
+    return node;
+  }
+  window.addEventListener('scroll', hideTip, true);
 
   // ----- Modelos e custo -----
   const COLORS = ['#2f6fdb', '#d9822b', '#2e9e6b', '#b8457a', '#7a5cc7', '#9a9892'];
   let chartDay = null;
+  let chartRange = '7d';
   let modelCache = null;
   function fillAgents() {
     if (!state) return;
@@ -695,24 +751,67 @@
   $('modelAgent').onchange = loadModel;
   $('modelSave').onclick = () => call('setAgentModel', $('modelAgent').value, $('modelPick').value).then((m) => { showModel(m); $('modelPick').value = ''; $('msg').textContent = 'Model switched (applies to the next message).'; });
   $('modelReset').onclick = () => call('setAgentModel', $('modelAgent').value, null).then((m) => { showModel(m); $('msg').textContent = 'Back to the AGENTS model.'; });
+  const NS = 'http://www.w3.org/2000/svg';
+  const svgEl = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, String(attrs[k])); return e; };
+  const cor = (s, k) => COLORS[s === 'outros' ? 5 : Math.min(k, 4)];
+  const RANGES = ['7d', '30d', 'months'];
+  const RANGE_TITLE = { '7d': 'Cost per model · 7 days (São Paulo)', '30d': 'Cost per model · 30 days (São Paulo)', months: 'Cost per model · last 12 months' };
+
   function loadCost() {
     fillAgents();
     if (!modelCache && $('modelAgent').value) loadModel();
-    quiet('usageChart', chartDay || '').then(drawChart).catch((e) => { $('chart').textContent = 'Usage unavailable: ' + e.message; });
+    hideTip();
+    quiet('usageChart', chartDay || '', chartRange).then(drawChart).catch((e) => { $('chart').textContent = 'Usage unavailable: ' + e.message; });
   }
+  RANGES.forEach((r) => {
+    $('range-' + r).onclick = () => {
+      chartRange = r;
+      chartDay = null; // trocar de faixa sai do zoom: um dia aberto sob o rótulo de 12 meses mentiria
+      RANGES.forEach((x) => $('range-' + x).setAttribute('aria-pressed', String(x === r)));
+      loadCost();
+    };
+  });
+
+  /**
+   * Pizza: quanto cada modelo custou na faixa inteira.
+   *
+   * O empilhado responde "quando gastei"; a pizza responde "com quem gastei", que é a pergunta de quem quer
+   * trocar de modelo. As duas usam a MESMA série e as MESMAS cores — senão a legenda serviria só a uma.
+   */
+  function drawPie(totals, series) {
+    const total = series.reduce((t, s) => t + (totals[s] || 0), 0);
+    if (!total) { $('pie').replaceChildren(el('p', { className: 'muted', textContent: 'No paid usage in this period.' })); return; }
+    const R = 70, C = 80;
+    const svg = svgEl('svg', { viewBox: '0 0 160 160', width: '100%', role: 'img', 'aria-label': 'Share of cost per model. Total: ' + money(total) });
+    const ponto = (a) => [C + R * Math.cos(a), C + R * Math.sin(a)];
+    let a0 = -Math.PI / 2;
+    series.forEach((s, k) => {
+      const v = totals[s] || 0;
+      if (!v) return;
+      const texto = s + ' — ' + money(v) + ' · ' + pct(v, total);
+      // Um modelo sozinho é 360°: o arco sairia e voltaria ao mesmo ponto e não desenharia nada.
+      if (v >= total) { svg.append(hoverable(svgEl('circle', { cx: C, cy: C, r: R, fill: cor(s, k) }), texto, true)); return; }
+      const a1 = a0 + (v / total) * 2 * Math.PI;
+      const [x0, y0] = ponto(a0), [x1, y1] = ponto(a1);
+      const arco = svgEl('path', { d: 'M ' + C + ' ' + C + ' L ' + x0 + ' ' + y0 + ' A ' + R + ' ' + R + ' 0 ' + (a1 - a0 > Math.PI ? 1 : 0) + ' 1 ' + x1 + ' ' + y1 + ' Z', fill: cor(s, k), stroke: '#fff', 'stroke-width': '1' });
+      svg.append(hoverable(arco, texto, true));
+      a0 = a1;
+    });
+    $('pie').replaceChildren(svg);
+  }
+
   function drawChart(u) {
     const bars = u.chart.bars, series = u.chart.series;
+    const mes = u.chart.range === 'months';
     const W = 640, H = 200, pad = 28, bw = (W - pad) / bars.length;
     const max = Math.max(...bars.map((b) => b.total), 1e-9);
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + (H + 24));
-    svg.setAttribute('width', '100%');
-    svg.setAttribute('role', 'img');
-    svg.setAttribute('aria-label', (chartDay ? 'Cost per hour on ' + chartDay : 'Cost per day over the last 7 days') + ', stacked by model. Total: ' + money(bars.reduce((t, b) => t + b.total, 0)));
-    const NS = 'http://www.w3.org/2000/svg';
+    const svg = svgEl('svg', {
+      viewBox: '0 0 ' + W + ' ' + (H + 24), width: '100%', role: 'img',
+      'aria-label': (chartDay ? 'Cost per hour on ' + chartDay : mes ? 'Cost per month over the last 12 months' : 'Cost per day over the last ' + bars.length + ' days') + ', stacked by model. Total: ' + money(bars.reduce((t, b) => t + b.total, 0)),
+    });
     bars.forEach((b, i) => {
       const g = document.createElementNS(NS, 'g');
-      const label = b.key + ': ' + money(b.total) + ' — ' + series.map((s) => s + ' ' + money(b.parts[s])).filter((_, k) => b.parts[series[k]]).join(', ');
+      const label = b.key + ': ' + money(b.total) + ' — ' + series.filter((s) => b.parts[s]).map((s) => s + ' ' + money(b.parts[s])).join(', ');
       g.setAttribute('aria-label', label);
       let y = H;
       series.forEach((s, k) => {
@@ -720,17 +819,17 @@
         if (!v) return;
         const h = Math.max(1, (v / max) * (H - 10));
         y -= h;
-        const r = document.createElementNS(NS, 'rect');
-        r.setAttribute('x', String(pad + i * bw + 2)); r.setAttribute('y', String(y)); r.setAttribute('width', String(Math.max(2, bw - 4))); r.setAttribute('height', String(h));
-        r.setAttribute('fill', COLORS[s === 'outros' ? 5 : Math.min(k, 4)]);
-        g.append(r);
+        const r = svgEl('rect', { x: pad + i * bw + 2, y: y, width: Math.max(2, bw - 4), height: h, fill: cor(s, k) });
+        // O balão é por SEGMENTO: o `<title>` do grupo dizia o dia inteiro de uma vez, e num dia com cinco
+        // modelos a pessoa lia cinco valores para descobrir um. Aqui o modelo sob o ponteiro é o que aparece.
+        g.append(hoverable(r, b.key + ' · ' + s + ' — ' + money(v) + ' · ' + pct(v, b.total), false));
       });
-      const t = document.createElementNS(NS, 'text');
-      t.setAttribute('x', String(pad + i * bw + bw / 2)); t.setAttribute('y', String(H + 16)); t.setAttribute('text-anchor', 'middle'); t.setAttribute('font-size', chartDay ? '9' : '11');
-      t.textContent = chartDay ? (i % 3 === 0 ? b.key : '') : b.key.slice(5);
+      const t = svgEl('text', { x: pad + i * bw + bw / 2, y: H + 16, 'text-anchor': 'middle', 'font-size': bars.length > 12 ? '8' : '11' });
+      const cada = bars.length > 24 ? 5 : bars.length > 12 ? 3 : 1; // rótulo em toda barra vira borrão
+      t.textContent = i % cada === 0 ? (chartDay ? b.key : mes ? b.key.slice(2) : b.key.slice(5)) : '';
       g.append(t);
       const title = document.createElementNS(NS, 'title'); title.textContent = label; g.append(title);
-      if (!chartDay) {
+      if (!chartDay && b.day) {
         g.setAttribute('role', 'button'); g.setAttribute('tabindex', '0'); g.style.cursor = 'pointer';
         const zoom = () => { chartDay = b.day; loadCost(); };
         g.addEventListener('click', zoom);
@@ -739,10 +838,13 @@
       svg.append(g);
     });
     $('chart').replaceChildren(svg);
-    $('chartTitle').textContent = chartDay ? 'Cost per hour · ' + chartDay + ' (São Paulo)' : 'Cost per model · 7 days (São Paulo)';
+    const totais = {};
+    bars.forEach((b) => series.forEach((s) => { if (b.parts[s]) totais[s] = (totais[s] || 0) + b.parts[s]; }));
+    drawPie(totais, series);
+    $('chartTitle').textContent = chartDay ? 'Cost per hour · ' + chartDay + ' (São Paulo)' : RANGE_TITLE[u.chart.range];
     $('chartBack').hidden = !chartDay;
-    $('legend').replaceChildren(...series.map((s, k) => el('span', {}, el('i', { style: 'background:' + COLORS[s === 'outros' ? 5 : Math.min(k, 4)] }), s)));
-    const head = el('tr', {}, el('th', { textContent: chartDay ? 'hour' : 'day' }), ...series.map((s) => el('th', { textContent: s })), el('th', { textContent: 'total' }));
+    $('legend').replaceChildren(...series.map((s, k) => el('span', {}, el('i', { style: 'background:' + cor(s, k) }), s + ' ' + money(totais[s] || 0))));
+    const head = el('tr', {}, el('th', { textContent: chartDay ? 'hour' : mes ? 'month' : 'day' }), ...series.map((s) => el('th', { textContent: s })), el('th', { textContent: 'total' }));
     const rows = bars.map((b) => el('tr', {}, el('td', { textContent: b.key }), ...series.map((s) => el('td', { textContent: b.parts[s] ? money(b.parts[s]) : '' })), el('td', { textContent: money(b.total) })));
     $('chartTable').replaceChildren(el('table', {}, el('caption', { textContent: 'Cost per model' }), el('thead', {}, head), el('tbody', {}, ...rows)));
     const c = u.check;

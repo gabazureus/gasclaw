@@ -1176,9 +1176,9 @@ export function setAgentModel(folderId: string, model: string | null) {
   return agentModel(folderId);
 }
 
-export function usageChart(day?: string) {
+export function usageChart(day?: string, range?: string) {
   assertOwner();
-  return observe.usageView(store.getApiKey(), day || undefined);
+  return observe.usageView(store.getApiKey(), day || undefined, range || undefined);
 }
 
 export function limitsPanel(fresh?: boolean) {

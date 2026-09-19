@@ -40,3 +40,4 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [034](034-modelo-da-pasta-conferido.md) | O modelo pedido pela pasta é conferido, e cai no padrão quando não serve | Aceito |
 | [035](035-procedencia-dos-papeis-no-painel.md) | A procedência de cada papel aparece no painel | Aceito |
 | [036](036-chegar-ao-agente-sem-digitar-o-link.md) | Chegar ao agente sem digitar o link (e por que não encurtamos) | Aceito; QR code no terminal em aberto |
+| [037](037-custo-por-mes-e-valor-por-modelo.md) | Custo por mês (dia dobrado em mês, 24 meses) e o valor de cada modelo no gráfico | Aceito |

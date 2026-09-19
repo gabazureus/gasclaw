@@ -7,7 +7,7 @@ import { getOwner } from './store';
 import { keyInfo } from './models';
 import { cleanupRunsDaily, ensureRunStore, reconcileStaleRuns } from './runlog';
 import { redact, type Run } from './trace';
-import { chart, dayKey, dayTotals, fold, freePerMinuteMax, loadUsage, prune, totalCost, totalReq, usageProps, type RunsOfDay, type Usage } from './usage';
+import { chart, dayKey, dayTotals, fold, freePerMinuteMax, loadUsage, prune, totalCost, totalReq, usageProps, type Range, type RunsOfDay, type Usage } from './usage';
 
 declare const __GCP_NUMBER__: string; // embutido pelo build (gasclaw.env → GCP_NUMBER)
 
@@ -244,7 +244,9 @@ export function maybeDrain(): DrainResult | null {
 
 // ---------- uso por modelo ----------
 
-export function usageView(apiKey: string | null, day?: string) {
+const RANGES: Range[] = ['7d', '30d', 'months'];
+
+export function usageView(apiKey: string | null, day?: string, range?: string) {
   const now = Date.now();
   const p = obsProps();
   const u = loadUsage(p);
@@ -253,10 +255,13 @@ export function usageView(apiKey: string | null, day?: string) {
   const or = apiKey ? read(() => keyInfo(apiKey)) : ({ ok: false, error: 'sem chave do OpenRouter' } as Read<never>);
   const informed = or.ok ? or.value.usage_daily : null;
   if (day !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('dia inválido: use AAAA-MM-DD');
+  // Faixa desconhecida volta para 7 dias em vez de derrubar a tela: a faixa e so o recorte do grafico, e
+  // uma tela em branco ensina menos do que o recorte padrao.
+  const faixa = RANGES.indexOf(range as Range) >= 0 ? (range as Range) : '7d';
   const shownDay = day ?? dayKey(now, 'sp');
   const table = Object.entries(dayTotals(u, shownDay, 'sp')).map(([model, c]) => ({ model, ...c })).sort((a, b) => b.cost - a.cost);
   return {
-    chart: chart(u, now, 'sp', day),
+    chart: chart(u, now, 'sp', day, faixa),
     table,
     day: shownDay,
     queue: splitQueue(p).length,
