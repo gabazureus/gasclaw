@@ -314,6 +314,59 @@ export function loadAgent(folderId: string, opts: { scriptId?: string; noCache?:
   return agent;
 }
 
+/**
+ * O que a tela precisa para MOSTRAR e EDITAR o prompt do agente, papel a papel.
+ *
+ * `editavel` é falso quando o papel vem do editor do Apps Script ou de um Google Doc: gravar num Doc exigiria
+ * o escopo `documents` (escopo novo obriga TODO mundo a reautorizar — ADR-015), e gravar no editor exigiria a
+ * API do Apps Script, que o web app não tem. Dizer isso na tela é melhor que oferecer um campo que falha.
+ */
+export type RoleView = { origem: Origin; texto: string; editavel: boolean };
+
+export const roleEditavel = (o: Origin): boolean => o === 'md' || o === 'missing';
+
+/** Papéis do agente com conteúdo bruto e procedência. Mesma leitura do `loadAgent`, sem montar o prompt. */
+export function agentRoles(folderId: string, opts: { scriptId?: string } = {}): { name: string; roles: Record<Role, RoleView> } {
+  const name = DriveApp.getFolderById(folderId).getName();
+  let files: ProjectFile[] = [];
+  try {
+    files = exportProject(opts.scriptId);
+  } catch {
+    // Editor indisponível não impede editar o que está no Drive; o papel só aparece com a origem que tiver.
+  }
+  const sources = resolveRoles([...editorEntries(files, name, 0), ...listFolder(folderId)]);
+  const textos = roleTexts(sources, files, fetchTexts(driveSources(sources)));
+  const roles = Object.fromEntries(
+    ROLES.map((r) => {
+      const origem: Origin = sources[r]?.kind ?? 'missing';
+      return [r, { origem, texto: textos[r] ?? '', editavel: roleEditavel(origem) }];
+    }),
+  ) as Record<Role, RoleView>;
+  return { name, roles };
+}
+
+/**
+ * Grava UM papel no arquivo `.md` da pasta do agente. Cria se não existir.
+ *
+ * Só `.md`: o papel que vem do editor ou de um Doc é recusado ANTES de qualquer escrita, porque gravar na
+ * fonte errada criaria um segundo arquivo que perderia a precedência para o original — o agente continuaria
+ * lendo o antigo e a pessoa acharia que salvou.
+ */
+export function saveRole(folderId: string, role: string, texto: string): RoleView {
+  if (!(ROLES as readonly string[]).includes(role)) throw new Error(`unknown role: ${role}`);
+  const atual = agentRoles(folderId).roles[role as Role];
+  if (!atual.editavel) throw new Error(`${role} comes from ${atual.origem} and cannot be edited here — open it where it lives`);
+  const corpo = String(texto ?? '');
+  if (corpo.length > MAX_FILE) throw new Error(`${role} is too long: ${corpo.length} characters, the limit is ${MAX_FILE}`);
+  const folder = DriveApp.getFolderById(folderId);
+  const nome = `${role}.md`;
+  const it = folder.getFilesByName(nome);
+  if (it.hasNext()) it.next().setContent(corpo);
+  else folder.createFile(nome, corpo, 'text/markdown');
+  CacheService.getScriptCache().remove(`agent:${folderId}`); // senão a mudança só apareceria no fim do TTL
+  return { origem: 'md', texto: corpo, editavel: true };
+}
+
 /** Garante a cadeia de pastas a partir de "Meu Drive", reutilizando a primeira com o mesmo nome (nunca duplica). */
 export function ensureFolderPath(path: string[]): GoogleAppsScript.Drive.Folder {
   return path.reduce((dir, name) => {

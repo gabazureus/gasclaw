@@ -237,12 +237,103 @@
       accessBtn.setAttribute('aria-controls', holder.id);
       accessBtn.setAttribute('aria-expanded', 'false');
       actions.append(accessBtn, ' ');
+      // Painel próprio para o prompt: abrir um NÃO fecha o outro, porque comparar acesso e prompt lado a
+      // lado é o caso normal ("liguei a ferramenta, mas o AGENTS.md pede outra coisa").
+      const promptHolder = document.createElement('div');
+      promptHolder.id = 'prompt-' + a.folderId;
+      promptHolder.hidden = true;
+      const promptBtn = button('Prompt', () => {
+        promptHolder.hidden = !promptHolder.hidden;
+        promptBtn.setAttribute('aria-expanded', String(!promptHolder.hidden));
+        if (!promptHolder.hidden) showPrompt(a.folderId, promptHolder);
+      });
+      promptBtn.setAttribute('aria-controls', promptHolder.id);
+      promptBtn.setAttribute('aria-expanded', 'false');
+      actions.append(promptBtn, ' ');
       if (i > 0) actions.append(button('Make default', () => call('makeDefault', a.folderId).then(render)), ' ');
       actions.append(button('Remove', () => call('removeAgent', a.folderId).then(render)));
       row.append(folder, actions);
-      box.append(row, holder);
+      box.append(row, holder, promptHolder);
       return box;
     }));
+  }
+
+  // ----- Prompt do agente: ver o que o modelo recebe, e editar os arquivos que dá para editar -----
+  //
+  // O prompt MONTADO aparece junto dos papéis de propósito: a ordem, o corte por orçamento e o `(missing)`
+  // de um arquivo ausente só existem ali. Sem isso, "por que o agente ignorou o que escrevi?" não tem
+  // resposta observável — e a pessoa culpa o modelo.
+  const ORIGEM = {
+    md: 'Drive file (.md)',
+    doc: 'Google Doc',
+    editor: 'Apps Script editor',
+    missing: 'not created yet',
+  };
+
+  function showPrompt(folderId, holder) {
+    holder.textContent = 'Loading prompt…';
+    google.script.run.withSuccessHandler((x) => {
+      const box = document.createElement('div');
+      const intro = document.createElement('p');
+      intro.className = 'muted';
+      intro.textContent = 'These four files become the agent\'s system prompt, in this order. Editing one changes the next answer — no redeploy.';
+      box.append(intro);
+
+      Object.keys(x.roles).forEach((papel) => {
+        const v = x.roles[papel];
+        const fs = document.createElement('fieldset');
+        const lg = document.createElement('legend');
+        lg.textContent = papel + '.md';
+        fs.append(lg);
+
+        const de = document.createElement('p');
+        de.className = 'muted';
+        de.textContent = 'From: ' + (ORIGEM[v.origem] || v.origem);
+        fs.append(de);
+
+        const ta = document.createElement('textarea');
+        ta.id = 'role-' + folderId + '-' + papel;
+        ta.rows = 8;
+        ta.value = v.texto;
+        const rot = document.createElement('label');
+        rot.htmlFor = ta.id;
+        rot.className = 'sr';
+        rot.textContent = papel + ' content';
+        fs.append(rot, ta);
+
+        if (v.editavel) {
+          const salvar = button('Save ' + papel, () => {
+            $('msg').className = '';
+            $('msg').textContent = 'Saving…';
+            google.script.run
+              .withSuccessHandler(() => { $('msg').textContent = papel + '.md saved. The next answer already uses it.'; showPrompt(folderId, holder); })
+              .withFailureHandler((e) => { $('msg').className = 'err'; $('msg').textContent = e.message; })
+              .setAgentRole(folderId, papel, ta.value);
+          });
+          fs.append(salvar);
+        } else {
+          // Nunca oferecer um campo que não grava: dizer onde o arquivo mora é mais útil que um botão morto.
+          ta.readOnly = true;
+          const por = document.createElement('p');
+          por.className = 'muted';
+          por.textContent = v.origem === 'doc'
+            ? 'Read-only here: this role is a Google Doc. Edit it in Drive — the change shows up in about 30 seconds.'
+            : 'Read-only here: this role lives in the Apps Script editor. Edit it there — the change shows up in about 30 seconds.';
+          fs.append(por);
+        }
+        box.append(fs);
+      });
+
+      const det = document.createElement('details');
+      const sum = document.createElement('summary');
+      sum.textContent = 'What the model actually receives (' + x.system.length + ' characters, model: ' + x.model + ')';
+      const pre = document.createElement('pre');
+      pre.textContent = x.system;
+      det.append(sum, pre);
+      box.append(det);
+
+      holder.replaceChildren(box);
+    }).withFailureHandler((e) => { holder.textContent = e.message; }).agentPrompt(folderId);
   }
 
   // ----- Acesso e ferramentas aprovados no painel (ADR-021): a pasta só sugere -----

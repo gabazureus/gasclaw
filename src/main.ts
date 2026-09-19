@@ -47,7 +47,7 @@ import { allowedTools, toolCatalog } from './tools/registry';
 import { coverage, redact } from './trace';
 import { agentInfo, llmInfo, traceDeps } from './traced';
 import { webClick, webSend, webSpace } from './webchat';
-import { agentFolderPath, canUse, effectiveAccess, enabledTools, ensureFolderPath, extractFolderId, loadAgent, parseAccess, parseSteps, pendingSuggestions, seedAgent, validAgentName, withAccess, withTool, withUser, type Access, type LoadedAgent } from './workspace';
+import { agentRoles, saveRole, agentFolderPath, canUse, effectiveAccess, enabledTools, ensureFolderPath, extractFolderId, loadAgent, parseAccess, parseSteps, pendingSuggestions, seedAgent, validAgentName, withAccess, withTool, withUser, type Access, type LoadedAgent } from './workspace';
 
 const CHAT_MAX_TOKENS = 1000; // resposta síncrona precisa caber em 30 s
 
@@ -999,6 +999,31 @@ function setTools(folder: string, set: string) {
   const names = pedido === 'all' ? toolCatalog().map((t) => t.name) : pedido === 'none' ? [] : pedido.split(',').map((x) => x.trim()).filter(Boolean);
   const r = writeTools(folderId, names, 'pela CLI'); // lang-ok: rotulo do TRACE
   return { ok: true, folderId, agent: agentName(folderId), enabled: r.enabled, users: r.users };
+}
+
+/**
+ * O prompt do agente para a tela: os quatro papéis com conteúdo, procedência e se dá para editar daqui,
+ * mais o prompt MONTADO — que é o que o modelo recebe de verdade.
+ *
+ * Mostrar o montado importa tanto quanto poder editar: a ordem dos papéis, o corte por orçamento e o
+ * `(missing)` de um arquivo ausente só aparecem ali. Sem isso, "por que o agente ignorou o que escrevi?" não
+ * tem resposta observável.
+ */
+export function agentPrompt(folderId: string) {
+  assertOwner();
+  const { name, roles } = agentRoles(folderId);
+  const spec = loadAgentForTurn(folderId);
+  return { folderId, name, roles, system: spec.system, model: spec.config.model, modelSource: spec.modelSource };
+}
+
+/** Grava UM papel. Só o dono, só arquivo `.md` da pasta — `saveRole` recusa as outras origens antes de escrever. */
+export function setAgentRole(folderId: string, role: string, text: string) {
+  assertOwner();
+  const nome = agentName(folderId);
+  const t = runlog.begin('config', { question: `${role} de ${nome}: ${String(text ?? '').length} caracteres`, agent: nome });
+  const view = t.step('set_role', () => saveRole(folderId, String(role), String(text ?? '')), () => ({ folderId, role }));
+  t.end({ answer: `${role} gravado` });
+  return { ...agentPrompt(folderId), saved: role, view };
 }
 
 /** Grava o acesso aprovado (normalizado por effectiveAccess) e registra a mudança como run config no trace. */
