@@ -8,6 +8,8 @@
 //  - o `holdout` nunca entra na seleção, senão a evidência é circular.
 import { describe, expect, test } from 'vitest';
 import {
+  cluster,
+  hasMaterial,
   cycleCost,
   dreamVerdict,
   DREAM_STEPS_PER_TICK,
@@ -167,5 +169,46 @@ describe('veredito: vantagem estatística e o alcance declarado', () => {
     const v = dreamVerdict('cand', 'titular', {}, ['q1'], 17);
     expect(v.wins).toBe(false);
     expect(v.reason).toContain('not enough');
+  });
+});
+
+describe('material do sonho: falhas reais, agrupadas por contagem (D5)', () => {
+  const AGORA = 1_000_000_000;
+  const DIA = 86_400_000;
+  const f = (kind: 'refused_tool' | 'no_answer' | 'step_limit' | 'denied' | 'tool_error', tool: string, diasAtras: number) => ({ at: AGORA - diasAtras * DIA, kind, tool });
+
+  test('agrupa por tipo e ferramenta, e ordena por contagem', () => {
+    const c = cluster([f('refused_tool', 'calendar.create', 1), f('refused_tool', 'calendar.create', 2), f('no_answer', '', 1)], 30 * DIA, AGORA);
+    expect(c[0]).toEqual({ kind: 'refused_tool', tool: 'calendar.create', count: 2 });
+    expect(c[1].count).toBe(1);
+  });
+
+  test('a ordem é ESTÁVEL: o mesmo dado dá sempre o mesmo resultado', () => {
+    const dados = [f('tool_error', 'b', 1), f('denied', 'a', 1), f('refused_tool', 'c', 1)];
+    const a = JSON.stringify(cluster(dados, 30 * DIA, AGORA));
+    const b = JSON.stringify(cluster([...dados].reverse(), 30 * DIA, AGORA));
+    expect(a).toBe(b); // contagem determinística com ordem não determinística seria o mesmo defeito com outro nome
+  });
+
+  test('falha fora da janela não conta, e carimbo do futuro também não', () => {
+    expect(cluster([f('denied', 'x', 40)], 30 * DIA, AGORA)).toEqual([]);
+    expect(cluster([{ at: AGORA + DIA, kind: 'denied', tool: 'x' }], 30 * DIA, AGORA)).toEqual([]);
+    expect(cluster([{ at: Number.NaN, kind: 'denied', tool: 'x' }], 30 * DIA, AGORA)).toEqual([]);
+  });
+
+  test('sem falha real o ciclo NÃO roda, e diz por quê', () => {
+    const v = hasMaterial([]);
+    expect(v.ok).toBe(false);
+    expect(v.reason).toContain('nothing to dream about');
+  });
+
+  test('aglomerado abaixo do limiar não justifica um ciclo, e o motivo traz o número', () => {
+    const v = hasMaterial([{ kind: 'denied', tool: 'x', count: 2 }]);
+    expect(v.ok).toBe(false);
+    expect(v.reason).toContain('2 occurrences');
+  });
+
+  test('no limiar, há material', () => {
+    expect(hasMaterial([{ kind: 'denied', tool: 'x', count: 3 }]).ok).toBe(true);
   });
 });

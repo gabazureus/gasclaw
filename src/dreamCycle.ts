@@ -124,3 +124,55 @@ export function dreamVerdict(candidate: string, incumbent: string, t: Tally, qua
     incumbentPasses: i.passes,
   };
 }
+
+// ---------- Material do sonho: falhas REAIS, nunca inventadas (D5) ----------
+
+/**
+ * O que o ciclo lê para saber o que consertar. Vem do trace e dos runs que já aconteceram — nunca
+ * de um cenário que o modelo imaginou.
+ *
+ * A razão não é gosto: um laço que inventa o próprio problema, propõe a própria solução e se dá a
+ * própria nota não melhora, ele deriva. É o mesmo motivo de o juiz vir do build e não da pasta, e a
+ * literatura já mediu que auto-correção sem sinal externo às vezes PIORA (arXiv:2310.01798).
+ */
+export type FailureKind = 'refused_tool' | 'no_answer' | 'step_limit' | 'denied' | 'tool_error';
+
+export type Failure = { at: number; kind: FailureKind; tool?: string; session?: string };
+
+/** Agrupamento determinístico: contagem de inteiros, sem chamada de modelo no caminho da decisão. */
+export type Cluster = { kind: FailureKind; tool: string; count: number };
+
+/**
+ * Agrupa por (tipo, ferramenta) e ordena por contagem. **Nenhum modelo participa.** Um rótulo
+ * bonito pode ser gerado depois, para o painel — mas ele não decide nada, e por isso não está aqui.
+ */
+export function cluster(failures: readonly Failure[], sinceMs: number, now: number): Cluster[] {
+  const counts = new Map<string, Cluster>();
+  for (const f of failures) {
+    if (!Number.isFinite(f.at) || f.at < now - sinceMs || f.at > now) continue;
+    const tool = f.tool ?? '';
+    const key = `${f.kind}:${tool}`;
+    const cur = counts.get(key);
+    if (cur) cur.count += 1;
+    else counts.set(key, { kind: f.kind, tool, count: 1 });
+  }
+  // Ordem estável: contagem desc, depois tipo e ferramenta, para o mesmo dado dar sempre o mesmo
+  // resultado. Sem isso a "contagem determinística" teria ordem não determinística, que é o mesmo
+  // defeito com outro nome.
+  return [...counts.values()].sort((a, b) => b.count - a.count || a.kind.localeCompare(b.kind) || a.tool.localeCompare(b.tool));
+}
+
+/** Limiar para um aglomerado justificar um ciclo. A P25 mediu ZERO falhas no dev: até existir dado
+ *  real, este número é ponto de partida declarado, não critério calibrado. */
+export const CLUSTER_MIN = 3;
+
+/**
+ * Há material para sonhar? Sem material o ciclo **não roda** e diz por quê — sonho sem falha real é
+ * o modelo inventando problema, que é exatamente o modo de falha que a D5 recusa.
+ */
+export function hasMaterial(clusters: readonly Cluster[], min = CLUSTER_MIN): { ok: boolean; reason: string; top: Cluster | null } {
+  const top = clusters[0] ?? null;
+  if (!top) return { ok: false, reason: 'no real failures in the window: nothing to dream about', top: null };
+  if (top.count < min) return { ok: false, reason: `the biggest cluster has ${top.count} occurrences, below the ${min} needed`, top };
+  return { ok: true, reason: '', top };
+}

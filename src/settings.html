@@ -117,11 +117,6 @@
     <div id="agents"></div>
   </section>
 
-  <section aria-labelledby="childrenTitle">
-    <div class="row"><h2 id="childrenTitle">Child projects</h2><button id="childrenReload" class="sec">Check again</button></div>
-    <p class="muted">Specialists the agent created as their own Apps Script project. Google will not let one run until you authorize it — one click each, once. Read what it is asking for before you allow it.</p>
-    <div id="children" aria-live="polite">Loading…</div>
-  </section>
   <!-- a lista de modelos é compartilhada pelas duas telas; mora aqui porque é aqui que se ESCOLHE -->
   <datalist id="modelList"></datalist>
   </div>
@@ -294,10 +289,24 @@
       cfgBtn.setAttribute('aria-controls', cfgHolder.id);
       cfgBtn.setAttribute('aria-expanded', 'false');
       actions.append(cfgBtn, ' ');
+      // Os filhos pertencem a ESTE agente: ficam dentro dele, não numa lista solta na página. A contagem
+      // no rótulo evita o pior dos dois mundos — abrir para descobrir que está vazio, ou não abrir e não
+      // saber que havia um esperando autorização.
+      const kidsHolder = document.createElement('div');
+      kidsHolder.id = 'kids-' + a.folderId;
+      kidsHolder.hidden = true;
+      const kidsBtn = button('Child projects' + (a.children ? ' (' + a.children + ')' : ''), () => {
+        kidsHolder.hidden = !kidsHolder.hidden;
+        kidsBtn.setAttribute('aria-expanded', String(!kidsHolder.hidden));
+        if (!kidsHolder.hidden) { loadChildren(a.folderId, kidsHolder); reveal(kidsHolder); }
+      });
+      kidsBtn.setAttribute('aria-controls', kidsHolder.id);
+      kidsBtn.setAttribute('aria-expanded', 'false');
+      actions.append(kidsBtn, ' ');
       if (i > 0) actions.append(button('Make default', () => call('makeDefault', a.folderId).then(render)), ' ');
       actions.append(button('Remove', () => call('removeAgent', a.folderId).then(render)));
       row.append(folder, actions);
-      box.append(row, holder, promptHolder, cfgHolder);
+      box.append(row, holder, promptHolder, cfgHolder, kidsHolder);
       return box;
     }));
   }
@@ -698,7 +707,6 @@
     // o foco fica no botão; quem não vê a tela precisa ouvir que o conteúdo abaixo trocou
     $('msg').className = '';
     $('msg').textContent = 'Section: ' + $('nav-' + name).textContent;
-    if (name === 'agents') loadChildren(); // conferir autorização custa uma chamada por filho: só quando à vista
     startLive(); // a Observabilidade só consulta o servidor enquanto estiver à vista
   }
   // sem setas aqui de propósito: não há tabindex rotativo, então Tab já percorre os quatro (ver o comentário do <nav>)
@@ -791,13 +799,13 @@
   // P24 que mediu esse portão. O que a tela faz é mostrar O QUE O FILHO PEDE e levar o dono até lá.
   const CHILD_STATE_CLASS = { authorized: 'badge', 'needs-consent': 'badge gasclaw', 'not-deployed': 'badge', unknown: 'badge' };
 
-  function showChildren(x) {
+  function showChildren(x, holder) {
     const list = x.children || [];
     if (!list.length) {
-      $('children').replaceChildren(el('p', { className: 'muted', textContent: 'No child project yet. One shows up here when an agent creates a specialist.' }));
+      holder.replaceChildren(el('p', { className: 'muted', textContent: 'No child project yet. One shows up here when this agent creates a specialist.' }));
       return;
     }
-    $('children').replaceChildren(...list.map((c) => {
+    holder.replaceChildren(el('p', { className: 'muted', textContent: 'Google will not let a child run until you authorize it — one click each, once. Read what it is asking for before you allow it.' }), ...list.map((c) => {
       const box = el('div', { className: 'limit' });
       box.append(el('div', { className: 'row' }, el('strong', { textContent: c.title }), el('span', { className: CHILD_STATE_CLASS[c.state] || 'badge', textContent: c.stateLabel })));
       if (c.reason) box.append(el('p', { className: 'muted', textContent: 'Why it exists: ' + c.reason }));
@@ -816,13 +824,15 @@
       acoes.append(editor);
       // "Forget" não apaga nada no Google. Dizer isso é parte do controle: um botão que parece apagar e
       // não apaga deixaria o dono achando que se livrou de um projeto que continua lá.
-      acoes.append(button('Forget it here', () => call('forgetChild', c.scriptId).then(showChildren)));
+      acoes.append(button('Forget it here', () => call('forgetChild', c.scriptId, x.folderId).then((r) => showChildren(r, holder))));
       box.append(acoes, el('p', { className: 'muted', textContent: 'Forgetting only removes it from this list. The project stays in your Google account until you delete it there.' }));
       return box;
     }));
   }
-  function loadChildren() { quiet('listChildren').then(showChildren).catch((e) => { $('children').textContent = 'Child projects unavailable: ' + e.message; }); }
-  $('childrenReload').onclick = loadChildren;
+  function loadChildren(folderId, holder) {
+    holder.textContent = 'Checking with Google…'; // conferir custa uma chamada por filho: só ao abrir
+    quiet('listChildren', folderId).then((x) => showChildren(x, holder)).catch((e) => { holder.textContent = 'Child projects unavailable: ' + e.message; });
+  }
 
   // ----- Balão do gráfico: o valor por modelo sem precisar abrir a tabela -----
   //

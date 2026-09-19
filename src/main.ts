@@ -766,8 +766,15 @@ export const scriptUrl = (): string => `https://script.google.com/home/projects/
 export function settingsState() {
   const me = assertOwner();
   observe.maybeDrain(); // fallback sem gatilho ao abrir a tela
-  const cliSecretAt = PropertiesService.getScriptProperties().getProperty('CLI_SECRET_AT');
-  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents: store.listAgents(), appUrl: appUrl(), scriptUrl: scriptUrl(), env: panelEnv(), cliSecretAt, auth: authStatus() };
+  const props = PropertiesService.getScriptProperties();
+  const cliSecretAt = props.getProperty('CLI_SECRET_AT');
+  // Quantos filhos cada agente tem. É CONTAGEM, não conferência: ler a Property custa nada, enquanto
+  // perguntar ao Google se cada filho está autorizado custa uma chamada por filho — isso só acontece
+  // quando o dono ABRE a lista. A contagem no botão evita abrir para descobrir que está vazio.
+  const filhos = parseChildren(props.getProperty('CHILDREN'));
+  const orfaos = filhos.filter((c) => !c.parent).length + (props.getProperty('P24_CHILD') ? 1 : 0);
+  const agents = store.listAgents().map((a, i) => ({ ...a, children: filhos.filter((c) => c.parent === a.folderId).length + (i === 0 ? orfaos : 0) }));
+  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents, appUrl: appUrl(), scriptUrl: scriptUrl(), env: panelEnv(), cliSecretAt, auth: authStatus() };
 }
 
 /** P21: ambiente já normalizado (desconhecido conta como prod), para o rótulo do cabeçalho. */
@@ -1103,16 +1110,22 @@ export function setAgentCapability(folderId: string, cap: string, on: boolean) {
  * O painel não consegue consentir pelo dono (não há API para isso, e é bom que não haja). O que ele pode
  * fazer é mostrar O QUE O FILHO PEDE antes do clique, e levar o dono até o lugar certo.
  */
-export function listChildren() {
+export function listChildren(folderId?: string) {
   assertOwner();
   const props = PropertiesService.getScriptProperties();
   const list = parseChildren(props.getProperty('CHILDREN'));
   // O filho da POC P24 é real e está na conta do dono: mostrá-lo é o que permite conferir a tela de ponta
   // a ponta hoje, em vez de uma seção vazia que ninguém sabe se funciona.
   const poc = props.getProperty('P24_CHILD');
-  const all: Child[] = poc && !list.some((c) => c.scriptId === poc) ? [...list, { scriptId: poc, title: 'POC P24 child project', url: props.getProperty('P24_URL'), scopes: ['https://www.googleapis.com/auth/calendar.events'], parent: null, reason: 'created by the P24 measurement', at: 0 }] : list;
+  const todos: Child[] = poc && !list.some((c) => c.scriptId === poc) ? [...list, { scriptId: poc, title: 'POC P24 child project', url: props.getProperty('P24_URL'), scopes: ['https://www.googleapis.com/auth/calendar.events'], parent: null, reason: 'created by the P24 measurement', at: 0 }] : list;
+  // Um filho pertence ao agente que o criou; a lista mora DENTRO do agente, não solta na página.
+  // Filho sem pai (o da POC, ou um órfão depois de o pai ser removido) aparece no agente padrão — some
+  // da tela seria pior: ele continua existindo na conta do dono, gastando nada mas ocupando lugar.
+  const padrao = store.listAgents()[0];
+  const meus = folderId ? todos.filter((c) => c.parent === folderId || (!c.parent && padrao && padrao.folderId === folderId)) : todos;
   return {
-    children: all.map((c) => {
+    folderId: folderId ?? null,
+    children: meus.map((c) => {
       let probe: { code: number; body: string } | null = null;
       try {
         if (c.url) probe = fetchChild(c.url);
@@ -1140,14 +1153,17 @@ function fetchChild(url: string): { code: number; body: string } {
 }
 
 /** Tira o filho da lista do painel. NÃO apaga o projeto no Google — dizer isso na tela é parte do controle. */
-export function forgetChild(scriptId: string) {
+export function forgetChild(scriptId: string, folderId?: string) {
   assertOwner();
   const props = PropertiesService.getScriptProperties();
   const id = String(scriptId ?? '').trim();
   if (!id) throw new Error('unknown child project');
   props.setProperty('CHILDREN', serializeChildren(withoutChild(parseChildren(props.getProperty('CHILDREN')), id)));
-  if (props.getProperty('P24_CHILD') === id) props.deleteProperty('P24_CHILD');
-  return listChildren();
+  if (props.getProperty('P24_CHILD') === id) {
+    props.deleteProperty('P24_CHILD');
+    props.deleteProperty('P24_URL'); // a URL sozinha reapareceria como filho meio registrado
+  }
+  return listChildren(folderId || undefined);
 }
 
 /**
