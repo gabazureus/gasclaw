@@ -242,3 +242,38 @@ export const loopIsDeadWeight = (h: LoopHealth, minCycles = 20): boolean => h.cy
  * A chave é por pasta, no mesmo formato das outras chaves presas a `folderId`.
  */
 export const dreamLockKey = (folderId: string): string => `DREAMLOCK:${folderId}`;
+
+// ---------- §F: arquivar encerra o que está em voo ----------
+
+/**
+ * Arquivar não é só impedir o que vem depois — é **encerrar o que está em voo**. Sem isto, o agente
+ * arquivado continuaria dono de um lease (o pump o retomaria) e o card dele seguiria aprovável por
+ * 24 h: o antecessor agiria em paralelo com o sucessor, que é exatamente o que a substituição 1→1
+ * existe para evitar.
+ */
+export const RUN_CLOSED_ON_ARCHIVE = 'this agent was archived while the task was open; nothing else will run on it';
+
+/** Um run pertence a um agente que saiu? Então ele não pode continuar. */
+export const runSurvivesArchive = (runFolderId: string, archivedFolderId: string): boolean => runFolderId !== archivedFolderId;
+
+/**
+ * Um agente não-ativo nunca é reivindicável pelo pump. Vale para `claimNext` e `claimById`: os dois
+ * consultam o estado antes de tomar o run, senão o arquivamento seria só cosmético.
+ */
+export const claimable = (status: AgentStatus | undefined): boolean => isRunnable(status ?? 'active');
+
+// ---------- Congelamento de emergência (decisão do usuário: interruptor GLOBAL) ----------
+
+/**
+ * Uma chave só, independente do estado dos agentes: `CAPS_ENABLED=false` desliga **todas** as
+ * capacidades e **mantém os agentes atendendo**. Emergência quer uma chave, não um campo por agente
+ * que alguém precise virar N vezes sob pressão — e não polui o ciclo de vida, que já tem seu estado.
+ *
+ * O estado **aparece no painel**: uma chave de emergência que ninguém vê se está ligada é pior que
+ * não ter, porque produz confiança falsa nos dois sentidos.
+ */
+export const capsEnabled = (raw: string | null | undefined): boolean => raw !== 'false';
+
+/** Capacidades efetivas: o congelamento vence qualquer aprovação individual. */
+export const effectiveCapabilities = (approved: readonly Capability[], frozenRaw: string | null | undefined): Capability[] =>
+  capsEnabled(frozenRaw) ? [...approved] : [];

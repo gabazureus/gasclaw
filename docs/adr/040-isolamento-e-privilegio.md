@@ -6,10 +6,28 @@ Relaciona: [ADR-002](002-agente-pasta-sem-codigo.md) (a decisão fundadora),
 [ADR-038](038-capacidades-e-linhagem.md) (capacidades e linhagem),
 [ADR-039](039-subagente-e-declaracao.md) (sub-agente é declaração)
 
-## O limite honesto do isolamento — leia isto antes de qualquer outra coisa
+## CORREÇÃO (2026-09-19) — esta ADR afirmou demais
 
-**Todos os agentes vivem no MESMO projeto Apps Script, sob os MESMOS 14 escopos OAuth do
-dono.** Não existe isolamento de processo, nem de credencial, nem de escopo. Um agente não
+A versão original dizia, sem qualificar, que **isolamento de credencial e de escopo é impossível**.
+Isso está **certo para agentes que dividem um projeto** e **errado para especialistas em projetos
+próprios**.
+
+No caminho (B) — `projects.create` —, cada especialista é um **projeto Apps Script próprio, com
+manifesto próprio**. E `oauthScopes` mora no manifesto. Um especialista de agenda nasce com
+`calendar` e **nada mais**: sem Gmail, sem Drive, sem Contatos.
+
+**Isso é isolamento real de credencial e de escopo, garantido pela plataforma e não pela nossa
+disciplina — e é mais forte que a interseção de ferramentas.** A interseção depende de o nosso
+código estar certo; o escopo ausente do manifesto não depende de nós: a chamada simplesmente não é
+autorizada.
+
+A tabela abaixo continua valendo **dentro de um projeto**. Onde se lê "não isolável", leia-se "não
+isolável entre agentes que dividem o mesmo projeto".
+
+## O limite honesto do isolamento — dentro de um projeto
+
+**Agentes que dividem um projeto Apps Script rodam sob os MESMOS escopos OAuth do dono.** Entre
+eles não existe isolamento de processo, nem de credencial, nem de escopo. Um agente não
 roda "na conta dele": roda na do dono, como todos os outros.
 
 O que dá para isolar de verdade é exatamente isto, e nada além:
@@ -20,7 +38,8 @@ O que dá para isolar de verdade é exatamente isto, e nada além:
 | **Ferramenta aprovada** | `ACCESS:<folderId>`, aprovado no painel | real e verificável em código |
 | **Capacidade** | `CAP:<folderId>`, aprovada uma a uma | real e verificável em código |
 
-E o que **não** é isolável aqui, por mais que a pasta pareça uma fronteira:
+E o que **não** é isolável **entre agentes do mesmo projeto**, por mais que a pasta pareça uma
+fronteira (para especialistas em projeto próprio, ver a correção no topo):
 
 - **credencial** — a chave do OpenRouter e o token OAuth são do projeto, não do agente;
 - **escopo** — os 14 escopos valem para qualquer caminho de código, de qualquer agente;

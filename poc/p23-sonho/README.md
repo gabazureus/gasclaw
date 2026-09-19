@@ -285,3 +285,71 @@ o titular. Cenário genuinamente impossível se revela por **todo candidato** em
 de gerações — é observação de linhagem, não de linha de base.
 
 A regra virou `grade < 4`, e o comentário no código guarda o erro e o motivo.
+
+---
+
+# ONDE ESTÁ A VARIÂNCIA — o experimento que separa agente de juiz (dev v91)
+
+Eu havia nomeado este experimento e não feito. Feito agora, em dois braços, e ele **muda o
+diagnóstico inteiro**.
+
+## Braço A — resposta CONGELADA, juiz repetido 6 vezes
+
+Uma resposta real do papel vigente, fixada em texto, julgada seis vezes com a mesma rubrica:
+
+| run | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| nota | 4 | 4 | 4 | 4 | 4 | 4 |
+
+**Média 4,00 · desvio 0,00.** As seis foram servidas pelo mesmo modelo
+(`deepseek/deepseek-v4-flash-0731`, escolhido pelo `openrouter/auto`).
+
+**A variância não é do juiz.**
+
+## Braço B — agente rodando com MODELO FIXO, 4 execuções
+
+Suspeita seguinte: o agente de eval usa `model: openrouter/auto`, que pode rotear para modelos
+diferentes a cada chamada. Fixando o modelo:
+
+| run | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|
+| nota | 0 | 4 | 4 | 0 |
+
+**Continua oscilando a escala inteira.** Não é roteamento.
+
+## Diagnóstico
+
+> **A variância é da amostragem do próprio agente.** Mesmo modelo, mesmo prompt, mesma pergunta:
+> às vezes ele admite que não sabe, às vezes não. O juiz é estável; o roteamento não é o culpado.
+
+Isso é **melhor notícia** do que o diagnóstico anterior, por três motivos:
+
+1. **O juiz é confiável e barato.** Julgar muitas vezes custa pouco e não adiciona ruído.
+2. **O 0 não era erro de medida — era o agente falhando de verdade.** Em ~metade das execuções ele
+   não admite a ignorância. Isso é exatamente o tipo de defeito que um prompt melhor deve consertar:
+   **há o que melhorar, e é mensurável.**
+3. **A métrica certa não é "a nota da execução", é a TAXA DE ACERTO sobre k execuções.** O
+   comportamento é aproximadamente binário (acerta ou não), não uma nota contínua.
+
+## A conta refeita — e ela derruba o meu número anterior
+
+Eu havia estimado ~75 execuções por cenário tratando a nota como contínua com desvio 2,19. Com o
+comportamento sendo **bimodal**, o teste certo é de **proporções**, e o custo cai muito para
+efeitos grandes:
+
+| melhora a detectar | execuções por cenário por candidato |
+|---|---:|
+| 50% → 90% | **~17** |
+| 50% → 80% | ~36 |
+| 50% → 70% | ~90 |
+| 50% → 65% | ~166 |
+
+**Um ciclo de 6 cenários × 3 candidatos × 17 execuções = 306 execuções de agente**, ~56 min de
+relógio. Em cota de gatilho, com o passo medido de 2,8 s, são **~14 min dos 360 disponíveis** —
+menos de 4% da cota diária.
+
+**Conclusão honesta, corrigindo a anterior:** o laço **não** é inviável por aritmética. Ele é
+inviável **do jeito que estava desenhado** (uma execução por cenário, nota contínua). Medindo taxa
+de acerto sobre ~17 execuções, detectar uma melhora grande é **barato e cabe na cota**. Detectar
+melhora pequena continua fora de alcance — e melhora pequena provavelmente não vale um ciclo de
+Opus.

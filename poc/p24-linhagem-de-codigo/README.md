@@ -71,3 +71,77 @@ tokens de entrada (markdown atual + placar + instruções) e 8K de saída:
 modelos grátis, como a D4 manda, e a **geração de código** fica fora da P23, com teto em
 dinheiro próprio (`CODEGEN_BUDGET_USD`) medido aqui na P24. Misturar as duas faria a P23
 medir custo de Opus em vez de medir o laço.
+
+---
+
+# ATUALIZAÇÃO — 2026-09-19: o caminho aprovado é o especialista em PROJETO PRÓPRIO
+
+Decisão do usuário, reafirmada: **ele quer um mecanismo que escreve código novo**, com o Opus 5
+gerando esse código. A declaração (`subagents/`) **não substitui** isso — ela resolve outro
+problema. As duas convivem.
+
+## A correção que muda o desenho a favor dele
+
+A [ADR-040](../../docs/adr/040-isolamento-e-privilegio.md) afirmava, sem qualificar, que isolamento
+de credencial e de escopo é impossível. **Isso vale dentro de um projeto e é falso entre projetos.**
+
+No `projects.create`, cada especialista é um **projeto com manifesto próprio**, e `oauthScopes` mora
+no manifesto. Um especialista de agenda nasce com `calendar` e **nada mais**. Isso é isolamento
+garantido **pela plataforma**, não pela nossa disciplina — mais forte que a interseção de
+ferramentas, porque a interseção depende do nosso código estar certo e o escopo ausente não depende
+de nós. A ADR-040 foi corrigida.
+
+## O que a doc oficial diz (conferido em 2026-09-19)
+
+| Operação | Escopo | Está no nosso manifesto? |
+|---|---|---|
+| `projects.create` | `script.projects` | **não** |
+| `projects.updateContent` | `script.projects` | **não** |
+| `projects.deployments.create` | **`script.deployments`** | **não** |
+
+**São dois escopos novos, não um.** O manifesto do pai iria de 15 para **17 escopos**, e pela
+[ADR-015](../../docs/adr/015-escopos-oauth.md) isso obriga **todo mundo a reautorizar**. Esse é o
+custo declarado do caminho, e ele é pago uma vez.
+
+Além disso, a doc de habilitação diz: *"the Apps Script API cannot access your script projects by
+default. You must explicitly grant the API access"* — **ato manual do dono, por conta**.
+
+## Custo do Opus 5 para gerar CÓDIGO (reestimado)
+
+Gerar um especialista é saída longa: `Code.gs` mais `appsscript.json`. Estimativa com 30K de entrada
+(contexto do motor e a função pedida) e 15K de saída:
+
+| Item | Conta | Custo |
+|---|---|---|
+| entrada | 30.000 × US$ 5/1M | US$ 0,15 |
+| saída | 15.000 × US$ 25/1M | US$ 0,38 |
+| **total por especialista** | | **≈ US$ 0,53** |
+| com pensamento adaptativo (saída ×2) | | ≈ US$ 0,90 |
+
+**Proposta: `CODEGEN_BUDGET_USD = 1,00` por geração.** Com o intervalo mínimo de 24 h, o teto vira
+**US$ 1,00 por dia por agente** que tenha a capacidade. **Atenção:** o intervalo é *por agente*, e
+vários agentes com `succeed` multiplicam — então o teto **diário agregado** é obrigatório, não
+opcional. Sem ele, dez agentes custam US$ 10/dia sem ninguém decidir isso.
+
+A **D4 continua valendo**: o ciclo de sonho roda em modelos grátis. A geração de código é a
+**exceção declarada**, com teto próprio em dinheiro.
+
+## Cota: N projetos NÃO dão N vezes a cota
+
+Doc oficial: *"Quotas are per user and reset 24 hours after the first request."* Confirmado.
+Uma linhagem de dez projetos divide as **mesmas 6 h/dia** do dono. Com o passo de **2.782 ms**
+medido na P23, a conta de fôlego é ~19,8 M ms úteis por dia ÷ 2,8 s ≈ **~7 mil passos/dia para a
+linhagem inteira**, não por especialista.
+
+## Critérios (os de "falhar é passar" continuam)
+
+C3 (o filho roda sem o humano autorizar?) e C4 (o filho recebe a chave sem o pai entregar?) **são
+critérios em que a resposta esperada é NÃO**. Se o projeto filho nascer autorizado e com
+credencial, o desenho é poder demais e **a POC reprova (A) e (B) juntos**.
+
+## Mantido recusado, por escrito
+
+**Reescrever o próprio projeto** (`updateContent` no projeto do motor). Um agente que reescreve o
+motor pode reescrever `assertOwner` e o registro fechado de tools: ali o isolamento não piora, ele
+**deixa de existir**. O usuário pediu geração de código — e o especialista em projeto próprio
+entrega geração de código **com** isolamento, em vez de **contra** ele.

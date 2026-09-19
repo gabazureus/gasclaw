@@ -9,9 +9,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { dreamLockKey, emptyLoopHealth, loopIsDeadWeight, promotionRate, revert, capsAfterCreation, capsAfterSuccession, forgetAgentProps, INTERVAL_STAMP_SURVIVES_REMOVAL, parseCapabilities, type Capability } from '../src/agentCaps';
+import { capsEnabled, claimable, effectiveCapabilities, isRunnable, RUN_CLOSED_ON_ARCHIVE, runSurvivesArchive, dreamLockKey, emptyLoopHealth, loopIsDeadWeight, promotionRate, revert, capsAfterCreation, capsAfterSuccession, forgetAgentProps, INTERVAL_STAMP_SURVIVES_REMOVAL, parseCapabilities, type Capability } from '../src/agentCaps';
 import { newRun, parseRun, RUN_UNSIGNED_FIELDS } from '../src/run';
-import { canDelegate, foreignMessage, mayRelay, MAX_RELAY_HOPS, relaySpan, subagentTools } from '../src/subagent';
+import { subagentDoneKey, subagentGrants, canDelegate, foreignMessage, mayRelay, MAX_RELAY_HOPS, relaySpan, subagentTools } from '../src/subagent';
 
 const SRC = path.join(__dirname, '..', 'src');
 
@@ -202,5 +202,53 @@ describe('CONTROLE 9 — buracos fechados após a pesquisa do sinal fraco', () =
     expect(dreamLockKey('f1')).toBe('DREAMLOCK:f1');
     // …e por isso é apagada junto quando o agente sai (CONTROLE 7)
     expect(forgetAgentProps([dreamLockKey('f1')], 'f1')).toEqual(['DREAMLOCK:f1']);
+  });
+});
+
+describe('CONTROLE 10 — §E: sub-agente não herda aprovação do pai', () => {
+  test('`granted` do sub-agente é sempre vazio', () => {
+    expect(subagentGrants()).toEqual([]);
+  });
+
+  test('a chave de idempotência do sub-agente não colide com a do pai', () => {
+    expect(subagentDoneKey('run1:0:call1', 'pesquisador')).toBe('run1:0:call1:pesquisador');
+    expect(subagentDoneKey('run1:0:call1', 'a')).not.toBe(subagentDoneKey('run1:0:call1', 'b'));
+  });
+});
+
+describe('CONTROLE 11 — §F: arquivar encerra o que está em voo', () => {
+  test('run do agente arquivado não sobrevive; de outro agente, sim', () => {
+    expect(runSurvivesArchive('f1', 'f1')).toBe(false);
+    expect(runSurvivesArchive('f2', 'f1')).toBe(true);
+  });
+
+  test('o recado do encerramento é honesto sobre o que aconteceu', () => {
+    expect(RUN_CLOSED_ON_ARCHIVE).toContain('archived');
+    expect(RUN_CLOSED_ON_ARCHIVE).toContain('nothing else will run');
+  });
+
+  test('agente não-ativo não é reivindicável pelo pump (senão arquivar seria cosmético)', () => {
+    expect(claimable('active')).toBe(true);
+    expect(claimable(undefined)).toBe(true); // ausente = ativo, como o parseStatus
+    expect(claimable('archived')).toBe(false);
+  });
+});
+
+describe('CONTROLE 12 — congelamento de emergência: uma chave global', () => {
+  test('ausente ou qualquer coisa = ligado; só a string "false" congela', () => {
+    expect(capsEnabled(null)).toBe(true);
+    expect(capsEnabled('true')).toBe(true);
+    expect(capsEnabled('false')).toBe(false);
+  });
+
+  test('congelado zera TODAS as capacidades, por mais aprovadas que estejam', () => {
+    const aprovadas = parseCapabilities('["dream","create","succeed","initiative"]');
+    expect(effectiveCapabilities(aprovadas, 'false')).toEqual([]);
+    expect(effectiveCapabilities(aprovadas, null)).toEqual(aprovadas);
+  });
+
+  test('congelar NÃO impede o agente de atender: é capacidade que some, não o agente', () => {
+    // o congelamento não toca em `isRunnable` — é o ponto do desenho de interruptor global
+    expect(isRunnable('active')).toBe(true);
   });
 });

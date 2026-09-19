@@ -95,3 +95,21 @@ export const foreignMessage = (from: string, text: string): string =>
 /** O span da conversa entre agentes. Sem ele, uma cadeia de agentes vira caixa-preta. */
 export const relaySpan = (from: string, to: string): string | null =>
   SUBAGENT_NAME.test(String(from ?? '')) && SUBAGENT_NAME.test(String(to ?? '')) ? `relay:${from}->${to}` : null;
+
+// ---------- §E: o sub-agente não herda aprovação do pai ----------
+
+/**
+ * `granted` do sub-agente é SEMPRE vazio, e isso é a leitura literal de "nunca mais que o pai".
+ *
+ * Uma aprovação que o dono deu ao pai (`once` libera a tool pelo resto do turno) valeria, se
+ * herdada, para um sub-agente que o dono não estava olhando quando aprovou. O card dizia o nome
+ * do pai; quem usaria seria outro.
+ */
+export const subagentGrants = (): string[] => [];
+
+/**
+ * Chave de idempotência do sub-agente. A do motor é `runId:step:callId`; se o sub-agente usasse a
+ * mesma, um passo dele colidiria com um passo do pai de mesmo índice — e uma colisão aqui não
+ * atrapalha um horário, ela marca como já-executado um efeito que nunca rodou.
+ */
+export const subagentDoneKey = (base: string, sub: string): string => `${base}:${sub}`;
