@@ -614,7 +614,9 @@ function runP3IdleProbe(): boolean {
     const pointers = runIO().pointers();
     if (!pointers.length) workRuns(pointers);
     const queueMs = Date.now() - queueAt;
-    cache.put(P3_IDLE_RESULT, JSON.stringify({ ok: pointers.length === 0, ms: Date.now() - t0, reconcileMs, drainMs, queueMs, drained, queued: pointers.length }), 21_600);
+    // Detalhe do reconcile: a investigação da regressão do tique precisa de número POR PARTE, não
+    // de "o reconcile está lento". Quatro Date.now() custam nada.
+    cache.put(P3_IDLE_RESULT, JSON.stringify({ ok: pointers.length === 0, ms: Date.now() - t0, reconcileMs, drainMs, queueMs, drained, queued: pointers.length, reconcile: runlog.reconcileDetail() }), 21_600);
   } catch (err) {
     cache.put(P3_IDLE_RESULT, JSON.stringify({ ok: false, error: redactMsg(err), ms: Date.now() - t0 }), 21_600);
   }

@@ -207,11 +207,23 @@ export function liveRuns(): { running: Summary[]; recent: Summary[]; sheetUrl: s
 }
 
 /** Worker de 1 min: fecha sob trava os processos que o runtime matou antes de `end()` e os envia ao lote uma vez. */
+/**
+ * Detalhe do último `reconcileStaleRuns`, em ms por parte. Existe para a investigação da regressão
+ * do tique (716 ms na ADR-027 v60 → ~974 ms na v103): quatro `Date.now()` custam nada e transformam
+ * "o reconcile está lento" em "esta parte do reconcile está lenta".
+ */
+export type ReconcileDetail = { propsMs: number; sweepMs: number; idsMs: number; scanMs: number; ids: number; qjsonGets: number };
+let lastDetail: ReconcileDetail = { propsMs: 0, sweepMs: 0, idsMs: 0, scanMs: 0, ids: 0, qjsonGets: 0 };
+export const reconcileDetail = (): ReconcileDetail => lastDetail;
+
 export function reconcileStaleRuns(now = Date.now()): number {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(3_000)) return 0;
   try {
+    const tProps = Date.now();
     const properties = props().getProperties();
+    const propsMs = Date.now() - tProps;
+    const tSweep = Date.now();
     for (const [key, value] of Object.entries(properties)) {
       if (key.startsWith(STALE_PREFIX) || key.startsWith(TERMINAL_PREFIX)) {
         try {
@@ -235,6 +247,8 @@ export function reconcileStaleRuns(now = Date.now()): number {
         }
       }
     }
+    const sweepMs = Date.now() - tSweep;
+    const tIds = Date.now();
     const cachedIds = liveIds();
     const runningIds = Object.keys(properties).filter((key) => key.startsWith(RUNNING_PREFIX)).map((key) => key.slice(RUNNING_PREFIX.length));
     const durableIds = Object.entries(properties)
@@ -250,7 +264,15 @@ export function reconcileStaleRuns(now = Date.now()): number {
       .slice(0, LIVE_MAX)
       .map((x) => x.id);
     const ids = [...new Set([...cachedIds, ...runningIds, ...durableIds])];
-    const all = cache().getAll(ids.map((i) => `run:${i}`));
+    // As DUAS famílias de chave numa ida só. Antes, `run:` vinha em lote aqui e `qjson:` era lido
+    // UM A UM dentro do laço abaixo — 20 idas ao cache por tique ocioso (`LIVE_MAX = 20`), a cada
+    // minuto, para sempre. Medido no dev v103: o laço era 60% do reconcile, que por sua vez era a
+    // regressão inteira do tique (716 ms na ADR-027 v60 → ~974 ms). Mesmos dados, mesma semântica:
+    // chave ausente continua caindo no marcador terminal.
+    const all = cache().getAll([...ids.map((i) => `run:${i}`), ...ids.map((i) => `qjson:${i}`)]);
+    const idsMs = Date.now() - tIds;
+    const tScan = Date.now();
+    let qjsonGets = 0;
     let closed = 0;
     const visible: Run[] = [];
     const repairs: Record<string, string> = {};
@@ -262,7 +284,7 @@ export function reconcileStaleRuns(now = Date.now()): number {
     for (const id of ids) {
       const terminal = properties[`${TERMINAL_PREFIX}${id}`];
       if (terminal) {
-        const full = cache().get(`qjson:${id}`) ?? terminal;
+        const full = all[`qjson:${id}`] ?? terminal;
         try {
           const run = JSON.parse(full) as Run;
           const cached = parseOr<Run | null>(all[`run:${id}`], null); // corrompido conta como ausente: repara
@@ -322,6 +344,7 @@ export function reconcileStaleRuns(now = Date.now()): number {
     } catch (err) {
       warn('reparo do cache', err);
     }
+    lastDetail = { propsMs, sweepMs, idsMs, scanMs: Date.now() - tScan, ids: ids.length, qjsonGets };
     return closed;
   } finally {
     lock.releaseLock();

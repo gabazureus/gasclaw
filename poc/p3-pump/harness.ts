@@ -13,7 +13,8 @@ const SIX_HOURS = 21_600;
 const WAKE_MS = 80_000;
 const WORKSPACE_TRIGGER_MS = 6 * 3_600_000;
 
-type Probe = { ok?: boolean; ms?: number; reconcileMs?: number; drainMs?: number; queueMs?: number; runId?: string; status?: string; drained?: { drained?: number }; queued?: number };
+type ReconcileDetail = { propsMs?: number; sweepMs?: number; idsMs?: number; scanMs?: number; ids?: number; qjsonGets?: number };
+type Probe = { ok?: boolean; ms?: number; reconcileMs?: number; drainMs?: number; queueMs?: number; reconcile?: ReconcileDetail; runId?: string; status?: string; drained?: { drained?: number }; queued?: number };
 
 const cache = () => CacheService.getScriptCache();
 const partial = (): P3Input => JSON.parse(cache().get(PARTIAL) ?? '{}');
@@ -47,7 +48,7 @@ function etapaWorker(): { poc: 'P3'; step: 'worker'; pass: boolean; ms: number |
   return { poc: 'P3', step: 'worker', pass: completed && ms !== null && ms <= P3_WORKER_MAX_MS, ms, completed };
 }
 
-function etapaIdle(): { poc: 'P3'; step: 'idle'; pass: boolean; ms: number | null; reconcileMs: number | null; drainMs: number | null; queueMs: number | null; drained: number | null; queued: number | null } {
+function etapaIdle(): { poc: 'P3'; step: 'idle'; pass: boolean; ms: number | null; reconcileMs: number | null; drainMs: number | null; queueMs: number | null; reconcile: ReconcileDetail | null; drained: number | null; queued: number | null } {
   cache().remove(IDLE_RESULT);
   cache().put(IDLE_REQ, '1', SIX_HOURS);
   Utilities.sleep(WAKE_MS);
@@ -58,7 +59,7 @@ function etapaIdle(): { poc: 'P3'; step: 'idle'; pass: boolean; ms: number | nul
   if (ms !== null && drained !== null && queued !== null) savePartial({ ...partial(), idle: { ms, drained, queued } });
   return {
     poc: 'P3', step: 'idle', pass: measured?.ok === true && ms !== null && ms < P3_IDLE_MAX_MS && drained === 0 && queued === 0,
-    ms, reconcileMs: measured?.reconcileMs ?? null, drainMs: measured?.drainMs ?? null, queueMs: measured?.queueMs ?? null, drained, queued,
+    ms, reconcileMs: measured?.reconcileMs ?? null, drainMs: measured?.drainMs ?? null, queueMs: measured?.queueMs ?? null, reconcile: measured?.reconcile ?? null, drained, queued,
   };
 }
 
