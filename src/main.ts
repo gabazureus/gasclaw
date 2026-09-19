@@ -1,3 +1,4 @@
+import { AUTH_LABEL, authState, parseChildren, serializeChildren, withoutChild, type Child } from './children';
 import { pocP10 } from '../poc/p10-editor/harness';
 import { pocP14 } from '../poc/p14-trace/harness';
 import { pocP15 } from '../poc/p15-limites/harness';
@@ -1009,6 +1010,56 @@ function setTools(folder: string, set: string) {
 }
 
 /**
+ * Os projetos filhos e o estado REAL de autorização de cada um.
+ *
+ * A P24 mediu no dev v96 que um filho criado, escrito e implantado pela API **não executa** até o dono
+ * consentir — e que a tela de consentimento do Google vem com **código 200**. Por isso aqui o estado não é
+ * guardado nem deduzido: ele é **conferido**, chamando a URL do filho e lendo o que volta. Guardar
+ * "autorizado" seria afirmar hoje o que foi verdade ontem.
+ *
+ * O painel não consegue consentir pelo dono (não há API para isso, e é bom que não haja). O que ele pode
+ * fazer é mostrar O QUE O FILHO PEDE antes do clique, e levar o dono até o lugar certo.
+ */
+export function listChildren() {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const list = parseChildren(props.getProperty('CHILDREN'));
+  // O filho da POC P24 é real e está na conta do dono: mostrá-lo é o que permite conferir a tela de ponta
+  // a ponta hoje, em vez de uma seção vazia que ninguém sabe se funciona.
+  const poc = props.getProperty('P24_CHILD');
+  const all: Child[] = poc && !list.some((c) => c.scriptId === poc) ? [...list, { scriptId: poc, title: 'POC P24 child project', url: props.getProperty('P24_URL'), scopes: ['https://www.googleapis.com/auth/calendar.events'], parent: null, reason: 'created by the P24 measurement', at: 0 }] : list;
+  return {
+    children: all.map((c) => {
+      let probe: { code: number; body: string } | null = null;
+      try {
+        if (c.url) probe = fetchChild(c.url);
+      } catch {
+        probe = null; // filho fora do ar vira `unknown`, que NÃO é permissão — nunca `authorized`
+      }
+      const state = authState(c.url, probe ? probe.code : null, probe ? probe.body : null);
+      return { ...c, state, stateLabel: AUTH_LABEL[state], editorUrl: `https://script.google.com/d/${c.scriptId}/edit` };
+    }),
+  };
+}
+
+/** Uma chamada só, curta, sem exceção: o painel não pode cair porque um filho está fora do ar. */
+function fetchChild(url: string): { code: number; body: string } {
+  const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
+  return { code: res.getResponseCode(), body: res.getContentText().slice(0, 1200) };
+}
+
+/** Tira o filho da lista do painel. NÃO apaga o projeto no Google — dizer isso na tela é parte do controle. */
+export function forgetChild(scriptId: string) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const id = String(scriptId ?? '').trim();
+  if (!id) throw new Error('unknown child project');
+  props.setProperty('CHILDREN', serializeChildren(withoutChild(parseChildren(props.getProperty('CHILDREN')), id)));
+  if (props.getProperty('P24_CHILD') === id) props.deleteProperty('P24_CHILD');
+  return listChildren();
+}
+
+/**
  * O prompt do agente para a tela: os quatro papéis com conteúdo, procedência e se dá para editar daqui,
  * mais o prompt MONTADO — que é o que o modelo recebe de verdade.
  *
@@ -1341,6 +1392,9 @@ function pocP24(step?: string): unknown {
       url = null;
     }
     if (!url) return { pass: false, write: w.code, version: ver.code, deployment: dep.code, error: 'no web app URL in the deployment', body: dep.body };
+    // Guardar a URL é o que permite o PAINEL conferir o estado de autorização depois. Sem ela, o filho
+    // apareceria como "não implantado" — errado, e justamente o dado que o dono precisa para autorizar.
+    PropertiesService.getScriptProperties().setProperty('P24_URL', url);
     const hit = call(url, 'get');
     const executed = hit.code === 200 && hit.full.indexOf('p24-ok') >= 0;
     return {

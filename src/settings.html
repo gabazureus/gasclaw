@@ -37,6 +37,8 @@
     .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .links { display: flex; gap: 12px; flex-wrap: wrap; margin: 4px 0 0; }
     .muted { color: #5f5e5a; font-size: 13px; }
+    /* separa duas formas que fazem coisas diferentes: criar pasta nova x apontar para uma que já existe */
+    .sep { border: 0; border-top: 1px solid #e3e1db; margin: 20px 0 12px; }
     .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; }
     .legend i { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 2px; }
     .limit { padding: 6px 0; border-bottom: 1px solid #eee; }
@@ -108,10 +110,17 @@
     <label for="newName">New agent (creates the folder My Drive/gasclaw/agents/&lt;name&gt;)</label>
     <input id="newName" placeholder="assistant" autocomplete="off">
     <button id="create">New agent</button>
+    <hr class="sep">
     <label for="url">Use an existing folder</label>
     <input id="url" placeholder="https://drive.google.com/drive/folders/…">
     <button id="add" class="sec">Use existing folder</button>
     <div id="agents"></div>
+  </section>
+
+  <section aria-labelledby="childrenTitle">
+    <div class="row"><h2 id="childrenTitle">Child projects</h2><button id="childrenReload" class="sec">Check again</button></div>
+    <p class="muted">Specialists the agent created as their own Apps Script project. Google will not let one run until you authorize it — one click each, once. Read what it is asking for before you allow it.</p>
+    <div id="children" aria-live="polite">Loading…</div>
   </section>
   </div>
 
@@ -251,7 +260,7 @@
       const accessBtn = button('Access', () => {
         holder.hidden = !holder.hidden;
         accessBtn.setAttribute('aria-expanded', String(!holder.hidden));
-        if (!holder.hidden) showAccess(a.folderId, holder);
+        if (!holder.hidden) { showAccess(a.folderId, holder); reveal(holder); }
       });
       accessBtn.setAttribute('aria-controls', holder.id);
       accessBtn.setAttribute('aria-expanded', 'false');
@@ -264,7 +273,7 @@
       const promptBtn = button('Prompt', () => {
         promptHolder.hidden = !promptHolder.hidden;
         promptBtn.setAttribute('aria-expanded', String(!promptHolder.hidden));
-        if (!promptHolder.hidden) showPrompt(a.folderId, promptHolder);
+        if (!promptHolder.hidden) { showPrompt(a.folderId, promptHolder); reveal(promptHolder); }
       });
       promptBtn.setAttribute('aria-controls', promptHolder.id);
       promptBtn.setAttribute('aria-expanded', 'false');
@@ -657,6 +666,7 @@
     // o foco fica no botão; quem não vê a tela precisa ouvir que o conteúdo abaixo trocou
     $('msg').className = '';
     $('msg').textContent = 'Section: ' + $('nav-' + name).textContent;
+    if (name === 'agents') loadChildren(); // conferir autorização custa uma chamada por filho: só quando à vista
     startLive(); // a Observabilidade só consulta o servidor enquanto estiver à vista
   }
   // sem setas aqui de propósito: não há tabindex rotativo, então Tab já percorre os quatro (ver o comentário do <nav>)
@@ -668,10 +678,60 @@
   document.addEventListener('visibilitychange', () => (document.hidden ? stopLive() : startLive()));
   startLive();
   const quiet = (fn, ...args) => new Promise((ok, fail) => google.script.run.withSuccessHandler(ok).withFailureHandler(fail)[fn](...args));
+  /**
+   * Leva o painel recém-aberto até os olhos de quem clicou.
+   *
+   * Os dois painéis do agente são altos: o de Acesso carrega as 23 ferramentas e o de Prompt passa de
+   * 1400 px. Com um aberto, o outro nasce ABAIXO dele — fora da tela. O estado estava certo o tempo todo;
+   * o que faltava era a pessoa conseguir ver o que pediu. `block: 'nearest'` rola o mínimo necessário, em
+   * vez de jogar o painel para o topo e desorientar quem estava lendo outra coisa.
+   */
+  function reveal(node) {
+    if (node && node.scrollIntoView) node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
   const el = (tag, props, ...kids) => { const e = document.createElement(tag); Object.assign(e, props || {}); e.append(...kids); return e; };
   // Quatro casas transformam US$ 0,00004 em "US$ 0" — e o balao existe justamente para mostrar esse numero.
   const money = (x) => { const v = x || 0; const casas = v && Math.abs(v) < 0.001 ? 7 : 4; return 'US$ ' + (Math.round(v * Math.pow(10, casas)) / Math.pow(10, casas)); };
   const pct = (v, total) => (total ? Math.round((v / total) * 1000) / 10 : 0) + '%';
+
+  // ----- Projetos filhos: onde o dono autoriza um especialista -----
+  //
+  // O painel NÃO consegue consentir pelo dono: não existe API para isso, e é bom que não exista — foi a
+  // P24 que mediu esse portão. O que a tela faz é mostrar O QUE O FILHO PEDE e levar o dono até lá.
+  const CHILD_STATE_CLASS = { authorized: 'badge', 'needs-consent': 'badge gasclaw', 'not-deployed': 'badge', unknown: 'badge' };
+
+  function showChildren(x) {
+    const list = x.children || [];
+    if (!list.length) {
+      $('children').replaceChildren(el('p', { className: 'muted', textContent: 'No child project yet. One shows up here when an agent creates a specialist.' }));
+      return;
+    }
+    $('children').replaceChildren(...list.map((c) => {
+      const box = el('div', { className: 'limit' });
+      box.append(el('div', { className: 'row' }, el('strong', { textContent: c.title }), el('span', { className: CHILD_STATE_CLASS[c.state] || 'badge', textContent: c.stateLabel })));
+      if (c.reason) box.append(el('p', { className: 'muted', textContent: 'Why it exists: ' + c.reason }));
+      // O que ele PEDE é a informação que torna o consentimento informado. Vem antes do botão, de propósito.
+      box.append(el('p', { className: 'muted', textContent: 'It is asking for: ' + (c.scopes.length ? c.scopes.join(' · ') : '(no scope declared)') }));
+      const acoes = el('p', { className: 'links' });
+      if (c.url) {
+        const abrir = el('a', { textContent: c.state === 'authorized' ? 'Open it' : 'Authorize it', href: c.url });
+        abrir.target = '_blank';
+        abrir.rel = 'noopener';
+        acoes.append(abrir);
+      }
+      const editor = el('a', { textContent: 'Open in the Apps Script editor', href: c.editorUrl });
+      editor.target = '_blank';
+      editor.rel = 'noopener';
+      acoes.append(editor);
+      // "Forget" não apaga nada no Google. Dizer isso é parte do controle: um botão que parece apagar e
+      // não apaga deixaria o dono achando que se livrou de um projeto que continua lá.
+      acoes.append(button('Forget it here', () => call('forgetChild', c.scriptId).then(showChildren)));
+      box.append(acoes, el('p', { className: 'muted', textContent: 'Forgetting only removes it from this list. The project stays in your Google account until you delete it there.' }));
+      return box;
+    }));
+  }
+  function loadChildren() { quiet('listChildren').then(showChildren).catch((e) => { $('children').textContent = 'Child projects unavailable: ' + e.message; }); }
+  $('childrenReload').onclick = loadChildren;
 
   // ----- Balão do gráfico: o valor por modelo sem precisar abrir a tabela -----
   //

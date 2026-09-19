@@ -117,3 +117,35 @@ describe('o painel liga os botões nas funções do servidor', () => {
     expect(html).toContain('What the model actually receives');
   });
 });
+
+// O defeito que o usuário relatou: "clico em Prompt com Access aberto e não abre o que eu cliquei".
+//
+// O estado SEMPRE esteve certo — medido num DOM real: depois dos dois cliques, `hidden` era `false` nos
+// dois painéis. O que faltava era a pessoa CONSEGUIR VER. Os dois painéis são altos (o de Acesso carrega
+// as 23 ferramentas; o de Prompt passou de 1400 px contra uma janela de 1009 px), então o segundo a abrir
+// nasce abaixo do primeiro, fora da tela. Clicar e não ver nada acontecer é indistinguível de um botão
+// quebrado — e foi exatamente assim que o defeito foi relatado.
+describe('abrir um painel leva a pessoa até ele', () => {
+  const html = readFileSync('src/settings.html', 'utf8');
+
+  test('os dois painéis chamam `reveal` ao abrir, e só ao abrir', () => {
+    expect(html).toContain("if (!holder.hidden) { showAccess(a.folderId, holder); reveal(holder); }");
+    expect(html).toContain('if (!promptHolder.hidden) { showPrompt(a.folderId, promptHolder); reveal(promptHolder); }');
+  });
+
+  // `nearest` rola o mínimo necessário. `start` jogaria o painel para o topo e desorientaria quem
+  // estava lendo outra coisa logo acima.
+  test('rola o mínimo necessário, em vez de saltar para o topo', () => {
+    expect(html).toContain("scrollIntoView({ block: 'nearest', behavior: 'smooth' })");
+  });
+
+  test('não quebra onde `scrollIntoView` não existe', () => {
+    expect(html).toContain('if (node && node.scrollIntoView)');
+  });
+
+  // Abrir um NÃO fecha o outro: comparar acesso e prompt lado a lado é o caso normal.
+  test('os painéis continuam independentes — o conserto não virou "fecha o outro"', () => {
+    expect(html).not.toMatch(/promptHolder\.hidden = true;[\s\S]{0,80}holder\.hidden = false/);
+    expect(html).toContain('box.append(row, holder, promptHolder)');
+  });
+});
