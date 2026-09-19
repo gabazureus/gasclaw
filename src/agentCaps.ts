@@ -157,3 +157,23 @@ export type LineageEntry = {
 
 /** Sucessão avança a geração; criação começa uma linhagem nova em 1. */
 export const nextGeneration = (kind: ActKind, parentGeneration: number): number => (kind === 'succession' ? parentGeneration + 1 : 1);
+
+// ---------- Escalonamento de privilégio ----------
+
+/**
+ * Capacidades de um SUCESSOR. Interseção com o antecessor — nunca união.
+ *
+ * O texto do sucessor foi escrito por um LLM a partir de material que veio da pasta
+ * COMPARTILHÁVEL. Ele é conteúdo de terceiro, exatamente como o corpo de um e-mail, e o fato de
+ * "ter sido o nosso modelo que escreveu" não muda nada: quem controla a entrada controla a saída.
+ * Por isso o markdown do sucessor **não concede**; no máximo ele pede MENOS do que o antecessor
+ * já tinha. Sucessão não é escada de privilégio.
+ */
+export const capsAfterSuccession = (predecessor: readonly Capability[], declared: readonly Capability[]): Capability[] =>
+  CAPABILITIES.filter((c) => predecessor.includes(c) && declared.includes(c));
+
+/**
+ * Capacidades de um agente CRIADO (não sucessor): nenhuma, sempre. Diferente da sucessão, aqui
+ * não há de quem herdar — e herdar do criador transformaria `create` numa fábrica de poder.
+ */
+export const capsAfterCreation = (): Capability[] => newbornCapabilities();
