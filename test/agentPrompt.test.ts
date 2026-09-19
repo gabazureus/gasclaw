@@ -146,6 +146,9 @@ describe('abrir um painel leva a pessoa até ele', () => {
   // Abrir um NÃO fecha o outro: comparar acesso e prompt lado a lado é o caso normal.
   test('os painéis continuam independentes — o conserto não virou "fecha o outro"', () => {
     expect(html).not.toMatch(/promptHolder\.hidden = true;[\s\S]{0,80}holder\.hidden = false/);
-    expect(html).toContain('box.append(row, holder, promptHolder)');
+    // Os três painéis do agente são anexados JUNTOS: abrir um não tira o outro do DOM. A asserção é
+    // sobre isso, não sobre a linha literal — acrescentar um painel novo não pode quebrar o teste que
+    // guarda a independência (foi o que aconteceu quando o painel de Settings entrou).
+    expect(html).toMatch(/box\.append\(row, holder, promptHolder(, \w+)*\)/);
   });
 });

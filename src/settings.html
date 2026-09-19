@@ -122,6 +122,8 @@
     <p class="muted">Specialists the agent created as their own Apps Script project. Google will not let one run until you authorize it — one click each, once. Read what it is asking for before you allow it.</p>
     <div id="children" aria-live="polite">Loading…</div>
   </section>
+  <!-- a lista de modelos é compartilhada pelas duas telas; mora aqui porque é aqui que se ESCOLHE -->
+  <datalist id="modelList"></datalist>
   </div>
 
   <div id="pg-observability" hidden>
@@ -135,6 +137,8 @@
     </div>
 
     <div role="tabpanel" id="panel-live" aria-labelledby="tab-live">
+      <label for="liveAgent">Agent</label>
+      <select id="liveAgent"></select>
       <p id="liveStatus" aria-live="polite">Loading…</p>
       <div id="running"></div>
       <h3>Last 10 runs</h3>
@@ -146,12 +150,10 @@
       <select id="modelAgent"></select>
       <p id="modelNow" aria-live="polite"></p>
 <p id="modelOrigin" aria-live="polite" class="dim"></p>
-      <label for="modelPick">Pick a model here (price per 1M tokens: input / output)</label>
-      <input id="modelPick" list="modelList" placeholder="e.g. openai/gpt-4o-mini · or free" autocomplete="off">
-      <p class="hint">Type <code>free</code> for the rotation: gasclaw uses the best free model that works and moves on to the next one if it fails.</p>
-      <datalist id="modelList"></datalist>
-      <button id="modelSave">Use this model</button>
-      <button id="modelReset" class="sec">Back to the AGENTS one</button>
+      <!-- Trocar o modelo mora na configuração do agente, em Agents › Settings. Aqui se LÊ o custo;
+           ler e configurar são tarefas diferentes, e misturá-las obrigava a procurar o agente em dois
+           lugares. O datalist fica porque a tela do agente reusa a mesma lista de modelos. -->
+      <p class="hint">To change the model, open <strong>Agents</strong> and press <strong>Settings</strong> on the agent. Type <code>free</code> there for the rotation: gasclaw uses the best free model that works and moves on to the next one if it fails.</p>
       <h3 id="chartTitle">Cost per model · 7 days</h3>
       <div role="group" aria-label="Period" class="tabs">
         <button id="range-7d" aria-pressed="true">7 days</button>
@@ -278,10 +280,24 @@
       promptBtn.setAttribute('aria-controls', promptHolder.id);
       promptBtn.setAttribute('aria-expanded', 'false');
       actions.append(promptBtn, ' ');
+      // Configuração do agente num lugar só: o que ele PODE FAZER (capacidades) e com QUE MODELO.
+      // O modelo morava na Observabilidade, longe do agente a que pertence — ler o custo e mudar o
+      // modelo são tarefas diferentes, e só a segunda é configuração.
+      const cfgHolder = document.createElement('div');
+      cfgHolder.id = 'cfg-' + a.folderId;
+      cfgHolder.hidden = true;
+      const cfgBtn = button('Settings', () => {
+        cfgHolder.hidden = !cfgHolder.hidden;
+        cfgBtn.setAttribute('aria-expanded', String(!cfgHolder.hidden));
+        if (!cfgHolder.hidden) { showAgentSettings(a.folderId, cfgHolder); reveal(cfgHolder); }
+      });
+      cfgBtn.setAttribute('aria-controls', cfgHolder.id);
+      cfgBtn.setAttribute('aria-expanded', 'false');
+      actions.append(cfgBtn, ' ');
       if (i > 0) actions.append(button('Make default', () => call('makeDefault', a.folderId).then(render)), ' ');
       actions.append(button('Remove', () => call('removeAgent', a.folderId).then(render)));
       row.append(folder, actions);
-      box.append(row, holder, promptHolder);
+      box.append(row, holder, promptHolder, cfgHolder);
       return box;
     }));
   }
@@ -616,14 +632,30 @@
       detail.textContent = d.tree + full;
     }).withFailureHandler((e) => { if (openId === id) detail.textContent = e.message; }).runDetail(id);
   }
+  // O filtro é da TELA, não do servidor: cada run já carrega o nome do agente, então filtrar aqui não
+  // custa chamada nenhuma. "All agents" é o padrão — esconder trabalho por omissão seria pior que
+  // mostrar demais.
+  function fillLiveAgents() {
+    if (!state) return;
+    const atual = $('liveAgent').value;
+    $('liveAgent').replaceChildren(el('option', { value: '', textContent: 'All agents' }), ...state.agents.map((a) => el('option', { value: a.name, textContent: a.name })));
+    if (atual) $('liveAgent').value = atual;
+  }
+  const liveFilter = (runs) => { const n = $('liveAgent').value; return n ? runs.filter((r) => r.agent === n) : runs; };
+  $('liveAgent').onchange = () => poll();
+
   function poll() {
     if (document.hidden) return;
+    fillLiveAgents();
     google.script.run.withSuccessHandler((l) => {
-      $('liveStatus').textContent = l.running.length + ' in progress · updated ' + new Date().toLocaleTimeString();
+      const running = liveFilter(l.running);
+      const recent = liveFilter(l.recent);
+      const quem = $('liveAgent').value ? ' · ' + $('liveAgent').value : '';
+      $('liveStatus').textContent = running.length + ' in progress' + quem + ' · updated ' + new Date().toLocaleTimeString();
       const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.id : null;
       const y = window.scrollY;
-      $('running').replaceChildren(...l.running.map(runButton));
-      $('recent').replaceChildren(...l.recent.map(runButton));
+      $('running').replaceChildren(...running.map(runButton));
+      $('recent').replaceChildren(...recent.map(runButton));
       if (openId) placeDetail();
       if (focused && rowOf(focused)) rowOf(focused).focus({ preventScroll: true });
       window.scrollTo(0, y);
@@ -693,6 +725,65 @@
   // Quatro casas transformam US$ 0,00004 em "US$ 0" — e o balao existe justamente para mostrar esse numero.
   const money = (x) => { const v = x || 0; const casas = v && Math.abs(v) < 0.001 ? 7 : 4; return 'US$ ' + (Math.round(v * Math.pow(10, casas)) / Math.pow(10, casas)); };
   const pct = (v, total) => (total ? Math.round((v / total) * 1000) / 10 : 0) + '%';
+
+  // ----- Configuração do agente: o que ele pode fazer, e com que modelo -----
+  //
+  // Cada capacidade é aprovada UMA A UMA (ADR-038): ter uma não dá outra. E o texto de cada uma diz a
+  // consequência, não o nome bonito — quem liga precisa saber o que está ligando ANTES do clique, que é
+  // a mesma regra da tela de projetos filhos.
+  function showAgentSettings(folderId, holder) {
+    holder.textContent = 'Loading settings…';
+    Promise.all([quiet('agentCapabilities', folderId), quiet('agentModel', folderId)])
+      .then(([caps, m]) => {
+        fillModelList(m.models); // sem isto o campo abre sem nenhuma sugestão, que foi o defeito relatado
+        const box = document.createElement('div');
+
+        const fs = document.createElement('fieldset');
+        fs.append(el('legend', { textContent: 'What this agent may do' }));
+        fs.append(el('p', { className: 'muted', textContent: 'Everything here starts off. Turning one on does not turn on another.' }));
+        caps.capabilities.forEach((c) => {
+          const linha = el('div', { className: 'tool' });
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.id = 'cap-' + folderId + '-' + c.name;
+          cb.checked = c.on;
+          cb.disabled = !c.available;
+          cb.onchange = () => {
+            cb.disabled = true;
+            call('setAgentCapability', folderId, c.name, cb.checked)
+              .then(() => { $('msg').textContent = c.label + (cb.checked ? ' is on.' : ' is off.'); showAgentSettings(folderId, holder); })
+              .catch((e) => { cb.checked = !cb.checked; cb.disabled = false; $('msg').className = 'err'; $('msg').textContent = e.message; });
+          };
+          const rot = el('label', { htmlFor: cb.id, textContent: c.label + (c.available ? '' : ' (not available yet)') });
+          linha.append(cb, rot);
+          fs.append(linha, el('p', { className: 'muted', textContent: c.what }));
+          // Dizer O QUE FALTA, não só que falta: sem isso a pessoa fica sem saber se é bug, permissão
+          // ou obra em andamento — e a diferença entre as três muda o que ela faz a seguir.
+          if (c.missing) fs.append(el('p', { className: 'muted', textContent: 'Missing: ' + c.missing }));
+        });
+        // Só UM agente no ambiente cria outros: dizer quem é evita procurar por que o botão não aparece.
+        if (caps.creator) fs.append(el('p', { className: 'muted', textContent: caps.isCreator ? 'This is the agent that creates others.' : 'Another agent is the one that creates others — turning this on moves that role here.' }));
+        box.append(fs);
+
+        const fm = document.createElement('fieldset');
+        fm.append(el('legend', { textContent: 'Model' }));
+        fm.append(el('p', { className: 'muted', textContent: 'From the folder (AGENTS/spreadsheet): ' + m.fromFolder + ' · Picked here: ' + (m.override || '— (uses the folder one)') + (m.lastModel ? ' · last run: ' + m.lastModel : '') }));
+        const inp = document.createElement('input');
+        inp.id = 'model-' + folderId;
+        inp.setAttribute('list', 'modelList');
+        inp.placeholder = 'e.g. openai/gpt-4o-mini · or free';
+        inp.autocomplete = 'off';
+        fm.append(el('label', { htmlFor: inp.id, textContent: 'Pick a model for this agent (price per 1M tokens: input / output)' }), inp);
+        fm.append(
+          button('Use this model', () => call('setAgentModel', folderId, inp.value).then(() => { $('msg').textContent = 'Model switched (applies to the next message).'; showAgentSettings(folderId, holder); })),
+          ' ',
+          button('Back to the AGENTS one', () => call('setAgentModel', folderId, null).then(() => { $('msg').textContent = 'Back to the AGENTS model.'; showAgentSettings(folderId, holder); })),
+        );
+        box.append(fm);
+        holder.replaceChildren(box);
+      })
+      .catch((e) => { holder.textContent = e.message; });
+  }
 
   // ----- Projetos filhos: onde o dono autoriza um especialista -----
   //
@@ -784,13 +875,21 @@
       + (m.tools.length ? ' · tools: ' + m.tools.join(', ') : '')
       + (m.lastModel ? ' · last run: ' + m.lastModel : '');
     showOrigin(m);
-    $('modelReset').disabled = !m.override;
-    if ($('modelList').children.length !== m.models.length + 1) {
-      $('modelList').replaceChildren(
-        el('option', { value: 'free', label: 'rotation across the free ones (switches by itself if one fails)' }),
-        ...m.models.map((x) => el('option', { value: x.id, label: (x.free ? 'free' : 'US$ ' + x.inM + ' / ' + x.outM) + (x.tools ? ' · tools' : '') + ' · ' + Math.round(x.ctx / 1000) + 'k' })),
-      );
-    }
+    fillModelList(m.models);
+  }
+  /**
+   * A lista de modelos com preço, usada pelo campo de escolha.
+   *
+   * Vive fora da tela de custo porque a escolha do modelo MUDOU DE LUGAR (agora é configuração do
+   * agente) e a lista precisa ir junto. Deixá-la para trás foi o que esvaziou o campo: o `datalist`
+   * existia, o `list=` apontava para ele, e não havia opção dentro.
+   */
+  function fillModelList(models) {
+    if (!models || $('modelList').children.length === models.length + 1) return;
+    $('modelList').replaceChildren(
+      el('option', { value: 'free', label: 'rotation across the free ones (switches by itself if one fails)' }),
+      ...models.map((x) => el('option', { value: x.id, label: (x.free ? 'free' : 'US$ ' + x.inM + ' / ' + x.outM) + (x.tools ? ' · tools' : '') + ' · ' + Math.round(x.ctx / 1000) + 'k' })),
+    );
   }
   // De onde veio cada papel. Renomear a pasta desliga os papéis do editor em silêncio: a precedência desce
   // para os arquivos da pasta, que qualquer pessoa com acesso a ela pode editar. Por PALAVRA, nunca só por
@@ -809,8 +908,6 @@
   }
   function loadModel() { if ($('modelAgent').value) quiet('agentModel', $('modelAgent').value).then(showModel).catch((e) => { $('modelNow').textContent = e.message; }); }
   $('modelAgent').onchange = loadModel;
-  $('modelSave').onclick = () => call('setAgentModel', $('modelAgent').value, $('modelPick').value).then((m) => { showModel(m); $('modelPick').value = ''; $('msg').textContent = 'Model switched (applies to the next message).'; });
-  $('modelReset').onclick = () => call('setAgentModel', $('modelAgent').value, null).then((m) => { showModel(m); $('msg').textContent = 'Back to the AGENTS model.'; });
   const NS = 'http://www.w3.org/2000/svg';
   const svgEl = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, String(attrs[k])); return e; };
   const cor = (s, k) => COLORS[s === 'outros' ? 5 : Math.min(k, 4)];

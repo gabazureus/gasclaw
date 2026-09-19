@@ -210,3 +210,56 @@ describe('ação `tools` da CLI: liga a lista inteira de uma vez', () => {
     expect(access().tools).toHaveLength(23);
   });
 });
+
+// A escolha do modelo MUDOU DE LUGAR: saiu da Observabilidade (onde se LÊ o custo) e foi para a
+// configuração do agente (onde se CONFIGURA o agente). Mover o campo sem levar a lista de opções junto
+// esvaziou o campo — o `datalist` existia, o `list=` apontava para ele, e não havia opção dentro.
+// Defeito relatado pelo uso real, e o tipo que não aparece em teste de unidade nenhum.
+describe('a lista de modelos acompanha o campo que a usa', () => {
+  const html = () => readFileSync('src/settings.html', 'utf8');
+
+  test('existe UM datalist de modelos, e ele mora onde se escolhe', () => {
+    expect((html().match(/id="modelList"/g) ?? [])).toHaveLength(1);
+    const pos = html().indexOf('id="modelList"');
+    expect(html().slice(0, pos)).toContain('id="pg-agents"'); // na página de Agents, não na de Observabilidade
+  });
+
+  test('a tela de configuração do agente preenche a lista antes de mostrar o campo', () => {
+    expect(html()).toContain('fillModelList(m.models); // sem isto o campo abre sem nenhuma sugestão');
+  });
+
+  test('as duas telas usam a MESMA função de preencher — sem lista duplicada para divergir', () => {
+    expect((html().match(/function fillModelList\(/g) ?? [])).toHaveLength(1);
+    expect((html().match(/fillModelList\(/g) ?? []).length).toBeGreaterThanOrEqual(3);
+  });
+
+  test('a Observabilidade diz onde trocar o modelo, em vez de só perder o botão', () => {
+    expect(html()).toMatch(/To change the model, open <strong>Agents<\/strong>/);
+  });
+});
+
+// Um interruptor que liga e não faz nada é pior que um interruptor ausente: o dono acha que aprovou um
+// poder e não aprovou nada. Os núcleos existem (dream.ts, agentCaps.ts), mas o CICLO não — então
+// enquanto a peça não existir, a capacidade recusa, e recusa DIZENDO O QUE FALTA.
+describe('capacidade sem mecanismo não liga, e explica por quê', () => {
+  const html = () => readFileSync('src/settings.html', 'utf8');
+  const main = () => readFileSync('src/main.ts', 'utf8');
+
+  test('a tela mostra o que falta, não só que falta', () => {
+    expect(html()).toContain("'Missing: ' + c.missing");
+  });
+
+  test('servidor e tela leem a MESMA fonte — não dá para a tela dizer pronto e o servidor aceitar', () => {
+    expect(main()).toContain('const falta = CAP_TEXT[cap as Capability].missing;');
+    expect(main()).toContain('if (on === true && falta) throw new Error(');
+    expect(main()).toContain('available: CAP_TEXT[c].missing === null');
+  });
+
+  // Quando a peça ficar pronta, `missing` vira null NUM LUGAR SÓ e a capacidade acende sozinha.
+  test('as quatro capacidades declaram o que falta, e nenhuma está pronta ainda', () => {
+    const cap = main().slice(main().indexOf('const CAP_TEXT'), main().indexOf('const capsProp'));
+    for (const nome of ['dream', 'initiative', 'succeed', 'create']) expect(cap).toContain(`${nome}: {`);
+    expect((cap.match(/missing: '/g) ?? [])).toHaveLength(4); // quatro capacidades, quatro pendências declaradas
+    expect(cap).not.toContain('missing: null'); // nenhuma pronta ainda — este número é o placar do trabalho
+  });
+});

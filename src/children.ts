@@ -83,6 +83,9 @@ export function authState(url: string | null, code: number | null, body: string 
   if (!url) return 'not-deployed';
   if (code === null || body === null) return 'unknown';
   if (/Authorization needed|auth-required|enable_granular_consent/i.test(body)) return 'needs-consent';
+  // Uma página de LOGIN também chega como 200 com HTML dentro. Ela não diz nada sobre o filho estar
+  // autorizado — diz que quem perguntou não se identificou. Nunca `authorized`.
+  if (/accounts\.google\.com|ServiceLogin|<title>[^<]*Sign in|identifier_?next/i.test(body)) return 'unknown';
   if (code === 200 && body.length > 0) return 'authorized';
   return 'unknown';
 }

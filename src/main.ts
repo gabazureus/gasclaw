@@ -42,7 +42,7 @@ import { offsetMinutes } from './agenda';
 import { folderModel, getOverride, listModels as openRouterModels, type ModelInfo, setOverride, validateChoice } from './models';
 import * as observe from './observe';
 import * as runlog from './runlog';
-import { forgetAgentProps } from './agentCaps';
+import { CAPABILITIES, can, creatorOf, forgetAgentProps, parseCapabilities, setCreator, type Capability } from './agentCaps';
 import { mayWriteProject } from './dream';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
@@ -1009,6 +1009,89 @@ function setTools(folder: string, set: string) {
   return { ok: true, folderId, agent: agentName(folderId), enabled: r.enabled, users: r.users };
 }
 
+// ---------- Capacidades do agente (ADR-038): o que ele pode fazer além de responder ----------
+
+/**
+ * O que cada capacidade significa, e O QUE FALTA para ela existir.
+ *
+ * `missing` não é enfeite: enquanto ele estiver preenchido, o interruptor NÃO LIGA. Um interruptor que
+ * liga e não faz nada é pior que um interruptor ausente — o dono acha que aprovou um poder, e não
+ * aprovou coisa nenhuma. Quando a peça ficar pronta, é este campo que vira `null`, num lugar só.
+ */
+const CAP_TEXT: Record<Capability, { label: string; what: string; missing: string | null }> = {
+  dream: {
+    label: 'Dream',
+    what: 'Rewrites its own prompt and scores itself against the judge set. Costs quota; nothing takes effect without your click.',
+    missing: 'the cycle that wakes up, gathers real failures, writes candidates and scores them does not exist yet',
+  },
+  initiative: {
+    label: 'Reach out',
+    what: 'Starts a conversation with you without being asked.',
+    missing: 'the proactivity design was rejected in review and has no measurement: `ask` expires in 10 minutes and delivering a new card from the trigger is out of scope',
+  },
+  succeed: {
+    label: 'Succeed',
+    what: 'Generates a successor with an improved prompt. Succession replaces: the previous one is archived, so the count does not grow.',
+    missing: 'it needs Dream first (there is no winning prompt without a measured cycle), plus code generation and the key handover to the child, which are designed and not built',
+  },
+  create: {
+    label: 'Create agents',
+    what: 'Creates NEW agents that are not successors. This one multiplies, so only ONE agent in the environment can have it.',
+    missing: 'there is no `agent.create` tool in the closed registry, and the P25 measurement found no failure clusters in the trace to justify creating anyone',
+  },
+};
+
+const capsProp = (folderId: string) => `CAP:${folderId}`;
+
+/** As capacidades de um agente, com o texto que explica cada uma e quem é o criador designado hoje. */
+export function agentCapabilities(folderId: string) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const caps = parseCapabilities(props.getProperty(capsProp(folderId)));
+  const creator = creatorOf(props.getProperty('CREATOR'), store.listAgents());
+  return {
+    folderId,
+    capabilities: CAPABILITIES.map((c) => ({ name: c, on: can(caps, c), label: CAP_TEXT[c].label, what: CAP_TEXT[c].what, missing: CAP_TEXT[c].missing, available: CAP_TEXT[c].missing === null })),
+    creator,
+    isCreator: creator === folderId,
+  };
+}
+
+/**
+ * Liga ou desliga UMA capacidade. Só o dono, só nome da lista fechada.
+ *
+ * `create` é SINGLETON por forma do dado: uma Property `CREATOR` com UM folderId. Ligar aqui aponta o
+ * criador para este agente — e, como não há dois lugares onde escrever, o anterior deixa de ser criador
+ * sem que ninguém precise lembrar de desligá-lo. O estado ruim não é evitado: ele não é representável.
+ */
+export function setAgentCapability(folderId: string, cap: string, on: boolean) {
+  assertOwner();
+  if (!(CAPABILITIES as readonly string[]).includes(String(cap))) throw new Error(`unknown capability: ${cap}`);
+  // A recusa vem do MESMO campo que a tela mostra: não há como a tela dizer "pronto" e o servidor
+  // aceitar (nem o contrário), porque é uma fonte só.
+  const falta = CAP_TEXT[cap as Capability].missing;
+  if (on === true && falta) throw new Error(`${cap} is not available yet: ${falta}`);
+  const nome = agentName(folderId);
+  const t = runlog.begin('config', { question: `${cap} de ${nome}: ${on ? 'ligar' : 'desligar'}`, agent: nome });
+  t.step(
+    'set_capability',
+    () =>
+      underAccessLock(() => {
+        const props = PropertiesService.getScriptProperties();
+        const atual = parseCapabilities(props.getProperty(capsProp(folderId)));
+        const proximo = on ? [...new Set([...atual, cap as Capability])] : atual.filter((c) => c !== cap);
+        props.setProperty(capsProp(folderId), JSON.stringify(proximo));
+        if (cap === 'create') {
+          if (on) props.setProperty('CREATOR', setCreator(folderId));
+          else if (props.getProperty('CREATOR') === folderId) props.deleteProperty('CREATOR');
+        }
+      }),
+    () => ({ folderId, cap, on }),
+  );
+  t.end({ answer: `${cap} ${on ? 'ligada' : 'desligada'}` });
+  return agentCapabilities(folderId);
+}
+
 /**
  * Os projetos filhos e o estado REAL de autorização de cada um.
  *
@@ -1044,7 +1127,15 @@ export function listChildren() {
 
 /** Uma chamada só, curta, sem exceção: o painel não pode cair porque um filho está fora do ar. */
 function fetchChild(url: string): { code: number; body: string } {
-  const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
+  // O TOKEN É O QUE TORNA A PERGUNTA VÁLIDA. Sem ele a chamada é anônima, e um web app `access: MYSELF`
+  // responde com a PÁGINA DE LOGIN — um 200 com HTML dentro, sem a marca "Authorization needed". A tela
+  // então lia 200 + corpo e concluía "autorizado" para um filho que não estava: o fail-closed do
+  // `authState` foi derrotado não pela regra, mas por quem fazia a pergunta.
+  const res = UrlFetchApp.fetch(url, {
+    muteHttpExceptions: true,
+    followRedirects: true,
+    headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` },
+  });
   return { code: res.getResponseCode(), body: res.getContentText().slice(0, 1200) };
 }
 

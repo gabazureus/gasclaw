@@ -114,3 +114,25 @@ describe('withChild e withoutChild', () => {
     expect(withoutChild(lista, 'abc123').map((c) => c.scriptId)).toEqual(['b']);
   });
 });
+
+// O defeito que chegou do uso real: a tela disse "Open it" (ou seja, AUTORIZADO) para um filho que ainda
+// não estava — e o dono só descobriu porque clicou assim mesmo e caiu na tela de consentimento.
+//
+// A causa não estava na regra, estava em QUEM FAZIA A PERGUNTA: o painel chamava a URL do filho SEM o
+// token do script. Uma chamada anônima a um web app `access: MYSELF` recebe a PÁGINA DE LOGIN — um 200
+// com HTML dentro e sem a marca "Authorization needed". O fail-closed foi derrotado por baixo.
+describe('página de login não é autorização', () => {
+  test('o corpo de um login do Google vira `unknown`, nunca `authorized`', () => {
+    const logins = [
+      '<html><head><title>Sign in - Google Accounts</title>',
+      '<form action="https://accounts.google.com/ServiceLogin">',
+      '<div id="identifier_next">',
+    ];
+    for (const corpo of logins) expect(authState('https://x/exec', 200, corpo)).toBe('unknown');
+  });
+
+  // A regra continua valendo para o caso bom: conteúdo do filho de verdade é autorização.
+  test('o conteúdo do filho continua sendo lido como autorizado', () => {
+    expect(authState('https://x/exec', 200, 'p24-ok')).toBe('authorized');
+  });
+});
