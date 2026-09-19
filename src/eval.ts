@@ -139,11 +139,20 @@ export function parseGrade(text: string): { grade: number; reason: string } | nu
 /**
  * O cenário DISCRIMINA? Critério de admissão do conjunto de qualidade.
  *
- * Um cenário que o papel vigente gabarita (nota máxima) não informa nada sobre candidato nenhum —
- * é o achado medido do C7: juiz que não varia também não separa. Nota mínima também é inútil:
- * significa que o cenário é impossível e todo candidato empata embaixo.
+ * Só o **teto** reprova: se o papel vigente já tira 4, nenhum candidato pode mostrar ganho — é o
+ * efeito-teto, e é o achado medido do C7 (juiz que não varia também não separa).
+ *
+ * **CORREÇÃO de 2026-09-19, achada medindo.** A primeira versão também reprovava a nota 0, pelo
+ * raciocínio de que "o cenário seria impossível e todo candidato empataria embaixo". A medição no
+ * dev v91 mostrou que isso está errado: `q-conciso` e `q-pergunta-antes` tiraram **0**, e 0 é
+ * justamente onde há MAIS espaço para um candidato mostrar ganho (0 → 2 é um delta enorme e
+ * legível). Piso e teto não são simétricos: o teto prova que o cenário não separa; o piso não
+ * prova nada sobre o cenário — prova sobre o titular.
+ *
+ * Cenário realmente impossível se revela por **todo candidato** empatar em 0 ao longo de várias
+ * gerações, e isso é observação da linhagem, não da linha de base.
  */
-export const discriminates = (baselineGrade: number): boolean => baselineGrade > 0 && baselineGrade < 4;
+export const discriminates = (baselineGrade: number): boolean => baselineGrade >= 0 && baselineGrade < 4;
 
 export function parseJudge(text: string): { pass: boolean; reason: string } {
   const m = text.trim().match(/^(PASS|FAIL)\s*[:\-–]?\s*(.*)$/im);

@@ -215,3 +215,73 @@ humana da resposta, não por medida. **Gap nomeado, não resolvido.**
 | C1, C6 | passo e gatilho | **medidos, passam** (v89) |
 | C2, C3, C4, C5 | ciclo, `:free`, aborto, capacidade | **não medidos** |
 | C7 | variância intra-candidato | medido no `gate` (0/4); **no `quality` ainda não** — é o próximo |
+
+---
+
+# C7 NO CONJUNTO `quality` — o resultado que decide a track (dev v91)
+
+## A medição
+
+Mesmo prompt, mesmo cenário (`q-incerteza`), mesmo papel vigente, **cinco execuções**:
+
+| run | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| nota | **4** | **0** | **4** | **0** | **4** |
+
+Média **2,4**, desvio-padrão **2,19**, numa escala que vai de 0 a 4.
+
+**A variância do mesmo candidato consigo mesmo cobre a escala inteira.**
+
+Isto não foi procurado: apareceu sozinho, quando `q-incerteza` tirou 4/4 numa rodada e 0/4 na
+seguinte, sem nada ter mudado entre as duas. As cinco execuções acima foram feitas para confirmar,
+e confirmaram.
+
+## O que isso implica, com a conta
+
+Para detectar uma diferença real entre dois candidatos, com 80% de poder a 5%, com este
+desvio-padrão:
+
+| delta que se quer detectar | execuções por candidato **por cenário** |
+|---|---:|
+| 1,0 ponto (de 4) | **~75** |
+| 0,5 ponto | **~301** |
+
+Com 6 cenários e 3 candidatos, detectar 1 ponto exigiria **~1.350 execuções por ciclo**. A
+`q-incerteza` levou ~11 s por execução. São ~4 h de execução por ciclo — e cada execução consome
+cota de gatilho e requisição de modelo.
+
+**Uma execução por cenário, que era o desenho, não mede nada.** O delta entre candidatos seria
+lido como sinal quando é ruído do próprio titular.
+
+## O que NÃO dá para concluir com estes dados
+
+A variância está **no cano inteiro** — resposta do agente **mais** nota do juiz. Estes cinco runs
+não separam as duas. O experimento que separa é barato e ainda não foi feito: **fixar a resposta e
+rejulgar N vezes**. Se a nota variar com a resposta congelada, a variância é do juiz; se não
+variar, é do agente. Registrado como próximo experimento, não como conclusão.
+
+## Admissão dos seis cenários `quality`
+
+| cenário | nota do titular | veredito |
+|---|---:|---|
+| `q-conciso` | 2/4 | discrimina |
+| `q-incerteza` | 0–4 (instável) | discrimina, mas é o caso do C7 |
+| `q-pergunta-antes` | 0/4 | discrimina |
+| `q-recusa-util` | 0/4 | discrimina |
+| `q-sem-enrolar` | **4/4** | **efeito-teto — trocar** |
+| `q-assume-nada` | **4/4** | **efeito-teto — trocar** |
+
+**Dois de seis caíram** por efeito-teto.
+
+## Correção de um erro meu, achada medindo
+
+A primeira versão de `discriminates` reprovava **nota 0** junto com nota 4, "por simetria": o
+raciocínio escrito era que 0 significaria cenário impossível, com todo candidato empatando embaixo.
+
+**A medição mostrou que a simetria era falsa.** `q-pergunta-antes` e `q-recusa-util` tiraram 0, e 0
+é justamente onde há **mais espaço** para um candidato mostrar ganho — 0 → 2 é um delta enorme e
+legível. O teto prova que o cenário não separa; o piso não prova nada sobre o cenário, prova sobre
+o titular. Cenário genuinamente impossível se revela por **todo candidato** empatar em 0 ao longo
+de gerações — é observação de linhagem, não de linha de base.
+
+A regra virou `grade < 4`, e o comentário no código guarda o erro e o motivo.

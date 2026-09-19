@@ -113,6 +113,13 @@ for (const n of names) {
   console.log(`${r.pass ? '\x1b[32m✓' : '\x1b[31m✗'} ${n}\x1b[0m · ${r.ms} ms`);
   for (const c of r.checks) console.log(`   ${c.pass ? '✓' : '✗'} ${c.check}`);
   if (r.judge) console.log(`   ${r.judge.pass ? '✓' : '~'} juiz (soft): ${r.judge.reason}`);
+  // Nota 0–4 dos conjuntos `quality`/`holdout`. O selo de admissão vem junto: um cenário que o papel
+  // vigente gabarita (4) não informa nada sobre candidato nenhum, e um impossível (0) tampouco —
+  // os dois reprovam como CENÁRIO. Sem isto impresso, o critério virava leitura humana.
+  if (r.grade) {
+    const discrimina = r.grade.grade < 4; // só o TETO reprova: nota 0 é onde há mais espaço para ganho
+    console.log(`   ${discrimina ? '✓' : '✗'} nota ${r.grade.grade}/4 ${discrimina ? '(discrimina)' : '(efeito-teto: o titular gabarita, troque o cenário)'}: ${r.grade.reason}`);
+  }
   for (const e of r.errors ?? []) console.log(`   erro de tool: ${e}`);
   if (r.cleanup) console.log(`   limpeza: ${r.cleanup.removed} apagado(s)${r.cleanup.missing ? `, ${r.cleanup.missing} já não existia(m)` : ''}${r.cleanup.failed.length ? `; FALHOU: ${r.cleanup.failed.join(' | ')}` : ''}`);
   for (const t of r.replies) console.log(`   resposta: ${t.replace(/\s+/g, ' ').slice(0, 160)}`);

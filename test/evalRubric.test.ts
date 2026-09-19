@@ -60,11 +60,13 @@ describe('critério de admissão: o cenário precisa DISCRIMINAR', () => {
     expect(discriminates(4)).toBe(false); // gabaritou: não informa nada sobre candidato nenhum
   });
 
-  test('cenário impossível também está reprovado: todo candidato empata embaixo', () => {
-    expect(discriminates(0)).toBe(false);
+  // CORREÇÃO achada medindo (dev v91): a primeira versão reprovava 0 também, por simetria com o 4.
+  // A simetria era falsa. O titular tirar 0 é onde há MAIS espaço para o candidato mostrar ganho.
+  test('titular com nota 0 DISCRIMINA: é onde há mais espaço para o candidato mostrar ganho', () => {
+    expect(discriminates(0)).toBe(true);
   });
 
-  test('o que discrimina é a faixa do meio', () => {
-    for (const n of [1, 2, 3]) expect(discriminates(n)).toBe(true);
+  test('tudo abaixo do teto discrimina', () => {
+    for (const n of [0, 1, 2, 3]) expect(discriminates(n)).toBe(true);
   });
 });

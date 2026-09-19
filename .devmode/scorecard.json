@@ -909,5 +909,34 @@
     "recommendations": {
       "testing": "construir o conjunto quality do zero com rubrica graduada e criterio de admissao por DISCRIMINACAO; so entao repetir o C7 nele"
     }
+  },
+  {
+    "phase": "Conjunto quality/holdout + primeira medicao",
+    "summary": "Motor de evals ganhou tres conjuntos (gate/quality/holdout), nota graduada 0-4 e o criterio de admissao discriminates(). 6 cenarios quality e 3 holdout escritos, com o aviso de reserva dentro de cada holdout. MEDIDO no dev v90: primeiro resultado NEGATIVO \u2014 o ritual de estreia consumia o primeiro turno e o juiz recebia a pergunta do ritual. Hipotese testada e confirmada; corrigido nos nove. Achado: q-conciso provavelmente nao discrimina (papel vigente respondeu em uma linha = nota 4), ou seja o criterio reprovou na primeira tentativa um cenario que eu mesmo escrevi. Gap nomeado: a CLI nao imprime a nota. Fila NAO terminada: \u00a7E, \u00a7F e os cinco componentes do item 3 nao foram feitos. 1315 testes verdes.",
+    "scores": {
+      "correctness": {
+        "score": 10,
+        "note": "o resultado negativo foi relatado como negativo, a hipotese foi testada antes de corrigir, e o gap da CLI foi nomeado em vez de contornado; a suspeita de defasagem de sessao foi registrada como nao investigada"
+      },
+      "design": {
+        "score": 9,
+        "note": "tres conjuntos com reguas separadas; set ausente cai em gate (o mais estrito); parseGrade devolve null e nunca 0; discriminates reprova 0 e 4 pelo mesmo motivo estrutural"
+      },
+      "testing": {
+        "score": 9,
+        "note": "1315 verdes, 14 testes novos de rubrica; a medicao no dev foi experimento com hipotese, nao tentativa. Nao e 10 porque C2-C5 seguem sem numero e o C7 no quality ainda nao rodou"
+      },
+      "safety": {
+        "score": 9,
+        "note": "item a item inalterado do commit anterior (autoconcessao, terceiro, intersecao, laco, menor privilegio, arquivado, espelho, singleton, \u00a7C, \u00a7D). O holdout entra como controle novo contra Goodhart. NAO e 10: \u00a7A aberto, \u00a7E e \u00a7F registrados e NAO corrigidos nesta rodada"
+      },
+      "clarity": {
+        "score": 10,
+        "note": "o README da POC conta o resultado negativo antes do conserto, e diz que o criterio de admissao reprovou um cenario do proprio autor"
+      }
+    },
+    "recommendations": {
+      "testing": "imprimir a nota na CLI e so entao repetir o C7 no conjunto quality; substituir q-conciso, que provavelmente nao discrimina"
+    }
   }
 ]
