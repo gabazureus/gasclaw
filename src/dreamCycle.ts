@@ -176,3 +176,29 @@ export function hasMaterial(clusters: readonly Cluster[], min = CLUSTER_MIN): { 
   if (top.count < min) return { ok: false, reason: `the biggest cluster has ${top.count} occurrences, below the ${min} needed`, top };
   return { ok: true, reason: '', top };
 }
+
+// ---------- Do resultado do cenário para o bit que a estatística precisa ----------
+
+/**
+ * A rubrica dá nota 0–4; o teste de proporções precisa de acertou/não acertou. Este é o ponto de
+ * conversão, e o limiar é **declarado**, não escondido: nota **≥ 3** ("atende bem" ou melhor) conta
+ * como acerto.
+ *
+ * Onde colocar o limiar importaria muito se as notas se espalhassem pela escala. **Elas não se
+ * espalham:** a medição do C7 no dev v91 deu 4, 0, 4, 0, 4 — bimodal, colada nos extremos. Com essa
+ * distribuição, mover o limiar entre 2 e 4 mudaria quase nada. É por isso que o número pode ser
+ * simples sem ser arbitrário — e se um dia as notas deixarem de ser bimodais, este comentário é o
+ * aviso de que o limiar precisa ser revisto.
+ */
+export const QUALITY_PASS_GRADE = 3;
+
+/**
+ * O passo passou? O portão é binário por natureza (as verificações do cenário); a qualidade vem da
+ * nota. **Nota ausente NÃO conta como acerto**: sem nota legível não se sabe nada, e chamar isso de
+ * acerto inflaria a taxa do candidato com as falhas do juiz.
+ */
+export function stepPassed(kind: StepKind, report: { pass: boolean; grade?: { grade: number } | null }): boolean {
+  if (kind === 'gate') return report.pass === true;
+  const g = report.grade?.grade;
+  return typeof g === 'number' && g >= QUALITY_PASS_GRADE;
+}

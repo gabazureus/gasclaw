@@ -8,6 +8,8 @@
 //  - o `holdout` nunca entra na seleção, senão a evidência é circular.
 import { describe, expect, test } from 'vitest';
 import {
+  QUALITY_PASS_GRADE,
+  stepPassed,
   cluster,
   hasMaterial,
   cycleCost,
@@ -210,5 +212,26 @@ describe('material do sonho: falhas reais, agrupadas por contagem (D5)', () => {
 
   test('no limiar, há material', () => {
     expect(hasMaterial([{ kind: 'denied', tool: 'x', count: 3 }]).ok).toBe(true);
+  });
+});
+
+describe('conversão da nota para o bit da estatística', () => {
+  test('o limiar é 3 e está declarado, não escondido', () => {
+    expect(QUALITY_PASS_GRADE).toBe(3);
+  });
+
+  test('portão usa as verificações do cenário; nota não entra nele', () => {
+    expect(stepPassed('gate', { pass: true })).toBe(true);
+    expect(stepPassed('gate', { pass: false, grade: { grade: 4 } })).toBe(false); // nota boa não salva portão reprovado
+  });
+
+  test('qualidade: 3 e 4 acertam, 0 a 2 não', () => {
+    for (const g of [3, 4]) expect(stepPassed('quality', { pass: true, grade: { grade: g } })).toBe(true);
+    for (const g of [0, 1, 2]) expect(stepPassed('quality', { pass: true, grade: { grade: g } })).toBe(false);
+  });
+
+  test('sem nota legível NÃO conta como acerto — isso inflaria a taxa com falha do juiz', () => {
+    expect(stepPassed('quality', { pass: true })).toBe(false);
+    expect(stepPassed('quality', { pass: true, grade: null })).toBe(false);
   });
 });
