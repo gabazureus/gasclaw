@@ -98,3 +98,27 @@ describe('o ambiente de teste não enxerga o estado da máquina', () => {
     expect(sh('printf "%s" "$(os_kind)"', { GASCLAW_OS: 'Linux' }).out).toBe('linux');
   });
 });
+
+// Uma POC que REPROVA não é um travamento — e a ferramenta estava dizendo que era.
+//
+// O resultado válido saía acompanhado de "gasclaw stopped unexpectedly", DUAS vezes. Isso corrompe a
+// medição pelo lado psicológico, que é o mais difícil de detectar: quem mede passa a duvidar do próprio
+// número em vez de acreditar nele — e o projeto inteiro depende de tratar critério reprovado como
+// entrega, não como defeito.
+//
+// O conserto foi encontrado EXECUTANDO o comando real, não deduzindo: com `set +e` sozinho a mensagem de
+// travamento continuou saindo (duas vezes, inclusive), e só sumiu com `trap - ERR` antes do comando que
+// falha mais `exit` em vez de `return`. Não afirmo aqui a regra de bash que explica isso — tentei escrever
+// esse teste duas vezes e errei a condição nas duas. O que este arquivo prende é a FORMA do conserto no
+// artefato real; o comportamento foi conferido rodando `./gasclaw poc p24 key` (reprova) e
+// `./gasclaw poc p24 guard` (passa), e só o primeiro imprime o aviso.
+describe('POC reprovada não se parece com travamento', () => {
+  test('o comando de POC sai com o código do critério e sem mensagem de travamento', () => {
+    const fonte = readFileSync('gasclaw', 'utf8');
+    const bloco = fonte.slice(fonte.indexOf('cmd_poc()'), fonte.indexOf('jsfield()'));
+    expect(bloco).toContain('trap - ERR'); // antes do comando que falha, não depois
+    expect(bloco.indexOf('trap - ERR')).toBeLessThan(bloco.indexOf('node -e'));
+    expect(bloco).toContain('exit "$code"'); // `return` dispararia o trap no chamador e de novo no `case`
+    expect(bloco).toMatch(/MEASUREMENT RESULT, not a crash/);
+  });
+});
