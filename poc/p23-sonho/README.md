@@ -152,3 +152,66 @@ como evolução. Mudanças aplicadas à spec:
 3. **Conjunto reservado**, nunca usado na seleção.
 4. **Juiz de família diferente** da que gerou o candidato.
 5. **Regra de fracasso declarada:** N gerações sem vantagem no reservado ⇒ linhagem ineficaz, vira ADR.
+
+---
+
+# CONJUNTO `quality` E `holdout` — construção e primeira medição (dev v90)
+
+## O que foi construído
+
+Três conjuntos com réguas diferentes, porque têm naturezas diferentes (`src/eval.ts`):
+
+- **`gate`** — determinístico e absoluto. Os 27 cenários atuais são todos `gate` (o padrão quando
+  o frontmatter não diz nada: o mais estrito, não o mais solto). Não aceitam rubrica.
+- **`quality`** — 6 cenários novos (`evals/q-*.md`), nota **0–4**, usados para ESCOLHER candidato.
+- **`holdout`** — 3 cenários (`evals/h-*.md`), **nunca** usados na seleção. Cada arquivo carrega o
+  aviso no corpo, para ninguém usar por engano.
+
+O motor recusa cenário de `gate` com rubrica e cenário de `quality`/`holdout` sem rubrica: régua
+trocada é erro de configuração, não detalhe.
+
+## O que foi medido — e o primeiro resultado foi negativo
+
+Rodando os seis `quality` contra o papel vigente, **nenhum produziu resposta avaliável**:
+
+```
+q-conciso      → resposta: "The agent has a question."
+q-incerteza    → resposta: "The agent has a question."
+…
+```
+
+**Diagnóstico, confirmado por experimento:** o **ritual de estreia** (ADR-024) consome o primeiro
+turno. A resposta que chegava ao juiz era a pergunta do ritual, não a resposta ao cenário.
+
+Teste da hipótese — mesmo cenário, com um turno "oi" de aquecimento antes:
+
+```
+resposta 1: "Oi 👋 Meu ritual de estreia pede para eu saber duas coisas antes de seguir…"
+resposta 2: "O Natal de 2026 (25/12) cai numa **sexta-feira** 🎄"
+```
+
+Hipótese confirmada. Os nove cenários ganharam o turno de aquecimento, com o motivo escrito dentro
+de cada arquivo.
+
+## Achados que valem mais que o conserto
+
+**1. O `q-conciso` provavelmente NÃO discrimina.** A resposta do papel vigente — *"O Natal de 2026
+(25/12) cai numa sexta-feira 🎄"* — é uma linha, sem preâmbulo, sem oferta de ajuda extra. Isso é
+nota 4, e `discriminates(4) === false`: **o cenário está reprovado como cenário**. É o critério de
+admissão funcionando na primeira tentativa, contra um cenário que eu mesmo escrevi.
+
+**2. A nota ainda não é observável de ponta a ponta.** O `runEval` calcula e devolve a nota, mas a
+CLI **não imprime**. Enquanto isso não existir, o critério de admissão é aplicado por leitura
+humana da resposta, não por medida. **Gap nomeado, não resolvido.**
+
+**3. Suspeita registrada, não confirmada:** numa das rodadas a resposta do Natal apareceu sob
+`q-pergunta-antes`, e não sob `q-conciso`. Pode ser defasagem de sessão entre execuções do eval.
+**Não investiguei** — fica registrado para não virar surpresa depois.
+
+## Estado dos critérios
+
+| # | Critério | Estado |
+|---|---|---|
+| C1, C6 | passo e gatilho | **medidos, passam** (v89) |
+| C2, C3, C4, C5 | ciclo, `:free`, aborto, capacidade | **não medidos** |
+| C7 | variância intra-candidato | medido no `gate` (0/4); **no `quality` ainda não** — é o próximo |

@@ -23,6 +23,7 @@ describe('parseScenario', () => {
   test('frontmatter, turnos e verificações', () => {
     expect(parseScenario(SMOKE)).toEqual({
       name: 'smoke',
+      set: 'gate',
       channel: 'chat',
       tools: [],
       steps: undefined,

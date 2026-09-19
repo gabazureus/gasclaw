@@ -880,5 +880,34 @@
     "recommendations": {
       "safety": "revisar por inteiro o caminho de mensagem entre agentes quando ele for implementado; ele e o unico com risco residual declarado"
     }
+  },
+  {
+    "phase": "Medicao P23 + correcoes de forma do dado",
+    "summary": "Dev publicado (v89) com autorizacao. MEDIDO: passo de avaliacao 2.782 ms por dentro contra 10.634 ms pelo relogio do PC (a regua muda o veredito); C1 passa com folga, C6 passa, C3 NAO medido (evals rodaram no modelo pago, cota :free ficou 0/1000). Corrigi um numero meu: a conta tem 1.000 req/dia, nao 50. C7 medido: 0/4 de discordancia binaria e 4/4 de discordancia de conteudo \u2014 o que REPROVA os 27 evals como conjunto de qualidade, porque juiz que nao discorda de si mesmo tambem nao discorda entre candidatos. Corrigidos \u00a7B/\u00a7C/\u00a7D da revisao adversarial antes de qualquer fiacao; \u00a7C era defeito real hoje. 1303 testes verdes.",
+    "scores": {
+      "correctness": {
+        "score": 10,
+        "note": "tudo relatado foi medido no dev v89 e os numeros estao na P23 com o metodo ao lado; corrigi publicamente um numero meu errado (50 vs 1.000 req/dia) e marquei C3 como NAO MEDIDO em vez de passar"
+      },
+      "design": {
+        "score": 9,
+        "note": "\u00a7D resolvido por presenca de nome em vez de numero, porque numero descartado volta como 0 permissivo; \u00a7C usa filtro por sufixo e pega prefixo criado no futuro; a catraca Required<DurableRun> do projeto obrigou a classificar os campos novos"
+      },
+      "testing": {
+        "score": 9,
+        "note": "1303 verdes; 4 controles novos; o C7 e medicao real no dev, nao teste unitario. Nao e 10 porque C2, C3, C4 e C5 seguem sem numero e a amostra do C7 e de 4 execucoes em 1 cenario"
+      },
+      "safety": {
+        "score": 9,
+        "note": "item a item: autoconcessao fechada por teste estrutural; texto do LLM como terceiro; intersecao dupla; laco A-B-A; menor privilegio; arquivado nao roda; planilha espelho; singleton nao representavel; \u00a7C ressurreicao fechada; \u00a7D fail-open fechado. NAO e 10 porque \u00a7A segue aberto (por isso message nao existe) e \u00a7E/\u00a7F estao registrados e nao corrigidos"
+      },
+      "clarity": {
+        "score": 10,
+        "note": "a leitura ingenua do C7 (variancia zero = bom) foi explicitamente derrubada no documento, que e onde estava o risco de o numero enganar quem ler depois"
+      }
+    },
+    "recommendations": {
+      "testing": "construir o conjunto quality do zero com rubrica graduada e criterio de admissao por DISCRIMINACAO; so entao repetir o C7 nele"
+    }
   }
 ]

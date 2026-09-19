@@ -5,8 +5,20 @@ import { parseFrontmatter } from './workspace';
 export const CHECKS = ['span', 'calledTool', 'noTool', 'includes', 'refused', 'approved', 'denied', 'stopped', 'pending', 'noError', 'cleaned', 'excludes'] as const;
 export type Check = { kind: (typeof CHECKS)[number]; arg: string };
 export type ScriptItem = { tool: string; args: string } | { text: string };
+/**
+ * A que conjunto o cenário pertence (pesquisa do sinal fraco, 2026-09-19):
+ * - `gate`: determinístico e ABSOLUTO. Falhou um, o candidato morre — sem estatística.
+ * - `quality`: ruidoso, nota graduada 0–4. Serve para ESCOLHER entre candidatos.
+ * - `holdout`: reservado. **Nunca** usado na seleção; só responde "a linhagem melhorou?".
+ *   Sem ele, o mesmo conjunto seleciona e atesta, e qualquer afirmação de melhora é circular.
+ */
+export type EvalSet = 'gate' | 'quality' | 'holdout';
+
 export type Scenario = {
   name: string;
+  set: EvalSet;
+  /** Critério da nota 0–4. Só no `quality` e no `holdout`: o `gate` é binário por natureza. */
+  rubric?: string;
   channel: 'chat' | 'tela';
   model?: string; // sobrepõe o modelo do agente de eval (tools exigem modelo com suporte)
   tools?: string[];
@@ -52,8 +64,14 @@ export function parseScenario(md: string): Scenario {
   });
   const steps = str('steps') ? Number(str('steps')) : undefined;
   if (steps !== undefined && !(Number.isInteger(steps) && steps >= 1 && steps <= 50)) throw new Error(`${name}: steps inválido (inteiro de 1 a 50)`);
+  const set = (['gate', 'quality', 'holdout'] as const).find((k) => k === str('set')) ?? 'gate';
+  const rubric = str('rubric');
+  if (set === 'gate' && rubric) throw new Error(`${name}: a gate scenario takes no rubric (the gate is binary by nature)`);
+  if (set !== 'gate' && !rubric) throw new Error(`${name}: a ${set} scenario needs a rubric in the frontmatter`);
   return {
     name,
+    set,
+    ...(rubric ? { rubric } : {}),
     channel,
     model: str('model'),
     tools: Array.isArray(data.tools) ? data.tools : undefined,
@@ -95,6 +113,37 @@ export function judgeMessages(criterion: string, convo: { user: string; reply: s
     { role: 'user', content: `Critério: ${criterion}\n\nConversa:\n${convo.map((c) => `usuário: ${c.user}\nagente: ${c.reply}`).join('\n')}` },
   ];
 }
+
+/** Notas possíveis. 0–4 em vez de passou/falhou: binário joga fora informação que já foi paga. */
+export const GRADES = [0, 1, 2, 3, 4] as const;
+
+export function gradeMessages(rubric: string, convo: { user: string; reply: string }[]): Message[] {
+  return [
+    {
+      role: 'system',
+      content:
+        'Grade the agent reply from 0 to 4 against the given criterion. ' +
+        '0 = meets nothing; 1 = meets very little; 2 = meets half; 3 = meets it well; 4 = fully meets it. ' +
+        'Answer in one line: "NOTA n: reason". Nothing else.',
+    },
+    { role: 'user', content: `Criterion: ${rubric}\n\nConversation:\n${convo.map((c) => `user: ${c.user}\nagent: ${c.reply}`).join('\n')}` },
+  ];
+}
+
+/** Nota do juiz. Sem nota legível devolve `null` — NUNCA 0, que seria confundido com "ruim". */
+export function parseGrade(text: string): { grade: number; reason: string } | null {
+  const m = String(text ?? '').trim().match(/NOTA\s*([0-4])\s*[:\-–]?\s*(.*)$/im);
+  return m ? { grade: Number(m[1]), reason: m[2].trim() } : null;
+}
+
+/**
+ * O cenário DISCRIMINA? Critério de admissão do conjunto de qualidade.
+ *
+ * Um cenário que o papel vigente gabarita (nota máxima) não informa nada sobre candidato nenhum —
+ * é o achado medido do C7: juiz que não varia também não separa. Nota mínima também é inútil:
+ * significa que o cenário é impossível e todo candidato empata embaixo.
+ */
+export const discriminates = (baselineGrade: number): boolean => baselineGrade > 0 && baselineGrade < 4;
 
 export function parseJudge(text: string): { pass: boolean; reason: string } {
   const m = text.trim().match(/^(PASS|FAIL)\s*[:\-–]?\s*(.*)$/im);

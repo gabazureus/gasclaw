@@ -3,7 +3,7 @@ import { DEFAULT_STEPS, type ToolEvent, type TurnResult } from './agent';
 import type { Ticket } from './approval';
 import { cacheTickets, newToken } from './approvalStore';
 import { handleChat, type ChatDeps, type ChatEvent, type Tickets } from './chat';
-import { evaluate, judgeMessages, parseJudge, parseScenario, scriptedLlm, type Report, type TurnOutcome } from './eval';
+import { evaluate, gradeMessages, judgeMessages, parseGrade, parseJudge, parseScenario, scriptedLlm, type Report, type TurnOutcome } from './eval';
 import { complete, type Completion, type Message, type ToolDef } from './llm';
 import * as store from './store';
 import { runCleanup, UNDOABLE } from './tools/cleanup';
@@ -32,7 +32,7 @@ export type EvalEnv = {
   google?: Google; // ferramentas do Workspace (E6); o runner também usa para apagar os dados de teste
   zone?: { timeZone: string; offset: string };
 };
-export type EvalResult = Report & { replies: string[]; ms: number; errors: string[]; cleanup?: { removed: number; missing: number; failed: string[] } };
+export type EvalResult = Report & { replies: string[]; ms: number; errors: string[]; grade?: { grade: number; reason: string }; cleanup?: { removed: number; missing: number; failed: string[] } };
 
 /** Turnos especiais que simulam o clique no card (Chat) ou no botão (tela): (aprovar), (aprovar <tool>), (negar), (repetir clique). */
 const CLICK = /^\((aprovar|negar|repetir clique)(?:\s+([\w.]+))?\)$/i;
@@ -177,8 +177,18 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
       judge = { pass: false, reason: `juiz falhou: ${(err as Error).message}` };
     }
   }
+  // Nota graduada 0–4 dos conjuntos `quality` e `holdout`. O `gate` não tem rubrica e não ganha nota:
+  // portão é binário por natureza, e somar as duas réguas destruiria a propriedade boa de cada uma.
+  let grade: { grade: number; reason: string } | null = null;
+  if (s.rubric && env.apiKey) {
+    try {
+      grade = parseGrade(env.llm(model, gradeMessages(s.rubric, convo), []).text);
+    } catch {
+      grade = null; // sem nota legível é `null`, nunca 0 — 0 seria lido como "ruim"
+    }
+  }
   const errors = events.filter((e) => e.status === 'error').map((e) => `${e.name}: ${e.result.slice(0, 200)}`);
-  return { ...evaluate(s, { turns, judge, cleaned: (cleanup?.removed ?? 0) + (cleanup?.missing ?? 0) }), replies: convo.map((c) => c.reply), ms: env.clock() - t0, errors, ...(cleanup ? { cleanup } : {}) };
+  return { ...evaluate(s, { turns, judge, cleaned: (cleanup?.removed ?? 0) + (cleanup?.missing ?? 0) }), replies: convo.map((c) => c.reply), ms: env.clock() - t0, errors, ...(grade ? { grade } : {}), ...(cleanup ? { cleanup } : {}) };
 }
 
 const EVAL_AGENTS = `---

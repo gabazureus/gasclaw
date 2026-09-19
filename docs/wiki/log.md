@@ -87,3 +87,16 @@ Proposta do usuário: trocar markdown por Google Docs (texto) e Google Sheets (d
 - **A lição:** onde a régua é matemática (percentil, média, custo, taxa), o teste precisa de pelo menos um caso com **resposta conhecida de fora**, calculada à mão — não derivada do mesmo raciocínio que gerou o código. Em `test/p11.test.ts` isso virou: 20 valores de 100 a 2000 → p95 = 1900 (o 19º menor), e não 2000.
 - **O que não fiz:** re-medir depois de corrigir a régua. O veredito foi recalculado sobre os mesmos dados; re-medir com a régua nova seria trocar a evidência para obter o resultado desejado.
 - Ver [ADR-025](../adr/025-rodizio-de-modelos-gratuitos.md) e `poc/p11-free/README.md`.
+
+## [2026-09-19] ingest | A conta que mostrou que 8 cenários não provam evolução
+- **O material:** 16 trabalhos colhidos da API oficial do arXiv (`docs/raw/sources/2026-09-19-arxiv-avaliacao-e-auto-aprimoramento.md`). O SearXNG local foi iniciado, mas seus motores estavam bloqueados (CAPTCHA no duckduckgo e startpage, limite no brave, erro HTTP no motor do arxiv) — a colheita foi direto na fonte primária, e isso está registrado no arquivo bruto.
+- **O achado que derruba uma premissa:** o critério `delta >= 2 líquidos` que estava na spec da F5 dá **p = 0,625** no teste pareado de McNemar. Não era "sinal fraco": era não-sinal. Com 8 cenários só há significância se o candidato vencer **todos** os pares discordantes, e houver pelo menos seis.
+- **A tese:** o sinal não está na geração, está na linhagem. Páginas novas: [[sinal-fraco-em-avaliacao]], [[conjunto-reservado]], [[auto-preferencia-do-juiz]], [[verificador-exato]], [[evolucao-do-agente-gasclaw]].
+- **O que a literatura confirmou sem ser perguntada:** a decisão de manter o juiz vindo do build (tomada por segurança, porque a pasta é compartilhável) também é a decisão certa por eficácia — arXiv:2310.01798 mostra que auto-correção sem retorno externo degrada. Duas razões independentes para a mesma escolha.
+- **Contradição registrada:** um número meu estava errado. Eu havia projetado aperto de cota `:free` supondo 50 req/dia; a conta medida tem **1.000/dia**. O aperto projetado não existe nesta conta.
+
+## [2026-09-19] medição | A P23 no dev v89, e o C7 reprovando o próprio conjunto-juiz
+- **Medido, não esperado:** passo de avaliação em **2.782 ms** pelo cronômetro de dentro contra **10.634 ms** pelo relógio do PC. A diferença de ~7,9 s é rede e ida-e-volta da CLI: medindo pelo lado errado, o C1 reprovaria um passo que passa com folga.
+- **C7 (variância intra-candidato), 4 execuções do mesmo prompt:** discordância no veredito **0 de 4**, discordância no conteúdo **4 de 4**. A leitura ingênua comemoraria variância zero; a correta é o oposto — o veredito é estável porque a verificação é quase determinística, e **um juiz que nunca discorda de si mesmo também nunca discorda entre candidatos**. Os 27 evals medem mecanismo, e mecanismo não varia.
+- **Consequência:** o conjunto `quality` precisa ser construído do zero, e o critério de admissão de um cenário passa a ser **discriminar** — cenário que o papel vigente gabarita está reprovado como cenário.
+- **C3 marcado como NÃO MEDIDO**, não como aprovado: os evals rodaram no modelo pago e a cota gratuita ficou em 0/1.000 antes e depois.
