@@ -796,15 +796,21 @@
     const list = x.children || [];
     // Sem filho, nada aparece: uma seção vazia permanente ensina menos que a ausência dela.
     [...document.querySelectorAll('[data-child]')].forEach((n) => n.remove());
-    $('agents').append(...list.map((c) => {
+    const ajuda = el('details', {});
+    ajuda.dataset.child = 'help';
+    ajuda.append(
+      el('summary', { textContent: 'What is a child project?' }),
+      el('p', { className: 'muted', textContent: 'An Apps Script project of its own, not a Drive folder — it has no prompt or tools here, and it carries its own, narrower set of Google permissions. Google will not let one run until you authorize it: one click, once. "Forget" only removes it from this list; the project stays in your Google account until you delete it there.' }),
+    );
+    $('agents').append(ajuda, ...list.map((c) => {
       const box = el('div', { className: 'limit' });
       box.dataset.child = c.scriptId;
+      // UMA linha de identidade e UMA de detalhe. O texto que explica o que é um projeto filho vive no
+      // `<details>`, não em cada linha: repetir a explicação por item transforma uma lista em parede.
       const nome = el('span', {}, el('strong', { textContent: c.title }), ' ', el('span', { className: 'badge', textContent: 'child project' }));
       box.append(el('div', { className: 'row' }, nome, el('span', { className: CHILD_STATE_CLASS[c.state] || 'badge', textContent: c.stateLabel })));
-      box.append(el('p', { className: 'muted', textContent: 'A child is an Apps Script project of its own, not a folder — it has no prompt or tools here. Google will not let it run until you authorize it: one click, once.' }));
-      if (c.reason) box.append(el('p', { className: 'muted', textContent: 'Why it exists: ' + c.reason }));
-      // O que ele PEDE é a informação que torna o consentimento informado. Vem antes do botão, de propósito.
-      box.append(el('p', { className: 'muted', textContent: 'It is asking for: ' + (c.scopes.length ? c.scopes.join(' · ') : '(no scope declared)') }));
+      const curto = (c.scopes.length ? c.scopes.map((x) => x.split('/').pop()).join(', ') : 'no scope declared') + (c.reason ? ' · ' + c.reason : '');
+      box.append(el('p', { className: 'muted', textContent: curto }));
       const acoes = el('p', { className: 'links' });
       if (c.url) {
         const abrir = el('a', { textContent: c.state === 'authorized' ? 'Open it' : 'Authorize it', href: c.url });
@@ -812,14 +818,12 @@
         abrir.rel = 'noopener';
         acoes.append(abrir);
       }
-      const editor = el('a', { textContent: 'Open in the Apps Script editor', href: c.editorUrl });
+      const editor = el('a', { textContent: 'Editor', href: c.editorUrl });
       editor.target = '_blank';
       editor.rel = 'noopener';
       acoes.append(editor);
-      // "Forget" não apaga nada no Google. Dizer isso é parte do controle: um botão que parece apagar e
-      // não apaga deixaria o dono achando que se livrou de um projeto que continua lá.
-      acoes.append(button('Forget it here', () => call('forgetChild', c.scriptId).then(showChildren)));
-      box.append(acoes, el('p', { className: 'muted', textContent: 'Forgetting only removes it from this list. The project stays in your Google account until you delete it there.' }));
+      acoes.append(button('Forget', () => call('forgetChild', c.scriptId).then(showChildren)));
+      box.append(acoes);
       return box;
     }));
   }

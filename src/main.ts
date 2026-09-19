@@ -1111,7 +1111,7 @@ export function listChildren(folderId?: string) {
   // O filho da POC P24 é real e está na conta do dono: mostrá-lo é o que permite conferir a tela de ponta
   // a ponta hoje, em vez de uma seção vazia que ninguém sabe se funciona.
   const poc = props.getProperty('P24_CHILD');
-  const todos: Child[] = poc && !list.some((c) => c.scriptId === poc) ? [...list, { scriptId: poc, title: 'POC P24 child project', url: props.getProperty('P24_URL'), scopes: ['https://www.googleapis.com/auth/calendar.events'], parent: null, reason: 'created by the P24 measurement', at: 0 }] : list;
+  const todos: Child[] = poc && !list.some((c) => c.scriptId === poc) ? [...list, { scriptId: poc, title: 'POC P24', url: props.getProperty('P24_URL'), scopes: ['https://www.googleapis.com/auth/calendar.events'], parent: null, reason: 'created by the P24 measurement', at: 0 }] : list;
   // A lista é PLANA: agente e filho aparecem um embaixo do outro, e o vínculo é marcador, não
   // hierarquia. Um filho pode SUCEDER e virar o principal — aninhar exigiria redesenhar a árvore a cada
   // sucessão, e descreveria como permanente uma relação que é temporária.

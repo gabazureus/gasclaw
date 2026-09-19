@@ -91,9 +91,11 @@ export function authState(url: string | null, code: number | null, body: string 
 }
 
 /** O que a tela diz de cada estado. Em inglês (ADR-033) e sem prometer o que não foi verificado. */
+// Curto de propósito: isto é ETIQUETA, e o botão ao lado já diz a ação ("Authorize it" / "Open it").
+// Uma frase inteira numa etiqueta quebra em três linhas e empurra o resto da linha para fora.
 export const AUTH_LABEL: Record<AuthState, string> = {
-  authorized: 'Authorized — it can run',
-  'needs-consent': 'Waiting for you to authorize it',
-  'not-deployed': 'Not deployed yet',
-  unknown: 'Could not check right now',
+  authorized: 'Authorized',
+  'needs-consent': 'Not authorized yet',
+  'not-deployed': 'Not deployed',
+  unknown: 'Could not check',
 };
