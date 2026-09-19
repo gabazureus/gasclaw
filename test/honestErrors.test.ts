@@ -17,7 +17,7 @@ describe('falha de ferramenta é honesta (causa raiz: o erro chegava como texto 
     const script = [call('calendar_freebusy', '{"emails":"dono@x.com","from":"2030-01-15T08:00","to":"2030-01-15T18:00"}'), { text: 'Você está livre.' }];
     runTurn({ system: 'SYS', history: [], text: 'x', tools: allowedTools(['calendar']), ctx, llm: (m) => (sent.push(structuredClone(m)), script.shift()!), runId: 'r', steps: 3, deadlineMs: 1e12, clock: () => 0 });
     expect(sent[0][0].content).toBe(`SYS${ENGINE_RULES}`);
-    expect(ENGINE_RULES).toContain('Nunca afirme que algo foi feito sem resultado de sucesso');
+    expect(ENGINE_RULES).toContain('Never claim something was done without a successful tool result');
     const toolMsg = JSON.parse(sent[1][sent[1].length - 1].content);
     expect(toolMsg).toMatchObject({ ok: false, did_nothing: true });
     expect(toolMsg.error).toContain('403');

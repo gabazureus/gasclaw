@@ -68,10 +68,15 @@ export type TurnResult = {
 /** Regras fixas do motor (não vêm da pasta): honestidade sobre falha de ferramenta. */
 export const ENGINE_RULES = `
 
-## Regras do motor gasclaw (fixas)
-- Se uma ferramenta falhar, diga claramente que não foi possível e o motivo.
-- Nunca afirme que algo foi feito sem resultado de sucesso da ferramenta.
-- Nunca invente dados (agenda livre, e-mails, contatos, arquivos) quando a leitura falhar.`;
+## gasclaw engine rules (fixed)
+- If a tool fails, say clearly that it did not work, and why.
+- Never claim something was done without a successful tool result.
+- Never make data up (free slots, e-mails, contacts, files) when a read fails.`;
+
+// O motor NÃO injeta conteúdo de prompt. O idioma é decidido pelo AGENTS.md do agente, que é do usuário:
+// o template novo já nasce com "Reply in the same language the person writes to you in", e quem tem agente
+// antigo edita o arquivo. Uma regra de idioma imposta aqui venceria — ou brigaria com — o que a pessoa
+// escreveu na própria pasta, e a pasta é a fonte da verdade (ADR-002).
 export const withEngineRules = (system: string, hasTools: boolean): string => (hasTools ? `${system}${ENGINE_RULES}` : system);
 
 const errorOf = (result: string): string => {
