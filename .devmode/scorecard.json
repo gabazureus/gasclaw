@@ -851,5 +851,34 @@
     "recommendations": {
       "testing": "a fila de desenho cresceu alem do que cabe medir: levar ao usuario a escolha entre medir a P23 agora ou fechar o desenho de mensagem entre agentes antes"
     }
+  },
+  {
+    "phase": "Security hardening \u2014 isolamento e privilegio",
+    "summary": "ADR-040 com limite honesto do isolamento no topo, modelo de ameacas com adversario nomeavel caminho a caminho, e 8 controles. 30 testes novos de seguranca; total 1290 verdes em 118 arquivos, tsc limpo, build ok. Auditoria encontrou que nenhuma tool escreve estado de privilegio \u2014 propriedade emergente transformada em invariante estrutural testada. Risco residual (A induz B ao que B faz sem aprovacao) declarado por escrito.",
+    "scores": {
+      "correctness": {
+        "score": 9,
+        "note": "1290 testes medidos apos apagar output.json; a auditoria de src/tools foi feita por leitura de arquivo, nao por suposicao; a defesa contra injecao foi confirmada no eval e6-injecao existente"
+      },
+      "design": {
+        "score": 9,
+        "note": "controle 1 e estrutural em vez de pontual: testa propriedade do codigo, nao um valor; Verdict deduplicado entre os dois modulos em vez de dois contratos iguais"
+      },
+      "testing": {
+        "score": 9,
+        "note": "30 controles, dois deles como PROPRIEDADE (subconjunto do pai para qualquer declaracao) e um como teste de arquitetura; um teste anti-vacuidade garante que o estrutural nao passa vazio"
+      },
+      "safety": {
+        "score": 9,
+        "note": "item a item: autoconcessao fechada por teste estrutural; texto do LLM tratado como terceiro; intersecao dupla; laco A-B-A fechado; menor privilegio sem poder implicito; arquivado nao roda; planilha e espelho; singleton nao representavel. NAO e 10 porque o risco residual da conversa existe e o caminho de mensagem ainda nao foi implementado nem revisado por inteiro"
+      },
+      "clarity": {
+        "score": 10,
+        "note": "o limite do isolamento esta em negrito no topo da ADR, com a analogia do OpenMausBot desarmada explicitamente, e a tabela do que NAO da para fazer com o substituto de cada item"
+      }
+    },
+    "recommendations": {
+      "safety": "revisar por inteiro o caminho de mensagem entre agentes quando ele for implementado; ele e o unico com risco residual declarado"
+    }
   }
 ]

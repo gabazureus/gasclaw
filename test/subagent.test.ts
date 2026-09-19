@@ -39,14 +39,14 @@ describe('interseção: um sub-agente nunca tem MAIS que o pai, só menos', () =
 
 describe('profundidade: sub-agente NÃO cria sub-agente (ADR-039)', () => {
   test('o pai delega; o sub-agente não', () => {
-    expect(canDelegate(0)).toBe(true); // o agente da pasta
-    expect(canDelegate(1)).toBe(false); // já é sub-agente
-    expect(canDelegate(2)).toBe(false);
+    expect(canDelegate(null)).toBe(true); // o agente da pasta
+    expect(canDelegate('pesquisador')).toBe(false); // já é sub-agente
   });
 
-  test('profundidade inválida é fail-closed', () => {
-    expect(canDelegate(-1)).toBe(false);
-    expect(canDelegate(Number.NaN)).toBe(false);
+  test('é PRESENÇA de nome, não número: um `depth` descartado pelo parseRun voltaria como 0 = permissivo', () => {
+    expect(canDelegate('')).toBe(true); // string vazia não é sub-agente
+    expect(canDelegate(undefined)).toBe(true);
+    expect(canDelegate('a')).toBe(false);
   });
 });
 

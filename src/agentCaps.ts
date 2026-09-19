@@ -177,3 +177,33 @@ export const capsAfterSuccession = (predecessor: readonly Capability[], declared
  * não há de quem herdar — e herdar do criador transformaria `create` numa fábrica de poder.
  */
 export const capsAfterCreation = (): Capability[] => newbornCapabilities();
+
+// ---------- Esquecer um agente por inteiro (ADR-040 §C) ----------
+
+/**
+ * Prefixos de Script Property presos a um `folderId`. Remover um agente precisa apagar TODOS —
+ * hoje `removeAgent` apaga só `ACCESS:`, e `MODEL:`/`STEPS:` já sobram.
+ *
+ * Com capacidade e carimbo de intervalo na jogada isso deixa de ser sobra e vira ressurreição:
+ * `ensureFolderPath` reusa a primeira pasta com o mesmo nome, então remover e recriar devolveria
+ * as capacidades **sem um clique**, e apagar o carimbo zeraria a trava de custo do Opus.
+ */
+export const AGENT_PROP_PREFIXES = ['ACCESS', 'CAP', 'MODEL', 'STEPS', 'LASTGEN', 'STATUS'] as const;
+
+/**
+ * As chaves a apagar quando um agente sai. Recebe as chaves existentes para não depender de
+ * lembrar a lista: **qualquer** chave no formato `<prefixo>:<folderId>` entra, inclusive uma
+ * criada depois desta linha ser escrita.
+ */
+export const forgetAgentProps = (keys: readonly string[], folderId: string): string[] =>
+  folderId ? keys.filter((k) => k.endsWith(`:${folderId}`) && k.slice(0, k.length - folderId.length - 1).length > 0) : [];
+
+/**
+ * O carimbo do intervalo (`LASTGEN:`) **é apagado junto**, e isso é decisão explícita, não
+ * esquecimento: ele pertence ao agente, e o agente deixou de existir. O que impede a rajada não é
+ * o carimbo sobreviver à remoção — é `create` ser singleton, `succeed` precisar de aprovação, e
+ * remover um agente ser ato do dono no painel. Preservar o carimbo de um agente removido criaria
+ * a situação pior: uma chave órfã para sempre nas Properties (500 KB no total) travando um
+ * `folderId` que talvez nunca mais exista.
+ */
+export const INTERVAL_STAMP_SURVIVES_REMOVAL = false;

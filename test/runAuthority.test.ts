@@ -150,6 +150,10 @@ describe('guarda de deriva: campo novo no DurableRun não passa despercebido', (
     status: 'waiting', snapshot: { messages: [], step: 0, queue: [] }, pending: pendente,
     approval: issueGrant(pendente, 'dono@x.com', HASH, NOW), decision: { approved: true },
     done: {}, granted: [], inflight: { name: 'gmail.send', at: NOW },
+    // ADR-040 §D e §B: os dois nascem ASSINADOS (não estão em RUN_UNSIGNED_FIELDS), que é o ponto.
+    // `subagent` só protege a profundidade se sobreviver ao checkpoint E não puder ser forjado no
+    // arquivo; `candidateSeal` prende o candidato que o card está propondo ao run que o propôs.
+    subagent: 'pesquisador', candidateSeal: 'sha256-do-candidato',
     delivery: { kind: 'google-chat', space: 'spaces/AAA', requestId: '123e4567-e89b-42d3-a456-426614174000', notBefore: NOW, status: 'pending' },
     budget: { usedUsd: 0, capUsd: 0.1 }, answer: 'pronto', error: 'x', startedAt: NOW, updatedAt: NOW,
   };

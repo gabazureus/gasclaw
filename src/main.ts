@@ -41,6 +41,7 @@ import { offsetMinutes } from './agenda';
 import { folderModel, getOverride, listModels as openRouterModels, type ModelInfo, setOverride, validateChoice } from './models';
 import * as observe from './observe';
 import * as runlog from './runlog';
+import { forgetAgentProps } from './agentCaps';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
 import { allowedTools, toolCatalog } from './tools/registry';
@@ -844,7 +845,12 @@ export function createAgent(name: string) {
 export function removeAgent(folderId: string) {
   assertOwner();
   store.saveAgents(store.listAgents().filter((a) => a.folderId !== folderId));
-  PropertiesService.getScriptProperties().deleteProperty(`ACCESS:${folderId}`); // ADR-021: sem sobra de acesso aprovado
+  // ADR-040 §C: apaga TODA chave presa a este folderId, não só `ACCESS:`. Antes, `MODEL:` e `STEPS:`
+  // sobravam; com capacidade e carimbo de intervalo na jogada, sobra vira RESSURREIÇÃO — remover e
+  // recriar a pasta com o mesmo nome (`ensureFolderPath` reusa a primeira homônima) devolveria os
+  // poderes sem um clique, e o carimbo apagado zeraria a trava de custo da geração.
+  const props = PropertiesService.getScriptProperties();
+  for (const key of forgetAgentProps(Object.keys(props.getProperties()), folderId)) props.deleteProperty(key);
   return settingsState();
 }
 

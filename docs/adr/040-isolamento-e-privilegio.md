@@ -115,3 +115,34 @@ Saber onde está a borda é parte de "impecável":
 | Escopo OAuth por agente | escopo é do manifesto, vale para o projeto inteiro | registro fechado de tools + `ACCESS:` |
 | Limite de CPU/memória por agente | o Apps Script não expõe isso | teto de passos, teto de orçamento, intervalo mínimo |
 | Assinatura do markdown da pasta | não há onde guardar chave que a pasta não alcance | procedência visível no painel (ADR-035) |
+
+## Achados da revisão adversarial independente (2026-09-19)
+
+Uma revisão de desenho independente atacou estes caminhos. Ela **confirmou** quatro defesas por
+tentativa de quebra — interseção dupla em `subagent.ts`, forjar `granted`/`user` no arquivo (a
+assinatura pega), ler o próprio card (só o hash fica no Drive) e trocar o destino da entrega (vem
+do ponteiro) — e **encontrou quatro defeitos no desenho aprovado**. Três eram de **forma do
+dado**, logo baratos agora e caros depois da fiação. Corrigidos nesta rodada:
+
+| # | Defeito | Correção |
+|---|---|---|
+| **§B** | O candidato mora fora do run, então trocar o `.md` durante as 24 h do card mantinha o run íntegro: o dono aprovava o diff de ontem e promovia o texto de hoje | `candidateSeal` (SHA-256) **dentro** do `DurableRun`, logo assinado; a promoção recalcula e recusa na divergência |
+| **§C** | `removeAgent` apagava só `ACCESS:`; `MODEL:` e `STEPS:` **já sobravam hoje**. Com `CAP:` e `LASTGEN:`, remover e recriar a pasta com o mesmo nome devolveria as capacidades **sem um clique** | `forgetAgentProps` apaga **todo** prefixo `*:<folderId>`, inclusive prefixos criados depois desta linha |
+| **§D** | `canDelegate(depth)` não sobrevivia ao checkpoint: `parseRun` tem whitelist e um número descartado volta como **0**, o valor permissivo. A profundidade 1 morria no primeiro checkpoint — o **único fail-open** do projeto | o run carrega `subagent` (na whitelist e na assinatura) e `canDelegate` passa a olhar **presença de nome**, não número |
+
+**§A permanece aberto e é o motivo de `message` não existir.** A revisão mostrou que
+`main.ts:443` deriva `isOwner` só de `r.user`, e `tools/google.ts` só olha `ctx.isOwner` — nem
+qual agente, nem quem originou o texto. A fiação óbvia de mensagem entre agentes propagaria
+`user` e faria B rodar como **dono**, com as tools de B, dirigido por texto da pasta de A: a
+união das tools de todos os agentes, com a autoridade do dono. Os quatro controles exigidos —
+`originAgent` assinado, `isOwner = r.user === owner && !r.originAgent`, o card nomeando o
+solicitante, e `tools(A) ∩ tools(B)` — são **pré-requisito** de qualquer linha de `message`.
+
+### Registrados, não corrigidos nesta rodada
+
+- **§E** — herança de `granted`/`done` pelo sub-agente: uma aprovação dada ao pai não pode valer
+  para o sub-agente sem o dono saber.
+- **§F** — agente arquivado continua dono de lease e com card aprovável por 24 h: arquivar precisa
+  encerrar o que está em voo, não só impedir o que vem depois.
+
+Ambos entram antes de a squad existir de verdade.

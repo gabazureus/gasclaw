@@ -9,8 +9,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { capsAfterCreation, capsAfterSuccession, parseCapabilities, type Capability } from '../src/agentCaps';
-import { foreignMessage, mayRelay, MAX_RELAY_HOPS, relaySpan, subagentTools } from '../src/subagent';
+import { capsAfterCreation, capsAfterSuccession, forgetAgentProps, INTERVAL_STAMP_SURVIVES_REMOVAL, parseCapabilities, type Capability } from '../src/agentCaps';
+import { newRun, parseRun, RUN_UNSIGNED_FIELDS } from '../src/run';
+import { canDelegate, foreignMessage, mayRelay, MAX_RELAY_HOPS, relaySpan, subagentTools } from '../src/subagent';
 
 const SRC = path.join(__dirname, '..', 'src');
 
@@ -125,5 +126,57 @@ describe('CONTROLE 6 — a linhagem é ESPELHO: o núcleo não lê planilha nem 
     for (const proibido of ['DriveApp', 'SpreadsheetApp', 'PropertiesService', 'UrlFetchApp', 'Date.now', 'import ']) {
       expect(texto).not.toContain(proibido);
     }
+  });
+});
+
+describe('CONTROLE 7 — capacidade não ressuscita por reuso de folderId (ADR-040 §C)', () => {
+  const keys = ['ACCESS:f1', 'CAP:f1', 'MODEL:f1', 'STEPS:f1', 'LASTGEN:f1', 'ACCESS:f2', 'AGENTS', 'OWNER', 'R:run1'];
+
+  test('esquecer um agente apaga TODO prefixo preso ao folderId, não só ACCESS:', () => {
+    const apagar = forgetAgentProps(keys, 'f1');
+    expect(apagar.sort()).toEqual(['ACCESS:f1', 'CAP:f1', 'LASTGEN:f1', 'MODEL:f1', 'STEPS:f1']);
+  });
+
+  test('não encosta em outro agente nem em chave global', () => {
+    const apagar = forgetAgentProps(keys, 'f1');
+    for (const intocada of ['ACCESS:f2', 'AGENTS', 'OWNER', 'R:run1']) expect(apagar).not.toContain(intocada);
+  });
+
+  test('pega chave de prefixo criado DEPOIS desta linha (não depende de lista decorada)', () => {
+    expect(forgetAgentProps(['FUTURO:f1'], 'f1')).toEqual(['FUTURO:f1']);
+  });
+
+  test('folderId vazio não apaga nada (senão limparia o ambiente inteiro)', () => {
+    expect(forgetAgentProps(keys, '')).toEqual([]);
+  });
+
+  test('o carimbo do intervalo é apagado junto — decisão explícita, registrada', () => {
+    expect(INTERVAL_STAMP_SURVIVES_REMOVAL).toBe(false);
+    expect(forgetAgentProps(['LASTGEN:f1'], 'f1')).toEqual(['LASTGEN:f1']);
+  });
+});
+
+describe('CONTROLE 8 — a profundidade sobrevive ao checkpoint (ADR-040 §D)', () => {
+  test('quem já é sub-agente NÃO delega; o agente da pasta delega', () => {
+    expect(canDelegate(null)).toBe(true);
+    expect(canDelegate(undefined)).toBe(true);
+    expect(canDelegate('pesquisador')).toBe(false);
+  });
+
+  test('o campo sobrevive à ida e volta pelo Drive — a whitelist do parseRun o conhece', () => {
+    const run = { ...newRun({ runId: 'r1', folderId: 'f1', session: 's', user: 'a@x.com', text: 'oi', now: 1 }), subagent: 'pesquisador', candidateSeal: 'abc123' };
+    const voltou = parseRun(JSON.stringify(run));
+    expect(voltou?.subagent).toBe('pesquisador'); // sem isto, voltaria indefinido = permissivo
+    expect(canDelegate(voltou?.subagent)).toBe(false);
+  });
+
+  test('o selo do candidato também sobrevive (ADR-040 §B)', () => {
+    const run = { ...newRun({ runId: 'r2', folderId: 'f1', session: 's', user: 'a@x.com', text: 'oi', now: 1 }), candidateSeal: 'sha-do-candidato' };
+    expect(parseRun(JSON.stringify(run))?.candidateSeal).toBe('sha-do-candidato');
+  });
+
+  test('os dois campos entram na ASSINATURA por padrão (não estão na lista de não assinados)', () => {
+    expect([...RUN_UNSIGNED_FIELDS]).not.toContain('subagent');
+    expect([...RUN_UNSIGNED_FIELDS]).not.toContain('candidateSeal');
   });
 });

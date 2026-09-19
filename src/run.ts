@@ -104,6 +104,19 @@ export type DurableRun = {
   done: Record<string, string>;
   granted: string[];
   inflight?: Inflight;
+  /**
+   * Sub-agente corrente (ADR-039/040 §D). **Precisa existir aqui, e não só em memória:** `parseRun`
+   * tem whitelist, e campo fora dela é DESCARTADO na volta do Drive. Um `depth` numérico ausente
+   * voltaria como 0 — o valor permissivo —, e a profundidade 1 morreria no primeiro checkpoint,
+   * justamente no cenário que o run durável existe para atender.
+   */
+  subagent?: string;
+  /**
+   * SHA-256 do candidato (e do placar) que o card está propondo (ADR-040 §B). O arquivo mora fora
+   * do run; sem o selo aqui — onde a assinatura o protege — trocar o `.md` durante as 24 h do card
+   * mantém o run íntegro e o dono aprova o diff de ontem promovendo o texto de hoje.
+   */
+  candidateSeal?: string;
   delivery?: ChatDelivery;
   budget: { usedUsd: number; capUsd: number };
   answer?: string;
@@ -301,6 +314,8 @@ export function parseRun(raw: string | null | undefined): DurableRun | null {
       done: o.done && typeof o.done === 'object' ? (o.done as Record<string, string>) : {},
       granted: Array.isArray(o.granted) ? o.granted.filter((g): g is string => typeof g === 'string') : [],
       ...(o.inflight && typeof o.inflight.name === 'string' ? { inflight: { name: o.inflight.name, at: Number(o.inflight.at) || 0 } } : {}),
+      ...(typeof o.subagent === 'string' && o.subagent ? { subagent: o.subagent } : {}),
+      ...(typeof o.candidateSeal === 'string' && o.candidateSeal ? { candidateSeal: o.candidateSeal } : {}),
       ...(parseChatDelivery(o.delivery) ? { delivery: parseChatDelivery(o.delivery) } : {}),
       budget: { usedUsd: Number(o.budget?.usedUsd) || 0, capUsd: Number(o.budget?.capUsd) || RUN_BUDGET_USD },
       ...(typeof o.answer === 'string' ? { answer: o.answer } : {}),

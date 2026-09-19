@@ -32,8 +32,15 @@ export function subagentTools(declared: readonly string[], parentEnabled: readon
   return [...new Set(parentEnabled.filter((t) => real.has(t)))]; // …E o pai tem? (ordem do pai)
 }
 
-/** Quem pode delegar: só o agente da pasta (profundidade 0). Sub-agente não cria sub-agente. */
-export const canDelegate = (depth: number): boolean => depth === 0;
+/**
+ * Quem pode delegar: só o agente da pasta. Sub-agente não cria sub-agente.
+ *
+ * Recebe o `subagent` do run, **não** um `depth` numérico. A diferença é de sobrevivência, não de
+ * estilo: `parseRun` tem whitelist, e um número descartado volta como 0 — o valor PERMISSIVO. O
+ * campo está no `DurableRun` e na whitelist justamente para que a profundidade sobreviva ao
+ * checkpoint; este predicado é a metade de cima da mesma correção (ADR-040 §D).
+ */
+export const canDelegate = (currentSubagent: string | null | undefined): boolean => !currentSubagent;
 
 /** Teto de passos declarado, limitado pelo teto do motor. Valor absurdo cai no padrão. */
 export const stepsFor = (declared: number | undefined): number =>
