@@ -202,3 +202,52 @@ já dá. **Duas camadas, e a de cima é nossa** — como a recusa do próprio `s
 Um segredo gravado no código do filho é legível por quem abrir o projeto do filho no editor — ou
 seja, **pelo dono**. Contra o dono não há defesa aqui, e nem deveria haver: é a conta dele. A
 defesa é contra terceiro que descubra a URL, e contra isso as duas camadas bastam.
+
+## O teto familiar, e as duas alavancas de parada (2026-09-19)
+
+Como o filho usa a mesma chave do pai, o OpenRouter passa a reportar **a família inteira**. Isso dá
+um instrumento que **não existiria com chaves separadas**:
+
+```
+gasto da família (OpenRouter, por chave) − gasto do pai (trace) = consumo dos filhos
+```
+
+É o mesmo offset que a medição de 2026-09-19 explicou (deltas idênticos até a 12ª casa, offset
+constante de US$ 0,053229), **virado do avesso e usado a favor**: o painel mostra o que os filhos
+gastaram **sem instrumentação nenhuma neles**.
+
+**É LIMITE SUPERIOR, não medida.** O número inclui qualquer coisa que use a chave. A ressalva vai
+para a tela, no mesmo espírito do `CROSS_CHECK_NOTE`.
+
+### O que acontece ao estourar
+
+| faixa | ação | por quê |
+|---|---|---|
+| < 80% do teto | segue | — |
+| ≥ 80% | **para de criar filhos** | a ação menos destrutiva que ainda resolve |
+| ≥ 100% | **congela capacidades** | os agentes continuam atendendo; só o poder some |
+| — | **nunca corta a chave** | cortar pararia **o pai também** |
+
+Leitura inválida devolve `ok`: não se pune por suspeita.
+
+### As duas alavancas de parada do dono (para o runbook)
+
+O uso da mesma chave rende um bônus que merece estar escrito, não implícito:
+
+1. **Congelamento global** (`CAPS_ENABLED=false`) — congela **capacidades**, mantém os agentes
+   atendendo. É o freio.
+2. **Trocar a chave do OpenRouter** — **desliga todos os filhos de uma vez**, cortando o
+   combustível. É o disjuntor.
+
+Duas formas de parar tudo, com efeitos diferentes. A primeira é reversível num clique; a segunda
+para o pai junto e exige reconfigurar.
+
+### O que fica em aberto, sem maquiar
+
+**O filho gasta fora do teto POR RUN do pai.** O teto familiar é **mitigação, não eliminação**: ele
+enxerga o agregado, não cada run. E há **defasagem** — o `keyInfo` tem cache de **10 minutos**
+(`FAMILY_LAG_MS`), e a propagação do próprio OpenRouter foi observada em mais de 25 s numa medição
+controlada. **Um filho em laço pode gastar durante essa janela antes de aparecer em qualquer tela.**
+
+O que limita o dano nesse intervalo não é o teto familiar: é o intervalo mínimo entre gerações, o
+singleton de `create` e o fato de o filho nascer sem capacidade nenhuma.

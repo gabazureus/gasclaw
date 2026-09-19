@@ -1025,5 +1025,34 @@
     "recommendations": {
       "correctness": "medir a mesma janela de dia nos dois lados para fechar a divergencia de 80% no custo, antes de qualquer geracao com Opus"
     }
+  },
+  {
+    "phase": "Escopos, autenticacao pai-filho e campos declarados",
+    "summary": "Escopos script.projects e script.deployments acrescentados (14->16 no arquivo, 17 efetivos) com o ADR-015 reescrito como MUDANCA DE POLITICA: o manifesto do pai para de crescer. Corrigi a propriedade que estava errada: o filho nasce com escopos DIFERENTES, podendo ter os que o pai nunca teve. Autenticacao pai-filho desenhada antes da fiacao, com o limite honesto de que MYSELF autentica o dono e nao o pai. Tres mecanicos fechados. Campos declarados pelo agente implementados como DADO com renderizador fixo, reserva de namespace testada nome a nome. Revertido o manifesto quando pedido, e dito que eu havia mexido. 1392 testes verdes.",
+    "scores": {
+      "correctness": {
+        "score": 10,
+        "note": "conferi as quatro bordas do mayWriteProject lendo o teste em vez de presumir; disse que havia mexido no manifesto quando mandaram reverter; e a propriedade do filho foi corrigida de menos escopos para escopos diferentes, que e mais forte e mais verdadeira"
+      },
+      "design": {
+        "score": 10,
+        "note": "campo ruim nao derruba os outros mas capacidade ruim derruba todas, e a assimetria esta justificada no codigo; orfao preservado porque o valor e do dono; CFG entrou no forgetAgentProps para nao repetir o \u00a7C"
+      },
+      "testing": {
+        "score": 10,
+        "note": "1392 verdes; a reserva de namespace e testada nome a nome com test.each, mais colisao por maiuscula, espaco e travessia; ha teste do ciclo completo de reversao de bastao devolvendo a configuracao antiga"
+      },
+      "safety": {
+        "score": 10,
+        "note": "item a item: autoconcessao, terceiro, intersecao, laco, menor privilegio, arquivado nao roda, espelho, singleton, \u00a7C, \u00a7D, holdout, \u00a7E, \u00a7F, congelamento, recusa do proprio scriptId com as 4 bordas conferidas, e agora a pasta nao desenha a tela (reserva de namespace + renderizador fixo + validacao no servidor). \u00a7A segue fechado por decisao com o motivo escrito"
+      },
+      "clarity": {
+        "score": 10,
+        "note": "o ADR-015 diz por que estes sao os ULTIMOS escopos em vez de tratar como excecao, e o ADR-040 declara que MYSELF autentica a pessoa e nao o programa, que e a parte que enganaria"
+      }
+    },
+    "recommendations": {
+      "testing": "medir a P24 agora que o escopo existe, depois que o usuario rodar up e autorizar"
+    }
   }
 ]

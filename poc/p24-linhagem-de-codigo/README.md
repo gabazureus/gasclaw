@@ -13,8 +13,42 @@
 > engano. Acrescentar escopo é irreversível na prática e o [ADR-015](../../docs/adr/015-escopos-oauth.md)
 > existe contra acúmulo silencioso.
 >
-> **Quando aparecer o primeiro caso que precise de capacidade fora das 23 tools — com nome e dono —
-> esta POC roda sem ser reescrita.**
+> **Atualização de 2026-09-19:** o usuário aprovou os escopos com o argumento de que evolução real
+> inclui **ferramenta nova**, e ferramenta nova é código. Os dois escopos estão no manifesto
+> (14 → 16 no arquivo, 17 efetivos). A POC está **pronta para medir**, esperando o dono rodar
+> `./gasclaw up` e autorizar.
+
+## MUDANÇA DE CRITÉRIO, declarada ANTES de medir (2026-09-19)
+
+O passo **`key`** estava escrito para **reprovar**: não existe API que grave Script Properties de
+outro projeto, então a única saída seria o pai **embutir a chave no fonte do filho** — o que é
+entregar credencial.
+
+Decisão do usuário: **o filho é agente completo e usa a MESMA chave do pai** ("fica muito
+complicado ficar criando várias chaves" — e o argumento é bom: N chaves viram trabalho do dono).
+
+Com isso o desenho mudou, e o critério muda junto:
+
+| | antes | agora |
+|---|---|---|
+| `key` | **reprova**: só havia o caminho de embutir no fonte | **verifica** se a entrega autenticada funciona |
+
+O desenho novo: o filho **pede** a chave ao pai na primeira execução, autenticado pelo segredo por
+filho, e guarda nas Script Properties **dele**. A chave viaja uma vez, por chamada autenticada; o
+fonte nunca a contém.
+
+**O problema que este desenho NÃO elimina, e está dito no código:** o *segredo* continua no fonte do
+filho. Quem receber o projeto do filho recebe o segredo. Por isso a entrega é **de uma vez só** —
+passada a janela, um segredo vazado não vale nada — e a janela é **rearmável pelo dono no painel**,
+porque um filho republicado perderia as Properties e uma entrega definitiva o deixaria inútil para
+sempre. Rearmar é ato humano; automático desfaria a proteção que a unicidade cria.
+
+### Critério novo do passo `key`
+
+- [ ] o pai entrega a chave **só** ao filho que ele criou (segredo confere);
+- [ ] a **segunda** entrega é recusada sem rearmar;
+- [ ] a entrega deixa **rastro no trace** (`key_delivery:<filho>`);
+- [ ] o fonte do filho **não contém** a chave — conferido lendo o conteúdo de volta pela API.
 
 > **Estado: critério escrito, NADA medido e NENHUMA linha escrita.**
 > Nenhum número desta página existe ainda. O usuário perguntou "isso é possível? como
