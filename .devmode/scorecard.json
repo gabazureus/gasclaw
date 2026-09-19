@@ -1141,5 +1141,34 @@
     "recommendations": {
       "testing": "executar um passo de verdade substituindo o system do AgentSpec pelo prompt candidato, e entao medir um ciclo real"
     }
+  },
+  {
+    "phase": "P22 medida \u2014 reprovada, e a agenda nao e a culpada",
+    "summary": "Primeira medicao da P22. C1 no teto (mediana 974 ms, 3/6 acima), C2 reprova (1.090 ms, 5/6 acima), C3 recusado pelo proprio harness, C4 passa. A primeira amostra estava contaminada (1.448/2.646) e seis amostras mostraram a faixa real. ACHADO: a agenda custa ~58 ms de mediana e numa amostra foi ate mais rapida que o ocioso; o que esta no teto e o TIQUE OCIOSO, que regrediu de 716 ms (ADR-027 v60) para 974 ms (v100). Construir proatividade agora seria somar 58 ms a algo ja no limite. Tambem commitei a geracao de candidatos por temperatura antes de virar de prioridade.",
+    "scores": {
+      "correctness": {
+        "score": 10,
+        "note": "repeti a sequencia em vez de publicar a primeira amostra, que teria reprovado com numero que nao se sustenta; separei o custo da agenda do custo do tique e descobri que o critico e o segundo; e quantifiquei a regressao contra o numero da ADR-027"
+      },
+      "design": {
+        "score": 10,
+        "note": "o commit de parada da fiacao do sonho fechou o que estava verde com testes em vez de deixar meio escrito; cleanCandidate descarta frontmatter porque papel e texto e configuracao tem caminho proprio"
+      },
+      "testing": {
+        "score": 10,
+        "note": "1503 verdes; seis amostras no dev com estatistica em vez de uma leitura; o harness recusando projetar de passo sintetico foi respeitado em vez de contornado"
+      },
+      "safety": {
+        "score": 9,
+        "note": "item a item inalterado (autoconcessao, terceiro, intersecao, laco, menor privilegio, arquivado, espelho, singleton, \u00a7C, \u00a7D, holdout, \u00a7E, \u00a7F, congelamento, mayWriteProject, pasta nao desenha tela, entrega unica de chave, parseDream fail-closed). Novo: candidato nao pode pedir ferramenta nem capacidade, e frontmatter dele e descartado. NAO e 10: o ciclo ainda nao rodou no ambiente real, como eu mesmo disse que era a condicao"
+      },
+      "clarity": {
+        "score": 10,
+        "note": "a POC diz que reprova POR OUTRO MOTIVO que o criterio supunha, e que o teto de 1.000 ms nunca foi justificado por necessidade de produto \u2014 foi herdado"
+      }
+    },
+    "recommendations": {
+      "design": "decidir com o usuario entre investigar a regressao do tique ocioso ou rever o teto de 1.000 ms, porque construir proatividade sobre um tique ja no limite e somar a um numero estourado"
+    }
   }
 ]
