@@ -1112,5 +1112,34 @@
     "recommendations": {
       "testing": "a fiacao e depois um ciclo REAL medido no dev: e o que destrava C2, C3, C4 e C5 da P23"
     }
+  },
+  {
+    "phase": "Fiacao do ciclo \u2014 borda e conversao",
+    "summary": "dreamStore.ts com estado no Drive e trava que tambem e ponteiro, com a razao escrita de por que o ciclo NAO e um DurableRun (run e conversa que faz checkpoint; ciclo e lote de 312 avaliacoes independentes). parseDream fail-closed. Teste prova a retomada: execucao morre, outra rele do Drive, o ciclo continua em vez de recomecar. Conversao da nota 0-4 para bit com limiar 3 declarado e justificado pela bimodalidade medida no C7. 1490 testes verdes.",
+    "scores": {
+      "correctness": {
+        "score": 10,
+        "note": "a decisao de nao usar DurableRun esta justificada pela FORMA do dado (snapshot vazio, pending nunca usado, fila com dois tipos de lease) e nao por gosto; o limiar 3 e justificado pela distribuicao medida em vez de escolhido no vacuo"
+      },
+      "design": {
+        "score": 10,
+        "note": "reusa o PADRAO (arquivo no Drive, chave curta, avanco por tique, passo feito nao repete) sem reusar a ESTRUTURA que nao encaixa; a trava vira ponteiro porque ja e um ciclo por agente e nao ha fila a manter"
+      },
+      "testing": {
+        "score": 10,
+        "note": "1490 verdes; o teste da retomada simula a morte da execucao e confere que o proximo passo e de qualidade e nao de portao; o de quem morre no portao percorre o ciclo inteiro e prova que nenhum passo daquele candidato roda"
+      },
+      "safety": {
+        "score": 9,
+        "note": "item a item inalterado; novos: parseDream fail-closed com status desconhecido virando running e nao done, failCycle que registra motivo para o DREAMLOCK nao ficar preso, e nota ausente nao contando como acerto. NAO e 10: o ciclo ainda nao roda de ponta a ponta, entao nada disso foi exercitado no dev"
+      },
+      "clarity": {
+        "score": 10,
+        "note": "o comentario do limiar avisa a condicao em que ele deixa de valer (se as notas deixarem de ser bimodais), que e o tipo de coisa que normalmente so se descobre quebrando"
+      }
+    },
+    "recommendations": {
+      "testing": "executar um passo de verdade substituindo o system do AgentSpec pelo prompt candidato, e entao medir um ciclo real"
+    }
   }
 ]
