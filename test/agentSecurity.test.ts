@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { capsAfterCreation, capsAfterSuccession, forgetAgentProps, INTERVAL_STAMP_SURVIVES_REMOVAL, parseCapabilities, type Capability } from '../src/agentCaps';
+import { dreamLockKey, emptyLoopHealth, loopIsDeadWeight, promotionRate, revert, capsAfterCreation, capsAfterSuccession, forgetAgentProps, INTERVAL_STAMP_SURVIVES_REMOVAL, parseCapabilities, type Capability } from '../src/agentCaps';
 import { newRun, parseRun, RUN_UNSIGNED_FIELDS } from '../src/run';
 import { canDelegate, foreignMessage, mayRelay, MAX_RELAY_HOPS, relaySpan, subagentTools } from '../src/subagent';
 
@@ -178,5 +178,29 @@ describe('CONTROLE 8 — a profundidade sobrevive ao checkpoint (ADR-040 §D)', 
   test('os dois campos entram na ASSINATURA por padrão (não estão na lista de não assinados)', () => {
     expect([...RUN_UNSIGNED_FIELDS]).not.toContain('subagent');
     expect([...RUN_UNSIGNED_FIELDS]).not.toContain('candidateSeal');
+  });
+});
+
+describe('CONTROLE 9 — buracos fechados após a pesquisa do sinal fraco', () => {
+  test('a promoção guarda o prompt anterior: reverter é operação, não arqueologia', () => {
+    const p = { at: 1, role: 'novo papel', previousRole: 'papel de antes', seal: 'sha' };
+    expect(revert(p)).toBe('papel de antes');
+  });
+
+  test('a métrica do laço distingue "nunca rodou" de "rodou e nunca promoveu"', () => {
+    expect(promotionRate(emptyLoopHealth())).toBe(null); // null, não 0: 0 enganaria
+    expect(promotionRate({ cycles: 4, promotions: 1, gateFailures: 0, ties: 3 })).toBe(0.25);
+  });
+
+  test('vinte ciclos sem uma promoção é peso morto, e o número existe para alguém ver', () => {
+    expect(loopIsDeadWeight({ cycles: 20, promotions: 0, gateFailures: 2, ties: 18 })).toBe(true);
+    expect(loopIsDeadWeight({ cycles: 20, promotions: 1, gateFailures: 0, ties: 19 })).toBe(false);
+    expect(loopIsDeadWeight({ cycles: 3, promotions: 0, gateFailures: 0, ties: 3 })).toBe(false); // cedo demais
+  });
+
+  test('a trava de ciclo é por agente e segue o formato das chaves presas ao folderId', () => {
+    expect(dreamLockKey('f1')).toBe('DREAMLOCK:f1');
+    // …e por isso é apagada junto quando o agente sai (CONTROLE 7)
+    expect(forgetAgentProps([dreamLockKey('f1')], 'f1')).toEqual(['DREAMLOCK:f1']);
   });
 });

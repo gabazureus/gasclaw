@@ -63,3 +63,92 @@ Rollback = apagar a pasta e a chave da capacidade. Nenhum agente existente é to
 | avaliação pura | `src/eval.ts` (`parseScenario`, `evaluate`) | o juiz já existe e já é testado |
 | custo e cota por modelo | `src/usage.ts`, `src/limits.ts` | C3 sai daqui |
 | aprovação durável de 24 h | ADR-028 | a promoção do candidato é um card |
+
+---
+
+# MEDIÇÃO — 2026-09-19, dev versão 89
+
+Publicado com `./gasclaw up` (autorização explícita do usuário). Health ok, worker de 1 min ativo.
+**Relato do que foi medido, não do que se esperava.**
+
+## O que foi medido
+
+| Medida | Número | Como |
+|---|---|---|
+| Passo de avaliação, **cronômetro interno** | **2.782 ms** (`e1-limite`) | tempo que o próprio runner reporta |
+| O mesmo passo, **relógio do PC** | **10.634 ms** | `date` antes/depois do `./gasclaw eval` |
+| Outros dois cenários, relógio do PC | **17.593 ms** (`smoke`), **17.525 ms** (`e1-now`) | idem |
+| Cota `:free` da conta | **0 / 1.000 req/dia** | `./gasclaw limits --fresh` |
+| Cota `:free` por minuto | 0 / 20 req/min | idem |
+
+**A régua importa mais do que eu supunha.** O mesmo passo mede **2,8 s** por dentro e **10,6 s**
+pelo relógio do PC: ~7,9 s são rede e ida-e-volta da CLI. A ADR-027 §3 já mandava usar cronômetro
+de dentro do gatilho, e este número mostra por quê — medir pelo lado de fora reprovaria um passo
+que passa com folga.
+
+## Vereditos
+
+| # | Critério | Teto | Medido | Veredito |
+|---|---|---|---|---|
+| C1 | passo de sonho | < 10.000 ms | **2.782 ms** por dentro | **passa** com folga — mas ver a ressalva |
+| C2 | ciclo ≤ 2% da cota de gatilho | 2% | — | **não medido**: depende do ciclo existir |
+| C3 | ≤ 20 requisições `:free` | 20 | **não consumiu nenhuma** | **não medido** — e o motivo está abaixo |
+| C4 | aborta com a cota estourada | abortar | — | **não medido** |
+| C5 | agente sem `dream` não sonha | recusar | — | **não medido** no dev (coberto por teste) |
+| C6 | um gatilho só | 1 | 1 (worker ativo) | **passa** |
+| **C7** | **variância intra-candidato** | — | **0 de 4 discordâncias** | **ver seção própria** |
+
+**Ressalva honesta sobre o C1:** 2.782 ms é o tempo de **um cenário de eval**, que é o que mais se
+parece com um passo de sonho hoje — não é o passo de sonho, que ainda não existe. O número é um
+**piso**, não a medida final.
+
+**Por que o C3 não foi medido:** a cota `:free` ficou em **0/1.000 antes e depois** das seis
+execuções. Os evals rodaram no **modelo pago** do agente, não no rodízio gratuito. Medir o C3 exige
+o ciclo usando `:free` de verdade. Registrado como não medido — e não como "passou".
+
+**Correção de um número meu:** eu havia escrito que 24 requisições seriam "metade da cota de 50/dia".
+Medido: esta conta tem **1.000/dia** (tem crédito acima de US$ 10). O aperto que eu projetei **não
+existe nesta conta**. O C3 continua valendo como trava, mas com folga muito maior.
+
+## C7 — variância intra-candidato: o experimento mais informativo, e ele reprova o conjunto-juiz
+
+Mesmo prompt, mesmo cenário (`smoke`), **quatro execuções**:
+
+| | veredito binário | conteúdo da resposta |
+|---|---|---|
+| run 1 | passou | "Oi! 🦀 Antes de começarmos: como você prefere ser chamado?…" |
+| run 2 | passou | "Oi! 🦀 Como você prefere ser chamado(a)? E prefere respostas mais diretas…" |
+| run 3 | passou | "Oi! 👋 Antes de começarmos: como você prefere ser chamado?…" |
+| run 4 | passou | "Oi! 🦀 Como você prefere ser chamado(a) e qual estilo de resposta prefere?" |
+
+**Discordância consigo mesmo no veredito binário: 0 de 4. Discordância no conteúdo: 4 de 4.**
+
+A leitura ingênua seria comemorar: "variância zero, o juiz é estável". A leitura correta é o
+contrário, e ela decide o desenho:
+
+> **O veredito é estável porque a verificação é quase determinística** (`includes: oi`). Um juiz que
+> nunca discorda de si mesmo também **nunca discorda entre candidatos** — as duas coisas são o
+> mesmo fato. Os 27 evals atuais medem **mecanismo**, e mecanismo não varia; por isso eles **não
+> podem** servir de conjunto de qualidade: todo candidato passa em todos.
+
+Isso é evidência medida para o que a pesquisa previu por outro caminho
+([tinyBenchmarks](https://arxiv.org/abs/2402.14992): item que todo mundo passa não informa nada).
+O conjunto `quality` tem que ser **construído do zero, com rubrica graduada**, e o critério de
+admissão dele é **discriminar** — um cenário que o papel vigente gabarita está reprovado como
+cenário.
+
+**Amostra:** 4 execuções, 1 cenário. É o suficiente para reprovar o conjunto atual como juiz de
+qualidade (a propriedade é estrutural), e **não** é suficiente para estimar variância do conjunto
+`quality`, que ainda não existe. Essa medição se repete quando ele existir.
+
+## Critérios revistos ANTES de medir o resto (pesquisa de 2026-09-19)
+
+A pesquisa mostrou, por McNemar, que `delta ≥ 2 líquidos` corresponde a **p = 0,625** — aceita ruído
+como evolução. Mudanças aplicadas à spec:
+
+1. **Promoção ≠ evidência.** Promoção fica barata e reversível (portões passados, delta positivo,
+   humano no laço). "A linhagem evoluiu" passa a exigir teste sequencial acumulado.
+2. **Dois conjuntos:** `gate` (determinístico, absoluto — falhou um, morre) e `quality` (rubrica 0–4).
+3. **Conjunto reservado**, nunca usado na seleção.
+4. **Juiz de família diferente** da que gerou o candidato.
+5. **Regra de fracasso declarada:** N gerações sem vantagem no reservado ⇒ linhagem ineficaz, vira ADR.

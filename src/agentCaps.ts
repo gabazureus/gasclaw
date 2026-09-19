@@ -207,3 +207,38 @@ export const forgetAgentProps = (keys: readonly string[], folderId: string): str
  * `folderId` que talvez nunca mais exista.
  */
 export const INTERVAL_STAMP_SURVIVES_REMOVAL = false;
+
+// ---------- Buracos fechados depois da pesquisa do sinal fraco (2026-09-19) ----------
+
+/**
+ * A promoção guarda o prompt ANTERIOR. O bastão já era reversível; o prompt promovido não era —
+ * promover sobrescrevia o papel vigente e não havia volta declarada. Guardar o texto de trás é o
+ * que torna "reverter" uma operação em vez de uma arqueologia.
+ */
+export type Promotion = { at: number; role: string; previousRole: string; seal: string };
+
+export const revert = (p: Promotion): string => p.previousRole;
+
+/**
+ * Métrica do próprio laço. Sem ela, um sonho que nunca promove nada é peso morto invisível:
+ * consome cota e dinheiro, e o painel mostra atividade.
+ */
+export type LoopHealth = { cycles: number; promotions: number; gateFailures: number; ties: number };
+
+export const emptyLoopHealth = (): LoopHealth => ({ cycles: 0, promotions: 0, gateFailures: 0, ties: 0 });
+
+/** Fração de ciclos que produziram promoção. `null` enquanto não houve ciclo — nunca 0 enganoso. */
+export const promotionRate = (h: LoopHealth): number | null => (h.cycles > 0 ? h.promotions / h.cycles : null);
+
+/**
+ * O laço está valendo a pena? Zero promoções em muitos ciclos é o sinal de peso morto que a
+ * literatura prevê como platô — e que só aparece se alguém contar.
+ */
+export const loopIsDeadWeight = (h: LoopHealth, minCycles = 20): boolean => h.cycles >= minCycles && h.promotions === 0;
+
+/**
+ * Trava de concorrência: um ciclo de sonho por agente. Dois ciclos simultâneos no mesmo agente
+ * gastariam orçamento em dobro e poderiam promover candidatos diferentes em cima um do outro.
+ * A chave é por pasta, no mesmo formato das outras chaves presas a `folderId`.
+ */
+export const dreamLockKey = (folderId: string): string => `DREAMLOCK:${folderId}`;
