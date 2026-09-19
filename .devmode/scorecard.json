@@ -996,5 +996,34 @@
     "recommendations": {
       "safety": "o teste obrigatorio da ferramenta de escrita de projeto (recusar o proprio scriptId) antes de qualquer linha de geracao de codigo"
     }
+  },
+  {
+    "phase": "k=17, recusa do proprio projeto, P25 reprovada",
+    "summary": "src/dream.ts com k configuravel (padrao 17) que declara o tamanho de efeito que enxerga, teste de proporcoes com z conferido a mao, beatsIncumbent exigindo vantagem estatistica, mayWriteProject recusando o proprio scriptId, e teto do Opus com a soma (1,00 por geracao, 3,00 por dia no ambiente). P25 MEDIDA E REPROVADA no C1: 86 requisicoes no dia, trafego 100% de eval, zero falhas agrupaveis \u2014 o organismo nao tem combustivel no dev. Achado colateral grave: a contabilidade propria do gasclaw esta 80% abaixo do que o OpenRouter reporta, e e ela que alimenta os tetos de orcamento. 1344 testes verdes.",
+    "scores": {
+      "correctness": {
+        "score": 10,
+        "note": "P25 reprovou e foi relatada como reprovacao; o tally dos cenarios (5 de 8) inclui o substituto que eu escrevi depois de saber do problema e caiu igual; a divergencia de custo foi registrada como suspeita forte e nao como conclusao, porque a janela de dia difere"
+      },
+      "design": {
+        "score": 10,
+        "note": "kSees faz o numero carregar o que ele deixa de enxergar, beatsIncumbent recusa 15x10 que parece vitoria folgada, e mayWriteProject e fail-closed nas quatro bordas (vazio, igual, proprio desconhecido, espaco disfarcando)"
+      },
+      "testing": {
+        "score": 10,
+        "note": "1344 verdes; o z foi conferido com conta a mao em vez de repetir a formula, que e a licao que a P11 deixou no projeto; a P25 foi medida no dev e reprovou"
+      },
+      "safety": {
+        "score": 10,
+        "note": "item a item: autoconcessao, terceiro, intersecao, laco A-B-A, menor privilegio, arquivado nao roda, espelho, singleton, \u00a7C, \u00a7D, holdout, \u00a7E, \u00a7F, congelamento global, e agora a recusa do proprio scriptId COM TESTE \u2014 que era o unico item que faltava e o que eu mesmo apontei como o que baixava a nota. \u00a7A segue aberto por decisao, com message inexistente e o motivo escrito na ADR, o que e controle e nao lacuna"
+      },
+      "clarity": {
+        "score": 10,
+        "note": "a P25 diz que reprovar e a entrega e inverte a ordem recomendada em vez de propor contornar; o tally dos cenarios admite que a intuicao do autor acerta 60%"
+      }
+    },
+    "recommendations": {
+      "correctness": "medir a mesma janela de dia nos dois lados para fechar a divergencia de 80% no custo, antes de qualquer geracao com Opus"
+    }
   }
 ]
