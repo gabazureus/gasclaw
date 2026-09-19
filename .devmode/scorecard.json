@@ -649,5 +649,31 @@
         "note": "ADR-034/035/036 dizem tambem o que foi RECUSADO e o que fica em aberto (QR code), para nao ser reavaliado do zero"
       }
     }
+  },
+  {
+    "phase": "Review (relatorio Windows: P1, P2 e P4)",
+    "summary": "Acesso das 23 ferramentas consertado no servidor E na tela; varredura de idioma terminada com isencao por linha; itens do relatorio Windows fechados; spec dos multiplos chats no gate",
+    "scores": {
+      "correctness": {
+        "score": 9,
+        "note": "1120 testes verdes, tsc/build limpos, binario em pty; colisao de nome de sessao e lentidao do gcloud POSIX MEDIDAS, nao deduzidas"
+      },
+      "design": {
+        "score": 9,
+        "note": "writeTools vira nucleo unico da CLI e do painel; sequencia por linha em vez de global; isencao de idioma por linha com motivo, nao arquivo fora da trava"
+      },
+      "testing": {
+        "score": 9,
+        "note": "teste que conta caminhos de gravacao para nao nascer um terceiro; detector aprendeu prosa x identificador e achou 3 strings sem acento que a varredura por acento nao via"
+      },
+      "safety": {
+        "score": 9,
+        "note": "a tela parou de afirmar acesso que o servidor nao salvou; card de aprovacao inteiro em ingles; staging explicito, sem git add -A; nenhum push"
+      },
+      "clarity": {
+        "score": 9,
+        "note": "spec dos multiplos chats explica por que NAO seguir a planilha pedida, com P18 e a colisao de 80 chars como prova"
+      }
+    }
   }
 ]
