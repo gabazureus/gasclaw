@@ -22,7 +22,7 @@ describe('setAgentTool: liga/desliga UMA ferramenta', () => {
     env.props['ACCESS:f1'] = '{"users":[],"tools":["now"]}';
     vi.stubGlobal('Session', { ...globalThis.Session, getActiveUser: () => ({ getEmail: () => 'outra@x.com' }), getEffectiveUser: () => ({ getEmail: () => 'dono@x.com' }), getScriptTimeZone: () => 'America/Sao_Paulo' });
     const { setAgentTool } = await main();
-    expect(() => setAgentTool('f1', 'gmail.send', true)).toThrow(/dono/);
+    expect(() => setAgentTool('f1', 'gmail.send', true)).toThrow(/Only the gasclaw owner/);
     expect(access().tools).toEqual(['now']);
   });
 

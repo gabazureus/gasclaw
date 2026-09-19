@@ -288,3 +288,107 @@ describe('o build não herda valor do shell', () => {
     expect([...new Set(lidas)].sort()).toEqual(['CHAT_SA_EMAIL', 'GASCLAW_DEV', 'GASCLAW_ENV', 'GCP_NUMBER', 'SIBLING_URL']);
   });
 });
+
+// Relatorio de uma instalacao REAL em Windows 11 / Git Bash, com conta Gmail. Coisas que so aparecem
+// executando: um comando com outro nome, um contador que nao bate com a tela, uma promessa falsa.
+describe('o que a instalação real em Windows mostrou', () => {
+  // Medido pelo relator: o `gcloud` POSIX leva 9,7 s contra 2,7 s do `.cmd` — 3,5× mais lento, em TODA
+  // chamada. No Windows a forma nativa vem primeiro; nos outros sistemas nada muda.
+  test('no Windows a forma .cmd tem precedência sobre a POSIX', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gasclaw-win-'));
+    dirs.push(dir);
+    writeFileSync(join(dir, 'gasclaw'), DEFS);
+    writeFileSync(join(dir, 'gasclaw.env'), '');
+    const bin = join(dir, 'bin');
+    execFileSync('mkdir', ['-p', bin]);
+    for (const n of ['gasclawfake', 'gasclawfake.cmd']) writeFileSync(join(bin, n), '#!/usr/bin/env bash\necho hi\n', { mode: 0o755 });
+    const run = (os: string) =>
+      execFileSync('bash', ['-c', `export PATH="${bin}:$PATH"; source ./gasclaw; bin_of gasclawfake`], {
+        cwd: dir,
+        encoding: 'utf8',
+        env: { ...process.env, GASCLAW_OS: os, HOME: dir },
+      }).trim();
+    expect(run('MINGW64_NT-10.0')).toBe('gasclawfake.cmd');
+    expect(run('Linux')).toBe('gasclawfake'); // fora do Windows a ordem antiga continua
+    expect(run('Darwin')).toBe('gasclawfake');
+  });
+
+  test('install_hint do gcloud dá o comando exato no Windows, como o do Node já dava', () => {
+    const hint = sh("install_hint 'the Google Cloud CLI' 'google-cloud-sdk' 'Google.CloudSDK'", { GASCLAW_OS: 'MINGW64_NT-10.0' });
+    expect(hint).toContain('winget install Google.CloudSDK');
+    expect(hint).toContain('Git Bash'); // "then reopen Git Bash", como no do Node
+  });
+
+  // No Git Bash o `/c` é convertido para caminho do Windows pelo MSYS: precisa de `//c`. O ramo `windows`
+  // já usava a forma certa e o `wsl` ficou para trás.
+  test('o ramo wsl usa //c como o windows, não /c', () => {
+    const wsl = FULL.split('\n').filter((l) => /^\s*wsl\)/.test(l)).join('\n');
+    expect(wsl).toContain('//c');
+    expect(wsl).not.toMatch(/cmd\.exe \/c /);
+  });
+
+  // O passo 7 conta como feito em conta pessoal mas é desenhado "—": o contador dizia "2 of 7" com um
+  // único ✓ na tela. Passo que não se aplica sai dos DOIS lados da conta.
+  test('em conta pessoal o total é 6, e bate com os ✓ desenhados', () => {
+    const env = envOf({ ACCOUNT: 'a@gmail.com', APPS_SCRIPT_API_OK: '1' });
+    const saida = sh('onboard_menu 2>/dev/null || true', {}, env).replace(/\x1b\[[0-9;]*m/g, '');
+    const cabecalho = /Setup · (\d+) of (\d+) done/.exec(saida);
+    expect(cabecalho, saida.slice(0, 200)).not.toBeNull();
+    expect(cabecalho![2]).toBe('6');
+    const vistos = (saida.match(/✓/g) ?? []).length;
+    expect(Number(cabecalho![1])).toBe(vistos);
+  });
+
+  test('em Workspace o total continua 7', () => {
+    const saida = sh('onboard_menu 2>/dev/null || true', {}, envOf({ ACCOUNT: 'a@acme.com' })).replace(/\x1b\[[0-9;]*m/g, '');
+    expect(/Setup · \d+ of 7 done/.test(saida)).toBe(true);
+  });
+
+  // `npm ci` é automático em TODO sistema. Dizer "step 1 tells you how" quando só falta isso é mandar a
+  // pessoa procurar uma instrução que não existe.
+  test('quando só faltam as dependências npm, a mensagem promete instalar — em qualquer sistema', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gasclaw-npm-'));
+    dirs.push(dir);
+    writeFileSync(join(dir, 'gasclaw'), DEFS);
+    writeFileSync(join(dir, 'gasclaw.env'), '');
+    for (const os of ['Linux', 'MINGW64_NT-10.0', 'Darwin']) {
+      const out = execFileSync('bash', ['-c', 'source ./gasclaw; have() { return 0; }; step_missing 1'], {
+        cwd: dir,
+        encoding: 'utf8',
+        env: { ...process.env, GASCLAW_OS: os, HOME: dir },
+      }).trim();
+      expect(out, os).toContain('will install');
+      expect(out, os).not.toContain('tells you how');
+    }
+  });
+});
+
+// `! CLI secret not registered` despejava HTML e CSS crus no terminal — dezenas de linhas de <style> onde
+// devia haver uma frase. A resposta do Apps Script quando falta autorizacao e uma PAGINA, nao um erro.
+describe('erro do web app vira uma frase, não um despejo de HTML', () => {
+  const web = (body: string) => sh(`web_error ${JSON.stringify(body)}`, {}, envOf({ ACCOUNT: 'a@gmail.com', DEPLOY_ID_DEV: 'D' }));
+
+  test('a página de autorização do Google vira uma instrução', () => {
+    const html = '<!DOCTYPE html><html><head><style>body{font:13px Arial}</style></head><body><h1>Authorization needed</h1><p>You need permission</p></body></html>';
+    const out = web(html);
+    expect(out).not.toContain('<style');
+    expect(out).not.toContain('<html');
+    expect(out.split('\n').length).toBe(1);
+    expect(out.toLowerCase()).toContain('authoriz');
+  });
+
+  test('qualquer outra página HTML também vira uma linha', () => {
+    const out = web('<html><body>' + 'x'.repeat(500) + '</body></html>');
+    expect(out.split('\n').length).toBe(1);
+    expect(out.length).toBeLessThan(200);
+  });
+
+  test('resposta vazia é dita como tal, não como silêncio', () => {
+    expect(web('').length).toBeGreaterThan(5);
+  });
+
+  test('erro curto que não é HTML passa adiante, cortado', () => {
+    expect(web('{"ok":false,"error":"boom"}')).toContain('boom');
+    expect(web('y'.repeat(400)).length).toBeLessThan(200);
+  });
+});

@@ -93,6 +93,12 @@ function helpHeredocRange(): [number, number] {
   return [start + 1, end];
 }
 
+// Ha um caso legitimo de pt-BR em codigo que NAO e saida nossa: padrao que CASA com texto que o Google
+// devolve em portugues (a pagina "Autorizacao necessaria", o erro de permissao lido em limits.ts). Traduzir
+// quebraria o casamento. A isencao e por LINHA e carrega o motivo — arquivo inteiro fora da trava e como a
+// trava morre: uma excecao vira duas, e ninguem mais olha.
+const ISENTA = /(?:#|\/\/)\s*lang-ok:/;
+
 function violations(): string[] {
   const [helpStart, helpEnd] = helpHeredocRange();
   const found: string[] = [];
@@ -102,6 +108,7 @@ function violations(): string[] {
     // Acento vale para a linha inteira (sem o comentário): os `node -e '…'` de limits/usage/tools são uma
     // string de várias linhas, e a leitura por aspas não enxerga o miolo deles. Palavra sem acento continua
     // valendo só dentro de aspas, para não acusar identificador.
+    if (ISENTA.test(line)) return; // isenção explícita, com motivo na própria linha
     const stripped = withoutComment(line);
     const texts = inHelp ? [line] : quotedParts(line);
     if (texts.some(isPortuguese) || (!inHelp && ACCENTED.test(stripped))) {
@@ -212,7 +219,7 @@ describe('idioma da CLI (a vitrine é em inglês; comentário de código continu
 //
 // Só o que está entre aspas conta, como no bash: comentário de código continua em pt-BR (CLAUDE.md) e há
 // identificador em pt-BR (`nota`, `pessoal`) que não é prosa.
-const COBERTOS = ['src/approval.ts', 'src/chat.ts', 'src/chatAsync.ts', 'src/chat.html', 'src/hub.html'];
+const COBERTOS = ['src/approval.ts', 'src/approvalStore.ts', 'src/chat.ts', 'src/chatAsync.ts', 'src/main.ts', 'src/chat.html', 'src/hub.html', 'src/settings.html'];
 
 // Nome próprio mantém o acento: "São Paulo" é o fuso do painel, não português traduzível.
 const NOMES_PROPRIOS = /São Paulo/;
@@ -223,10 +230,17 @@ function stringsDe(arquivo: string): { n: number; texto: string }[] {
     .split('\n')
     .forEach((linha, i) => {
       if (/^\s*(\/\/|\*|\/\*)/.test(linha)) return;
+      if (ISENTA.test(linha)) return; // mesma isenção explícita do bash, com o motivo na linha
       const semComentario = withoutComment(linha);
       for (const bruto of semComentario.match(/"[^"]*"|'[^']*'|`[^`]*`/g) ?? []) {
         const texto = bruto.slice(1, -1).replace(/\$\{[^}]*\}/g, ' ').replace(NOMES_PROPRIOS, ' ');
-        if (texto.trim()) out.push({ n: i + 1, texto });
+        // Só PROSA conta. Uma string de uma palavra é identificador, não frase: o literal de união
+        // `'tela' | 'pasta'`, a chave `entrada_sincrona`, o caminho `../poc/p15-limites/harness`. Exigir
+        // duas palavras separa os dois casos sem lista de exceção — e o preço, deixar passar uma saída de
+        // uma palavra só, é pequeno perto de acusar todo identificador em pt-BR do arquivo.
+        // Prosa tem ESPAÇO. `entrada_sincrona` e `../poc/p15-limites/harness` não têm — são identificador
+        // e caminho de import, não frase.
+        if (/\s/.test(texto.trim()) && (texto.trim().match(/[A-Za-zÀ-ÿ]{2,}/g) ?? []).length >= 2) out.push({ n: i + 1, texto });
       }
     });
   return out;
@@ -244,7 +258,9 @@ describe('idioma fora do gasclaw: o que chega ao usuário no produto', () => {
   test('a lista de cobertura não encolhe sem alguém perceber', () => {
     expect(COBERTOS).toContain('src/approval.ts');
     expect(COBERTOS).toContain('src/chat.ts');
-    expect(COBERTOS.length).toBeGreaterThanOrEqual(5);
+    expect(COBERTOS).toContain('src/main.ts');
+    expect(COBERTOS).toContain('src/approvalStore.ts');
+    expect(COBERTOS.length).toBeGreaterThanOrEqual(8);
     for (const f of COBERTOS) expect(readFileSync(f, 'utf8').length, `${f} sumiu`).toBeGreaterThan(100);
   });
 

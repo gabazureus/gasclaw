@@ -11,12 +11,12 @@ export function cacheTickets(cache = CacheService.getScriptCache(), lock = LockS
   return {
     put: (t) => {
       const raw = JSON.stringify(t);
-      if (raw.length > MAX) throw new Error('pedido de aprovação grande demais para guardar (conversa longa): tente de novo com algo menor');
+      if (raw.length > MAX) throw new Error('this approval request is too big to store (long conversation): try again with something smaller');
       cache.put(`t:${t.token}`, raw, TTL_S);
       if (t.pending.kind === 'ask') cache.put(`ask:${t.session}`, t.token, TTL_S);
     },
     take: (token) => {
-      if (!lock.tryLock(10_000)) throw new Error('aprovação ocupada: clique de novo em alguns segundos');
+      if (!lock.tryLock(10_000)) throw new Error('approvals are busy: click again in a few seconds');
       try {
         const raw = cache.get(`t:${token}`);
         if (!raw) return null;
@@ -46,7 +46,7 @@ export function durableTickets(io: RunIO, legacy: Tickets = cacheTickets(), hash
   return {
     put: (t) => {
       if (t.pending.kind === 'ask') return legacy.put(t);
-      if (!t.folderId) throw new Error('aprovação sem pasta do agente');
+      if (!t.folderId) throw new Error('approval without an agent folder');
       const now = t.issuedAt ?? (t.expiresAt - TTL_S * 1000);
       const run = {
         ...newRun({ runId: t.runId, session: t.session, folderId: t.folderId, user: t.user, text: t.text, now, ownerDm: t.ownerDm }),
@@ -68,7 +68,7 @@ export function durableTickets(io: RunIO, legacy: Tickets = cacheTickets(), hash
 /** Adaptador usado pelo callback real do Google Chat e pela POC P20. */
 export function decideChatApproval(io: RunIO, params: Record<string, string>, actor: string, replacementToken: string, now: number, hash: (token: string) => string = hashToken) {
   const decision = params.decision === 'approve' ? { approved: true } : params.decision === 'deny' ? { approved: false } : null;
-  if (!decision) return { kind: 'rejected' as const, error: 'decisão inválida' };
+  if (!decision) return { kind: 'rejected' as const, error: 'invalid decision' };
   return io.decide(String(params.folderId ?? ''), String(params.runId ?? ''), {
     tokenHash: hash(String(params.token ?? '')),
     actor,
@@ -80,7 +80,7 @@ export function decideChatApproval(io: RunIO, params: Record<string, string>, ac
 /** Adaptador usado pela decisão real da tela e pela POC P20. */
 export function decideScreenApproval(io: RunIO, run: DurableRun, params: Record<string, string>, actor: string, replacementToken: string, now: number, hash: (token: string) => string = hashToken) {
   const decision = run.pending ? decisionFrom(run.pending, params) : null;
-  if (!decision || run.pending?.kind !== 'approval') return { kind: 'rejected' as const, error: 'resposta inválida para este pedido' };
+  if (!decision || run.pending?.kind !== 'approval') return { kind: 'rejected' as const, error: 'that is not a valid answer for this request' };
   return io.decide(run.folderId, run.runId, {
     tokenHash: hash(String(params.token ?? '')),
     actor,

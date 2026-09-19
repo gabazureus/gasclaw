@@ -46,14 +46,14 @@ describe('cacheTickets (a borda que garante o uso único em produção)', () => 
     const f = fakes();
     f.tickets.put(ticket('approval'));
     f.busy();
-    expect(() => f.tickets.take('a'.repeat(32))).toThrow('ocupada');
+    expect(() => f.tickets.take('a'.repeat(32))).toThrow('approvals are busy');
     expect(f.data.has(`t:${'a'.repeat(32)}`)).toBe(true);
   });
 
   test('ticket grande demais para o CacheService (100 KB) é recusado com mensagem clara', () => {
     const f = fakes();
     const big = ticket('approval', { history: [{ role: 'user', content: 'x'.repeat(100_000) }] });
-    expect(() => f.tickets.put(big)).toThrow('grande demais');
+    expect(() => f.tickets.put(big)).toThrow('too big to store');
   });
 });
 

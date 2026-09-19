@@ -66,7 +66,7 @@ describe('consentimento granular: a falta de escopo precisa virar pedido de auto
   test('authorize é só do dono', async () => {
     me = 'outra@x.com';
     const { authorize } = await main();
-    expect(() => authorize()).toThrow(/dono/);
+    expect(() => authorize()).toThrow(/Only the gasclaw owner/);
     expect(calls).toEqual([]);
   });
 });

@@ -29,8 +29,11 @@ os_kind() {
 # `type -P` (e nao `command -v`) porque `command -v` acha FUNCAO do shell: o wrapper `gcloud` abaixo se
 # acharia a si mesmo e recorreria para sempre. `type -P` olha so o disco.
 bin_of() { # $1 nome da ferramenta -> imprime o nome a invocar; != 0 se nao existe em nenhuma forma
-  local c
-  for c in "$1" "$1.cmd" "$1.exe"; do
+  local c ordem
+  # No Windows a forma nativa vem primeiro: MEDIDO numa instalacao real, o `gcloud` POSIX leva 9,7 s contra
+  # 2,7 s do `.cmd` — 3,5x mais lento, em TODA chamada. Nos outros sistemas a ordem antiga continua.
+  if [ "$(os_kind)" = windows ]; then ordem="$1.cmd $1.exe $1"; else ordem="$1 $1.cmd $1.exe"; fi
+  for c in $ordem; do
     if type -P "$c" >/dev/null 2>&1; then printf '%s' "$c"; return 0; fi
   done
   return 1
@@ -47,7 +50,7 @@ open_url() {
   case "$(os_kind)" in
     mac)     open "$1" >/dev/null 2>&1 || warn "open this yourself: $1" ;;
     linux)   xdg-open "$1" >/dev/null 2>&1 || warn "open this yourself: $1" ;;
-    wsl)     { command -v wslview >/dev/null && wslview "$1"; } >/dev/null 2>&1 || cmd.exe /c start "" "$1" >/dev/null 2>&1 || warn "open this yourself: $1" ;;
+    wsl)     { command -v wslview >/dev/null && wslview "$1"; } >/dev/null 2>&1 || cmd.exe //c start "" "$1" >/dev/null 2>&1 || warn "open this yourself: $1" ;;
     windows) start "" "$1" >/dev/null 2>&1 || cmd.exe /c start "" "$1" >/dev/null 2>&1 || warn "open this yourself: $1" ;;
     *)       warn "open this yourself: $1" ;;
   esac
@@ -283,6 +286,19 @@ remote_to() { # $1 URL base (…/exec ou …/dev) · $2 "acao&a=b" (já no forma
 }
 remote() { remote_to "$(url)" "$1"; }
 
+# A resposta do Apps Script quando falta autorizacao e uma PAGINA HTML, nao um erro: o terminal recebia
+# dezenas de linhas de <style> onde devia haver uma frase. Aqui ela vira uma linha que diz o que fazer.
+web_error() { # $1 corpo da resposta
+  case "$1" in
+    '') printf 'no answer from the web app' ;;
+    *"Authorization needed"*|*"Autorização necessária"*|*"authorization is required"*) # lang-ok: casa com a pagina que o GOOGLE devolve em pt-BR; nao e saida nossa
+      printf 'the web app needs authorization: open %s in the browser, allow access, then run ./gasclaw up again' "$(url)" ;;
+    *'<html'*|*'<HTML'*|*'<!DOCTYPE'*|*'<!doctype'*)
+      printf 'the web app answered with a web page instead of data (usually a Google sign-in): open %s in the browser and allow access' "$(url)" ;;
+    *) printf '%s' "$1" | tr -d '\n' | cut -c1-120 ;;
+  esac
+}
+
 ensure_cli_secret() { # M1: segredo da CLI gerado no PC (.env.local, gitignored; nunca gasclaw.env) e registrado no web app pelo dono
   local r t
   if [ -z "${CLI_SECRET:-}" ]; then
@@ -298,7 +314,7 @@ ensure_cli_secret() { # M1: segredo da CLI gerado no PC (.env.local, gitignored;
   r=$(gfetch "$t" "$(url)" "action=setsecret" "$CLI_SECRET" 2>/dev/null || true)
   case "$r" in
     *'"ok":true'*) ok "CLI secret registered with the web app" ;;
-    *) warn "CLI secret not registered (${r:0:120}): actions with effects (poc, eval, down) will fail until the next up" ;;
+    *) warn "CLI secret not registered — $(web_error "$r"). Until then, actions with effects (poc, eval, down) will fail" ;;
   esac
 }
 
@@ -320,7 +336,7 @@ ensure_tools() {
     have gcloud || brew install --cask google-cloud-sdk
   else
     have node || die "Node.js 20+ not found: $(install_hint 'Node.js' 'nodejs' 'OpenJS.NodeJS.LTS')"
-    have gcloud || die "gcloud not found: install the Google Cloud CLI from https://cloud.google.com/sdk/docs/install and run ./gasclaw again"
+    have gcloud || die "gcloud not found: $(install_hint 'the Google Cloud CLI' 'google-cloud-sdk' 'Google.CloudSDK')"
   fi
   [ -x node_modules/.bin/clasp ] || npm ci
   ok "tools installed"
@@ -354,6 +370,7 @@ ensure_gcp() {
     gcloud projects create "$p" --name="gasclaw $TARGET"
     setvar "GCP_PROJECT_$UP" "$p"
   fi
+  say "enabling the Google APIs this needs (11 of them; the first time takes 3-5 minutes — it is not stuck)"
   gcloud services enable script.googleapis.com chat.googleapis.com iamcredentials.googleapis.com drive.googleapis.com sheets.googleapis.com logging.googleapis.com monitoring.googleapis.com tasks.googleapis.com people.googleapis.com calendar-json.googleapis.com gmail.googleapis.com --project "$p" >/dev/null
   setvar "GCP_NUMBER_$UP" "$(gcloud projects describe "$p" --format='value(projectNumber)')"
   # `INTERNAL` so existe em Workspace. Numa conta pessoal a unica opcao e EXTERNAL, e voce precisa se
@@ -753,10 +770,12 @@ step_missing() {
         have node   || falta="node"
         have gcloud || falta="${falta:+$falta, }gcloud"
         [ -x node_modules/.bin/clasp ] || falta="${falta:+$falta, }npm deps"
-        # "will install" só é verdade no macOS. Nos outros sistemas o gasclaw ORIENTA, não instala — prometer
-        # o contrário faria a pessoa apertar `a` esperando mágica e receber um erro.
+        # "will install" so e verdade no macOS PARA node e gcloud. Nos outros sistemas o gasclaw ORIENTA,
+        # nao instala — prometer o contrario faria a pessoa apertar `a` esperando magica e receber um erro.
+        # Mas `npm ci` e automatico em TODO sistema: dizer "step 1 tells you how" quando so falta isso e
+        # mandar a pessoa procurar uma instrucao que nao existe.
         if [ -n "$falta" ]; then
-          if [ "$(os_kind)" = mac ]; then falta="will install: $falta"; else falta="needs: $falta (step 1 tells you how)"; fi
+          if [ "$(os_kind)" = mac ] || [ "$falta" = "npm deps" ]; then falta="will install: $falta"; else falta="needs: $falta (step 1 tells you how)"; fi
         fi
       fi
       printf '%s' "$falta" ;;
@@ -819,16 +838,23 @@ step_run() {
 }
 
 onboard_menu() {
-  local i done=0 total=7 mark title why detail falta
+  local i done=0 total=7 mostrados mark title why detail falta
   printf '\n\033[1m🦀 gasclaw\033[0m — agents that live in your Google Drive\n'
-  for i in $(seq 1 $total); do step_done "$i" >/dev/null 2>&1 && done=$((done + 1)); done
+  # O passo 7 conta como resolvido em conta pessoal mas e desenhado "—": contando-o, o cabecalho dizia
+  # "2 of 7" com um unico ✓ na tela. Passo que nao se aplica sai do numerador E do denominador.
+  mostrados=$total
+  is_personal && mostrados=$((total - 1))
+  for i in $(seq 1 $total); do
+    { [ "$i" = 7 ] && is_personal; } && continue
+    step_done "$i" >/dev/null 2>&1 && done=$((done + 1))
+  done
   local acct
   case "$(account_kind)" in
     personal)  acct="personal account ($(var ACCOUNT)) · Google Chat unavailable" ;;
     workspace) acct="Google Workspace ($(var DOMAIN))" ;;
     *)         acct="account not detected yet — run step 2" ;;
   esac
-  printf '\n  Setup · \033[1m%s of %s\033[0m done · environment: %s\n  \033[2m%s\033[0m\n\n' "$done" "$total" "$TARGET" "$acct"
+  printf '\n  Setup · \033[1m%s of %s\033[0m done · environment: %s\n  \033[2m%s\033[0m\n\n' "$done" "$mostrados" "$TARGET" "$acct"
   for i in $(seq 1 $total); do
     title=$(printf '%s' "$STEP_TITLES" | cut -d'|' -f"$i")
     why=$(printf '%s' "$STEP_WHYS" | cut -d'|' -f"$i")
@@ -842,7 +868,7 @@ onboard_menu() {
       printf '  \033[33m○\033[0m %s  %-22s \033[2m%s\033[0m\n' "$i" "$title" "${falta:-$why}"
     fi
   done
-  if [ "$done" -eq "$total" ]; then
+  if [ "$done" -eq "$mostrados" ]; then
     printf '\n  \033[32mEverything is set up.\033[0m Talk to your agent: %s\n' "$(url)"
   fi
   printf '\n  \033[2m[1-%s] run a step   [a] run everything missing   [r] refresh   [d] diagnose   [q] quit\033[0m\n' "$total"

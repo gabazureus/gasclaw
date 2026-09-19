@@ -61,7 +61,7 @@ function ownerEmail(): string {
 
 function assertOwner(): string {
   const me = Session.getActiveUser().getEmail().toLowerCase();
-  if (!me || me !== ownerEmail()) throw new Error('Apenas o dono do gasclaw pode fazer isso.');
+  if (!me || me !== ownerEmail()) throw new Error('Only the gasclaw owner can do this.');
   return me;
 }
 
@@ -151,9 +151,9 @@ function mutate(action: string, p: Record<string, string>): unknown {
     }
   }
   if (action === 'poc') {
-    if (!isDev()) return { ok: false, pass: false, status: 404, error: 'POCs só existem no build do dev' };
+    if (!isDev()) return { ok: false, pass: false, status: 404, error: 'POCs only exist in the dev build' };
     const run = POCS[p.id ?? ''];
-    if (!run) return { ok: false, pass: false, error: `POC desconhecida: ${p.id}` };
+    if (!run) return { ok: false, pass: false, error: `unknown POC: ${p.id}` };
     if (p.trace === '0') return run(p.step, p); // sondas da P14 não viram run
     const t = runlog.begin('poc', { question: `poc ${p.id} ${p.step ?? ''}`.trim() });
     try {
@@ -172,7 +172,7 @@ function mutate(action: string, p: Record<string, string>): unknown {
   }
   if (action === 'drain') return { ok: true, trigger: observe.ensureTrigger(), ...observe.drain() };
   if (action === 'tools') return setTools(p.folder || '', p.set ?? '');
-  return { ok: false, status: 400, error: `ação desconhecida: ${action}` };
+  return { ok: false, status: 400, error: `unknown action: ${action}` };
 }
 
 // ---------- Job da CLI (ADR-020): a resposta do web app às vezes se perde no Google (echo 404), sem relação com a duração ----------
@@ -182,12 +182,12 @@ const jobKey = (id: string) => `job:${id}`;
 
 /** Executa uma vez por id e guarda o resultado; o mesmo id de novo devolve o guardado (ou "em execução") sem reexecutar. */
 function runJob(id: string, fn: () => unknown): unknown {
-  if (!JOB_ID.test(id)) return { ok: false, status: 400, error: 'job inválido' };
+  if (!JOB_ID.test(id)) return { ok: false, status: 400, error: 'invalid job' };
   const cache = CacheService.getScriptCache();
   const prev = cache.get(jobKey(id));
   if (prev) {
     const j = JSON.parse(prev) as { status: string; result?: unknown };
-    return j.status === 'done' ? j.result : { ok: false, status: 409, error: 'job ainda em execução', job: id };
+    return j.status === 'done' ? j.result : { ok: false, status: 409, error: 'job still running', job: id };
   }
   cache.put(jobKey(id), JSON.stringify({ status: 'running', at: Date.now() }), JOB_TTL);
   let result: unknown;
@@ -197,13 +197,13 @@ function runJob(id: string, fn: () => unknown): unknown {
     result = { ok: false, error: (err as Error).message };
   }
   const raw = JSON.stringify({ status: 'done', result });
-  cache.put(jobKey(id), raw.length < 95_000 ? raw : JSON.stringify({ status: 'done', result: { ok: false, error: 'resultado maior que o cache (100 KB)' } }), JOB_TTL);
+  cache.put(jobKey(id), raw.length < 95_000 ? raw : JSON.stringify({ status: 'done', result: { ok: false, error: 'result larger than the cache (100 KB)' } }), JOB_TTL);
   return result;
 }
 
 /** GET de leitura: estado do job (unknown · running · done com o resultado). */
 function readJob(id: string) {
-  if (!JOB_ID.test(id)) return { ok: false, status: 400, error: 'job inválido' };
+  if (!JOB_ID.test(id)) return { ok: false, status: 400, error: 'invalid job' };
   const raw = CacheService.getScriptCache().get(jobKey(id));
   if (!raw) return { ok: true, status: 'unknown' };
   const j = JSON.parse(raw) as { status: string; result?: unknown };
@@ -220,16 +220,16 @@ export function doPost(e: GoogleAppsScript.Events.DoPost) {
     const stored = props.getProperty('CLI_SECRET');
     if (action === 'setsecret') {
       // primeira vez: o dono grava o segredo gerado no PC; depois, só quem já tem o segredo atual
-      if (!validSecret(p.secret ?? '')) return json({ ok: false, status: 400, error: 'segredo inválido: use 64 caracteres hexadecimais (openssl rand -hex 32)' });
-      if (stored && !cliAuthorized(stored, p.secret)) return json({ ok: false, status: 403, error: 'segredo da CLI errado' });
+      if (!validSecret(p.secret ?? '')) return json({ ok: false, status: 400, error: 'invalid secret: use 64 hexadecimal characters (openssl rand -hex 32)' });
+      if (stored && !cliAuthorized(stored, p.secret)) return json({ ok: false, status: 403, error: 'wrong CLI secret' });
       if (!stored) {
         props.setProperty('CLI_SECRET', p.secret);
         props.setProperty('CLI_SECRET_AT', new Date().toISOString()); // a data aparece no painel (ADR-022)
       }
       return json({ ok: true });
     }
-    if (!cliAuthorized(stored, p.secret)) return json({ ok: false, status: 403, error: 'segredo da CLI ausente ou errado (rode ./gasclaw up)' });
-    if (!MUTATING.has(action)) return json({ ok: false, status: 400, error: `ação desconhecida: ${action}` });
+    if (!cliAuthorized(stored, p.secret)) return json({ ok: false, status: 403, error: 'CLI secret missing or wrong (run ./gasclaw up)' });
+    if (!MUTATING.has(action)) return json({ ok: false, status: 400, error: `unknown action: ${action}` });
     if (p.job !== undefined) return json(runJob(p.job, () => mutate(action, p)));
     return json(mutate(action, p));
   } catch (err) {
@@ -248,7 +248,7 @@ export function doGet(e: GoogleAppsScript.Events.DoGet) {
     // assertOwner() dentro de panelsState()/settingsState(). O chat usa assertOwner() já na rota.
     if (e?.parameter?.page === 'hub') {
       ownerEmail();
-      return HtmlService.createHtmlOutputFromFile('hub').setTitle(title('gasclaw · painéis')).addMetaTag('viewport', 'width=device-width, initial-scale=1');
+      return HtmlService.createHtmlOutputFromFile('hub').setTitle(title('gasclaw · panels')).addMetaTag('viewport', 'width=device-width, initial-scale=1');
     }
     if (e?.parameter?.page === 'chat') {
       assertOwner();
@@ -259,7 +259,7 @@ export function doGet(e: GoogleAppsScript.Events.DoGet) {
   }
   try {
     assertOwner();
-    if (MUTATING.has(action)) return json({ ok: false, status: 405, error: 'ação com efeito: use POST com o segredo da CLI (./gasclaw)' });
+    if (MUTATING.has(action)) return json({ ok: false, status: 405, error: 'this action has an effect: use POST with the CLI secret (./gasclaw)' });
     if (action === 'job') return json(readJob(e.parameter.id ?? ''));
     if (action === 'health') {
       const agents = store.listAgents();
@@ -272,7 +272,7 @@ export function doGet(e: GoogleAppsScript.Events.DoGet) {
     if (action === 'limits') return json({ ok: true, ...observe.limitsNow(store.getApiKey(), e.parameter.fresh === '1') });
     if (action === 'usage') return json({ ok: true, ...observe.usageView(store.getApiKey(), e.parameter.day || undefined) });
     if (action === 'models') return json({ ok: true, models: openRouterModels() });
-    return json({ ok: false, error: `ação desconhecida: ${action}` });
+    return json({ ok: false, error: `unknown action: ${action}` });
   } catch (err) {
     return json({ ok: false, error: (err as Error).message });
   }
@@ -324,27 +324,27 @@ function durableChatClick(e: ChatEvent): ChatReply {
   const replacement = newToken();
   const out = decideChatApproval(io, p, e.user.email, replacement, Date.now());
   if (out.kind === 'rejected') return { text: `Cannot answer this: ${out.error}.` }; // mantém o card de outra pessoa intacto
-  if (out.kind === 'refreshed') return updateCard(approvalCard({ token: replacement, pending: out.run.pending!, folderId: out.run.folderId, runId: out.run.runId }, out.run.answer ?? 'Esta ação ainda precisa da sua aprovação.'));
+  if (out.kind === 'refreshed') return updateCard(approvalCard({ token: replacement, pending: out.run.pending!, folderId: out.run.folderId, runId: out.run.runId }, out.run.answer ?? 'This action still needs your approval.'));
   const done = pumpById(stepDeps(CHAT_BUDGET_MS), out.run.runId) ?? out.run;
   if (done.status === 'waiting' && done.pending?.kind === 'approval') {
     const token = newToken();
     const waiting = { ...done, approval: issueGrant(done.pending, done.user, hashToken(token), Date.now()) };
     io.save(waiting);
-    return updateCard(approvalCard({ token, pending: waiting.pending!, folderId: waiting.folderId, runId: waiting.runId }, waiting.answer ?? 'Esta ação precisa da sua aprovação.'));
+    return updateCard(approvalCard({ token, pending: waiting.pending!, folderId: waiting.folderId, runId: waiting.runId }, waiting.answer ?? 'This action needs your approval.'));
   }
   if (done.status === 'waiting' && done.pending?.kind === 'ask' && done.snapshot) {
     const token = newToken();
     const t = issue({ user: done.user, session: done.session, text: done.text, history: [], state: done.snapshot, pending: done.pending, granted: done.granted, done: done.done, runId: done.runId }, token, Date.now());
     cacheTickets().put(t);
-    return updateCard(approvalCard(t, done.answer ?? 'Preciso de uma resposta.'));
+    return updateCard(approvalCard(t, done.answer ?? 'I need an answer.'));
   }
-  return updateCard({ text: done.answer ?? (done.status === 'failed' ? `Não consegui terminar: ${done.error ?? 'erro desconhecido'}` : 'Aprovação registrada; continuarei a tarefa.'), cardsV2: [] });
+  return updateCard({ text: done.answer ?? (done.status === 'failed' ? `I could not finish: ${done.error ?? 'erro desconhecido'}` : 'Approval recorded; I will carry on with the task.'), cardsV2: [] });
 }
 
 export function onMessage(e: ChatEvent) {
   const typed = (e.message?.argumentText ?? e.message?.text ?? '').trim().toLowerCase();
   if (isDev() && e.type === 'MESSAGE' && typed === '/poc p2') {
-    if (e.user.email.toLowerCase() !== ownerEmail()) return { text: 'A POC P2 so pode ser iniciada pelo dono do gasclaw.' };
+    if (e.user.email.toLowerCase() !== ownerEmail()) return { text: 'POC P2 can only be started by the gasclaw owner.' };
     startP2Event(e.space.name, undefined, runIO()); // sem thread: tudo no fluxo do espaco
     return {}; // `pensando...` ja foi criado como o app e confirmado por message.name na POC
   }
@@ -355,7 +355,7 @@ export function onMessage(e: ChatEvent) {
     // embute a service account). Então cai no síncrono, que é exatamente como a prod da v1 responde.
     if (!chatAppAvailable()) {
       const ts = runlog.begin('chat', { question: (e.message?.argumentText ?? e.message?.text ?? '').trim(), user: e.user.email });
-      ts.mark('entrada_sincrona', { motivo: 'identidade do app no Chat indisponivel' });
+      ts.mark('entrada_sincrona', { motivo: 'the Chat app identity is unavailable' });
       const sincrono = handleChat(e, traced(ts, d));
       ts.mark('reply');
       ts.end({ answer: sincrono.text });
@@ -405,7 +405,7 @@ export function chatSend(text: string) {
 export function chatClick(params: Record<string, string>) {
   const me = assertOwner();
   const p = params ?? {};
-  const what = p.decision ? `aprovação: ${String(p.decision)}` : p.answer ? `resposta: ${String(p.answer).slice(0, 200)}` : 'clique';
+  const what = p.decision ? `aprovação: ${String(p.decision)}` : p.answer ? `resposta: ${String(p.answer).slice(0, 200)}` : 'clique'; // lang-ok: texto do TRACE, que e pt-BR por decisao
   const t = runlog.begin('webchat', { question: what, user: me });
   const out = webClick(traced(t, chatDeps()), me, { token: String(p.token ?? ''), ...(p.decision ? { decision: String(p.decision) } : {}), ...(p.answer ? { answer: String(p.answer) } : {}) });
   t.mark('reply');
@@ -438,7 +438,7 @@ function stepDeps(budgetMs = STEP_BUDGET_MS, io = runIO()): StepDeps {
       const spec = withChatFormatRules(loaded, !!r.delivery);
       if (!canUse(spec.access, r.user, me)) throw new Error(`${r.user} has no access to agent ${spec.name}`); // acesso aprovado no painel (ADR-021)
       const apiKey = store.getApiKey();
-      if (!apiKey) throw new Error('Falta a chave do OpenRouter. Cole-a na tela gasclaw.');
+      if (!apiKey) throw new Error('The OpenRouter key is missing. Paste it into the gasclaw panel.');
       const d = chatDeps();
       const isOwner = r.user === me.toLowerCase();
       const ownerDm = r.ownerDm;
@@ -525,10 +525,10 @@ export function runAsk(text: string) {
 export function runState(runId: string, approvalToken?: string) {
   const me = assertOwner();
   const entry = store.listAgents()[0];
-  if (!entry) return { ok: false, error: 'Nenhum agente configurado.' };
+  if (!entry) return { ok: false, error: 'No agent set up yet.' };
   const r = runIO().load(entry.folderId, String(runId ?? ''));
-  if (!r) return { ok: false, error: 'Não encontrei essa tarefa.' };
-  if (r.user !== me.toLowerCase()) return { ok: false, error: 'Essa tarefa não é sua.' };
+  if (!r) return { ok: false, error: 'I could not find that task.' };
+  if (r.user !== me.toLowerCase()) return { ok: false, error: 'That task is not yours.' };
   return runResponse(runIO(), r, Date.now(), String(approvalToken ?? ''));
 }
 
@@ -539,22 +539,22 @@ export function runState(runId: string, approvalToken?: string) {
 export function runDecide(runId: string, params: Record<string, string>) {
   const me = assertOwner();
   const entry = store.listAgents()[0];
-  if (!entry) return { ok: false, error: 'Nenhum agente configurado.' };
+  if (!entry) return { ok: false, error: 'No agent set up yet.' };
   const io = runIO();
   const r = io.load(entry.folderId, String(runId ?? ''));
-  if (!r) return { ok: false, error: 'Não encontrei essa tarefa.' };
-  if (r.user !== me.toLowerCase()) return { ok: false, error: 'Essa tarefa não é sua.' };
+  if (!r) return { ok: false, error: 'I could not find that task.' };
+  if (r.user !== me.toLowerCase()) return { ok: false, error: 'That task is not yours.' };
   const p = params ?? {};
   const now = Date.now();
   if (r.status === 'paused') {
-    if (p.decision !== 'continue') return { ok: false, error: 'Essa tarefa está parada no teto de custo: responda se quer continuar.' };
+    if (p.decision !== 'continue') return { ok: false, error: 'That task is paused at the cost limit: tell me whether to carry on.' };
     const next = extendBudget(r, RUN_BUDGET_USD, now);
     io.enqueue(next, now, true);
     return runResponse(io, pumpById(stepDeps(CHAT_BUDGET_MS), next.runId) ?? next, Date.now());
   }
-  if (r.status !== 'waiting' || !r.pending) return { ok: false, error: 'Essa tarefa não está esperando resposta.' };
+  if (r.status !== 'waiting' || !r.pending) return { ok: false, error: 'That task is not waiting for an answer.' };
   const decision = decisionFrom(r.pending, p);
-  if (!decision) return { ok: false, error: 'Resposta inválida para este pedido.' };
+  if (!decision) return { ok: false, error: 'That is not a valid answer for this request.' };
   if (r.pending.kind === 'approval') {
     if (!r.approval) return runResponse(io, r, now); // run antigo: emite credencial sem refazer o turno
     const replacement = newToken();
@@ -681,9 +681,9 @@ function runP22WakeProbe(): boolean {
   const t0 = Date.now();
   try {
     const agent = store.listAgents()[0];
-    if (!agent) throw new Error('nenhum agente cadastrado: cadastre um na tela antes de rodar a P22');
+    if (!agent) throw new Error('no agent registered: add one in the panel before running P22');
     const due = evaluateAgenda(dueAgenda(), {}, Date.now(), offsetMinutes(zone().offset));
-    if (!due.dueList.length) throw new Error('a agenda sintética de despertar não venceu: medição inválida');
+    if (!due.dueList.length) throw new Error('the synthetic wake schedule is not due: invalid measurement');
     const io = runIO();
     const runId = `p22-wake-${Date.now().toString(36)}`;
     const r = newRun({ runId, session: `${agent.folderId}:poc/p22`, folderId: agent.folderId, user: store.getOwner() ?? '', text: due.dueList[0].intent, now: Date.now() });
@@ -712,7 +712,7 @@ function workRuns(pointers = runIO().pointers()): void {
     // refem do trabalho dos outros runs — o usuario lia isso como "travado no pensando...".
     pump(stepDeps(STEP_BUDGET_MS, io), PUMP_MAX_STEPS, Date.now() + PUMP_BUDGET_MS, (run) => deliverIfDue(run, io));
   } catch (err) {
-    console.warn(`pump do gatilho falhou: ${redactMsg(err)}`);
+    console.warn(`trigger pump failed: ${redactMsg(err)}`);
   }
 }
 
@@ -740,7 +740,7 @@ function deliverIfDue(run: DurableRun, io: RunIO): void {
     // mesmo run indelivravel queimava as 20 voltas de PUMP_MAX_STEPS por tique, sem MAX_ATTEMPTS nunca cortar
     // e sem nenhum outro run ser atendido. O requestId estavel mantem o retry seguro.
     io.enqueue(run, now, false);
-    console.warn(`entrega do Chat falhou: ${redactMsg(err)}`);
+    console.warn(`Chat delivery failed: ${redactMsg(err)}`);
   }
 }
 
@@ -904,7 +904,7 @@ export function setAgentSteps(folderId: string, steps: number | null) {
   if (!vazio && next === null) throw new Error('steps: use a whole number from 1 to 50');
   const name = agentName(folderId);
   const before = stepsOf(folderId);
-  const t = runlog.begin('config', { question: `passos de ${name}: ${before ?? 'da pasta'} → ${next ?? 'da pasta'}`, agent: name });
+  const t = runlog.begin('config', { question: `passos de ${name}: ${before ?? 'da pasta'} → ${next ?? 'da pasta'}`, agent: name }); // lang-ok: texto do TRACE, que e pt-BR por decisao
   t.step('set_steps', () => (next === null ? props.deleteProperty(`STEPS:${folderId}`) : props.setProperty(`STEPS:${folderId}`, String(next))), () => ({ folderId, before, after: next }));
   t.end({ answer: `passos: ${next ?? 'da pasta'}` });
   return agentAccess(folderId);
@@ -924,7 +924,7 @@ export function setAgentTool(folderId: string, tool: string, enabled: boolean) {
     const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
     const next = withTool(before, String(tool), on); // lança antes de qualquer gravação
     const name = agentName(folderId);
-    const t = runlog.begin('config', { question: `ferramenta ${tool} de ${name}: ${on ? 'ligar' : 'desligar'}`, agent: name });
+    const t = runlog.begin('config', { question: `ferramenta ${tool} de ${name}: ${on ? 'ligar' : 'desligar'}`, agent: name }); // lang-ok: texto do TRACE, que e pt-BR por decisao
     t.step('set_tool', () => props.setProperty(`ACCESS:${folderId}`, JSON.stringify(next)), () => ({ folderId, tool, enabled: on, before, after: next }));
     t.end({ answer: `ferramentas: ${next.tools.length ? next.tools.join(', ') : 'nenhuma'}` });
     return { folderId, approved: next, enabled: enabledTools(next) };
@@ -977,7 +977,7 @@ function writeTools(folderId: string, names: string[], origem: string) {
     const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
     const next = names.reduce<Access>((acc, n) => withTool(acc, n, true), { users: before.users, tools: [] });
     const name = agentName(folderId);
-    const t = runlog.begin('config', { question: `ferramentas de ${name} ${origem}: ${before.tools.length} → ${next.tools.length}`, agent: name });
+    const t = runlog.begin('config', { question: `ferramentas de ${name} ${origem}: ${before.tools.length} → ${next.tools.length}`, agent: name }); // lang-ok: texto do TRACE, que e pt-BR por decisao
     t.step('set_tools', () => props.setProperty(`ACCESS:${folderId}`, JSON.stringify(next)), () => ({ folderId, before, after: next }));
     t.end({ answer: `ferramentas: ${next.tools.length}` });
     return { folderId, approved: next, enabled: enabledTools(next), users: next.users };
@@ -988,7 +988,7 @@ function writeTools(folderId: string, names: string[], origem: string) {
 export function setAgentTools(folderId: string, tools: string[]) {
   assertOwner();
   const names = Array.isArray(tools) ? tools.map(String) : [];
-  return writeTools(folderId, names, 'pela tela');
+  return writeTools(folderId, names, 'pela tela'); // lang-ok: rotulo do TRACE
 }
 
 function setTools(folder: string, set: string) {
@@ -997,7 +997,7 @@ function setTools(folder: string, set: string) {
   const pedido = set.trim();
   if (!pedido) return { ok: false, status: 400, error: 'use set=all, set=none or set=<comma-separated names>' };
   const names = pedido === 'all' ? toolCatalog().map((t) => t.name) : pedido === 'none' ? [] : pedido.split(',').map((x) => x.trim()).filter(Boolean);
-  const r = writeTools(folderId, names, 'pela CLI');
+  const r = writeTools(folderId, names, 'pela CLI'); // lang-ok: rotulo do TRACE
   return { ok: true, folderId, agent: agentName(folderId), enabled: r.enabled, users: r.users };
 }
 
@@ -1023,9 +1023,9 @@ export function removeAccess(folderId: string) {
   return underAccessLock(() => {
     const before = effectiveAccess(parseAccess(props.getProperty(`ACCESS:${folderId}`)));
     const name = agentName(folderId);
-    const t = runlog.begin('config', { question: `acesso de ${name}: ${describeAccess(before)} → só o dono, sem ferramentas`, agent: name });
+    const t = runlog.begin('config', { question: `acesso de ${name}: ${describeAccess(before)} → só o dono, sem ferramentas`, agent: name }); // lang-ok: texto do TRACE
     t.step('remove_access', () => props.deleteProperty(`ACCESS:${folderId}`), () => ({ folderId, before }));
-    t.end({ answer: 'acesso removido' });
+    t.end({ answer: 'acesso removido' }); // lang-ok: texto do TRACE, que e pt-BR por decisao
     return settingsState();
   });
 }
@@ -1040,7 +1040,7 @@ export function makeDefault(folderId: string) {
 export function testAgent(folderId: string, text: string) {
   assertOwner();
   const key = store.getApiKey();
-  if (!key) throw new Error('Salve a chave do OpenRouter primeiro.');
+  if (!key) throw new Error('Save the OpenRouter key first.');
   const t = runlog.begin('test', { question: text });
   try {
     const spec = t.step('resolve_agent', () => loadAgentForTurn(folderId), agentInfo(folderId));
@@ -1145,7 +1145,7 @@ export function setAgentModel(folderId: string, model: string | null) {
     const err = validateChoice(openRouterModels(), model.trim(), spec.access.tools);
     if (err) throw new Error(err);
   }
-  const t = runlog.begin('config', { question: `modelo de ${spec.name}: ${before ?? spec.config.model} → ${model ?? `${spec.config.model} (do AGENTS)`}`, agent: spec.name });
+  const t = runlog.begin('config', { question: `modelo de ${spec.name}: ${before ?? spec.config.model} → ${model ?? `${spec.config.model} (do AGENTS)`}`, agent: spec.name }); // lang-ok: texto do TRACE, que e pt-BR por decisao
   t.step('set_model', () => setOverride(folderId, model ? model.trim() : null), () => ({ folderId, from: before, to: model, fromFolder: spec.config.model }));
   t.end({ answer: `modelo: ${model ?? spec.config.model}` });
   return agentModel(folderId);
@@ -1165,10 +1165,10 @@ export function limitsPanel(fresh?: boolean) {
 export function pocUrlFetchTimeout() {
   assertOwner();
   const key = store.getApiKey();
-  if (!key) throw new Error('Salve a chave do OpenRouter primeiro.');
+  if (!key) throw new Error('Save the OpenRouter key first.');
   const first = store.listAgents()[0];
   const model = first ? loadAgent(first.folderId).config.model : 'openrouter/auto';
-  const prompt = 'Escreva um ensaio de 6000 palavras, muito detalhado, sobre a história da computação, capítulo por capítulo.';
+  const prompt = 'Escreva um ensaio de 6000 palavras, muito detalhado, sobre a história da computação, capítulo por capítulo.'; // lang-ok: PROMPT da POC enviado ao modelo; traduzir mudaria a medicao
   const t0 = Date.now();
   try {
     const r = complete(key, model, [{ role: 'user', content: prompt }], 12_000);
@@ -1221,8 +1221,8 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p14: (step, params = {}) => {
     if (step !== 'real') return pocP14(step, params);
     const first = store.listAgents()[0];
-    if (!first) throw new Error('P14 real: cadastre um agente na tela');
-    const r = testAgent(first.folderId, params.q || 'Responda em uma frase curta: o que você faz?');
+    if (!first) throw new Error('P14 for real: add an agent in the panel first');
+    const r = testAgent(first.folderId, params.q || 'Responda em uma frase curta: o que você faz?'); // lang-ok: PROMPT enviado ao modelo, nao texto de tela
     const run = runlog.runDetail(r.runId).run;
     return { poc: 'P14', step, pass: true, runId: r.runId, spans: run?.spans.map((s) => s.name) ?? [], coverage: run ? coverage(run) : 0, ms: run?.ms, model: run?.model, tokens: run?.tokens, cost: run?.cost };
   },

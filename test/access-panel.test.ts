@@ -34,7 +34,7 @@ describe('M2 (ADR-021): acesso e ferramentas só valem depois de aprovados no pa
   test('só o dono aprova; quem não é dono não muda nada', async () => {
     me = 'outra@x.com';
     const { approveAccess } = await main();
-    expect(() => approveAccess('f1', { users: ['ana@x.com'], tools: ['now'] })).toThrow(/dono/);
+    expect(() => approveAccess('f1', { users: ['ana@x.com'], tools: ['now'] })).toThrow(/Only the gasclaw owner/);
     expect(props['ACCESS:f1']).toBe('{"users":[],"tools":[]}');
   });
   test('aprovar grava o acesso normalizado em ACCESS:<id> e registra um run config no trace (fila)', async () => {
@@ -62,7 +62,7 @@ describe('M2 (ADR-021): acesso e ferramentas só valem depois de aprovados no pa
     expect(props.CLI_SECRET_AT).toBeUndefined();
     me = 'outra@x.com';
     props.CLI_SECRET = 'b'.repeat(64);
-    expect(() => resetCliSecret()).toThrow(/dono/);
+    expect(() => resetCliSecret()).toThrow(/Only the gasclaw owner/);
     expect(props.CLI_SECRET).toBe('b'.repeat(64));
   });
 });
