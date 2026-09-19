@@ -185,13 +185,13 @@ export function runIO(
     authority: readAuthority,
     forget: (runId) => props.deleteProperty(authKey(runId)),
     decide: (folderId, runId, request, now) => {
-      if (!lock.tryLock(CLAIM_LOCK_MS)) return { kind: 'rejected', error: 'aprovação ocupada: clique de novo em alguns segundos' };
+      if (!lock.tryLock(CLAIM_LOCK_MS)) return { kind: 'rejected', error: 'approvals are busy: click again in a few seconds' };
       try {
         const run = loadFresh(folderId, runId); // autorização sempre lê a fonte da verdade
-        if (!run) return { kind: 'rejected', error: 'não encontrei essa tarefa' };
+        if (!run) return { kind: 'rejected', error: 'I could not find that task' };
         // O run esperou FORA da fila — é a janela mais longa que o atacante tem para editar o arquivo na
         // pasta compartilhada. Conferir aqui é o que impede aprovar uma coisa e executar outra.
-        if (!untampered(run)) return { kind: 'rejected', error: 'esta tarefa foi alterada fora do gasclaw desde que o pedido foi criado; não vou executá-la' };
+        if (!untampered(run)) return { kind: 'rejected', error: 'this task was changed outside gasclaw after the request was created; I will not run it' };
         const out = redeemGrant(run, request.tokenHash, request.actor, request.decision, now, request.replacementHash);
         if (out.kind === 'rejected') return out;
         if (out.kind === 'accepted') {

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 
 // A CLI é a vitrine: tudo que aparece na tela de quem só rodou ./gasclaw é em inglês (decisão do gate de
@@ -219,7 +219,80 @@ describe('idioma da CLI (a vitrine é em inglês; comentário de código continu
 //
 // Só o que está entre aspas conta, como no bash: comentário de código continua em pt-BR (CLAUDE.md) e há
 // identificador em pt-BR (`nota`, `pessoal`) que não é prosa.
-const COBERTOS = ['src/approval.ts', 'src/approvalStore.ts', 'src/chat.ts', 'src/chatAsync.ts', 'src/main.ts', 'src/chat.html', 'src/hub.html', 'src/settings.html'];
+// COBERTURA POR PADRAO, nao por lista. A versao anterior era opt-in: `COBERTOS` listava 8 arquivos e tudo
+// que ficava de fora escapava — foi assim que `runStore.ts` e `runner.ts` seguiram publicando o AVISO DE
+// VIOLACAO DE INTEGRIDADE em portugues para quem instalou em ingles, que e a pior hora para nao entender.
+// Tres varreduras manuais acharam resto tres vezes; o defeito nao era a varredura, era a lista.
+//
+// Agora todo `src/**/*.ts` e `src/*.html` entra sozinho. Arquivo novo nasce coberto: ninguem precisa
+// lembrar de nada. O que sai, sai por EXCECAO explicita, com motivo — por linha (`// lang-ok:`) ou, se um
+// arquivo inteiro justificar, aqui embaixo.
+/**
+ * CATRACA da dívida de idioma: teto de strings em pt-BR por arquivo, e o teto só DESCE.
+ *
+ * A trava cobre `src/**` por padrão (opt-out), porque a versão opt-in falhou TRÊS vezes: quem escrevia um
+ * arquivo novo não lembrava de listá-lo, e o português passava. Só que inverter revelou a dívida real —
+ * 209 strings em 39 arquivos, a maioria descrição de ferramenta, que vai para o MODELO e não
+ * para a tela.
+ *
+ * Traduzir tudo de uma vez seria pressa no caminho mais sensível do produto. Então o número aqui é o que
+ * cada arquivo tem HOJE, e o teste falha nos dois sentidos: se um arquivo ganhar mais português, e também se
+ * ganhar menos sem o número ser atualizado. A segunda metade é o que torna isto uma catraca em vez de uma
+ * lista de desculpas — quem traduz é obrigado a baixar o número, e o número nunca sobe sozinho.
+ *
+ * Arquivo NOVO não entra aqui: ele nasce com teto zero e a trava o cobre desde o primeiro commit.
+ */
+const DIVIDA: Record<string, number> = {
+  'src/agenda.ts': 10,
+  'src/agent.ts': 13,
+  'src/batch.ts': 2,
+  'src/bootstrap.ts': 1,
+  'src/chatApi.ts': 6,
+  'src/chatDelivery.ts': 9,
+  'src/drive.ts': 1,
+  'src/eval.ts': 7,
+  'src/evalEntry.ts': 5,
+  'src/freeModels.ts': 5,
+  'src/freeRun.ts': 1,
+  'src/limits.ts': 1,
+  'src/llm.ts': 1,
+  'src/models.ts': 5,
+  'src/observe.ts': 10,
+  'src/run.ts': 5,
+  'src/runStore.ts': 2,
+  'src/runlog.ts': 4,
+  'src/runner.ts': 2,
+  'src/session.ts': 3,
+  'src/sessionCompact.ts': 1,
+  'src/sessionQueue.ts': 1,
+  'src/sessionQueueStore.ts': 2,
+  'src/skills.ts': 3,
+  'src/tools/calendar.ts': 24,
+  'src/tools/contacts.ts': 3,
+  'src/tools/driveTools.ts': 13,
+  'src/tools/gmail.ts': 11,
+  'src/tools/google.ts': 10,
+  'src/tools/memory.ts': 6,
+  'src/tools/memoryFlush.ts': 1,
+  'src/tools/memoryStore.ts': 2,
+  'src/tools/registry.ts': 24,
+  'src/tools/tasks.ts': 7,
+  'src/trace.ts': 2,
+  'src/usage.ts': 1,
+  'src/voice.ts': 3,
+  'src/webchat.ts': 1,
+  'src/workspace.ts': 1,
+};
+
+function listarSrc(dir = 'src'): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const caminho = `${dir}/${e.name}`;
+    if (e.isDirectory()) return listarSrc(caminho);
+    return /\.(ts|html)$/.test(e.name) ? [caminho] : [];
+  });
+}
+
+const COBERTOS = listarSrc().sort(); // tudo em src/: o teto por arquivo vive em DIVIDA, não numa lista de isentos
 
 // Nome próprio mantém o acento: "São Paulo" é o fuso do painel, não português traduzível.
 const NOMES_PROPRIOS = /São Paulo/;
@@ -247,11 +320,28 @@ function stringsDe(arquivo: string): { n: number; texto: string }[] {
 }
 
 describe('idioma fora do gasclaw: o que chega ao usuário no produto', () => {
-  test.each(COBERTOS)('%s não tem português na saída para humano', (arquivo) => {
+  test.each(COBERTOS)('%s respeita o teto de português da catraca', (arquivo) => {
     const found = stringsDe(arquivo)
       .filter(({ texto }) => isPortuguese(texto))
       .map(({ n, texto }) => `  ${n}: ${texto.slice(0, 100)}`);
-    expect(found.length === 0 ? '' : `${arquivo}: ${found.length} string(s) em pt-BR:\n${found.join('\n')}`).toBe('');
+    const teto = DIVIDA[arquivo] ?? 0;
+    if (found.length > teto) {
+      // Subiu: ou é string nova em pt-BR, ou o detector melhorou e achou o que já estava lá. Nos dois casos,
+      // traduza — aumentar o teto só é aceitável com a razão escrita no commit.
+      expect(`${arquivo}: ${found.length} string(s) em pt-BR, teto é ${teto}:\n${found.join('\n')}`).toBe('');
+    }
+    if (found.length < teto) {
+      // Desceu: alguém traduziu e não baixou o número. É o que impede a catraca de virar lista de desculpas.
+      expect(`${arquivo}: agora tem ${found.length}, o teto ainda diz ${teto}. Baixe o número em DIVIDA.`).toBe('');
+    }
+  });
+
+  // A catraca só vale enquanto o total não subir. Este número é a dívida inteira, num lugar só, para ninguém
+  // precisar somar 39 linhas para saber se estamos melhorando ou piorando.
+  test('a dívida total de idioma não aumenta', () => {
+    const total = COBERTOS.reduce((s, f) => s + stringsDe(f).filter(({ texto }) => isPortuguese(texto)).length, 0);
+    const tetoTotal = Object.values(DIVIDA).reduce((s, n) => s + n, 0);
+    expect(total <= tetoTotal ? '' : `dívida subiu: ${total} contra teto ${tetoTotal}`).toBe('');
   });
 
   // Sem isto, alguém "conserta" a trava esvaziando a lista e ela passa a aprovar tudo em silêncio.

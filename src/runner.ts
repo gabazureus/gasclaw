@@ -69,7 +69,7 @@ function runClaim(d: StepDeps, c: { pointer: import('./run').RunPointer; run: Du
     const recusado: DurableRun = {
       ...c.run,
       status: 'failed',
-      error: 'esta tarefa foi alterada fora do gasclaw (a pasta do agente pode estar compartilhada); não vou executá-la',
+      error: 'this task was changed outside gasclaw (the agent folder may be shared); I will not run it',
       ...(c.run.delivery ? { delivery: { ...c.run.delivery, status: 'failed' as const } } : {}),
       updatedAt: now,
     };

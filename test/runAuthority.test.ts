@@ -72,7 +72,7 @@ describe('fatia 2: a aprovação prende o que VAI EXECUTAR, não só o callId', 
     const out = aprovar(f.io);
 
     expect(out.kind).toBe('rejected');
-    expect((out as { error: string }).error).toMatch(/alterada fora do gasclaw/i);
+    expect((out as { error: string }).error).toMatch(/changed outside gasclaw/i);
     expect(f.store.has(queueKey('r1'))).toBe(false); // não voltou para a fila: nada vai executar
   });
 
