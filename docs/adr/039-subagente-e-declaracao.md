@@ -111,6 +111,57 @@ S1 resolve a squad melhor e mais barato: zero projetos novos, zero reautorizaç�
 consentimento, orçamento contido pelo pai. (B) permanece reservado ao caso em que o sucessor
 precisa de **código de motor diferente** — e ali os três portões são a vantagem, não o custo.
 
+
+## Por que existem DOIS mecanismos, e qual resolve o quê
+
+Esta seção existe porque a pergunta foi feita e a documentação não a respondia:
+*"é um novo projeto? pra que? não iríamos usar sub agentes?"* Se alguém reler estas ADRs daqui a
+seis meses e tiver a mesma dúvida, o texto falhou.
+
+| | **Sub-agente (declaração)** | **Projeto filho (código gerado)** |
+|---|---|---|
+| O que é | markdown na pasta: nome, papel, subconjunto das tools do pai | um projeto Apps Script próprio, com código escrito pelo Opus |
+| Para que serve | **combinar de outro jeito o que o motor já sabe fazer** | **fazer o que o motor NÃO sabe fazer** |
+| Custo | zero: sem escopo novo, sem consentimento, sem reautorização | 2 escopos novos, reautorização de todos, consentimento por projeto |
+| Resolve | a squad, o organismo, o especialista por aglomerado | só um caso: capacidade fora do registro fechado |
+
+**Em duas linhas:** o sub-agente recombina as 23 ferramentas existentes; o projeto filho existe
+para quando nenhuma combinação das 23 resolve. **A squad é feita de declarações — ela não precisa
+de geração de código.**
+
+### Nenhum caso na mesa exige código novo (auditado em 2026-09-19)
+
+O registro fechado tem **23 ferramentas**: `ask`, `calendar.create`, `calendar.freebusy`,
+`calendar.list`, `calendar.update`, `contacts.find`, `docs.create`, `docs.read`, `drive.search`,
+`gmail.draft`, `gmail.read`, `gmail.search`, `gmail.send`, `memory.read`, `memory.remove`,
+`memory.save`, `now`, `read_skill`, `sheets.append`, `sheets.read`, `tasks.complete`,
+`tasks.create`, `tasks.list`.
+
+Cada caso que o usuário descreveu, conferido contra essa lista:
+
+| Caso que ele descreveu | Precisa de código novo? | Por quê |
+|---|---|---|
+| **Squad que se descobre** | **Não** | um membro é papel + subconjunto de tools. Recombinação, não capacidade nova |
+| **Especialista de agenda por aglomerado** | **Não** | `calendar.*` + `contacts.find` + `now` já cobrem listar, criar, alterar e ver disponibilidade |
+| **Especialista de e-mail** | **Não** | `gmail.read/search/draft/send` cobrem o ciclo inteiro, com aprovação no envio |
+| **Sucessão com prompt aperfeiçoado** | **Não** | o artefato é markdown **por definição** — é o `dreamCycle` |
+| **Agente que evolui com as demandas** | **Não** | evoluir aqui é mudar texto e recombinar tools |
+
+**Veredito: nenhum dos casos na mesa exige código fora das 23 ferramentas.** Todos são combinação
+de tools existentes mais texto.
+
+### O que exigiria — e é o que deve ser nomeado quando aparecer
+
+Só justifica o escopo um pedido que precise de uma **capacidade que o registro não tem**, por
+exemplo: falar com uma API de terceiro fora do `http_allow`, processar um formato que nenhuma tool
+lê, ou uma integração com um produto que o gasclaw não conhece. **Enquanto não existir um caso
+assim, com nome e dono, os dois escopos não são acrescentados** — o [ADR-015](015-escopos-oauth.md)
+existe exatamente contra acúmulo silencioso de escopo.
+
+A [POC P24](../../poc/p24-linhagem-de-codigo/README.md) segue **pronta e não medida**: o desenho
+dela está correto, o que ela mede é que ainda não é necessário. Quando o primeiro caso aparecer,
+ela roda sem precisar ser reescrita.
+
 ## Consequências
 
 - A squad da [ADR-038](038-capacidades-e-linhagem.md) §7 passa a ser feita por S1; a decisão de

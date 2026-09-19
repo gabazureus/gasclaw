@@ -3,7 +3,11 @@
 // O teste do z é feito com CONTA À MÃO, não repetindo a fórmula do código. A P11 já ensinou isso
 // ao projeto: um teste que repete a fórmula confirma o engano em vez de pegá-lo.
 import { describe, expect, test } from 'vitest';
+import { accomplished, completionRate } from '../src/agentCaps';
 import {
+  familyOf,
+  isPlateau,
+  judgeIsIndependent,
   beatsIncumbent,
   CODEGEN_DAILY_CAP_USD,
   DEFAULT_K,
@@ -136,5 +140,63 @@ describe('teto do Opus: por agente não basta, porque vários agentes somam', ()
   test('número inválido não autoriza gasto', () => {
     expect(withinDailyCap(Number.NaN, 1.0)).toBe(false);
     expect(withinDailyCap(0, Number.POSITIVE_INFINITY)).toBe(false);
+  });
+});
+
+describe('detecção de platô: previsto não é surpresa', () => {
+  test('menos gerações que a janela nunca é platô', () => {
+    expect(isPlateau([false, false, false])).toBe(false);
+  });
+
+  test('cinco gerações seguidas sem vantagem no reservado é platô', () => {
+    expect(isPlateau([false, false, false, false, false])).toBe(true);
+  });
+
+  test('uma vitória na janela quebra o platô', () => {
+    expect(isPlateau([false, false, true, false, false, false, false])).toBe(false);
+    expect(isPlateau([false, false, false, false, true])).toBe(false);
+  });
+
+  test('só a janela recente conta: vitória antiga não salva', () => {
+    expect(isPlateau([true, true, false, false, false, false, false])).toBe(true);
+  });
+});
+
+describe('família do juiz: independência é requisito, não preferência', () => {
+  test('mesma família é recusada (viés de auto-preferência)', () => {
+    const v = judgeIsIndependent('anthropic/claude-opus-5', 'anthropic/claude-sonnet-5');
+    expect(v.ok).toBe(false);
+    expect(v.reason).toContain('self-preference');
+  });
+
+  test('famílias diferentes passam', () => {
+    expect(judgeIsIndependent('anthropic/claude-opus-5', 'deepseek/deepseek-v4-flash-0731').ok).toBe(true);
+  });
+
+  test('`openrouter/auto` NÃO serve de juiz: pode rotear para a família do gerador', () => {
+    const v = judgeIsIndependent('anthropic/claude-opus-5', 'openrouter/auto');
+    expect(v.ok).toBe(false);
+    expect(v.reason).toContain('pinned model');
+  });
+
+  test('sem saber a família, recusa em vez de assumir independência', () => {
+    expect(judgeIsIndependent('', 'deepseek/x').ok).toBe(false);
+    expect(judgeIsIndependent('anthropic/x', '').ok).toBe(false);
+  });
+
+  test('a família é o que vem antes da barra, sem depender de maiúscula', () => {
+    expect(familyOf('Anthropic/Claude-Opus-5')).toBe('anthropic');
+  });
+});
+
+describe('"realizou": contagem determinística, nunca impressão', () => {
+  test('conta run concluído, e nunca fica negativo', () => {
+    expect(accomplished({ doneRuns: 7, failedRuns: 2, from: 0, to: 1 })).toBe(7);
+    expect(accomplished({ doneRuns: -3, failedRuns: 0, from: 0, to: 1 })).toBe(0);
+  });
+
+  test('sem run devolve null, não 0 — 0 seria lido como "nunca funcionou"', () => {
+    expect(completionRate({ doneRuns: 0, failedRuns: 0, from: 0, to: 1 })).toBe(null);
+    expect(completionRate({ doneRuns: 3, failedRuns: 1, from: 0, to: 1 })).toBe(0.75);
   });
 });

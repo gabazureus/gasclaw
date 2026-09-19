@@ -265,9 +265,25 @@ export function usageView(apiKey: string | null, day?: string, range?: string) {
     table,
     day: shownDay,
     queue: splitQueue(p).length,
-    check: { dayUtc: today, measured, informed, diffPct: informed ? Math.round(((measured - informed) / informed) * 1000) / 10 : null, error: or.ok ? null : or.error, nota: "OpenRouter's day is UTC: it rolls over at 21:00 in São Paulo" },
+    check: { dayUtc: today, measured, informed, diffPct: informed ? Math.round(((measured - informed) / informed) * 1000) / 10 : null, error: or.ok ? null : or.error, nota: CROSS_CHECK_NOTE },
   };
 }
+
+/**
+ * Ressalva da conferência cruzada. **Não apague, e não "limpe" por ser longa.**
+ *
+ * O número do OpenRouter vem de `/api/v1/key`, que é POR CHAVE — não por projeto. Qualquer outra
+ * coisa que use a mesma chave (outro script, prod junto com dev, um teste no terminal) entra ali e
+ * NÃO entra na contagem do gasclaw. A diferença, então, pode ser outro consumidor e não erro de
+ * medição, e o painel mostrava um sinal de menos como se fosse defeito.
+ *
+ * Medido em 2026-09-19 com um experimento controlado: em duas leituras separadas, o gasclaw subiu
+ * US$ 0,000618840 e o OpenRouter subiu US$ 0,000618840 — diferença ZERO até a 12ª casa —, com um
+ * offset constante de US$ 0,053229 que nunca se moveu. Ou seja: **a contabilidade por requisição
+ * do gasclaw está exata**, e a diferença é gasto da mesma chave que ele nunca viu.
+ */
+export const CROSS_CHECK_NOTE =
+  "OpenRouter's number is PER KEY, not per project: anything else using this key (prod, another script, a terminal test) counts there and not here. A gap can be another consumer, not a measurement error. Both sides use the same UTC day.";
 
 // ---------- limites ----------
 

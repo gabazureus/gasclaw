@@ -66,3 +66,43 @@ Docs, Sheets) com o token do script. `GmailApp`, `CalendarApp`, `DocumentApp` e
   Se algum deles recusar esse token na prática, a POC P15 registra o erro e o escopo sai numa próxima
   revisão. Não é trocado por um escopo maior.
 - Prod só recebe estes escopos quando o usuário decidir levar as ferramentas e o lote para lá.
+
+
+---
+
+## Terceira ampliação (2026-09-19) — e ela muda a POLÍTICA, não abre exceção
+
+Escopos acrescentados: **`script.projects`** e **`script.deployments`**. O manifesto vai de 15 para
+**17** (14 no arquivo mais o IAM que o build injeta no dev). Terceira vez que o projeto amplia
+escopo; as duas anteriores estão acima.
+
+### A tese
+
+> **O manifesto do pai para de crescer.** Toda capacidade futura nasce num **filho**, com o
+> consentimento dela, isolada. O motor fica nos 17 escopos para sempre.
+
+Isso **inverte** a leitura de acúmulo que esta ADR existe para evitar. `script.projects` e
+`script.deployments` são os **últimos** escopos que o motor precisa, porque são exatamente os que
+permitem que ele nunca mais precise de outro: quando aparecer a necessidade de Apresentações,
+Formulários ou qualquer API que o gasclaw hoje não conhece, ela vai para um **projeto filho** com
+o escopo dela — e o manifesto do pai não muda.
+
+### Correção de uma propriedade que descrevemos errado
+
+Estava escrito que o filho nasce com **menos** escopos que o pai. O certo é: o filho nasce com
+escopos **diferentes**, e pode ter escopos que o **pai nunca teve**. Cada projeto Apps Script tem
+manifesto próprio e autorização própria; o consentimento do filho é dele.
+
+Isso é mais forte do que "menos", e é a razão de a tese acima funcionar.
+
+### A composição não custa escopo nenhum
+
+O pai chama o web app do filho por **`UrlFetchApp`**, e `script.external_request` está no manifesto
+desde o começo. O filho faz a coisa privilegiada com **os escopos dele**; o pai nunca ganha aquele
+poder. Filhos viram **serviços com consentimento próprio**.
+
+### O que fica pendente de medição (POC P24)
+
+A cadeia `projects.create` → `updateContent` → `versions.create` → `deployments.create` está
+desenhada e **não medida**. Os critérios em que **falhar é passar** continuam: se o filho nascer já
+autorizado **e** com credencial, é poder demais e a POC reprova.

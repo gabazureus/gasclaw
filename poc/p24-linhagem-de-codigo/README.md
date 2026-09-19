@@ -1,5 +1,21 @@
 # POC P24 — o agente pode gerar o código de um sucessor dentro do Google?
 
+> ## ⏸️ PRONTA E NÃO MEDIDA — e isso é decisão, não pendência (2026-09-19)
+>
+> O desenho desta POC está correto e os critérios continuam válidos. O que ela mede **ainda não é
+> necessário**: a auditoria das 23 ferramentas do registro mostrou que **nenhum caso na mesa exige
+> código novo** — squad, especialista por aglomerado e sucessão são todos recombinação de tools
+> mais texto (ver [ADR-039](../../docs/adr/039-subagente-e-declaracao.md), *Por que existem dois
+> mecanismos*).
+>
+> Os dois escopos (`script.projects`, `script.deployments`) **não foram acrescentados ao
+> manifesto**, e o manifesto foi revertido para 14 escopos depois de eu tê-los adicionado por
+> engano. Acrescentar escopo é irreversível na prática e o [ADR-015](../../docs/adr/015-escopos-oauth.md)
+> existe contra acúmulo silencioso.
+>
+> **Quando aparecer o primeiro caso que precise de capacidade fora das 23 tools — com nome e dono —
+> esta POC roda sem ser reescrita.**
+
 > **Estado: critério escrito, NADA medido e NENHUMA linha escrita.**
 > Nenhum número desta página existe ainda. O usuário perguntou "isso é possível? como
 > faríamos?" — esta POC é a forma de responder com medida em vez de opinião.

@@ -42,6 +42,7 @@ import { folderModel, getOverride, listModels as openRouterModels, type ModelInf
 import * as observe from './observe';
 import * as runlog from './runlog';
 import { forgetAgentProps } from './agentCaps';
+import { mayWriteProject } from './dream';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
 import { allowedTools, toolCatalog } from './tools/registry';
@@ -1212,6 +1213,92 @@ export function pocUrlFetchTimeout() {
 }
 
 // ---------- POCs automáticas: ./gasclaw poc <id> [etapa] → doGet?action=poc ----------
+
+/**
+ * Sonda da POC P24 (só no build dev): o token DO SCRIPT consegue criar, escrever e implantar um
+ * projeto Apps Script filho? Mede o que só o dev responde; não cria nada em produção.
+ *
+ * A guarda `mayWriteProject` é chamada ANTES de qualquer escrita: depois que `script.projects`
+ * entrou no manifesto, ela é a única coisa separando o filho do motor.
+ */
+function pocP24(step?: string): unknown {
+  const token = ScriptApp.getOAuthToken();
+  const own = ScriptApp.getScriptId();
+  const api = 'https://script.googleapis.com/v1/projects';
+  const call = (url: string, method: GoogleAppsScript.URL_Fetch.HttpMethod, payload?: unknown) => {
+    const t0 = Date.now();
+    const res = UrlFetchApp.fetch(url, {
+      method,
+      contentType: 'application/json',
+      headers: { Authorization: `Bearer ${token}` },
+      ...(payload ? { payload: JSON.stringify(payload) } : {}),
+      muteHttpExceptions: true,
+    });
+    return { code: res.getResponseCode(), ms: Date.now() - t0, body: res.getContentText().slice(0, 900) };
+  };
+
+  if (step === 'guard') {
+    // C5: a recusa do próprio projeto, exercitada no ambiente real (não só em teste de unidade).
+    const mine = mayWriteProject(own, own);
+    const other = mayWriteProject('algum-outro-projeto', own);
+    return { pass: mine.ok === false && other.ok === true, own: own.slice(0, 8) + '…', refusedSelf: mine, allowedOther: other.ok };
+  }
+
+  if (step === 'create') {
+    const r = call(api, 'post', { title: `gasclaw poc p24 ${new Date().toISOString().slice(0, 19)}` });
+    let scriptId: string | null = null;
+    try {
+      scriptId = (JSON.parse(r.body) as { scriptId?: string }).scriptId ?? null;
+    } catch {
+      scriptId = null;
+    }
+    if (scriptId) PropertiesService.getScriptProperties().setProperty('P24_CHILD', scriptId);
+    return { pass: r.code === 200 && !!scriptId, code: r.code, ms: r.ms, scriptId, body: scriptId ? undefined : r.body };
+  }
+
+  if (step === 'write') {
+    const child = PropertiesService.getScriptProperties().getProperty('P24_CHILD');
+    if (!child) return { pass: false, error: 'run `poc p24 create` first' };
+    const guard = mayWriteProject(child, own);
+    if (!guard.ok) return { pass: false, error: guard.reason };
+    // Manifesto MÍNIMO: só Calendar. Se o filho nascer com os escopos do pai, o desenho inteiro cai.
+    const files = [
+      { name: 'appsscript', type: 'JSON', source: JSON.stringify({ timeZone: 'America/Sao_Paulo', runtimeVersion: 'V8', oauthScopes: ['https://www.googleapis.com/auth/calendar.events'] }) },
+      { name: 'Code', type: 'SERVER_JS', source: 'function ping() { return "p24-ok"; }\n' },
+    ];
+    const r = call(`${api}/${child}/content`, 'put', { files });
+    const back = call(`${api}/${child}/content`, 'get');
+    let scopes: string[] = [];
+    try {
+      const got = (JSON.parse(back.body) as { files?: { name: string; source: string }[] }).files ?? [];
+      const man = got.find((f) => f.name === 'appsscript');
+      scopes = man ? ((JSON.parse(man.source) as { oauthScopes?: string[] }).oauthScopes ?? []) : [];
+    } catch {
+      scopes = [];
+    }
+    // C4 do desenho: o filho tem MENOS escopo que o pai, e exatamente o que foi pedido.
+    return { pass: r.code === 200 && scopes.length === 1 && scopes[0].endsWith('calendar.events'), code: r.code, ms: r.ms, readBackScopes: scopes, parentScopes: 17 };
+  }
+
+  if (step === 'deploy') {
+    const child = PropertiesService.getScriptProperties().getProperty('P24_CHILD');
+    if (!child) return { pass: false, error: 'run `poc p24 create` first' };
+    const ver = call(`${api}/${child}/versions`, 'post', { description: 'p24' });
+    const dep = call(`${api}/${child}/deployments`, 'post', { versionNumber: 1, manifestFileName: 'appsscript', description: 'p24' });
+    return { pass: ver.code === 200 && dep.code === 200, version: { code: ver.code, ms: ver.ms }, deployment: { code: dep.code, ms: dep.ms, body: dep.code === 200 ? undefined : dep.body } };
+  }
+
+  if (step === 'key') {
+    // C-e: o filho recebe a chave do OpenRouter sem o pai entregar credencial?
+    // Não existe API para gravar Script Properties de OUTRO projeto: `PropertiesService` é do
+    // projeto que executa. O único caminho seria o pai ESCREVER a chave no CÓDIGO do filho —
+    // e isso é entregar credencial, com a consequência de o filho gastar fora do teto do pai.
+    return { pass: false, finding: 'no API writes another project\u2019s Script Properties; the only path is embedding the key in the child source, which IS handing over the credential' };
+  }
+
+  return { pass: false, error: 'steps: guard, create, write, deploy, key' };
+}
+
 const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {
   p1: () => pocUrlFetchTimeout(),
   p2: (step, params = {}) => pocP2(step, params, runIO()),
@@ -1220,6 +1307,7 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p19: (step) => pocP19(step),
   p20: (step) => pocP20(step),
   p22: (step, params = {}) => pocP22(step, params),
+  p24: (step) => pocP24(step),
   p6: (step) => pocP6(step, ownerEmail()),
   p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),

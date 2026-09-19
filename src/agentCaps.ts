@@ -277,3 +277,24 @@ export const capsEnabled = (raw: string | null | undefined): boolean => raw !== 
 /** Capacidades efetivas: o congelamento vence qualquer aprovação individual. */
 export const effectiveCapabilities = (approved: readonly Capability[], frozenRaw: string | null | undefined): Capability[] =>
   capsEnabled(frozenRaw) ? [...approved] : [];
+
+/**
+ * O que "realizou" significa na planilha de linhagem — a definição faltava e sem ela a coluna
+ * viraria texto livre, que é onde a impressão do modelo entra disfarçada de fato.
+ *
+ * **Realizou = contagem determinística de runs concluídos com desfecho útil**, no período em que o
+ * agente esteve ativo. Um run conta quando: terminou em `done`, produziu resposta, e **não**
+ * terminou em `failed`, `stopped` nem em falha honesta. Nada aqui é julgado por modelo.
+ *
+ * O que NÃO entra, de propósito: "qualidade" da resposta (não é medível sem o cano inteiro da P23),
+ * elogio do usuário (não é gravado) e auto-relato do agente (é impressão).
+ */
+export type Accomplishment = { doneRuns: number; failedRuns: number; from: number; to: number };
+
+export const accomplished = (a: Accomplishment): number => Math.max(0, a.doneRuns);
+
+/** Taxa de conclusão no período. `null` sem run — nunca 0, que seria lido como "nunca funcionou". */
+export const completionRate = (a: Accomplishment): number | null => {
+  const total = a.doneRuns + a.failedRuns;
+  return total > 0 ? a.doneRuns / total : null;
+};

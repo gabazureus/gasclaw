@@ -16,8 +16,13 @@
     "https://www.googleapis.com/auth/tasks",
     "https://www.googleapis.com/auth/contacts.readonly",
     "https://www.googleapis.com/auth/contacts.other.readonly",
-    "https://www.googleapis.com/auth/calendar.events.freebusy"
+    "https://www.googleapis.com/auth/calendar.events.freebusy",
+    "https://www.googleapis.com/auth/script.projects",
+    "https://www.googleapis.com/auth/script.deployments"
   ],
-  "webapp": { "access": "MYSELF", "executeAs": "USER_DEPLOYING" },
+  "webapp": {
+    "access": "MYSELF",
+    "executeAs": "USER_DEPLOYING"
+  },
   "chat": {}
 }

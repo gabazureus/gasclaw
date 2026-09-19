@@ -103,3 +103,42 @@ export const CODEGEN_DAILY_CAP_USD = 3.0; // três gerações por dia no ambient
 
 export const withinDailyCap = (spentTodayUsd: number, nextUsd: number, cap = CODEGEN_DAILY_CAP_USD): boolean =>
   Number.isFinite(spentTodayUsd) && Number.isFinite(nextUsd) && spentTodayUsd + nextUsd <= cap;
+
+// ---------- Detecção de platô ----------
+
+/**
+ * A literatura garante que o platô chega (arXiv:2411.00750, estreitamento da cauda). Previsto não é
+ * surpresa: detectar de propósito evita gastar Opus indefinidamente para empatar.
+ *
+ * Platô = N gerações seguidas **sem vantagem no conjunto RESERVADO**. Usa o reservado, não o de
+ * seleção: no de seleção a linhagem pode estar só aprendendo o juiz (Goodhart), e aí o número sobe
+ * enquanto a qualidade não.
+ */
+export const PLATEAU_AFTER = 5;
+
+export function isPlateau(reservedWinsPerGeneration: readonly boolean[], after = PLATEAU_AFTER): boolean {
+  if (reservedWinsPerGeneration.length < after) return false;
+  return reservedWinsPerGeneration.slice(-after).every((won) => won === false);
+}
+
+// ---------- Família do juiz ----------
+
+/**
+ * O juiz não pode ser da mesma família do gerador: o viés de auto-preferência está medido
+ * (arXiv:2410.21819 e 2604.06996, este tratando de auto-aprimoramento recursivo). Se o Opus gera e
+ * um juiz da mesma família decide, parte do delta é parentesco e não qualidade.
+ *
+ * A família é o que vem antes da barra no id do OpenRouter (`anthropic/claude-…` → `anthropic`).
+ */
+export const familyOf = (modelId: string): string => String(modelId ?? '').split('/')[0].toLowerCase().trim();
+
+export function judgeIsIndependent(generatorModel: string, judgeModel: string): { ok: boolean; reason: string } {
+  const g = familyOf(generatorModel);
+  const j = familyOf(judgeModel);
+  if (!g || !j) return { ok: false, reason: 'cannot tell the model families apart: refusing' };
+  // `openrouter/auto` pode rotear para QUALQUER família, inclusive a do gerador — e a P23 mediu que
+  // ele de fato escolhe sozinho. Um juiz que pode virar parente não é independente.
+  if (j === 'openrouter') return { ok: false, reason: 'the judge must be a pinned model: auto routing can land on the generator family' };
+  if (g === j) return { ok: false, reason: `judge and generator are both ${g}: self-preference bias` };
+  return { ok: true, reason: '' };
+}

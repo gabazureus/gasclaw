@@ -165,3 +165,40 @@ solicitante, e `tools(A) ∩ tools(B)` — são **pré-requisito** de qualquer l
   encerrar o que está em voo, não só impedir o que vem depois.
 
 Ambos entram antes de a squad existir de verdade.
+
+---
+
+## Autenticação pai → filho (desenhada antes de qualquer fiação, 2026-09-19)
+
+Com filhos virando serviços chamados por `UrlFetchApp`, **o web app do filho não pode ser aberto**:
+uma URL descoberta seria caminho de escalonamento para qualquer pessoa.
+
+### O que a plataforma dá, e onde ela para
+
+O manifesto do pai já usa `{"access": "MYSELF", "executeAs": "USER_DEPLOYING"}`. Aplicado ao filho,
+`MYSELF` exige o token OAuth **do dono** para entrar. Isso barra estranhos.
+
+**Mas há um limite que precisa ser dito:** `MYSELF` autentica **o dono**, não **o pai**. O filho não
+consegue distinguir "o motor do gasclaw me chamou" de "qualquer outro código rodando como o dono me
+chamou". A plataforma resolve *quem é a pessoa*, não *qual programa*.
+
+### A recomendação: segredo por filho, com o precedente que já existe
+
+Reusar o padrão do [ADR-022](022-csrf-segredo-da-cli.md), que já protege as ações com efeito:
+**segredo no corpo do POST, comparado em tempo constante**.
+
+1. O pai **gera um segredo próprio para cada filho** no momento da criação e o grava no código do
+   filho (não é a chave do OpenRouter — é um segredo criado para este fim, e só serve para esta
+   conversa).
+2. Toda chamada pai → filho leva o segredo no corpo.
+3. O filho compara em tempo constante e recusa sem ele.
+4. Segredo é **por filho**: vazar um não abre os outros.
+
+Assim a identidade do chamador passa a existir, em cima da autenticação do dono que a plataforma
+já dá. **Duas camadas, e a de cima é nossa** — como a recusa do próprio `scriptId`.
+
+### O que continua não resolvido, e é honesto dizer
+
+Um segredo gravado no código do filho é legível por quem abrir o projeto do filho no editor — ou
+seja, **pelo dono**. Contra o dono não há defesa aqui, e nem deveria haver: é a conta dele. A
+defesa é contra terceiro que descubra a URL, e contra isso as duas camadas bastam.
