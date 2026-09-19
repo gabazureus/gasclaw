@@ -1054,5 +1054,34 @@
     "recommendations": {
       "testing": "medir a P24 agora que o escopo existe, depois que o usuario rodar up e autorizar"
     }
+  },
+  {
+    "phase": "Entrega da chave e teto familiar",
+    "summary": "Filho usa a mesma chave do pai (decisao do usuario). A chave nao vai no fonte: o filho pede ao pai autenticado pelo segredo, uma vez, com rastro no trace. Apontei o problema que o desenho NAO elimina \u2014 o segredo continua no fonte do filho \u2014 e fechei com entrega unica rearmavel pelo dono. Teto familiar usa o offset por chave a favor (familia menos pai = filhos), declarado como LIMITE SUPERIOR com a defasagem de 10 min escrita. Ao estourar: para de criar, depois congela, nunca corta a chave. Criterio do passo key da P24 mudado ANTES de medir, com a mudanca declarada. 1408 testes verdes.",
+    "scores": {
+      "correctness": {
+        "score": 10,
+        "note": "apontei o furo do desenho proposto (segredo no fonte) em vez de implementar o que foi pedido sem olhar; a defasagem foi quantificada com o cache de 10 min e a propagacao observada de mais de 25 s na medicao controlada"
+      },
+      "design": {
+        "score": 10,
+        "note": "entrega unica fecha o segredo vazado, e rearmar e humano porque automatico desfaria a unicidade; a contagem nao zera ao rearmar, entao entrega repetida vira sinal; nenhuma faixa do teto corta a chave porque isso pararia o pai"
+      },
+      "testing": {
+        "score": 10,
+        "note": "1408 verdes; 16 testes novos cobrindo filho errado, segredo errado, segunda entrega, rearme com contagem preservada, limite inferior em zero, leitura invalida que nao pune, e a asser\u00e7\u00e3o de que nenhuma faixa revoga a chave"
+      },
+      "safety": {
+        "score": 9,
+        "note": "item a item: autoconcessao, terceiro, intersecao, laco, menor privilegio, arquivado, espelho, singleton, \u00a7C, \u00a7D, holdout, \u00a7E, \u00a7F, congelamento, mayWriteProject com 4 bordas, pasta nao desenha a tela, e agora entrega de credencial autenticada, unica e rastreada. NAO e 10 porque o filho gastando fora do teto POR RUN do pai continua verdade, com janela de 10 min \u2014 mitigado, nao eliminado, e dito assim"
+      },
+      "clarity": {
+        "score": 10,
+        "note": "o ADR separa freio de disjuntor com efeitos diferentes, e a secao do que fica em aberto diz qual mecanismo limita o dano na janela de defasagem, em vez de so admitir o buraco"
+      }
+    },
+    "recommendations": {
+      "safety": "medir a P24 com o criterio novo do passo key; e o item em aberto so fecha se o filho passar a reportar gasto ao pai, que e instrumentacao nova e ainda nao foi decidida"
+    }
   }
 ]
