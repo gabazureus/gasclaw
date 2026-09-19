@@ -675,5 +675,181 @@
         "note": "spec dos multiplos chats explica por que NAO seguir a planilha pedida, com P18 e a colisao de 80 chars como prova"
       }
     }
+  },
+  {
+    "phase": "Align \u2014 self-improving (sonho) POC",
+    "summary": "Prior-art lido nas fontes (Dream-RSI sem codigo publicado; SIA com codigo, laco meta/target/feedback sobre codigo Python executado); confronto com limites medidos do gasclaw (P3 8,47%, evals 0,5-13,7s, RUN_BUDGET_USD 0,10, ADR-002 sem eval); conceito de desenho proposto; gate aberto com 5 blocos A/B/C.",
+    "scores": {
+      "correctness": {
+        "score": 8,
+        "note": "toda afirmacao sobre os repos veio de fetch/API (arvore do Dream-RSI: 21 arquivos, so README+PDF+assets); numeros do gasclaw citados de ADR-016/017/024/026/027 e src/run.ts"
+      },
+      "design": {
+        "score": 6,
+        "note": "conceito proposto reusa run duravel + gatilho worker + evals; interfaces ainda nao desenhadas (fase 4 nao comecou)"
+      },
+      "testing": {
+        "score": 5,
+        "note": "criterio da POC esbocado (C1-C4) mas nao medido; nenhum numero de sonho existe ainda"
+      },
+      "safety": {
+        "score": 9,
+        "note": "ADR-002 respeitado por construcao: artefato do sonho e prompt, nunca codigo; promocao so com aprovacao humana no gate proposto"
+      },
+      "clarity": {
+        "score": 8,
+        "note": "separacao explicita viavel/degradado/impossivel; termos em ingles no codigo, conteudo pt-BR"
+      }
+    },
+    "recommendations": {
+      "testing": "definir o criterio medido da POC (custo em ms de gatilho e USD por ciclo) antes de escrever qualquer linha",
+      "design": "desenhar as interfaces de dreamCycle/PromptCandidate so depois do gate"
+    }
+  },
+  {
+    "phase": "Language + Specify (parcial) \u2014 F5 sonho",
+    "summary": "UBIQUITOUS_LANGUAGE atualizado (8 termos do sonho + 3 da iniciativa); spec F5 escrita em docs/specs/ com prior-art citado, Workspace-first e capacidade opt-in; track f5-sonho criada com decisions D1-D9 e A1-A4 em aberto; POC P23 com C1-C6 escritos ANTES de qualquer codigo. Descoberto que proatividade ja e a track F3a com spec v1 REPROVADA e furo de seguranca documentado; replicacao e auto-modificacao do motor investigadas com numero e parada no gate.",
+    "scores": {
+      "correctness": {
+        "score": 9,
+        "note": "cada afirmacao nova tem fonte no repo: AGENTS sem guarda de tamanho em store.ts:21 contra PROP_MAX em usage.ts; 403 de projects.getContent medido no ADR-013:16; script.projects ausente do appsscript.json; cotas de limits.ts:17-18"
+      },
+      "design": {
+        "score": 7,
+        "note": "sonho e proatividade separados em tracks (nao fundidos numa spec so); unidade duravel reusa ADR-026; mas 4 decisoes de conceito seguem abertas, entao o desenho nao esta fechado"
+      },
+      "testing": {
+        "score": 6,
+        "note": "C1-C6 da P23 escritos com teto e armadilhas herdadas da P3/P22, e C5 exige medicao e nao so teste unitario; nada medido ainda"
+      },
+      "safety": {
+        "score": 9,
+        "note": "artefato e prompt; juiz vem do build; AGENTS.md fora de alcance; replicacao e auto-modificacao PARADAS no gate em vez de entrarem na spec; furo do jobs.md trazido a tona em vez de herdado em silencio"
+      },
+      "clarity": {
+        "score": 8,
+        "note": "tres pedidos do usuario respondidos com vereditos diferentes; fronteira entre autonomia real e teatro explicitada"
+      }
+    },
+    "recommendations": {
+      "testing": "medir a P23 antes de qualquer linha; a linha de base do conjunto-juiz e pre-requisito do placar",
+      "design": "fechar A1-A4 no gate antes de escrever a Fase 3"
+    }
+  },
+  {
+    "phase": "Specify \u2014 Chief of Staff e linhagem",
+    "summary": "A1=C e A2=B fechadas na spec; ADR-038 escrita com o singleton CHIEF por forma do dado (mata a corrida de dois Chiefs por construcao), squad sem capacidades, linhagem e reversibilidade do bastao; leitura do usuario confirmada com codigo (effectiveAccess(null) fecha, a pasta nunca concede); criterio de aperfeicoado amarrado ao conjunto-juiz com delta minimo declarado fraco; guarda de tamanho em saveAgents registrada como conserto devido e previo; gate A5 (quem autoriza a sucessao) aberto por contradizer a D2.",
+    "scores": {
+      "correctness": {
+        "score": 9,
+        "note": "cada afirmacao do ADR-038 tem linha: effectiveAccess em workspace.ts:178-184, withTool 196-203, underAccessLock main.ts:859-867, limpeza de ACCESS em 847, saveAgents store.ts:20-22, 403 medido no ADR-013"
+      },
+      "design": {
+        "score": 9,
+        "note": "singleton por forma do dado em vez de invariante defendida por trava elimina a corrida em vez de mitiga-la; reversibilidade cai de graca; squad reusa o fail-closed existente"
+      },
+      "testing": {
+        "score": 6,
+        "note": "7 criterios de aceite novos, todos verificaveis, mais C5 medido; nada medido nem escrito ainda"
+      },
+      "safety": {
+        "score": 9,
+        "note": "script.projects recusado com razao concreta; nenhuma capacidade entra pela pasta; squad nasce sem poder; sucessao automatica PARADA no gate em vez de assumida"
+      },
+      "clarity": {
+        "score": 9,
+        "note": "contradicao com a D2 declarada em vez de escondida; delta minimo admitido como sinal fraco"
+      }
+    },
+    "recommendations": {
+      "testing": "medir a P23 e prender as invariantes do Chief em teste antes de qualquer linha de sucessao"
+    }
+  },
+  {
+    "phase": "Implement (fatia 1) + viabilidade da linhagem de codigo",
+    "summary": "ADR-038 fechada com o mandato (mesma forma do once/granted) e com o que o mandato NAO desfaz. src/chief.ts implementado por TDD (nucleo puro: 4 capacidades, singleton por forma do dado, mandato) e guarda de tamanho em saveAgents. Verificacao completa: tsc limpo, 1241 testes em 116 arquivos verdes, build ok. P24 aberta com C1-C7 e a correcao de que cota do Apps Script e POR USUARIO, nao por projeto.",
+    "scores": {
+      "correctness": {
+        "score": 9,
+        "note": "1241 testes verdes e tsc limpo, medidos nesta sessao apos apagar o output.json velho; cota por usuario e enablement manual vieram da doc oficial, nao de memoria; preco do Opus 5 (5/25 por MTok) da tabela de precos"
+      },
+      "design": {
+        "score": 9,
+        "note": "chief.ts e um modulo fundo: 4 capacidades, singleton e mandato atras de uma interface pequena e 100% pura; a guarda em store.ts preserva o estado anterior na recusa"
+      },
+      "testing": {
+        "score": 8,
+        "note": "22 testes novos cobrindo contrato, bordas e adversariais (CHIEF restaurado de backup nao devolve poder; mandato nao vaza entre agentes; recusa nao corrompe a lista); P23/P24 seguem sem medicao"
+      },
+      "safety": {
+        "score": 9,
+        "note": "tudo fail-closed; ser apontado por CHIEF nao basta sem a capacidade aprovada; nada de (A)/(B) implementado sem gate; C3/C4 da P24 sao criterios em que falhar e passar"
+      },
+      "clarity": {
+        "score": 9,
+        "note": "o que o mandato nao desfaz esta escrito na ADR; o conflito entre Opus 5 e a D4 esta quantificado (US$ 0,90 = 9x o teto) em vez de contornado"
+      }
+    },
+    "recommendations": {
+      "testing": "a P23 continua sendo o proximo passo real: publicar o dev exige autorizacao explicita do usuario pela regra do proprio plan.md"
+    }
+  },
+  {
+    "phase": "Align \u2014 sub-agentes (S1 x S2 x B)",
+    "summary": "Avaliada a alternativa do usuario: sub-agentes rodando dentro do proprio projeto. Confirmado com codigo que S2 (JavaScript executando no projeto) e exatamente o que o ADR-002 foi escrito para proibir, e que S1 (sub-agente como declaracao) tem precedente em skills.ts. Achado que corrige a suposicao do coordenador: a intersecao com o pai NAO vem de graca \u2014 allowedTools filtra contra o REGISTRO, nao contra o acesso do pai. Respondidas as 6 perguntas de desenho com numero (DEFAULT_STEPS=10, charge/overBudget contem o custo).",
+    "scores": {
+      "correctness": {
+        "score": 9,
+        "note": "allowedTools em registry.ts:115-116 filtra contra TOOLS, nao contra o pai: a intersecao falta e foi apontada em vez de assumida; DEFAULT_STEPS=10 em agent.ts:8; charge/overBudget em run.ts:206-210; skills.ts linha 3 confirma o precedente"
+      },
+      "design": {
+        "score": 8,
+        "note": "recomendacao de sub-agente como PASSO do run do pai faz a contencao de orcamento cair de graca pelo charge que ja existe; falta desenhar o span do trace e o teto interno de passos"
+      },
+      "testing": {
+        "score": 6,
+        "note": "a invariante da intersecao foi especificada e o teste proposto, mas nada escrito nesta rodada (usuario perguntou o que acho, nao mandou fazer)"
+      },
+      "safety": {
+        "score": 10,
+        "note": "S2 recusado com a frase fundadora do ADR-002, nao com julgamento novo; o furo do S1 (uniao em vez de intersecao) foi encontrado antes de existir codigo"
+      },
+      "clarity": {
+        "score": 9,
+        "note": "S1 e S2 separados com consequencia distinta; correcao explicita da suposicao do coordenador sobre a intersecao vir de graca"
+      }
+    },
+    "recommendations": {
+      "testing": "a P23 continua pendente do ok para publicar o dev; a invariante da intersecao deve ser o primeiro teste da fatia de sub-agentes"
+    }
+  },
+  {
+    "phase": "Implement (fatia 2) \u2014 redesenho por capacidades",
+    "summary": "Nome Chief of Staff removido: a identidade virou o conjunto de capacidades ligadas (etiqueta). chief.ts -> agentCaps.ts com dream/initiative/succeed/create, ciclo de vida com arquivamento, intervalo minimo e o modelo de linhagem. Confirmado por git que nada foi publicado nem commitado: nao ha dado antigo a migrar. subagent.ts com a intersecao e o span. tsc limpo, 1260 testes em 117 arquivos verdes, build ok. Um teste pegou defeito real de falsy-zero em mayGenerate antes de existir codigo de producao em volta.",
+    "scores": {
+      "correctness": {
+        "score": 9,
+        "note": "1260 testes verdes medidos apos apagar o output.json; migracao descartada com evidencia do git log (HEAD e4b8006, arquivos untracked); a defesa contra injecao foi lida no e6-injecao em vez de suposta"
+      },
+      "design": {
+        "score": 9,
+        "note": "succeed (1->1, sem singleton) e create (1->N, com singleton) separados pela aritmetica do ato, nao por gosto; arquivar limpa tools e preserva users, reusando canUse em vez de inventar permissao nova"
+      },
+      "testing": {
+        "score": 9,
+        "note": "20 testes novos de capacidades + 17 de sub-agente; o de intervalo encontrou um bug real (lastAt=0 e falsy) antes de qualquer integracao \u2014 TDD pagando"
+      },
+      "safety": {
+        "score": 9,
+        "note": "arquivado nao roda, nao sucede e nao pode ser criador; intersecao nunca uniao prendida por propriedade; S2 recusado por escrito. Pendente: a defesa de A->B depende de aprovacao de tool, e isso precisa de desenho proprio"
+      },
+      "clarity": {
+        "score": 9,
+        "note": "o isolamento do sub-agente sera declarado como CONVENCAO, nao garantia, em vez de vendido como isolamento real"
+      }
+    },
+    "recommendations": {
+      "testing": "a fila de desenho cresceu alem do que cabe medir: levar ao usuario a escolha entre medir a P23 agora ou fechar o desenho de mensagem entre agentes antes"
+    }
   }
 ]

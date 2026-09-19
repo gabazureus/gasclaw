@@ -31,6 +31,9 @@
 | ↳ F3a — proatividade e governança de ferramentas | `[~]` spec escrita, implementação não começou | [spec](tracks/f3-proatividade-e-governanca/spec.md) · [plano](tracks/f3-proatividade-e-governanca/plan.md) · [decisões](tracks/f3-proatividade-e-governanca/decisions.md) | — |
 | ↳ P22 — custo da proatividade na cota de gatilho | `[ ]` gate de viabilidade da F3a | [plano](tracks/f3-proatividade-e-governanca/plan.md) · [ADR-027](../docs/adr/027-gatilho-worker.md) | — |
 | F4 — canais extras + `npx gasclaw` | `[ ]` planejada | Parte D do plano F0 | — |
+| F5 — o sonho (auto-aprimoramento por evolução de prompt) | `[~]` **gate de desenho aberto** (A1–A4): onde mora a capacidade, poderes separados, replicação, "novo script" | [spec](../docs/specs/2026-09-19-sonho-auto-aprimoramento.md) · [plano](tracks/f5-sonho/plan.md) · [decisões](tracks/f5-sonho/decisions.md) | — |
+| ↳ P23 — cabe um ciclo de sonho na cota? | `[ ]` critério escrito, **nada medido** | [POC P23](../poc/p23-sonho/README.md) | — |
+| ↳ P24 — linhagem de CÓDIGO: o agente criador cria o projeto Apps Script do sucessor? | `[ ]` critério escrito, **nada medido**; depende de gate do usuário (escopo novo obriga todos a reautorizar) | [POC P24](../poc/p24-linhagem-de-codigo/README.md) · [ADR-038](../docs/adr/038-capacidades-e-linhagem.md) | — |
 
 Ressalvas da F0 ainda abertas: verificar o haicai no `SOUL.md` sem deploy, o histórico no Chat e a
 conversa de outra pessoa do domínio (Task 9); salvar a chave e o agente na tela de prod.

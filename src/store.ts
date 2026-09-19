@@ -17,8 +17,20 @@ export const setOwner = (email: string): void => {
 };
 
 export const listAgents = (): AgentEntry[] => JSON.parse(props().getProperty('AGENTS') ?? '[]');
+
+/** Script Properties: 9 KB por valor. Mesma margem que o `usage.ts` usa, pelo mesmo motivo. */
+const AGENTS_MAX = 8_000;
+
+/**
+ * A lista INTEIRA de agentes mora num único valor. Sem guarda, passar do teto lança exceção crua do
+ * runtime e quebra o painel — e a lista anterior continuaria gravada, deixando o dono sem entender
+ * o que aconteceu. Enquanto criar agente era ato manual do dono isso era hipótese; com um agente criador
+ * montando squad (ADR-038) é caminho normal, então a recusa é honesta e diz o que fazer.
+ */
 export const saveAgents = (agents: AgentEntry[]): void => {
-  props().setProperty('AGENTS', JSON.stringify(agents));
+  const raw = JSON.stringify(agents);
+  if (raw.length > AGENTS_MAX) throw new Error(`Too many agents to store (${agents.length}). Remove agents you no longer use, or split them across scripts.`);
+  props().setProperty('AGENTS', raw);
 };
 
 export const isEnabled = (): boolean => props().getProperty('RUNTIME_ENABLED') !== 'false';

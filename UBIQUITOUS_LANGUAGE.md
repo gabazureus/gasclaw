@@ -70,6 +70,30 @@
 | Tool nunca auto-aprovável | Tool que a política jamais pode liberar sozinha | — | `gmail.send`, `calendar.update`, `memory.remove` |
 | Serialização por espaço | No máximo um run aberto por `<folderId>:<espaço>` | — | **Não confundir com reentrega**: aqui as mensagens são diferentes |
 | Reentrega | O mesmo evento do Chat chegando duas vezes | `runId` estável do nome da mensagem | Já resolvido na pista P2 |
+| Iniciativa | Mensagem que o agente manda **sem turno humano aberto** ("me manda msg") | — | Não é resposta: não há evento para responder. Exige canal que aceite envio fora do ciclo pedido→resposta |
+| Canal de iniciativa | Por onde a iniciativa chega ao dono | — | Chat exige Workspace (ADR-031); e-mail existe nos dois, com cota 1.500/dia (Workspace) × **100/dia** (pessoal), `src/limits.ts:17-18`; painel não notifica |
+| Pergunta não supervisionada | Run proativo que precisa de uma decisão humana ("me chame quando precisar") | — | **Hoje é impossível**: D7 proíbe `waiting`/`paused` em run proativo, e a entrega assíncrona de card novo pelo gatilho está fora de escopo (ADR-028, Consequências) |
+
+## Auto-aprimoramento — o sonho **(planejado — track F5)**
+
+| Term | Definition | In code as | Notes / invariants |
+|------|------------|-----------|--------------------|
+| Ciclo de sonho | Uma rodada completa: colher material → gerar candidatos → avaliar contra o juiz → gravar placar → propor promoção | `dreamCycle` | Nunca promove sozinho; termina em proposta, não em mudança |
+| Material do sonho | As falhas reais colhidas do trace e dos runs que motivam a rodada | `DreamSeed` | Vem de `failed`, `stopped: steps` e recusa de tool — **nunca** inventado pelo modelo (evita o laço se auto-elogiar) |
+| Candidato de prompt | Uma reescrita proposta de um papel (`SOUL`, `skills/`), em markdown | `PromptCandidate` | **Texto, nunca código** (ADR-002). Mora em `.gasclaw/dreams/<cycleId>/` na pasta do agente |
+| Conjunto-juiz | Os cenários de eval que decidem se um candidato é admissível | `judgeSet` | Vêm do **repositório**, nunca do Drive: se o critério morasse na pasta compartilhável, quem edita a pasta daria a própria nota (ADR-017 §6) |
+| Placar do sonho | Nota de cada candidato por cenário, mais o delta contra o papel vigente | `DreamBoard` | Artefatos no Drive; uma linha por ciclo na planilha (mesmo padrão do trace e dos limites) |
+| Promoção | O ato de um candidato virar papel vigente | `promote` | **Só com aprovação do dono**, por card durável com diff do prompt e delta do placar (ADR-028). Nunca automática |
+| Papel vigente × candidato | O que o agente usa hoje × o que o sonho propõe | `resolveRoles` (vigente) | Mesmo precedente de política sugerida × vigente: a pasta propõe, o painel decide |
+| Passo de sonho | A unidade durável: **um par (candidato, cenário)** | passo do `DurableRun` | Um passe completo (174 s estimados) cabe em 6 min, mas 3 candidatos não — por isso a unidade é o par (ADR-026) |
+| Capacidade | Poder opt-in de um agente: `dream`, `replicate`, `initiative`, `create` | Script Properties, aprovadas no painel | Quatro, nunca um interruptor só: blast radius diferente. A pasta **declara**, o painel **aprova**, o painel **mostra a procedência** (ADR-021 + ADR-035) |
+| agente com a capacidade `create` | O único agente do ambiente que pode criar agentes | `CREATOR` (Script Property) = **um** `folderId` | Singleton **por forma do dado**, não por trava: não existe estado com dois agente criadors porque não há dois lugares onde escrever |
+| Passar o bastão | Trocar quem é o agente criador | sobrescrever o valor de `CREATOR` | Reversível por construção — voltar é escrever o `folderId` anterior. Quem autoriza é o gate aberto |
+| Linhagem | Geração, pai, diff do prompt, placar, delta e filhos criados | `.gasclaw/lineage/<generation>.json` + planilha | Sem ela "evoluiu" não é verificável, é fé |
+| Squad | Agentes criados pelo agente criador para funções diferentes | pastas normais | Nascem **sem nenhuma capacidade**: executores, não criadores (`effectiveAccess(null)` já fecha) |
+| Sub-agente | Nome + papel em markdown + **subconjunto** das tools do pai, rodando como passo do run do pai | `Subagent`, `parseSubagent` | Declaração, nunca código (ADR-039). Precedente: `skills.ts` |
+| Interseção (nunca união) | O sub-agente nunca tem mais que o pai, só menos | `subagentTools` | **Não vem de graça:** `allowedTools` filtra contra o REGISTRO, não contra o pai (`registry.ts:115-116`) |
+| Span do sub-agente | Quem da squad agiu, dentro do run do pai | `subagentSpan` → `subagent:<nome>` | Sem ele a squad é inauditável; nome inválido não vira span |
 
 ## Trace e observabilidade
 
