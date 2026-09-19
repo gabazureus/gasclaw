@@ -238,6 +238,12 @@
     if (typeof fillAgents === 'function') fillAgents();
     $('secretInfo').textContent = s.cliSecretAt ? 'CLI secret registered on ' + new Date(s.cliSecretAt).toLocaleString('en-US') : 'CLI secret not registered yet (run ./gasclaw up)';
     $('resetSecret').disabled = !s.cliSecretAt;
+    // Lista PLANA, agentes e projetos filhos um embaixo do outro.
+    //
+    // Aninhar o filho dentro do pai seria mentir sobre a relação: um filho PODE SUCEDER e virar o
+    // principal, e aí a árvore teria que ser redesenhada. O parentesco é temporário; a existência não.
+    // Por isso o vínculo aparece como MARCADOR na linha, não como hierarquia na tela.
+    loadChildren();
     $('agents').replaceChildren(...s.agents.map((a, i) => {
       const box = document.createElement('div');
       const row = document.createElement('div');
@@ -289,24 +295,11 @@
       cfgBtn.setAttribute('aria-controls', cfgHolder.id);
       cfgBtn.setAttribute('aria-expanded', 'false');
       actions.append(cfgBtn, ' ');
-      // Os filhos pertencem a ESTE agente: ficam dentro dele, não numa lista solta na página. A contagem
-      // no rótulo evita o pior dos dois mundos — abrir para descobrir que está vazio, ou não abrir e não
-      // saber que havia um esperando autorização.
-      const kidsHolder = document.createElement('div');
-      kidsHolder.id = 'kids-' + a.folderId;
-      kidsHolder.hidden = true;
-      const kidsBtn = button('Child projects' + (a.children ? ' (' + a.children + ')' : ''), () => {
-        kidsHolder.hidden = !kidsHolder.hidden;
-        kidsBtn.setAttribute('aria-expanded', String(!kidsHolder.hidden));
-        if (!kidsHolder.hidden) { loadChildren(a.folderId, kidsHolder); reveal(kidsHolder); }
-      });
-      kidsBtn.setAttribute('aria-controls', kidsHolder.id);
-      kidsBtn.setAttribute('aria-expanded', 'false');
-      actions.append(kidsBtn, ' ');
+
       if (i > 0) actions.append(button('Make default', () => call('makeDefault', a.folderId).then(render)), ' ');
       actions.append(button('Remove', () => call('removeAgent', a.folderId).then(render)));
       row.append(folder, actions);
-      box.append(row, holder, promptHolder, cfgHolder, kidsHolder);
+      box.append(row, holder, promptHolder, cfgHolder);
       return box;
     }));
   }
@@ -799,15 +792,16 @@
   // P24 que mediu esse portão. O que a tela faz é mostrar O QUE O FILHO PEDE e levar o dono até lá.
   const CHILD_STATE_CLASS = { authorized: 'badge', 'needs-consent': 'badge gasclaw', 'not-deployed': 'badge', unknown: 'badge' };
 
-  function showChildren(x, holder) {
+  function showChildren(x) {
     const list = x.children || [];
-    if (!list.length) {
-      holder.replaceChildren(el('p', { className: 'muted', textContent: 'No child project yet. One shows up here when this agent creates a specialist.' }));
-      return;
-    }
-    holder.replaceChildren(el('p', { className: 'muted', textContent: 'Google will not let a child run until you authorize it — one click each, once. Read what it is asking for before you allow it.' }), ...list.map((c) => {
+    // Sem filho, nada aparece: uma seção vazia permanente ensina menos que a ausência dela.
+    [...document.querySelectorAll('[data-child]')].forEach((n) => n.remove());
+    $('agents').append(...list.map((c) => {
       const box = el('div', { className: 'limit' });
-      box.append(el('div', { className: 'row' }, el('strong', { textContent: c.title }), el('span', { className: CHILD_STATE_CLASS[c.state] || 'badge', textContent: c.stateLabel })));
+      box.dataset.child = c.scriptId;
+      const nome = el('span', {}, el('strong', { textContent: c.title }), ' ', el('span', { className: 'badge', textContent: 'child project' }));
+      box.append(el('div', { className: 'row' }, nome, el('span', { className: CHILD_STATE_CLASS[c.state] || 'badge', textContent: c.stateLabel })));
+      box.append(el('p', { className: 'muted', textContent: 'A child is an Apps Script project of its own, not a folder — it has no prompt or tools here. Google will not let it run until you authorize it: one click, once.' }));
       if (c.reason) box.append(el('p', { className: 'muted', textContent: 'Why it exists: ' + c.reason }));
       // O que ele PEDE é a informação que torna o consentimento informado. Vem antes do botão, de propósito.
       box.append(el('p', { className: 'muted', textContent: 'It is asking for: ' + (c.scopes.length ? c.scopes.join(' · ') : '(no scope declared)') }));
@@ -824,14 +818,14 @@
       acoes.append(editor);
       // "Forget" não apaga nada no Google. Dizer isso é parte do controle: um botão que parece apagar e
       // não apaga deixaria o dono achando que se livrou de um projeto que continua lá.
-      acoes.append(button('Forget it here', () => call('forgetChild', c.scriptId, x.folderId).then((r) => showChildren(r, holder))));
+      acoes.append(button('Forget it here', () => call('forgetChild', c.scriptId).then(showChildren)));
       box.append(acoes, el('p', { className: 'muted', textContent: 'Forgetting only removes it from this list. The project stays in your Google account until you delete it there.' }));
       return box;
     }));
   }
-  function loadChildren(folderId, holder) {
-    holder.textContent = 'Checking with Google…'; // conferir custa uma chamada por filho: só ao abrir
-    quiet('listChildren', folderId).then((x) => showChildren(x, holder)).catch((e) => { holder.textContent = 'Child projects unavailable: ' + e.message; });
+  // Conferir a autorização custa uma chamada por filho, então roda junto do desenho da lista, não em laço.
+  function loadChildren() {
+    quiet('listChildren').then(showChildren).catch(() => {}); // lista de agentes não cai por causa de um filho
   }
 
   // ----- Balão do gráfico: o valor por modelo sem precisar abrir a tabela -----

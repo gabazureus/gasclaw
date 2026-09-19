@@ -768,13 +768,7 @@ export function settingsState() {
   observe.maybeDrain(); // fallback sem gatilho ao abrir a tela
   const props = PropertiesService.getScriptProperties();
   const cliSecretAt = props.getProperty('CLI_SECRET_AT');
-  // Quantos filhos cada agente tem. É CONTAGEM, não conferência: ler a Property custa nada, enquanto
-  // perguntar ao Google se cada filho está autorizado custa uma chamada por filho — isso só acontece
-  // quando o dono ABRE a lista. A contagem no botão evita abrir para descobrir que está vazio.
-  const filhos = parseChildren(props.getProperty('CHILDREN'));
-  const orfaos = filhos.filter((c) => !c.parent).length + (props.getProperty('P24_CHILD') ? 1 : 0);
-  const agents = store.listAgents().map((a, i) => ({ ...a, children: filhos.filter((c) => c.parent === a.folderId).length + (i === 0 ? orfaos : 0) }));
-  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents, appUrl: appUrl(), scriptUrl: scriptUrl(), env: panelEnv(), cliSecretAt, auth: authStatus() };
+  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents: store.listAgents(), appUrl: appUrl(), scriptUrl: scriptUrl(), env: panelEnv(), cliSecretAt, auth: authStatus() };
 }
 
 /** P21: ambiente já normalizado (desconhecido conta como prod), para o rótulo do cabeçalho. */
@@ -1118,11 +1112,10 @@ export function listChildren(folderId?: string) {
   // a ponta hoje, em vez de uma seção vazia que ninguém sabe se funciona.
   const poc = props.getProperty('P24_CHILD');
   const todos: Child[] = poc && !list.some((c) => c.scriptId === poc) ? [...list, { scriptId: poc, title: 'POC P24 child project', url: props.getProperty('P24_URL'), scopes: ['https://www.googleapis.com/auth/calendar.events'], parent: null, reason: 'created by the P24 measurement', at: 0 }] : list;
-  // Um filho pertence ao agente que o criou; a lista mora DENTRO do agente, não solta na página.
-  // Filho sem pai (o da POC, ou um órfão depois de o pai ser removido) aparece no agente padrão — some
-  // da tela seria pior: ele continua existindo na conta do dono, gastando nada mas ocupando lugar.
-  const padrao = store.listAgents()[0];
-  const meus = folderId ? todos.filter((c) => c.parent === folderId || (!c.parent && padrao && padrao.folderId === folderId)) : todos;
+  // A lista é PLANA: agente e filho aparecem um embaixo do outro, e o vínculo é marcador, não
+  // hierarquia. Um filho pode SUCEDER e virar o principal — aninhar exigiria redesenhar a árvore a cada
+  // sucessão, e descreveria como permanente uma relação que é temporária.
+  const meus = folderId ? todos.filter((c) => c.parent === folderId) : todos;
   return {
     folderId: folderId ?? null,
     children: meus.map((c) => {

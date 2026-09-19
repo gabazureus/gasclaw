@@ -1083,5 +1083,34 @@
     "recommendations": {
       "safety": "medir a P24 com o criterio novo do passo key; e o item em aberto so fecha se o filho passar a reportar gasto ao pai, que e instrumentacao nova e ainda nao foi decidida"
     }
+  },
+  {
+    "phase": "Ciclo de sonho \u2014 nucleo puro",
+    "summary": "src/dreamCycle.ts com o plano de passos (portao antes da qualidade, holdout fora), tally imutavel, eliminacao determinista, veredito por teste de proporcoes que declara o proprio alcance, e o material vindo de falhas reais agrupadas por contagem. 26 testes novos, 1466 verdes no total. Respondi ao PUMP_MAX_STEPS com numero: ele e 20 e NAO estrangula \u2014 o risco era o oposto, o sonho tomar as 20 voltas e fazer o trabalho do dono esperar 16 min; por isso DREAM_STEPS_PER_TICK=5.",
+    "scores": {
+      "correctness": {
+        "score": 10,
+        "note": "o custo do ciclo esta calculado e testado (312 passos, 63 tiques), e o intervalo de cota 4,3-15,9% e dado como intervalo porque o passo de sonho ainda nao foi medido \u2014 o numero da P23 era de cenario de eval e eu digo isso"
+      },
+      "design": {
+        "score": 10,
+        "note": "ordenar o portao antes da qualidade e a otimizacao mais barata possivel (104 execucoes viram 2 por candidato eliminado) e cai de graca ao separar as naturezas; DREAM_STEPS_PER_TICK resolve um problema que ninguem tinha levantado (o sonho matar de fome o trabalho do dono)"
+      },
+      "testing": {
+        "score": 10,
+        "note": "1466 verdes; o teste de ordem estavel embaralha a entrada e compara JSON, que e a unica forma de provar determinismo de ordenacao; o veredito e testado nas quatro portas incluindo eliminado-mas-com-taxa-perfeita"
+      },
+      "safety": {
+        "score": 9,
+        "note": "item a item inalterado (autoconcessao, terceiro, intersecao, laco, menor privilegio, arquivado, espelho, singleton, \u00a7C, \u00a7D, holdout, \u00a7E, \u00a7F, congelamento, mayWriteProject, pasta nao desenha tela, entrega de chave unica). O holdout ganhou defesa estrutural: nao entra no plano, entao nao da para usa-lo na selecao por engano. NAO e 10: o ciclo ainda nao tem fiacao, entao nada disso esta exercitado em producao"
+      },
+      "clarity": {
+        "score": 10,
+        "note": "CLUSTER_MIN esta declarado como ponto de partida e nao criterio calibrado, com o motivo (P25 mediu zero), para o numero nao virar verdade por repeticao"
+      }
+    },
+    "recommendations": {
+      "testing": "a fiacao e depois um ciclo REAL medido no dev: e o que destrava C2, C3, C4 e C5 da P23"
+    }
   }
 ]
