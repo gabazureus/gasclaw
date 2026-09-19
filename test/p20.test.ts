@@ -27,7 +27,7 @@ describe('P20: aprovação durável (núcleo puro)', () => {
 
   test('C2: terceiro é recusado sem consumir nem rotacionar', () => {
     const before = waiting();
-    expect(redeemGrant(before, HASH, 'terceiro@x.com', { approved: true }, NOW + 1, NEXT_HASH)).toEqual({ kind: 'rejected', error: 'só quem fez o pedido pode responder', run: before });
+    expect(redeemGrant(before, HASH, 'terceiro@x.com', { approved: true }, NOW + 1, NEXT_HASH)).toEqual({ kind: 'rejected', error: 'only the person who made the request can answer it', run: before });
   });
 
   test('C3: run já consumido recusa clique duplo', () => {
@@ -55,7 +55,7 @@ describe('P20: aprovação durável (núcleo puro)', () => {
   test('falha fechada para relógio inválido ou anterior à emissão', () => {
     expect(redeemGrant(waiting(), HASH, 'dono@x.com', { approved: true }, Number.NaN, NEXT_HASH).kind).toBe('rejected');
     expect(redeemGrant(waiting(), HASH, 'dono@x.com', { approved: true }, NOW - 1, NEXT_HASH).kind).toBe('rejected');
-    expect(() => issueGrant(pending, 'dono@x.com', HASH, Number.POSITIVE_INFINITY)).toThrow('credencial');
+    expect(() => issueGrant(pending, 'dono@x.com', HASH, Number.POSITIVE_INFINITY)).toThrow('invalid approval credential');
   });
 });
 

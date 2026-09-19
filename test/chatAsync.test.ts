@@ -36,7 +36,7 @@ describe('entrada assincrona do Google Chat', () => {
 
     const out = acceptChatMessage(message(), d);
 
-    expect(out).toEqual({ text: 'pensando...', markupSyntax: 'MARKUP_SYNTAX_MARKDOWN' });
+    expect(out).toEqual({ text: 'thinking…', markupSyntax: 'MARKUP_SYNTAX_MARKDOWN' });
     expect(enqueue).toHaveBeenCalledOnce();
     expect(enqueue.mock.calls[0][0]).toMatchObject({
       runId: 'spaces/AAA/messages/M1',
@@ -68,40 +68,40 @@ describe('entrada assincrona do Google Chat', () => {
       load: () => ({ name: 'Assistente', folderId: 'f1', system: '', config: { model: 'modelo', suggested: { users: [], tools: [] } }, access: { users: ['outra@x.com'], tools: [] } }),
     });
     const out = acceptChatMessage({ ...message(), user: { email: 'ana@x.com' } }, d);
-    expect(out.text).toContain('não tem acesso');
+    expect(out.text).toContain('do not have access');
     expect(enqueue).not.toHaveBeenCalled();
   });
 
   test('mensagem vazia nao cria run', () => {
     const { d, enqueue } = deps();
-    expect(acceptChatMessage(message('   '), d).text).toContain('Mande um texto');
+    expect(acceptChatMessage(message('   '), d).text).toContain('Send me some text');
     expect(enqueue).not.toHaveBeenCalled();
   });
 });
 
-describe('"pensando..." vai para o fluxo do espaco, nao para a thread da pergunta', () => {
+describe('"thinking…" vai para o fluxo do espaco, nao para a thread da pergunta', () => {
   test('publica pela Chat API no espaco e nao responde nada de forma sincrona', () => {
     const postToSpace = vi.fn(() => true);
     const { d } = deps({ postToSpace });
     const out = acceptChatMessage(message() as never, d);
 
-    expect(postToSpace).toHaveBeenCalledWith('spaces/AAA', 'pensando...', UUID);
+    expect(postToSpace).toHaveBeenCalledWith('spaces/AAA', 'thinking…', UUID);
     expect(out).toEqual({}); // resposta sincrona vazia: o Chat nao cria nada dentro da thread
   });
 
-  test('se a publicacao falhar, cai no "pensando..." sincrono em vez de deixar sem resposta', () => {
+  test('se a publicacao falhar, cai no "thinking…" sincrono em vez de deixar sem resposta', () => {
     const { d } = deps({ postToSpace: () => false });
-    expect(acceptChatMessage(message() as never, d).text).toBe('pensando...');
+    expect(acceptChatMessage(message() as never, d).text).toBe('thinking…');
   });
 
   test('excecao na publicacao tambem cai no fallback', () => {
     const { d } = deps({ postToSpace: () => { throw new Error('sem escopo'); } });
-    expect(acceptChatMessage(message() as never, d).text).toBe('pensando...');
+    expect(acceptChatMessage(message() as never, d).text).toBe('thinking…');
   });
 
   test('sem postToSpace (canal que nao suporta) continua respondendo sincrono', () => {
     const { d } = deps();
-    expect(acceptChatMessage(message() as never, d).text).toBe('pensando...');
+    expect(acceptChatMessage(message() as never, d).text).toBe('thinking…');
   });
 
   test('o run e enfileirado e a entrega final nao carrega thread', () => {

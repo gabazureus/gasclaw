@@ -31,26 +31,26 @@ const response = (text: string): ChatReply => ({ text: safeChatMarkdown(text), m
  */
 function acknowledge(space: string, d: ChatAsyncDeps): ChatReply {
   try {
-    if (d.postToSpace?.(space, 'pensando...', d.uuid())) return {};
+    if (d.postToSpace?.(space, 'thinking…', d.uuid())) return {};
   } catch {
     // rede, escopo ou app indisponivel: nao deixa o evento sem resposta
   }
-  return response('pensando...');
+  return response('thinking…');
 }
 
 /** Aceita o evento dentro da janela do Chat; modelo e tools rodam somente no worker. */
 export function acceptChatMessage(e: ChatEvent, d: ChatAsyncDeps): ChatReply {
-  if (!d.enabled()) return response('O gasclaw está pausado pelo administrador.');
+  if (!d.enabled()) return response('gasclaw is paused by the administrator.');
   const entry = d.defaultAgent();
-  if (!entry) return response('Nenhum agente configurado. Abra a tela gasclaw e cole a URL de uma pasta do Drive.');
-  if (!d.apiKey()) return response('Falta a chave do OpenRouter. Cole-a na tela gasclaw.');
+  if (!entry) return response('No agent set up yet. Open the gasclaw panel and paste the URL of a Drive folder.');
+  if (!d.apiKey()) return response('The OpenRouter key is missing. Paste it into the gasclaw panel.');
   const text = (e.message?.argumentText ?? e.message?.text ?? '').trim();
-  if (!text) return response('Mande um texto para eu responder.');
+  if (!text) return response('Send me some text and I will answer.');
 
   try {
     const owner = d.owner();
     const spec = d.load(entry.folderId);
-    if (!canUse(spec.access, e.user.email, owner)) return response(`Você (${e.user.email}) não tem acesso ao agente ${spec.name}.`);
+    if (!canUse(spec.access, e.user.email, owner)) return response(`You (${e.user.email}) do not have access to agent ${spec.name}.`);
 
     const now = d.clock();
     const runId = e.message?.name ?? `chat-${d.uuid()}`;
@@ -73,6 +73,6 @@ export function acceptChatMessage(e: ChatEvent, d: ChatAsyncDeps): ChatReply {
     return acknowledge(e.space.name, d);
   } catch (err) {
     const message = redact(String((err as Error)?.message ?? err));
-    return response(`Não consegui iniciar a tarefa agora: ${message}`);
+    return response(`I could not start the task right now: ${message}`);
   }
 }

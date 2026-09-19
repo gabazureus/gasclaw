@@ -112,11 +112,11 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
     const body: ChatReply = markdown ? { text: safeChatMarkdown(text), markupSyntax: CHAT_MARKUP_SYNTAX } : { text };
     return click ? { actionResponse: { type: 'UPDATE_MESSAGE' }, cardsV2: [], ...body, ...extra } : { ...body, ...extra };
   };
-  if (!d.enabled()) return reply('O gasclaw está pausado pelo administrador.');
+  if (!d.enabled()) return reply('gasclaw is paused by the administrator.');
   const entry = d.defaultAgent();
-  if (!entry) return reply('Nenhum agente configurado. Abra a tela gasclaw e cole a URL de uma pasta do Drive.');
+  if (!entry) return reply('No agent set up yet. Open the gasclaw panel and paste the URL of a Drive folder.');
   const key = d.apiKey();
-  if (!key) return reply('Falta a chave do OpenRouter. Cole-a na tela gasclaw.');
+  if (!key) return reply('The OpenRouter key is missing. Paste it into the gasclaw panel.');
   try {
     const loaded = d.load(entry.folderId);
     const spec = withChatFormatRules(loaded, markdown);
@@ -135,21 +135,21 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
     let resume: TurnInput['resume'];
     const askToken = !click && typed ? (d.tickets?.open?.(hk) ?? null) : null;
     if (click || askToken) {
-      if (!d.tickets) return reply('Aprovação indisponível neste gasclaw.');
+      if (!d.tickets) return reply('Approval is not available in this gasclaw.');
       const params = click ? (e.common?.parameters ?? {}) : { answer: typed };
       const r = redeem(d.tickets, click ? (params.token ?? '') : askToken!, e.user.email, start);
       if (r.ok) {
         const decision = r.ticket.session === hk ? decisionFrom(r.ticket.pending, params) : null;
         if (!decision) {
           d.tickets.put(r.ticket);
-          return reply('Resposta inválida para este pedido.');
+          return reply('That is not a valid answer for this request.');
         }
         ticket = r.ticket;
         resume = { ...ticket.state, decision };
-      } else if (click) return reply(`Não dá para responder: ${r.error}.`);
+      } else if (click) return reply(`Cannot answer this: ${r.error}.`);
       // ask aberto de outra pessoa: segue como mensagem comum
     }
-    if (!ticket && !typed) return reply('Mande um texto para eu responder.');
+    if (!ticket && !typed) return reply('Send me some text and I will answer.');
 
     const text = ticket?.text ?? typed;
     const history = d.history(hk); // na retomada também: mensagens trocadas enquanto a aprovação esperava não se perdem
@@ -171,7 +171,7 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
     });
     d.onTurn?.(out);
     if (out.pending && out.state) {
-      if (!d.tickets || !d.newToken) return reply('Esta ação precisa de aprovação, que ainda não está ligada neste gasclaw.');
+      if (!d.tickets || !d.newToken) return reply('This action needs approval, which is not switched on in this gasclaw yet.');
       // O system prompt fica fora do ticket (tamanho do cache); na retomada vem do agente atual.
       const state = { ...out.state, messages: out.state.messages.slice(1) };
       const t = issue({ user: e.user.email, session: hk, text, history, state, pending: out.pending, granted: out.granted, done: out.done, runId, folderId: entry.folderId, ownerDm, prompt: out.text }, d.newToken(), start);
@@ -187,6 +187,6 @@ export function handleChat(e: ChatEvent, d: ChatDeps): ChatReply {
     return reply(out.text);
   } catch (err) {
     console.error('chat', redact(String((err as Error)?.stack ?? err))); // corpo de erro HTTP pode ecoar chave
-    return reply(`Não consegui responder agora: ${redact(String((err as Error)?.message ?? err))}`); // chega a qualquer usuário do agente
+    return reply(`I could not answer right now: ${redact(String((err as Error)?.message ?? err))}`); // chega a qualquer usuário do agente
   }
 }

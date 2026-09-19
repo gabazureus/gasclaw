@@ -65,17 +65,17 @@ describe('handleChat', () => {
   test('usuário não autorizado é recusado sem chamar o LLM', () => {
     let called = false;
     const r = handleChat(msg('bob@x.com'), deps({ llm: () => ((called = true), { text: 'x' }) }));
-    expect(r.text).toContain('não tem acesso');
+    expect(r.text).toContain('do not have access');
     expect(called).toBe(false);
   });
   test('users só sugerido pela pasta, sem aprovação no painel: recusado (ADR-021)', () => {
     const r = handleChat(msg('ana@x.com'), deps({ load: () => buildSpec('f1', 'A', { AGENTS: '---\nusers: [ana@x.com]\n---\nRegras' }) }));
-    expect(r.text).toContain('não tem acesso');
+    expect(r.text).toContain('do not have access');
     expect(handleChat(msg('dono@x.com'), deps({ load: () => buildSpec('f1', 'A', { AGENTS: '---\nusers: [ana@x.com]\n---\nRegras' }) })).text).toBe('olá');
   });
-  test('kill switch desligado', () => expect(handleChat(msg('ana@x.com'), deps({ enabled: () => false })).text).toContain('pausado'));
-  test('sem agente configurado', () => expect(handleChat(msg('dono@x.com'), deps({ defaultAgent: () => null })).text).toContain('Nenhum agente'));
-  test('sem chave', () => expect(handleChat(msg('dono@x.com'), deps({ apiKey: () => null })).text).toContain('chave do OpenRouter'));
+  test('kill switch desligado', () => expect(handleChat(msg('ana@x.com'), deps({ enabled: () => false })).text).toContain('paused by the administrator'));
+  test('sem agente configurado', () => expect(handleChat(msg('dono@x.com'), deps({ defaultAgent: () => null })).text).toContain('No agent set up yet'));
+  test('sem chave', () => expect(handleChat(msg('dono@x.com'), deps({ apiKey: () => null })).text).toContain('OpenRouter key is missing'));
   test('toolkit: DM do dono recebe tools + memória; espaço não lê a memória', () => {
     const seen: { msgs: Message[]; defs: number }[] = [];
     let reads = 0;
@@ -157,7 +157,7 @@ describe('handleChat: aprovação e ask (E5)', () => {
   test('pendência vira card; nada executa e o histórico não é salvo ainda', () => {
     const { d, mem, data } = setup([call('memory_remove', '{"text":"café"}')]);
     const r = handleChat(dm('apague o café'), d);
-    expect(r.text).toBe('Esta ação precisa de aprovação.');
+    expect(r.text).toBe('This action needs your approval.');
     expect(JSON.stringify(r.cardsV2)).toContain('memory.remove');
     expect(tokenOf(r)).toHaveLength(32);
     expect(mem.text).toBe('- prefiro café\n');
@@ -182,7 +182,7 @@ describe('handleChat: aprovação e ask (E5)', () => {
     handleChat(click(token, { decision: 'approve' }), d);
     mem.text = '- prefiro café\n';
     const r = handleChat(click(token, { decision: 'approve' }), d);
-    expect(r.text).toContain('já foi respondido');
+    expect(r.text).toContain('already answered');
     expect(mem.text).toBe('- prefiro café\n');
   });
 
@@ -206,7 +206,7 @@ describe('handleChat: aprovação e ask (E5)', () => {
   test('clique de outra pessoa é recusado sem consumir o pedido', () => {
     const { d, mem } = setup([call('memory_remove', '{"text":"café"}'), { text: 'Removi.' }]);
     const token = tokenOf(handleChat(dm('apague o café'), d));
-    expect(handleChat(click(token, { decision: 'approve' }, 'ana@x.com'), d).text).toContain('só quem fez');
+    expect(handleChat(click(token, { decision: 'approve' }, 'ana@x.com'), d).text).toContain('only the person who made');
     expect(handleChat(click(token, { decision: 'approve' }), d).text).toBe('Removi.');
     expect(mem.text).toBe('');
   });
@@ -214,7 +214,7 @@ describe('handleChat: aprovação e ask (E5)', () => {
   test('ask sem opções: a próxima mensagem do mesmo usuário é a resposta', () => {
     const { d, sent } = setup([call('ask', '{"question":"Qual sala?"}'), { text: 'Reservei a B.' }]);
     const question = handleChat(dm('reserve uma sala'), d);
-    expect(question.text).toBe('Pergunta do agente.');
+    expect(question.text).toBe('The agent has a question.');
     expect(JSON.stringify(question.cardsV2)).toContain('Qual sala?');
     expect(handleChat(dm('B'), d).text).toBe('Reservei a B.');
     expect(sent[1][sent[1].length - 1]).toEqual({ role: 'tool', tool_call_id: 'c1', content: 'resposta do usuário: B' });
@@ -222,7 +222,7 @@ describe('handleChat: aprovação e ask (E5)', () => {
 
   test('sem store de tickets: pendência vira aviso, nunca execução', () => {
     const { d, mem } = setup([call('memory_remove', '{"text":"café"}')], false);
-    expect(handleChat(dm('apague o café'), d).text).toContain('aprovação');
+    expect(handleChat(dm('apague o café'), d).text).toContain('needs approval');
     expect(mem.text).toBe('- prefiro café\n');
   });
 });

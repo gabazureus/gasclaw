@@ -91,7 +91,7 @@ describe('handleChat com usuário aprovado que não é o dono', () => {
     const card = handleChat(msg('dono@x.com', 'envie'), d);
     const token = JSON.stringify(card.cardsV2).match(/"key":"token","value":"(\w+)"/)![1];
     const r = handleChat({ type: 'CARD_CLICKED', user: { email: 'ana@x.com' }, space, common: { parameters: { token, decision: 'approve' } } }, d);
-    expect(r.text).toContain('só quem fez');
+    expect(r.text).toContain('only the person who made');
     expect(reqs).toHaveLength(0);
   });
 

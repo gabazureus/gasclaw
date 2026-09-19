@@ -2,7 +2,7 @@
 //
 // O build de prod remove o escopo IAM e não embute `CHAT_SA_EMAIL_PROD` (build.mjs:34, gasclaw.env). Mas o
 // caminho assíncrono usava `createAsChatApp` sem nenhuma guarda: publicar em prod deixaria TODA mensagem no
-// "pensando..." para sempre. A escolha agora é por CAPACIDADE — no dia em que a prod tiver a identidade, ela
+// "thinking…" para sempre. A escolha agora é por CAPACIDADE — no dia em que a prod tiver a identidade, ela
 // migra sozinha, sem tocar em código.
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { stubGas, type GasEnv } from './gasEnv';
@@ -31,7 +31,7 @@ describe('onMessage: escolha do caminho por capacidade', () => {
 
     expect(enfileirados(env)).toHaveLength(1); // o worker é quem vai responder
     expect(env.fetched('openrouter.ai')).toHaveLength(0); // nada de LLM dentro dos 30 s do evento
-    expect(env.fetched('chat.googleapis.com')).toHaveLength(1); // "pensando..." publicado no espaço
+    expect(env.fetched('chat.googleapis.com')).toHaveLength(1); // "thinking…" publicado no espaço
     expect(out).toEqual({});
   });
 

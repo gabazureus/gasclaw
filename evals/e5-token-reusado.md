@@ -19,4 +19,4 @@ O token do card é de uso único: o segundo clique no mesmo pedido é recusado.
 
 ## verificações
 - approved: memory.remove
-- includes: já foi respondido
+- includes: already answered

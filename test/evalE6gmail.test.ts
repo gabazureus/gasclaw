@@ -44,7 +44,7 @@ describe('evals do Gmail (E6) com Google falso', () => {
     expect(r.checks.filter((c) => !c.pass)).toEqual([]);
     expect(r.pass).toBe(true);
     expect(reqs.some((q) => q.url.includes('/messages/send'))).toBe(false);
-    expect(r.replies[0]).toContain('aprovação');
+    expect(r.replies[0]).toContain('needs your approval');
     expect(r.cleanup).toEqual({ removed: 1, missing: 0, failed: [] });
   });
 

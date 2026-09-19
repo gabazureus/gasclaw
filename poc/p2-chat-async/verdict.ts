@@ -29,7 +29,7 @@ export function p2Verdict(m: P2Measurement) {
     // Para virar prova de verdade e preciso medir ao vivo a forma da resposta (annotations/formattedText).
     { id: 'C6a-markdown', pass: NAO_PROVA, detail: `NAO PROVA (eco do que enviamos): confirme na tela que saiu **negrito**, nao asteriscos. echo=${m.markdownRendered}` },
     { id: 'C6b-mention', pass: NAO_PROVA, detail: `NAO PROVA (eco do que enviamos): confirme na tela que <users/all> NAO virou mencao ativa. echo=${m.mentionNeutralized}` },
-    { id: 'C6c-inline', pass: m.inlineText === 'pensando...', detail: `resposta imediata=${JSON.stringify(m.inlineText)}` },
+    { id: 'C6c-inline', pass: m.inlineText === 'thinking…', detail: `resposta imediata=${JSON.stringify(m.inlineText)}` },
     { id: 'C6d-inline-30s', pass: m.inlineMs <= 30_000, detail: `${m.inlineMs} ms ate o "pensando..." (teto 30 s)` },
     { id: 'C7-no-secret', pass: m.secretLeaks === 0, detail: `${m.secretLeaks} vazamentos` },
   ];

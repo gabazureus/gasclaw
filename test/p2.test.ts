@@ -12,7 +12,7 @@ const good = (over: Partial<P2Measurement> = {}): P2Measurement => ({
   expectedCard: true,
   markdownRendered: true,
   mentionNeutralized: true,
-  inlineText: 'pensando...',
+  inlineText: 'thinking…',
   inlineMs: 1_200,
   policyExact: true,
   userManagedKeys: 0,

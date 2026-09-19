@@ -42,7 +42,7 @@ describe('chatApiGas: a requisição que realmente sobe', () => {
 
   test('o token do IAM é cunhado uma vez só e reusado (um UrlFetch a menos por envio)', async () => {
     const { createAsChatApp } = await import('../src/chatApiGas');
-    createAsChatApp({ space: 'spaces/AAA', requestId: REQ, message: { text: 'pensando...' } });
+    createAsChatApp({ space: 'spaces/AAA', requestId: REQ, message: { text: 'thinking…' } });
     createAsChatApp({ space: 'spaces/AAA', requestId: REQ, message: { text: 'resposta' } });
 
     expect(env.fetched('iamcredentials.googleapis.com')).toHaveLength(1);

@@ -200,3 +200,59 @@ describe('idioma da CLI (a vitrine é em inglês; comentário de código continu
     expect(isPortuguese(quotedParts('printf "%s" "$conta"')[1] ?? '')).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------------------------------
+// A trava acima lê SÓ o arquivo `gasclaw`. Por isso passou despercebido português em `src/chat.html`, em
+// `src/approval.ts` (o card de aprovação inteiro), na saudação do `src/chat.ts` e no `runAsk` do
+// `src/main.ts` — tudo texto que chega ao usuário final, numa instalação real, em produção.
+//
+// Cobrir `src/**` inteiro de uma vez não dá: o `main.ts` ainda tem dezenas de mensagens em pt-BR e o texto
+// do trace é pt-BR de propósito. Então a cobertura é uma LISTA EXPLÍCITA, e crescer é acrescentar arquivo
+// a ela — o teste diz a verdade sobre o que cobre, em vez de fingir cobrir tudo.
+//
+// Só o que está entre aspas conta, como no bash: comentário de código continua em pt-BR (CLAUDE.md) e há
+// identificador em pt-BR (`nota`, `pessoal`) que não é prosa.
+const COBERTOS = ['src/approval.ts', 'src/chat.ts', 'src/chatAsync.ts', 'src/chat.html', 'src/hub.html'];
+
+// Nome próprio mantém o acento: "São Paulo" é o fuso do painel, não português traduzível.
+const NOMES_PROPRIOS = /São Paulo/;
+
+function stringsDe(arquivo: string): { n: number; texto: string }[] {
+  const out: { n: number; texto: string }[] = [];
+  readFileSync(arquivo, 'utf8')
+    .split('\n')
+    .forEach((linha, i) => {
+      if (/^\s*(\/\/|\*|\/\*)/.test(linha)) return;
+      const semComentario = withoutComment(linha);
+      for (const bruto of semComentario.match(/"[^"]*"|'[^']*'|`[^`]*`/g) ?? []) {
+        const texto = bruto.slice(1, -1).replace(/\$\{[^}]*\}/g, ' ').replace(NOMES_PROPRIOS, ' ');
+        if (texto.trim()) out.push({ n: i + 1, texto });
+      }
+    });
+  return out;
+}
+
+describe('idioma fora do gasclaw: o que chega ao usuário no produto', () => {
+  test.each(COBERTOS)('%s não tem português na saída para humano', (arquivo) => {
+    const found = stringsDe(arquivo)
+      .filter(({ texto }) => isPortuguese(texto))
+      .map(({ n, texto }) => `  ${n}: ${texto.slice(0, 100)}`);
+    expect(found.length === 0 ? '' : `${arquivo}: ${found.length} string(s) em pt-BR:\n${found.join('\n')}`).toBe('');
+  });
+
+  // Sem isto, alguém "conserta" a trava esvaziando a lista e ela passa a aprovar tudo em silêncio.
+  test('a lista de cobertura não encolhe sem alguém perceber', () => {
+    expect(COBERTOS).toContain('src/approval.ts');
+    expect(COBERTOS).toContain('src/chat.ts');
+    expect(COBERTOS.length).toBeGreaterThanOrEqual(5);
+    for (const f of COBERTOS) expect(readFileSync(f, 'utf8').length, `${f} sumiu`).toBeGreaterThan(100);
+  });
+
+  // O detector precisa achar português NESTE formato também (template literal, atributo de HTML).
+  test('o detector funciona no formato destes arquivos', () => {
+    expect(isPortuguese('Esta ação precisa de aprovação')).toBe(true);
+    expect(isPortuguese('O gasclaw está pausado pelo administrador')).toBe(true);
+    expect(isPortuguese('This action needs your approval')).toBe(false);
+    expect(isPortuguese('gasclaw is paused by the administrator')).toBe(false);
+  });
+});

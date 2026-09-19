@@ -323,7 +323,7 @@ function durableChatClick(e: ChatEvent): ChatReply {
   const io = runIO();
   const replacement = newToken();
   const out = decideChatApproval(io, p, e.user.email, replacement, Date.now());
-  if (out.kind === 'rejected') return { text: `Não dá para responder: ${out.error}.` }; // mantém o card de outra pessoa intacto
+  if (out.kind === 'rejected') return { text: `Cannot answer this: ${out.error}.` }; // mantém o card de outra pessoa intacto
   if (out.kind === 'refreshed') return updateCard(approvalCard({ token: replacement, pending: out.run.pending!, folderId: out.run.folderId, runId: out.run.runId }, out.run.answer ?? 'Esta ação ainda precisa da sua aprovação.'));
   const done = pumpById(stepDeps(CHAT_BUDGET_MS), out.run.runId) ?? out.run;
   if (done.status === 'waiting' && done.pending?.kind === 'approval') {

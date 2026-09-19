@@ -29,23 +29,23 @@ describe('tickets de aprovação (uso único, 10 min)', () => {
     const s = memStore();
     s.put(issue(base, TOKEN, 0));
     expect(redeem(s, TOKEN, 'DONO@x.com', 10)).toMatchObject({ ok: true, ticket: { token: TOKEN } });
-    expect(redeem(s, TOKEN, 'dono@x.com', 11)).toEqual({ ok: false, error: 'este pedido já foi respondido ou expirou' });
+    expect(redeem(s, TOKEN, 'dono@x.com', 11)).toEqual({ ok: false, error: 'this request was already answered, or it expired' });
   });
   test('redeem: expirado após 10 min', () => {
     const s = memStore();
     s.put(issue(base, TOKEN, 0));
-    expect(redeem(s, TOKEN, 'dono@x.com', TICKET_TTL_MS + 1)).toEqual({ ok: false, error: 'este pedido expirou (10 min): peça de novo' });
+    expect(redeem(s, TOKEN, 'dono@x.com', TICKET_TTL_MS + 1)).toEqual({ ok: false, error: 'this request expired (10 min): ask again' });
   });
   test('redeem: outra pessoa não responde e não consome o pedido', () => {
     const s = memStore();
     s.put(issue(base, TOKEN, 0));
-    expect(redeem(s, TOKEN, 'ana@x.com', 1)).toEqual({ ok: false, error: 'só quem fez o pedido pode responder' });
+    expect(redeem(s, TOKEN, 'ana@x.com', 1)).toEqual({ ok: false, error: 'only the person who made the request can answer it' });
     expect(redeem(s, TOKEN, 'dono@x.com', 2).ok).toBe(true);
   });
   test('redeem: token malformado nem consulta o store', () => {
     let touched = false;
     const s: TicketStore = { put: () => {}, take: () => ((touched = true), null) };
-    expect(redeem(s, 'x"; drop', 'dono@x.com', 1)).toEqual({ ok: false, error: 'pedido inválido' });
+    expect(redeem(s, 'x"; drop', 'dono@x.com', 1)).toEqual({ ok: false, error: 'invalid request' });
     expect(touched).toBe(false);
   });
 });
@@ -69,16 +69,16 @@ describe('approvalCard (Chat cardsV2)', () => {
   const buttons = (m: ReturnType<typeof approvalCard>) => m.cardsV2[0].card.sections[0].widgets.flatMap((w) => ('buttonList' in w ? w.buttonList.buttons : []));
   test('aprovação: Aprovar e Negar chamam onCardClick com token e decisão; texto escapado', () => {
     const m = approvalCard(issue(base, TOKEN, 0), 'Posso usar <b>memory.remove</b>?');
-    expect(m.text).toBe('Esta ação precisa de aprovação.');
+    expect(m.text).toBe('This action needs your approval.');
     const [yes, no] = buttons(m);
-    expect(yes.text).toBe('Aprovar');
+    expect(yes.text).toBe('Approve');
     expect(yes.onClick.action).toEqual({ function: 'onCardClick', parameters: [{ key: 'token', value: TOKEN }, { key: 'decision', value: 'approve' }] });
     expect(no.onClick.action.parameters[1]).toEqual({ key: 'decision', value: 'deny' });
     expect(JSON.stringify(m.cardsV2)).toContain('&lt;b&gt;');
   });
   test('card mantém texto não confiável literal em HTML escapado, sem interpretar Markdown', () => {
     const m = approvalCard(issue(base, TOKEN, 0), '[site inocente](https://destino-real.example) <b>forte</b>');
-    expect(m.text).toBe('Esta ação precisa de aprovação.');
+    expect(m.text).toBe('This action needs your approval.');
     expect(m.text).not.toContain('destino-real');
     expect(m.cardsV2[0].card.sections[0].widgets[0]).toEqual({
       textParagraph: { text: '[site inocente](https://destino-real.example) &lt;b&gt;forte&lt;/b&gt;' },
@@ -86,7 +86,7 @@ describe('approvalCard (Chat cardsV2)', () => {
   });
   test('ask com opções: um botão por opção (answer)', () => {
     const m = approvalCard(issue({ ...base, pending: askP }, TOKEN, 0), 'Qual sala?');
-    expect(m.text).toBe('Pergunta do agente.');
+    expect(m.text).toBe('The agent has a question.');
     expect(buttons(m).map((b) => [b.text, b.onClick.action.parameters[1]])).toEqual([
       ['A', { key: 'answer', value: 'A' }],
       ['B', { key: 'answer', value: 'B' }],
