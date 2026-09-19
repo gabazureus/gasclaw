@@ -6,10 +6,12 @@
 // que não está autorizado. Dizer ao dono que um filho está liberado quando ele não está é pior do que
 // não mostrar nada: ele pararia de procurar o botão.
 import { describe, expect, test } from 'vitest';
-import { AUTH_LABEL, authState, parseChild, parseChildren, serializeChildren, withChild, withoutChild, type Child } from '../src/children';
+import { AUTH_LABEL, authState, KIND_LABEL, KIND_WHAT, parseChild, parseChildren, serializeChildren, withChild, withoutChild, type Child } from '../src/children';
 
 const filho = (o: Partial<Child> = {}): Child => ({
   scriptId: 'abc123',
+  kind: 'subagent',
+  folderId: 'pasta-do-filho',
   title: 'agenda specialist',
   url: 'https://script.google.com/macros/s/x/exec',
   scopes: ['https://www.googleapis.com/auth/calendar.events'],
@@ -71,6 +73,32 @@ describe('parseChild: só entra o que permite o dono decidir', () => {
 
   test('sem título, o scriptId serve de nome — melhor que uma linha em branco na tela', () => {
     expect(parseChild({ scriptId: 'zzz' })?.title).toBe('zzz');
+  });
+});
+
+// A distinção que decide se há CREDENCIAL em jogo: automação é só código e nunca fala com modelo, logo
+// nunca precisa da chave. Sub-agente tem pasta e conversa, e só ele precisa. Errar o tipo para o lado da
+// automação é errar para o lado seguro — por isso o parse é fail-closed nele.
+describe('tipo do filho: automação x sub-agente', () => {
+  test('o que não se declara sub-agente é automação', () => {
+    for (const bruto of [{ scriptId: 'a' }, { scriptId: 'a', kind: 'agent' }, { scriptId: 'a', kind: 42 }]) {
+      expect(parseChild(bruto)?.kind).toBe('automation');
+    }
+  });
+
+  test('automação NÃO tem pasta, mesmo que alguém declare uma', () => {
+    expect(parseChild({ scriptId: 'a', kind: 'automation', folderId: 'pasta' })?.folderId).toBeNull();
+  });
+
+  test('sub-agente guarda a pasta dele', () => {
+    expect(parseChild({ scriptId: 'a', kind: 'subagent', folderId: 'pasta' })?.folderId).toBe('pasta');
+  });
+
+  test('o texto de cada tipo diz o que muda: chave ou nenhuma chave', () => {
+    expect(KIND_WHAT.automation).toMatch(/no API key/i);
+    expect(KIND_WHAT.subagent).toMatch(/needs the API key/i);
+    expect(KIND_LABEL.automation).toBe('automation');
+    expect(KIND_LABEL.subagent).toBe('sub agent');
   });
 });
 

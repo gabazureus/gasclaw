@@ -1,4 +1,4 @@
-import { AUTH_LABEL, authState, parseChildren, serializeChildren, withoutChild, type Child } from './children';
+import { AUTH_LABEL, authState, KIND_LABEL, KIND_WHAT, parseChildren, serializeChildren, withoutChild, type Child } from './children';
 import { pocP10 } from '../poc/p10-editor/harness';
 import { pocP14 } from '../poc/p14-trace/harness';
 import { pocP15 } from '../poc/p15-limites/harness';
@@ -1111,7 +1111,7 @@ export function listChildren(folderId?: string) {
   // O filho da POC P24 é real e está na conta do dono: mostrá-lo é o que permite conferir a tela de ponta
   // a ponta hoje, em vez de uma seção vazia que ninguém sabe se funciona.
   const poc = props.getProperty('P24_CHILD');
-  const todos: Child[] = poc && !list.some((c) => c.scriptId === poc) ? [...list, { scriptId: poc, title: 'POC P24', url: props.getProperty('P24_URL'), scopes: ['https://www.googleapis.com/auth/calendar.events'], parent: null, reason: 'created by the P24 measurement', at: 0 }] : list;
+  const todos: Child[] = poc && !list.some((c) => c.scriptId === poc) ? [...list, { scriptId: poc, kind: 'automation' as const, folderId: null, title: 'POC P24', url: props.getProperty('P24_URL'), scopes: ['https://www.googleapis.com/auth/calendar.events'], parent: null, reason: 'returns a string — it is code, not an agent', at: 0 }] : list;
   // A lista é PLANA: agente e filho aparecem um embaixo do outro, e o vínculo é marcador, não
   // hierarquia. Um filho pode SUCEDER e virar o principal — aninhar exigiria redesenhar a árvore a cada
   // sucessão, e descreveria como permanente uma relação que é temporária.
@@ -1126,7 +1126,7 @@ export function listChildren(folderId?: string) {
         probe = null; // filho fora do ar vira `unknown`, que NÃO é permissão — nunca `authorized`
       }
       const state = authState(c.url, probe ? probe.code : null, probe ? probe.body : null);
-      return { ...c, state, stateLabel: AUTH_LABEL[state], editorUrl: `https://script.google.com/d/${c.scriptId}/edit` };
+      return { ...c, state, stateLabel: AUTH_LABEL[state], kindLabel: KIND_LABEL[c.kind], kindWhat: KIND_WHAT[c.kind], editorUrl: `https://script.google.com/d/${c.scriptId}/edit` };
     }),
   };
 }
