@@ -938,5 +938,34 @@
     "recommendations": {
       "testing": "imprimir a nota na CLI e so entao repetir o C7 no conjunto quality; substituir q-conciso, que provavelmente nao discrimina"
     }
+  },
+  {
+    "phase": "C7 no quality \u2014 o numero que decide a track",
+    "summary": "Nota impressa na CLI com veredito de admissao (pre-requisito de tudo). C7 medido no quality: mesmo prompt, 5 execucoes, notas 4/0/4/0/4 \u2014 media 2,4, desvio 2,19 numa escala de 0 a 4. A variancia do candidato consigo mesmo cobre a escala inteira. Conta: ~75 execucoes por candidato por cenario para detectar 1 ponto; ~1.350 por ciclo. Uma execucao por cenario NAO mede nada. 2 de 6 cenarios caidos por efeito-teto. Corrigi um erro meu achado medindo: discriminates reprovava nota 0 por simetria falsa.",
+    "scores": {
+      "correctness": {
+        "score": 10,
+        "note": "o achado nao foi procurado: apareceu como 4/4 virando 0/4 e foi confirmado com 5 execucoes; a conta de tamanho de amostra esta explicita; e declarei o que NAO da para concluir (agente x juiz nao separados)"
+      },
+      "design": {
+        "score": 9,
+        "note": "discriminates corrigido para grade<4 com o erro e o motivo guardados no comentario; a CLI imprime o veredito junto da nota, entao o criterio deixou de depender de leitura humana"
+      },
+      "testing": {
+        "score": 10,
+        "note": "1315 verdes mais duas medicoes no dev com hipotese declarada; o C7 e exatamente o experimento que a pesquisa pediu e ele produziu o numero que reorienta a track"
+      },
+      "safety": {
+        "score": 9,
+        "note": "item a item inalterado: autoconcessao, terceiro, intersecao, laco, menor privilegio, arquivado, espelho, singleton, \u00a7C, \u00a7D, holdout. NAO e 10: \u00a7A aberto (message nao existe), \u00a7E e \u00a7F ainda nao corrigidos"
+      },
+      "clarity": {
+        "score": 10,
+        "note": "o README conta o erro do proprio autor com o raciocinio falso escrito por extenso, e separa o que foi medido do que nao da para concluir"
+      }
+    },
+    "recommendations": {
+      "testing": "congelar a resposta e rejulgar N vezes para separar variancia do agente da variancia do juiz \u2014 e o proximo experimento barato"
+    }
   }
 ]
