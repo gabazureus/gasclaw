@@ -967,5 +967,34 @@
     "recommendations": {
       "testing": "congelar a resposta e rejulgar N vezes para separar variancia do agente da variancia do juiz \u2014 e o proximo experimento barato"
     }
+  },
+  {
+    "phase": "Variancia separada + \u00a7E/\u00a7F + congelamento",
+    "summary": "Experimento em dois bracos: resposta congelada julgada 6x deu 4,4,4,4,4,4 (desvio 0,00 \u2014 o juiz NAO e a fonte); agente com modelo fixo deu 0,4,4,0 (nao e roteamento). A variancia e da amostragem do agente. Isso corrige minha conclusao anterior e salva o laco: a metrica certa e TAXA DE ACERTO sobre k execucoes, e 50%->90% custa ~17 execucoes por cenario, nao ~75. Um ciclo inteiro = 306 execucoes, menos de 4% da cota diaria. Tambem: \u00a7E, \u00a7F e congelamento global. ADR-040 requalificada: isolamento de escopo e real ENTRE projetos. 1323 testes verdes.",
+    "scores": {
+      "correctness": {
+        "score": 10,
+        "note": "os dois bracos foram feitos antes de concluir, cada suspeita foi eliminada por medicao (juiz, depois roteamento), e eu derrubei publicamente meu proprio numero de ~75 execucoes ao descobrir que o comportamento e bimodal"
+      },
+      "design": {
+        "score": 9,
+        "note": "\u00a7F usa claimable no ponto onde o pump decide, senao arquivar seria cosmetico; congelamento como chave global nao poluiu o ciclo de vida; \u00a7E da chave de idempotencia propria ao sub-agente porque colisao ali marca efeito nunca executado"
+      },
+      "testing": {
+        "score": 10,
+        "note": "1323 verdes mais tres medicoes no dev com hipotese declarada e eliminacao sequencial de suspeitos; o experimento que eu havia nomeado e nao feito foi feito"
+      },
+      "safety": {
+        "score": 9,
+        "note": "item a item: autoconcessao, terceiro, intersecao, laco A-B-A, menor privilegio, arquivado nao roda, espelho, singleton, \u00a7C, \u00a7D, holdout, e agora \u00a7E (sem heranca de granted) e \u00a7F (lease e card encerrados). NAO e 10: \u00a7A aberto, e o escopo script.projects nao distingue projeto, entao a recusa do proprio scriptId vira garantia NOSSA e ainda nao tem teste"
+      },
+      "clarity": {
+        "score": 10,
+        "note": "o README conta a correcao do proprio numero e explica por que a nova conta e menor, em vez de esconder a troca de estimativa"
+      }
+    },
+    "recommendations": {
+      "safety": "o teste obrigatorio da ferramenta de escrita de projeto (recusar o proprio scriptId) antes de qualquer linha de geracao de codigo"
+    }
   }
 ]

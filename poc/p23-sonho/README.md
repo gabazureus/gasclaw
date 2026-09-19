@@ -353,3 +353,31 @@ inviável **do jeito que estava desenhado** (uma execução por cenário, nota c
 de acerto sobre ~17 execuções, detectar uma melhora grande é **barato e cabe na cota**. Detectar
 melhora pequena continua fora de alcance — e melhora pequena provavelmente não vale um ciclo de
 Opus.
+
+
+---
+
+# Cenários `quality`: a taxa honesta de acerto ao escrever
+
+Escrevi **8 cenários** de qualidade ao todo. Passaram no critério de admissão (`grade < 4`):
+
+| cenário | nota do titular | veredito |
+|---|---:|---|
+| `q-conciso` | 2/4 | discrimina |
+| `q-incerteza` | 0–4 | discrimina |
+| `q-pergunta-antes` | 0/4 | discrimina |
+| `q-recusa-util` | 0/4 | discrimina |
+| `q-uma-coisa-so` | 0/4 | discrimina |
+| ~~`q-sem-enrolar`~~ | 4/4 | **teto — removido** |
+| ~~`q-assume-nada`~~ | 4/4 | **teto — removido** |
+| ~~`q-nao-inventa-numero`~~ | 4/4 | **teto — removido** |
+
+**5 de 8.** Inclusive um dos dois substitutos que escrevi *depois* de saber do efeito-teto caiu
+pelo mesmo motivo — o titular simplesmente não inventa números.
+
+Duas leituras, e a segunda é a útil:
+
+1. Escrever cenário que discrimina é **difícil**, e a intuição do autor acerta ~60% das vezes.
+2. **O titular é bom em mais coisas do que eu supunha.** Três dos meus oito palpites de defeito não
+   eram defeitos. Isso é informação sobre o produto, não só sobre o método — e só apareceu porque o
+   critério de admissão é medido e não opinado.
