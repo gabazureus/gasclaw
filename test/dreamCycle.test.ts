@@ -1,0 +1,171 @@
+// O ciclo de sonho como plano de passos (núcleo puro). Testes antes da fiação.
+//
+// Três decisões medidas moldam este arquivo:
+//  - k=17 por cenário, porque a P23 mediu que a variância é da AMOSTRAGEM DO AGENTE (juiz com
+//    resposta congelada deu desvio 0,00; agente com modelo fixo oscilou 0,4,4,0);
+//  - o portão vem ANTES da qualidade, e isso não é estética: é custo. Um candidato que morre no
+//    portão custa 2 execuções em vez de 102;
+//  - o `holdout` nunca entra na seleção, senão a evidência é circular.
+import { describe, expect, test } from 'vitest';
+import {
+  cycleCost,
+  dreamVerdict,
+  DREAM_STEPS_PER_TICK,
+  eliminated,
+  nextStep,
+  planCycle,
+  recordResult,
+  stepKey,
+  type DreamPlan,
+} from '../src/dreamCycle';
+
+const plano = (): DreamPlan =>
+  planCycle({
+    cycleId: 'c1',
+    candidates: ['cand-a', 'cand-b', 'cand-c'],
+    gate: ['g-injecao', 'g-fora-da-lista'],
+    quality: ['q-conciso', 'q-incerteza', 'q-pergunta-antes', 'q-recusa-util', 'q-uma-coisa-so', 'q-extra'],
+    k: 17,
+  });
+
+describe('o portão vem antes, e isso é economia, não estética', () => {
+  test('os primeiros passos são todos de portão, com UMA execução cada', () => {
+    const p = plano();
+    const primeiros = p.steps.slice(0, 6);
+    expect(primeiros.every((s) => s.kind === 'gate')).toBe(true);
+    expect(primeiros.every((s) => s.rep === 0)).toBe(true); // portão é determinístico: k=1
+  });
+
+  test('só depois do portão inteiro começa a qualidade', () => {
+    const p = plano();
+    const primeiroQuality = p.steps.findIndex((s) => s.kind === 'quality');
+    expect(primeiroQuality).toBe(3 * 2); // 3 candidatos × 2 cenários de portão
+  });
+
+  test('a qualidade roda k vezes por cenário; o portão, uma', () => {
+    const p = plano();
+    const qualidade = p.steps.filter((s) => s.kind === 'quality');
+    expect(qualidade).toHaveLength(3 * 6 * 17);
+    expect(p.steps.filter((s) => s.kind === 'gate')).toHaveLength(3 * 2);
+  });
+
+  test('o `holdout` NÃO entra no plano: ele não participa da seleção', () => {
+    const p = planCycle({ cycleId: 'c', candidates: ['a'], gate: [], quality: ['q1'], k: 2 });
+    expect(p.steps.some((s) => s.scenario.startsWith('h-'))).toBe(false);
+  });
+});
+
+describe('custo do ciclo, declarado antes de rodar', () => {
+  test('3 candidatos × 6 cenários × k=17, mais o portão', () => {
+    const c = cycleCost(plano());
+    expect(c.steps).toBe(3 * 2 + 3 * 6 * 17); // 312
+    expect(c.ticks).toBe(Math.ceil(312 / DREAM_STEPS_PER_TICK));
+  });
+
+  test('o ciclo NÃO monopoliza o pump: usa uma fatia das 20 voltas por tique', () => {
+    expect(DREAM_STEPS_PER_TICK).toBeLessThan(20); // PUMP_MAX_STEPS
+    expect(DREAM_STEPS_PER_TICK).toBeGreaterThan(0);
+  });
+
+  test('um candidato eliminado no portão economiza k × cenários de qualidade', () => {
+    const cheio = cycleCost(plano());
+    const magro = cycleCost(planCycle({ cycleId: 'c1', candidates: ['a', 'b'], gate: ['g1', 'g2'], quality: Array.from({ length: 6 }, (_, i) => `q${i}`), k: 17 }));
+    expect(cheio.steps - magro.steps).toBe(2 + 6 * 17); // o portão dele mais a qualidade que não rodou
+  });
+});
+
+describe('eliminação pelo portão: falhou um, morre, sem estatística', () => {
+  test('uma falha de portão elimina o candidato', () => {
+    const p = plano();
+    let t = {};
+    t = recordResult(t, { kind: 'gate', candidate: 'cand-b', scenario: 'g-injecao', rep: 0 }, false);
+    expect(eliminated(t)).toEqual(['cand-b']);
+  });
+
+  test('passar no portão não elimina ninguém', () => {
+    let t = {};
+    t = recordResult(t, { kind: 'gate', candidate: 'cand-a', scenario: 'g-injecao', rep: 0 }, true);
+    expect(eliminated(t)).toEqual([]);
+  });
+
+  test('falhar na QUALIDADE não elimina: lá o veredito é estatístico', () => {
+    let t = {};
+    for (let r = 0; r < 17; r++) t = recordResult(t, { kind: 'quality', candidate: 'cand-a', scenario: 'q-conciso', rep: r }, false);
+    expect(eliminated(t)).toEqual([]);
+  });
+
+  test('o próximo passo PULA os passos de quem já morreu', () => {
+    const p = plano();
+    let t = {};
+    t = recordResult(t, { kind: 'gate', candidate: 'cand-a', scenario: 'g-injecao', rep: 0 }, false);
+    const feitos = new Set([stepKey(p.steps[0])]);
+    const proximo = nextStep(p, feitos, t);
+    expect(proximo?.candidate).not.toBe('cand-a');
+  });
+});
+
+describe('avanço passo a passo: o ciclo atravessa execuções', () => {
+  test('sem nada feito, o primeiro passo é o primeiro do plano', () => {
+    const p = plano();
+    expect(stepKey(nextStep(p, new Set(), {})!)).toBe(stepKey(p.steps[0]));
+  });
+
+  test('passo já feito não repete — é o que torna o checkpoint seguro', () => {
+    const p = plano();
+    const feitos = new Set(p.steps.slice(0, 5).map(stepKey));
+    expect(stepKey(nextStep(p, feitos, {})!)).toBe(stepKey(p.steps[5]));
+  });
+
+  test('tudo feito devolve null, que é como o ciclo termina', () => {
+    const p = planCycle({ cycleId: 'c', candidates: ['a'], gate: [], quality: ['q1'], k: 1 });
+    expect(nextStep(p, new Set(p.steps.map(stepKey)), {})).toBe(null);
+  });
+
+  test('a chave do passo é única por candidato, cenário e repetição', () => {
+    const p = plano();
+    expect(new Set(p.steps.map(stepKey)).size).toBe(p.steps.length);
+  });
+});
+
+describe('veredito: vantagem estatística e o alcance declarado', () => {
+  const tallyDe = (cand: string, acertos: number, cenarios: string[], k = 17) => {
+    let t: Record<string, { passes: number; runs: number }> = {};
+    for (const c of cenarios) for (let r = 0; r < k; r++) t = recordResult(t, { kind: 'quality', candidate: cand, scenario: c, rep: r }, r < acertos);
+    return t;
+  };
+
+  test('candidato claramente melhor vence, e o veredito DIZ o que ele enxerga', () => {
+    const cen = ['q1'];
+    const t = { ...tallyDe('cand', 16, cen), ...tallyDe('titular', 5, cen) };
+    const v = dreamVerdict('cand', 'titular', t, cen, 17);
+    expect(v.wins).toBe(true);
+    expect(v.sees).toContain('50% to 90%');
+  });
+
+  test('diferença que parece folgada mas não sobrevive ao teste NÃO promove', () => {
+    const cen = ['q1'];
+    const t = { ...tallyDe('cand', 12, cen), ...tallyDe('titular', 9, cen) };
+    expect(dreamVerdict('cand', 'titular', t, cen, 17).wins).toBe(false);
+  });
+
+  test('empate não promove', () => {
+    const cen = ['q1'];
+    const t = { ...tallyDe('cand', 10, cen), ...tallyDe('titular', 10, cen) };
+    expect(dreamVerdict('cand', 'titular', t, cen, 17).wins).toBe(false);
+  });
+
+  test('candidato eliminado no portão nunca vence, por melhor que seja a taxa', () => {
+    const cen = ['q1'];
+    let t = { ...tallyDe('cand', 17, cen), ...tallyDe('titular', 1, cen) };
+    t = recordResult(t, { kind: 'gate', candidate: 'cand', scenario: 'g-injecao', rep: 0 }, false);
+    const v = dreamVerdict('cand', 'titular', t, cen, 17);
+    expect(v.wins).toBe(false);
+    expect(v.reason).toContain('gate');
+  });
+
+  test('sem execução suficiente, não afirma', () => {
+    const v = dreamVerdict('cand', 'titular', {}, ['q1'], 17);
+    expect(v.wins).toBe(false);
+    expect(v.reason).toContain('not enough');
+  });
+});
