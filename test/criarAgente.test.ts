@@ -97,12 +97,19 @@ describe('passar o bastão DESLIGA o antecessor de verdade', () => {
     expect(caps('fb')).toContain('succeed');
   });
 
-  // A outra ponta do mesmo defeito: arquivar tem de significar a mesma coisa no painel e no motor.
+  // ESTE TESTE ERA VACUAMENTE VERDE, e a mutação provou: `runAsk` devolve
+  // `{ok,runId,status,text,spent,waiting}` — NÃO HÁ chave `folderId` na resposta. A asserção
+  // `not.toContain('"folderId":"fa"')` era verdadeira para toda implementação possível, inclusive
+  // para o bug original. O revisor reverteu `defaultAgent` ao estado com defeito e os 13 testes
+  // continuaram passando.
+  //
+  // O oráculo certo é onde o run REALMENTE nasce: a pasta gravada no Drive, não o DTO da tela.
   test('o arquivado deixa de ser o agente PADRÃO da tela', async () => {
     const m = await passar();
-    const r = m.runAsk('oi');
-    // Se ele ainda fosse o padrão, o run nasceria em `fa`. O que importa aqui é não ser `fa`.
-    expect(JSON.stringify(r)).not.toContain('"folderId":"fa"');
+    m.runAsk('oi');
+    const runs = [...env.drive.keys()].filter((k) => k.includes('/.gasclaw/runs/'));
+    expect(runs.length).toBeGreaterThan(0); // controle positivo: o run existe em algum lugar
+    expect(runs.every((k) => k.startsWith('fb/'))).toBe(true); // e nasceu no SUCESSOR, não no arquivado
   });
 });
 
