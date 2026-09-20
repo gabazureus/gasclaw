@@ -94,24 +94,70 @@ describe('o carimbo anda mesmo com o portão FECHADO', () => {
   });
 });
 
+// OS TRÊS TESTES ANTERIORES DESTE BLOCO ERAM VACUAMENTE VERDES, e o revisor provou: apagar a guarda
+// inteira deixava os oito passando. A razão era estrutural, não de estado — `tickDream` só AVANÇA um
+// ciclo existente, e quem cria `DREAMLOCK:` é `startDream`, que `drainRuns` nunca chama. O oráculo
+// "existe algum DREAMLOCK?" era falso em TODO estado possível do stub.
+//
+// É o mesmo defeito do `toContain("'dream'")` que eu tinha removido, vestido de comportamento — e mais
+// difícil de ver, porque o assert PARECE ler estado.
+//
+// Aqui o ciclo é semeado de verdade (trava + arquivo de estado no Drive do stub), e o oráculo passa a
+// ser o que importa: o ciclo AVANÇA (`done` cresce) com a capacidade ligada, e não avança sem ela.
 describe('o laço do sonho respeita os mesmos três portões', () => {
-  const semSonho = async (caps: string[], status = 'active', frozen?: string) => {
-    comAgenda(caps, status, frozen);
-    const m = await import('../src/main');
-    m.drainRuns();
-    // `DREAMLOCK:` só aparece quando um ciclo começa. Sem capacidade, ele não pode existir.
-    return Object.keys(env.props).some((k) => k.startsWith('DREAMLOCK:'));
+  const CICLO = 'c1';
+
+  /** Semeia um ciclo ATIVO: a trava aponta para ele e o estado existe na pasta do agente. */
+  function comCiclo(caps: string[], status = 'active', frozen?: string) {
+    env.props['AGENTS'] = JSON.stringify([{ name: 'a', folderId: FOLDER }]);
+    env.props[`CAP:${FOLDER}`] = JSON.stringify(caps);
+    env.props[`STATUS:${FOLDER}`] = status;
+    if (frozen !== undefined) env.props['CAPS_ENABLED'] = frozen;
+    env.props[`DREAMLOCK:${FOLDER}`] = CICLO;
+    const estado = {
+      cycleId: CICLO, folderId: FOLDER, incumbent: '# titular', status: 'running',
+      plan: { cycleId: CICLO, candidates: ['# candidato'], k: 1, steps: [{ kind: 'gate', candidate: '# candidato', scenario: 'g1', rep: 0 }] },
+      tally: {}, done: [], startedAt: 1, updatedAt: 1,
+    };
+    env.drive.set(`${FOLDER}/.gasclaw/dreams/${CICLO}.json`, JSON.stringify(estado));
+  }
+
+  /** Quantos passos o ciclo registrou como feitos. É o que cresce quando o laço age. */
+  const passosFeitos = () => {
+    const bruto = env.drive.get(`${FOLDER}/.gasclaw/dreams/${CICLO}.json`);
+    return bruto ? (JSON.parse(bruto).done as string[]).length : -1;
   };
 
-  test('sem `dream`, nenhum ciclo é tocado', async () => {
-    expect(await semSonho([])).toBe(false);
+  // CONTROLE POSITIVO. Sem ele os três negativos abaixo voltam a ser coincidência — foi literalmente
+  // a ausência dele que deixou a versão anterior passar com o portão arrancado.
+  test('controle positivo: com `dream` ligada, o laço TOCA o ciclo', async () => {
+    comCiclo(['dream']);
+    const m = await import('../src/main');
+    m.drainRuns();
+    // Tocar é o que importa: ou avançou um passo, ou falhou o ciclo e soltou a trava. O que NÃO pode
+    // acontecer é o estado ficar intocado, que é o caso dos três testes abaixo.
+    const mexeu = passosFeitos() > 0 || env.props[`DREAMLOCK:${FOLDER}`] === undefined || (env.drive.get(`${FOLDER}/.gasclaw/dreams/${CICLO}.json`) ?? '').includes('failed');
+    expect(mexeu).toBe(true);
+  });
+
+  const naoToca = async (caps: string[], status = 'active', frozen?: string) => {
+    comCiclo(caps, status, frozen);
+    const antes = env.drive.get(`${FOLDER}/.gasclaw/dreams/${CICLO}.json`);
+    const m = await import('../src/main');
+    m.drainRuns();
+    // Intocado: nem o estado mudou, nem a trava saiu.
+    return env.drive.get(`${FOLDER}/.gasclaw/dreams/${CICLO}.json`) === antes && env.props[`DREAMLOCK:${FOLDER}`] === CICLO;
+  };
+
+  test('sem `dream`, o ciclo fica intocado', async () => {
+    expect(await naoToca([])).toBe(true);
   });
 
   test('arquivado não sonha — sonhar gastaria cota de quem saiu de cena', async () => {
-    expect(await semSonho(['dream'], 'archived')).toBe(false);
+    expect(await naoToca(['dream'], 'archived')).toBe(true);
   });
 
   test('congelado não sonha', async () => {
-    expect(await semSonho(['dream'], 'active', 'false')).toBe(false);
+    expect(await naoToca(['dream'], 'active', 'false')).toBe(true);
   });
 });
