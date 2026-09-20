@@ -20,7 +20,7 @@ const run = (name: string, args: Record<string, unknown>, ctx: ToolCtx) => findT
 describe('notas do dia (memory/AAAA-MM-DD.md)', () => {
   test('dayFile só aceita data AAAA-MM-DD', () => {
     expect(dayFile('2030-01-15')).toBe('2030-01-15.md');
-    expect(() => dayFile('../MEMORY')).toThrow('data inválida');
+    expect(() => dayFile('../MEMORY')).toThrow('invalid date');
   });
 
   test('memory.save anota no dia de hoje, não na curada', () => {

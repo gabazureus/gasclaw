@@ -72,7 +72,7 @@ describe('memória (limites do Eve)', () => {
     const full = `- ${'x'.repeat(RECALL_MAX - 10)}\n`;
     const r = addEntry(full, 'mais um fato longo');
     expect(r.ok).toBe(false);
-    expect(!r.ok && r.error).toContain('cheia');
+    expect(!r.ok && r.error).toContain('memory is full');
   });
   test('removeEntry remove itens que contêm o trecho', () => {
     expect(removeEntry('- a 10h\n- b\n', '10h')).toEqual({ text: '- b\n', removed: 1 });

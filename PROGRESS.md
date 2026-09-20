@@ -59,9 +59,9 @@
 | ~~34~~ | ✅ **Teto familiar com efeito** | `capAction` informa e nada age: ninguém lê `stop-creating`/`freeze` | nada |
 | ~~35~~ | ✅ **Tela da sucessão e da linhagem** | `signMandate`, `passBaton`, `lineage` e `writeSuccessor` existem no servidor; o painel só mostra o último | nada |
 | ~~36~~ | ✅ **Tela do ciclo de sonho (DreamBoard)** | `startAgentDream` e `agentDream` existem; falta a tela com diff e placar | nada |
-| 37 | Vocabulário "sub-agente" | Significa duas coisas: declaração no run do pai (ADR-039) e projeto filho com pasta. Renomear a primeira para **persona** | nada |
-| 38 | ADR dos dois tipos de filho | `automation` × `subagent` está no código e não em ADR | nada |
-| 39 | 208 strings em pt-BR | Dívida de idioma na catraca: só pode encolher | nada — contínuo |
+| ~~37~~ | ✅ **Vocabulário "sub-agente"** | Significa duas coisas: declaração no run do pai (ADR-039) e projeto filho com pasta. Renomear a primeira para **persona** | nada |
+| ~~38~~ | ✅ **ADR dos dois tipos de filho** | `automation` × `subagent` está no código e não em ADR | nada |
+| 39 | **203** strings em pt-BR | Dívida de idioma na catraca: **desceu 5 nesta rodada** (208 → 203) e não pode mais subir. Contínuo por natureza — traduzir as descrições de ferramenta exige rodar os evals, porque elas mudam o que o modelo vê | contínuo |
 
 ### POCs
 

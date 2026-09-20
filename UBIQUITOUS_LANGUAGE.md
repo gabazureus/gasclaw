@@ -91,9 +91,12 @@
 | Passar o bastão | Trocar quem é o agente criador | sobrescrever o valor de `CREATOR` | Reversível por construção — voltar é escrever o `folderId` anterior. Quem autoriza é o gate aberto |
 | Linhagem | Geração, pai, diff do prompt, placar, delta e filhos criados | `.gasclaw/lineage/<generation>.json` + planilha | Sem ela "evoluiu" não é verificável, é fé |
 | Squad | Agentes criados pelo agente criador para funções diferentes | pastas normais | Nascem **sem nenhuma capacidade**: executores, não criadores (`effectiveAccess(null)` já fecha) |
-| Sub-agente | Nome + papel em markdown + **subconjunto** das tools do pai, rodando como passo do run do pai | `Subagent`, `parseSubagent` | Declaração, nunca código (ADR-039). Precedente: `skills.ts` |
-| Interseção (nunca união) | O sub-agente nunca tem mais que o pai, só menos | `subagentTools` | **Não vem de graça:** `allowedTools` filtra contra o REGISTRO, não contra o pai (`registry.ts:115-116`) |
-| Span do sub-agente | Quem da squad agiu, dentro do run do pai | `subagentSpan` → `subagent:<nome>` | Sem ele a squad é inauditável; nome inválido não vira span |
+| **Persona** | Nome + papel em `subagents/<nome>.md` + **subconjunto** das tools do pai, rodando como passo do run do pai | `Subagent`, `parseSubagent`, tool `persona` | Declaração, nunca código (ADR-039). **Não tem pasta e NÃO precisa da chave** — era este o sentido ambíguo de "sub-agente" ([ADR-042](docs/adr/042-automation-subagente-persona.md)) |
+| **Automação** | Projeto filho que é **só código**: sem pasta, sem prompt, sem modelo | `ChildKind = 'automation'` | A parte arriscada do desenho (entregar a credencial) **não se aplica**. É o caminho barato de crescer em capacidade |
+| **Sub-agente** | Projeto filho **com pasta própria e prompt**: conversa, logo precisa da chave | `ChildKind = 'subagent'` | O único dos três que tem `KEYSEC:`, janela única e rearme humano (ADR-040). Fail-closed: o que não se declara é `automation`, a forma SEM credencial |
+| Interseção (nunca união) | A persona nunca tem mais que o pai, só menos | `subagentTools` | **Não vem de graça:** `allowedTools` filtra contra o REGISTRO, não contra o pai (`registry.ts:115-116`). É também o 4º controle do repasse entre agentes |
+| Span da persona | Quem da squad agiu, dentro do run do pai | `subagentSpan` → `subagent:<nome>` | Sem ele a squad é inauditável; nome inválido não vira span |
+| Run proativo | Run que **ninguém pediu**: nasceu da agenda do painel | `DurableRun.proactive` (assinado) | Decide o que pode ser auto-aprovado e o que fazer diante de um card. Esbarrou em aprovação ⇒ **falha e registra**, nunca fica `waiting` |
 
 ## Trace e observabilidade
 

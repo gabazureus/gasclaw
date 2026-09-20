@@ -10,7 +10,7 @@ const api = ownerGoogle; // só o dono (revisão E6)
 function dueDate(v: unknown): string {
   const m = String(v ?? '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const d = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])) : null;
-  if (!m || !d || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) throw new Error('"due" precisa ser uma data como 2030-01-15');
+  if (!m || !d || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) throw new Error('"due" must be a date like 2030-01-15');
   return `${m[1]}-${m[2]}-${m[3]}T00:00:00.000Z`;
 }
 const schema = (properties: Schema['properties'], required: string[]): Schema => ({ type: 'object', properties, required, additionalProperties: false });
@@ -54,7 +54,7 @@ export const TASKS_TOOLS: Tool[] = [
     approval: 'once',
     run: (a, ctx) => {
       const id = String(a.id);
-      if (!TASK_ID.test(id)) throw new Error('"id" de tarefa inválido');
+      if (!TASK_ID.test(id)) throw new Error('invalid task "id"');
       const google = api(ctx);
       ctx.beforeEffect?.();
       const t = gcall(google, { method: 'patch', url: `${TASKS_URL}/${enc(id)}`, body: { status: 'completed' } }, 'concluir a tarefa');

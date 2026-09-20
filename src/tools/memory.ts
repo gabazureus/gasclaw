@@ -22,18 +22,18 @@ const items = (mem: string) => mem.split('\n').filter((l) => l.trim());
 
 /** Nome da nota do dia: memory/AAAA-MM-DD.md. `date` é a data já no fuso do gasclaw. */
 export const dayFile = (date: string): string => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`data inválida para a nota do dia: ${date}`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`invalid date for the day note: ${date}`);
   return `${date}.md`;
 };
 
 export function addEntry(mem: string, entry: string, max = RECALL_MAX): Edit {
   const fact = entry.replace(/\s+/g, ' ').trim();
   if (!fact) return { ok: false, error: 'fato vazio' };
-  if (utf8Bytes(fact) > ENTRY_MAX_BYTES) return { ok: false, error: `fato com ${utf8Bytes(fact)} bytes; o máximo é ${ENTRY_MAX_BYTES}` };
+  if (utf8Bytes(fact) > ENTRY_MAX_BYTES) return { ok: false, error: `that fact is ${utf8Bytes(fact)} bytes; the limit is ${ENTRY_MAX_BYTES}` };
   const lines = items(mem);
   if (lines.includes(`- ${fact}`)) return { ok: true, text: `${lines.join('\n')}\n` };
   const text = `${[...lines, `- ${fact}`].join('\n')}\n`;
-  if (text.length > max) return { ok: false, error: `memória cheia (${max} caracteres): remova algo com memory.remove antes` };
+  if (text.length > max) return { ok: false, error: `memory is full (${max} characters): remove something with memory.remove first` };
   return { ok: true, text };
 }
 
