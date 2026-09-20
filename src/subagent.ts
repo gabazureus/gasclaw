@@ -113,3 +113,21 @@ export const subagentGrants = (): string[] => [];
  * atrapalha um horário, ela marca como já-executado um efeito que nunca rodou.
  */
 export const subagentDoneKey = (base: string, sub: string): string => `${base}:${sub}`;
+
+/**
+ * As ferramentas que uma PERSONA realmente recebe, depois da interseção.
+ *
+ * Função pura, e ela foi extraída de dentro da casca por um motivo concreto: o filtro morava soldado
+ * no `runPersona` e o único teste que o guardava era um regex procurando `approval === 'never'` no
+ * fonte. **Apagar `&& !t.ownerOnly` mantinha aquele teste verde** — e é essa metade que impede a
+ * persona de alcançar Gmail, Drive e Agenda do dono.
+ *
+ * As duas condições existem por razões diferentes, e por isso nenhuma cobre a outra:
+ *
+ * - `approval === 'never'`: de dentro de uma tool NÃO EXISTE caminho até o card. Uma persona que
+ *   chamasse algo com aprovação ficaria pendurada esperando um clique que não tem onde aparecer.
+ * - `!ownerOnly`: o papel da persona vem do markdown da pasta COMPARTILHÁVEL. Deixá-la alcançar as
+ *   ferramentas do Google seria dar a quem edita a pasta o acesso que o dono aprovou para o agente.
+ */
+export const personaTools = <T extends { name: string; approval: string; ownerOnly?: boolean }>(candidatas: readonly T[]): T[] =>
+  candidatas.filter((t) => t.approval === 'never' && !t.ownerOnly);

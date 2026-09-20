@@ -26,7 +26,7 @@ import { acceptChatMessage } from './chatAsync';
 import { deliveryDue, sendChatDelivery } from './chatDelivery';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
 import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, reply, runTurn } from './agent';
-import { foreignMessage, parseSubagent, subagentGrants, subagentSpan, subagentTools } from './subagent';
+import { foreignMessage, parseSubagent, personaTools, subagentGrants, subagentSpan, subagentTools } from './subagent';
 import type { AgentSpec } from './workspace';
 import { personaIO } from './tools/personaStore';
 import { approvalCard, decisionFrom, issue, issueGrant } from './approval';
@@ -342,7 +342,7 @@ function runPersona(spec: AgentSpec, name: string, task: string): string {
   // Interseção DUPLA: contra o registro e contra o que o dono aprovou para o pai. Depois, só o que
   // não pede aprovação — ver o comentário acima.
   const nomes = subagentTools(p.declaredTools, spec.access.tools);
-  const tools = allowedTools(nomes).filter((t) => t.approval === 'never' && !t.ownerOnly);
+  const tools = personaTools(allowedTools(nomes));
   const span = subagentSpan(name);
   const t = runlog.begin('subagent', { question: task.slice(0, 500), agent: span ?? name });
   try {

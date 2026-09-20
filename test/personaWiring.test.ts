@@ -8,7 +8,7 @@
 // persona não consegue mais do que o pai.
 import { describe, expect, test } from 'vitest';
 import { allowedTools, findTool, TOOLS, type ToolCtx } from '../src/tools/registry';
-import { subagentTools, SUBAGENT_STEPS } from '../src/subagent';
+import { personaTools, subagentTools, SUBAGENT_STEPS } from '../src/subagent';
 
 const ctx = (extra: Partial<ToolCtx> = {}): ToolCtx => ({ now: () => 'agora', ownerDm: true, memory: { read: () => '', write: () => {} }, ...extra });
 
@@ -64,12 +64,35 @@ describe('a fiação existe no motor, não só no módulo', () => {
     expect(main).toContain('persona:');
   });
 
-  // A restrição que o desenho IMPÕE e que precisa estar dita: de dentro de uma tool não existe caminho
-  // para o card. Uma persona que chamasse `gmail.send` ficaria pendurada esperando um clique que não
-  // tem onde aparecer. Ela recebe só o que não pede aprovação — e isso é recusa explícita, não sorte.
-  test('a persona só recebe ferramentas que NÃO pedem aprovação', async () => {
-    const main = (await import('node:fs')).readFileSync('src/main.ts', 'utf8');
-    expect(main).toMatch(/approval === 'never'/);
+  // ESTE TESTE ERA UM REGEX, e o revisor mostrou que ele defendia metade da regra: apagar
+  // `&& !t.ownerOnly` o mantinha verde — justamente a metade que impede a persona de alcançar Gmail,
+  // Drive e Agenda do dono. O filtro virou função pura para poder ser exercitado de verdade.
+  test('a persona não recebe o que pede APROVAÇÃO — não há caminho até o card de dentro de uma tool', () => {
+    const entregues = personaTools([
+      { name: 'now', approval: 'never' },
+      { name: 'gmail.send', approval: 'always' },
+      { name: 'sheets.append', approval: 'once' },
+    ]).map((t) => t.name);
+    expect(entregues).toEqual(['now']);
+  });
+
+  // A OUTRA metade, que o regex não via. O papel da persona vem do markdown da pasta COMPARTILHÁVEL:
+  // deixá-la alcançar as ferramentas do Google daria a quem edita a pasta o acesso que o dono aprovou
+  // para o agente.
+  test('a persona não recebe o que é SÓ DO DONO, nem quando não pede aprovação', () => {
+    const entregues = personaTools([
+      { name: 'now', approval: 'never' },
+      { name: 'gmail.read', approval: 'never', ownerOnly: true },
+      { name: 'drive.search', approval: 'never', ownerOnly: true },
+    ]).map((t) => t.name);
+    expect(entregues).toEqual(['now']);
+  });
+
+  // O caso real do registro: com o pai tendo gmail e a persona pedindo gmail, ela fica sem nada além
+  // de `now` — porque toda ferramenta do Workspace é `ownerOnly`.
+  test('no registro DE VERDADE, gmail declarado pela persona não chega nela', () => {
+    const nomes = subagentTools(['gmail.read', 'now'], ['gmail.read', 'now']);
+    expect(personaTools(allowedTools(nomes)).map((t) => t.name)).toEqual(['now']);
   });
 
   test('o teto de passos da persona é menor que o do pai', () => {
