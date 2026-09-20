@@ -10,6 +10,37 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 
 ## [Não publicado]
 
+> 🧬 **Capacidades por agente (F5):** quatro poderes que você liga UM A UM no painel, e nenhum liga
+> outro — **Sonho** (reescreve o próprio prompt e se mede contra o conjunto-juiz), **Procurar**
+> (acorda numa agenda que você marca no painel), **Suceder** (escreve o CÓDIGO do sucessor com
+> Opus 5, como projeto Apps Script próprio) e **Criar agentes** (só um agente do ambiente pode ter).
+> Acima das quatro há uma **chave de emergência** global: desligada, tudo congela e os agentes
+> seguem atendendo. ([ADR-038](docs/adr/038-capacidades-e-linhagem.md), [ADR-041](docs/adr/041-sucessor-como-codigo.md))
+>
+> 👥 **Personas, automações e sub-agentes ([ADR-042](docs/adr/042-automation-subagente-persona.md)):**
+> três formas que antes dividiam o nome "sub-agente", e a diferença que a palavra escondia é se há
+> chave de API em jogo. **Persona** é um papel em `subagents/<nome>.md` que roda dentro do turno do
+> pai, sem pasta e sem chave. **Automação** é projeto filho só com código. **Sub-agente** é projeto
+> filho com pasta e prompt — o único que precisa da credencial.
+>
+> 🔗 **Mensagem entre agentes:** `agent.message` no registro fechado, com quatro controles que não
+> são opcionais — origem assinada no run, `isOwner` falso em todo repasse, o card nomeando quem
+> pediu, e `tools(A) ∩ tools(B)`. Sempre pede aprovação. ([ADR-040](docs/adr/040-isolamento-e-privilegio.md))
+>
+> ⏰ **Proatividade com a agenda NO PAINEL:** o agente pode agir sozinho, e a agenda mora nas
+> configurações — nunca na pasta, que é compartilhável. Roda no worker de 1 minuto que já existia,
+> **sem gatilho novo**. Ferramenta fora da sua lista de auto-aprovação faz o run **falhar e dizer por
+> quê**, em vez de esperar um clique que ninguém vai dar. Sete ferramentas nunca entram nessa lista,
+> ponha o que puser: `gmail.send`, `calendar.create`, `calendar.update`, `memory.remove`,
+> `sheets.append`, `agent.create` e `agent.message`.
+>
+> 📊 **Telas novas:** linhagem (geração, pai, filho, delta, custo), DreamBoard com o diff linha a
+> linha de cada candidato e um placar que declara o que o número consegue enxergar, agenda, e a lista
+> de projetos filhos e agentes arquivados em tabela.
+>
+> 💰 **Teto familiar de gasto:** o painel estima quanto os filhos consumiram e o motor **age** —
+> a 80% para de criar, a 100% congela. Nunca corta a chave, porque isso pararia o agente principal.
+
 > ⚠️ **Mudança de acesso ([ADR-021](docs/adr/021-acesso-aprovado-no-painel.md)):** quem conversa com o agente e quais ferramentas ele usa passam a valer só depois de aprovados no painel do gasclaw. `users:` e `tools:` na pasta, no editor ou na planilha `config` viram sugestões. Depois desta versão, todo agente responde só ao dono e fica sem ferramentas até você clicar em **Aprovar** no painel. Se você usava `users:` para dar acesso a outras pessoas, aprove essas pessoas no painel.
 >
 > 🔐 **Ferramentas do Google só para o dono ([ADR-023](docs/adr/023-ferramentas-do-workspace.md)):** ferramentas do Google (agenda, Gmail, contatos, tarefas, Drive/Docs/Sheets) funcionam só para o dono do gasclaw. Pessoas aprovadas no painel continuam conversando com o agente, mas pedidos delas que usem essas ferramentas são recusados, e só o dono aprova esses cards. O card de aprovação agora mostra cada campo por inteiro (destinatários, convidados, ids); só o texto longo é resumido.
