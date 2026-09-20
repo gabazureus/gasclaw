@@ -1,3 +1,4 @@
+import { namesOf, scenarioMd, SCENARIOS } from './judgeSet';
 import { AUTH_LABEL, authState, KIND_LABEL, KIND_WHAT, parseChildren, serializeChildren, withoutChild, type Child } from './children';
 import { pocP10 } from '../poc/p10-editor/harness';
 import { pocP14 } from '../poc/p14-trace/harness';
@@ -1010,6 +1011,22 @@ function setTools(folder: string, set: string) {
   const names = pedido === 'all' ? toolCatalog().map((t) => t.name) : pedido === 'none' ? [] : pedido.split(',').map((x) => x.trim()).filter(Boolean);
   const r = writeTools(folderId, names, 'pela CLI'); // lang-ok: rotulo do TRACE
   return { ok: true, folderId, agent: agentName(folderId), enabled: r.enabled, users: r.users };
+}
+
+/**
+ * O conjunto-juiz que veio NO BUNDLE. Serve ao painel e, principalmente, prova que ele existe do lado do
+ * motor — sem isto o ciclo de sonho não enxergaria o próprio juiz, e a frase "o juiz vem do build" seria
+ * aspiracional. O `holdout` aparece na contagem mas NUNCA no plano de um ciclo.
+ */
+export function judgeSet() {
+  assertOwner();
+  return {
+    total: SCENARIOS.length,
+    gate: namesOf('gate'),
+    quality: namesOf('quality'),
+    holdout: namesOf('holdout'),
+    sample: scenarioMd(namesOf('quality')[0] ?? '')?.slice(0, 120) ?? null,
+  };
 }
 
 // ---------- Capacidades do agente (ADR-038): o que ele pode fazer além de responder ----------

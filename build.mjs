@@ -2,7 +2,7 @@
 // Saída: um único arquivo de motor (`_motor.gs` no editor, primeiro da lista) + settings.html + chat.html + appsscript.json.
 // OUT_DIR (padrão dist): os testes geram numa pasta temporária e nunca tocam o dist/ que o deploy vai publicar.
 import * as esbuild from 'esbuild';
-import { copyFileSync, mkdirSync, readFileSync, appendFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, appendFileSync, rmSync, writeFileSync } from 'node:fs';
 
 const OUT = process.env.OUT_DIR || 'dist';
 const BANNER = '// gasclaw · MOTOR · NÃO EDITE: gerado pelo build e substituído a cada ./gasclaw up. Edite os agentes em agentes/<nome>/<PAPEL>.md ou na pasta do Drive.';
@@ -30,6 +30,32 @@ await esbuild.build({
 // um invólucro. A lista saía de um regex que só casava `export function` — uma global escrita como
 // `export const x = () => …` ficava de fora, o build passava, o deploy passava, e o Apps Script dizia
 // "function not found" em produção. Agora as duas formas contam.
+// O CONJUNTO-JUIZ ENTRA NO BUNDLE. Sem isto a frase "o juiz vem do build" e aspiracional: os cenarios
+// viviam so no PC e o motor, rodando no gatilho, nao enxergaria o proprio juiz. O `holdout` entra tambem
+// — ele nao participa da selecao (o plano nao o inclui), mas precisa existir para responder depois se a
+// linhagem melhorou.
+const evalsDir = 'evals';
+const cenarios = readdirSync(evalsDir)
+  .filter((f) => f.endsWith('.md'))
+  .map((f) => {
+    const md = readFileSync(`${evalsDir}/${f}`, 'utf8');
+    const m = md.match(/^set:\s*(gate|quality|holdout)\s*$/m);
+    return { name: f.replace(/\.md$/, ''), set: m ? m[1] : 'gate', md };
+  })
+  .sort((a, b) => a.name.localeCompare(b.name));
+// Sem `set` declarado o cenario cai em `gate`, que e o conjunto ABSOLUTO: errar para o lado estrito e
+// errar para o lado seguro, e um cenario mal marcado reprova em vez de passar despercebido.
+{
+  const bundle = readFileSync(`${OUT}/_motor.js`, 'utf8');
+  // `var` e nao `const`: e assim que o esbuild emite o modulo. O build FALHA se o ponto sumir, em vez de
+  // publicar um motor com o juiz vazio — um conjunto-juiz vazio faria todo candidato "passar" em nada.
+  const alvo = 'var SCENARIOS = [];';
+  if (!bundle.includes(alvo)) throw new Error('build: nao achei o ponto de injecao do conjunto-juiz em _motor.js (o esbuild mudou a forma da declaracao?)');
+  if (cenarios.length === 0) throw new Error('build: nenhum cenario em evals/ — o motor nao pode publicar sem juiz');
+  writeFileSync(`${OUT}/_motor.js`, bundle.replace(alvo, `const SCENARIOS = ${JSON.stringify(cenarios)};`));
+  console.log(`build: ${cenarios.length} cenarios embutidos (${cenarios.filter((c) => c.set === 'gate').length} gate, ${cenarios.filter((c) => c.set === 'quality').length} quality, ${cenarios.filter((c) => c.set === 'holdout').length} holdout)`);
+}
+
 const src = readFileSync('src/main.ts', 'utf8');
 const names = [
   ...[...src.matchAll(/^export function (\w+)/gm)].map((m) => m[1]),
