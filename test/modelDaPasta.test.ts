@@ -34,7 +34,7 @@ describe('modelo pedido pela pasta', () => {
     const r = folderModel('sem-tools/modelo', LISTA, ['calendar.create']);
     expect(r.model).toBe(DEFAULT_MODEL);
     expect(r.source).toBe('padrao');
-    expect(r.reason).toMatch(/ferramenta/i);
+    expect(r.reason).toMatch(/tools/i);
   });
 
   test('o mesmo modelo passa se o agente não tem ferramenta aprovada nenhuma', () => {

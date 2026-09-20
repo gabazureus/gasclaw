@@ -92,7 +92,7 @@ describe('usageView: a faixa vem do cliente, então é validada', () => {
 
   test('dia inválido continua sendo recusado, faixa ou não', async () => {
     const { usageView } = await import('../src/observe');
-    expect(() => usageView(null, '15/09/2026', '30d')).toThrow(/AAAA-MM-DD/);
+    expect(() => usageView(null, '15/09/2026', '30d')).toThrow(/YYYY-MM-DD/);
   });
 });
 

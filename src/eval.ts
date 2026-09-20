@@ -47,9 +47,9 @@ export function parseScenario(md: string): Scenario {
   const { data, body } = parseFrontmatter(md);
   const str = (k: string) => (typeof data[k] === 'string' ? (data[k] as string) : undefined);
   const name = str('name');
-  if (!name) throw new Error('cenário sem name no frontmatter');
+  if (!name) throw new Error('scenario has no name in its frontmatter');
   const channel = str('channel') ?? 'chat';
-  if (channel !== 'chat' && channel !== 'tela') throw new Error(`channel inválido: ${channel} (use chat ou tela)`);
+  if (channel !== 'chat' && channel !== 'tela') throw new Error(`invalid channel: ${channel} (use "chat" or "tela")`);
   const s = sections(body);
   if (!s.turnos?.length) throw new Error(`${name}: cenário sem ## turnos`);
   if (!s['verificações']?.length) throw new Error(`${name}: cenário sem ## verificações`);
@@ -63,7 +63,7 @@ export function parseScenario(md: string): Scenario {
     return tool ? { tool: tool[1], args: tool[2] || '{}' } : { text: l.replace(/^texto:\s*/, '') };
   });
   const steps = str('steps') ? Number(str('steps')) : undefined;
-  if (steps !== undefined && !(Number.isInteger(steps) && steps >= 1 && steps <= 50)) throw new Error(`${name}: steps inválido (inteiro de 1 a 50)`);
+  if (steps !== undefined && !(Number.isInteger(steps) && steps >= 1 && steps <= 50)) throw new Error(`${name}: invalid steps (an integer from 1 to 50)`);
   const set = (['gate', 'quality', 'holdout'] as const).find((k) => k === str('set')) ?? 'gate';
   const rubric = str('rubric');
   if (set === 'gate' && rubric) throw new Error(`${name}: a gate scenario takes no rubric (the gate is binary by nature)`);
@@ -156,7 +156,7 @@ export const discriminates = (baselineGrade: number): boolean => baselineGrade >
 
 export function parseJudge(text: string): { pass: boolean; reason: string } {
   const m = text.trim().match(/^(PASS|FAIL)\s*[:\-–]?\s*(.*)$/im);
-  return m ? { pass: m[1].toUpperCase() === 'PASS', reason: m[2].trim() } : { pass: false, reason: `juiz sem veredito: ${text.trim().slice(0, 200)}` };
+  return m ? { pass: m[1].toUpperCase() === 'PASS', reason: m[2].trim() } : { pass: false, reason: `the judge returned no verdict: ${text.trim().slice(0, 200)}` };
 }
 
 /** Modelo de roteiro: cada chamada consome um item; depois do fim repete o último (para estourar `steps`). */

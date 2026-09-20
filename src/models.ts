@@ -24,12 +24,12 @@ export function validateChoice(list: ModelInfo[], id: string, agentTools: string
     // ADR-025: `free` não é um id, é o rodízio; vale se existir gratuito que sirva ao agente
     const free = list.filter((x) => x.free);
     if (!free.length) return 'Nenhum modelo gratuito na lista do OpenRouter agora.';
-    if (agentTools.length && !free.some((x) => x.tools)) return `Nenhum modelo gratuito aceita ferramentas, e este agente usa: ${agentTools.join(', ')}.`;
+    if (agentTools.length && !free.some((x) => x.tools)) return `No free model accepts tools, and this agent uses: ${agentTools.join(', ')}.`;
     return null;
   }
   const m = list.find((x) => x.id === id);
-  if (!m) return `Modelo ${id} não encontrado na lista do OpenRouter.`;
-  if (agentTools.length && !m.tools) return `O modelo ${id} não aceita ferramentas, e este agente usa: ${agentTools.join(', ')}.`;
+  if (!m) return `Model ${id} is not in the OpenRouter list.`;
+  if (agentTools.length && !m.tools) return `Model ${id} does not accept tools, and this agent uses: ${agentTools.join(', ')}.`;
   return null;
 }
 

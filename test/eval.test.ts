@@ -92,7 +92,7 @@ describe('juiz e roteiro', () => {
     expect(m[1].content).toContain('olá');
     expect(parseJudge('PASS: cumprimentou')).toEqual({ pass: true, reason: 'cumprimentou' });
     expect(parseJudge('fail - não')).toEqual({ pass: false, reason: 'não' });
-    expect(parseJudge('talvez')).toEqual({ pass: false, reason: 'juiz sem veredito: talvez' });
+    expect(parseJudge('talvez')).toEqual({ pass: false, reason: 'the judge returned no verdict: talvez' });
   });
   test('scriptedLlm devolve tool_calls e textos na ordem, depois repete o último', () => {
     const llm = scriptedLlm([{ tool: 'now', args: '{}' }, { text: 'fim' }]);

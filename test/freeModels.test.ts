@@ -115,7 +115,7 @@ describe('validateChoice aceita free como escolha da tela', () => {
   });
   test('free é recusado quando nenhum gratuito aceita as ferramentas do agente', () => {
     const semTools = [m('c/sem-tools:free', 200_000, false), m('e/pago', 128_000, true, false)];
-    expect(validateChoice(semTools, FREE, ['now'])).toMatch(/ferramenta/i);
+    expect(validateChoice(semTools, FREE, ['now'])).toMatch(/tools/i);
     expect(validateChoice(semTools, FREE, [])).toBeNull();
   });
   test('free é recusado quando não há nenhum modelo gratuito na lista', () => {

@@ -252,9 +252,9 @@ export function usageView(apiKey: string | null, day?: string, range?: string) {
   const u = loadUsage(p);
   const today = dayKey(now, 'utc');
   const measured = totalCost(dayTotals(u, today, 'utc'));
-  const or = apiKey ? read(() => keyInfo(apiKey)) : ({ ok: false, error: 'sem chave do OpenRouter' } as Read<never>);
+  const or = apiKey ? read(() => keyInfo(apiKey)) : ({ ok: false, error: 'no OpenRouter key saved' } as Read<never>);
   const informed = or.ok ? or.value.usage_daily : null;
-  if (day !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('dia inválido: use AAAA-MM-DD');
+  if (day !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('invalid day: use YYYY-MM-DD');
   // Faixa desconhecida volta para 7 dias em vez de derrubar a tela: a faixa e so o recorte do grafico, e
   // uma tela em branco ensina menos do que o recorte padrao.
   const faixa = RANGES.indexOf(range as Range) >= 0 ? (range as Range) : '7d';
@@ -320,7 +320,7 @@ function processesToday(): { triggerMsToday: number; count: number } {
 }
 
 function monitoringToday(): { requests: number } {
-  if (!__GCP_NUMBER__) throw new Error('número do projeto GCP não embutido no build');
+  if (!__GCP_NUMBER__) throw new Error('the GCP project number is not embedded in this build');
   const start = new Date(Date.parse(`${dayKey(Date.now())}T00:00:00Z`)).toISOString();
   const q = [
     `filter=${encodeURIComponent('metric.type="serviceruntime.googleapis.com/api/request_count"')}`,
@@ -356,7 +356,7 @@ export function limitsNow(apiKey: string | null, fresh = false): { items: LimitI
       const q = JSON.parse(r.getContentText()).storageQuota ?? {};
       return { limit: q.limit ? Number(q.limit) : null, usage: Number(q.usage ?? 0) };
     }),
-    key: apiKey ? read(() => keyInfo(apiKey)) : { ok: false, error: 'sem chave do OpenRouter' },
+    key: apiKey ? read(() => keyInfo(apiKey)) : { ok: false, error: 'no OpenRouter key saved' },
     measured: {
       freeToday: totalReq(today, (m) => m.endsWith(':free')),
       freePerMinuteMax: freePerMinuteMax(u),
@@ -385,6 +385,10 @@ function dailyLimitsRow(sheetId: string) {
     const has = (meta.sheets ?? []).some((s: { properties: { title: string } }) => s.properties.title === 'limites');
     if (!has) {
       UrlFetchApp.fetch(`${SHEETS}/${sheetId}:batchUpdate`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'limites' } } }] }), headers: auth(), muteHttpExceptions: true });
+      // O cabeçalho da planilha fica em pt-BR DE PROPÓSITO, e a catraca de idioma conta isso como
+      // dívida que não vai baixar aqui: renomear coluna numa planilha que o dono já tem desalinha o
+      // que ele já leu e já filtrou. O idioma da tela é decisão nossa (ADR-033); o de um arquivo que
+      // vive na conta dele, não.
       UrlFetchApp.fetch(`${SHEETS}/${sheetId}/values/limites!A1:append?valueInputOption=RAW`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ values: [['dia', 'item', 'usado', 'total', 'unidade', 'nível', 'fonte', 'status', 'nota']] }), headers: auth(), muteHttpExceptions: true });
     }
     const { items } = limitsNow(PropertiesService.getScriptProperties().getProperty('OPENROUTER_API_KEY'));

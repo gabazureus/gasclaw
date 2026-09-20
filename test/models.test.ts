@@ -25,9 +25,9 @@ describe('reduceModels', () => {
 
 describe('validateChoice (C5)', () => {
   const list = reduceModels(api);
-  test('recusa modelo sem tools quando o agente tem tools', () => expect(validateChoice(list, 'meta/llama:free', ['now'])).toMatch(/não aceita ferramentas/));
+  test('recusa modelo sem tools quando o agente tem tools', () => expect(validateChoice(list, 'meta/llama:free', ['now'])).toMatch(/does not accept tools/));
   test('aceita modelo sem tools quando o agente não tem tools', () => expect(validateChoice(list, 'meta/llama:free', [])).toBeNull());
   test('aceita modelo com tools', () => expect(validateChoice(list, 'openai/gpt-x', ['now', 'memory'])).toBeNull());
-  test('recusa id que não está na lista do OpenRouter', () => expect(validateChoice(list, 'nao/existe', [])).toMatch(/não encontrado/));
+  test('recusa id que não está na lista do OpenRouter', () => expect(validateChoice(list, 'nao/existe', [])).toMatch(/is not in the OpenRouter list/));
   test('openrouter/auto sempre é aceito', () => expect(validateChoice(list, 'openrouter/auto', ['now'])).toBeNull());
 });
