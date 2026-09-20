@@ -109,3 +109,20 @@ describe('o sonho cede a vez ao dono', () => {
     expect(fonte).toMatch(/failCycle\(s, `scenario/);
   });
 });
+
+// O MESMO defeito que a revisão pegou na proatividade, e aqui ele era pior: o laço do sonho rodava
+// para TODOS os agentes — sem conferir capacidade, sem conferir ciclo de vida, sem conferir o
+// congelamento de emergência.
+//
+// Um agente ARQUIVADO continuaria sonhando e gastando cota, que é o oposto do que arquivar significa.
+// E a chave de emergência não pararia justamente o que roda sozinho — que é o que ela existe para parar.
+describe('o laço do sonho respeita capacidade, ciclo de vida e congelamento', () => {
+  test('o tique confere as três coisas antes de avançar um ciclo', async () => {
+    const main = (await import('node:fs')).readFileSync('src/main.ts', 'utf8');
+    const i = main.indexOf("isolado('dream'");
+    const corpo = main.slice(i, i + 1200);
+    expect(corpo).toContain("'dream'");
+    expect(corpo).toContain("!== 'active'"); // arquivado não sonha
+    expect(corpo).toContain('effectiveCapabilities('); // o congelamento vence
+  });
+});

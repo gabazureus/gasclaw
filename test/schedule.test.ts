@@ -121,3 +121,28 @@ describe('a proatividade está LIGADA, e sem gatilho novo', () => {
     expect(main).toContain('noReplySpan(');
   });
 });
+
+// O defeito que a revisão desta rodada pegou, e ele é de PRIVILÉGIO.
+//
+// `tickProactive` conferia o ciclo de vida (arquivado não roda) e esquecia a CAPACIDADE. Um agente sem
+// `initiative`, com uma agenda gravada, acordaria e agiria sem ninguém olhando — a capacidade existe
+// justamente para ser esse portão, e ela estava sendo desenhada na tela e ignorada no motor.
+//
+// Pior: a agenda sobrevive a desligar a capacidade. Quem desligasse `initiative` acreditando ter
+// parado o agente continuaria com ele acordando, e não haveria sinal nenhum disso.
+describe('o despertar respeita a capacidade e o congelamento', () => {
+  test('o tique confere `initiative` antes de acordar, não só o ciclo de vida', async () => {
+    const main = (await import('node:fs')).readFileSync('src/main.ts', 'utf8');
+    const corpo = main.slice(main.indexOf('function tickProactive'), main.indexOf('function tickProactive') + 1800);
+    expect(corpo).toContain("'initiative'");
+    // A capacidade EFETIVA, não a aprovada: o congelamento de emergência tem de vencer aqui também,
+    // senão a chave que existe para parar tudo não pararia justamente o que roda sozinho.
+    expect(corpo).toContain('effectiveCapabilities(');
+  });
+
+  test('arquivado continua não acordando', async () => {
+    const main = (await import('node:fs')).readFileSync('src/main.ts', 'utf8');
+    const corpo = main.slice(main.indexOf('function tickProactive'), main.indexOf('function tickProactive') + 1800);
+    expect(corpo).toContain("!== 'active'");
+  });
+});

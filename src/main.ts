@@ -1566,7 +1566,17 @@ export function drainRuns() {
   isolado('wake', () => tickProactive());
   isolado('dream', () => {
     const d = dreamDeps();
-    for (const a of store.listAgents()) tickDream(a.folderId, d);
+    const props = PropertiesService.getScriptProperties();
+    const congelamento = props.getProperty('CAPS_ENABLED');
+    for (const a of store.listAgents()) {
+      // Este laço rodava para TODOS os agentes, sem conferir nada. Um agente ARQUIVADO continuaria
+      // sonhando e gastando cota — o oposto do que arquivar significa — e a chave de emergência não
+      // pararia justamente o que roda sozinho, que é o que ela existe para parar.
+      if (parseStatus(props.getProperty(`STATUS:${a.folderId}`)) !== 'active') continue;
+      const caps = effectiveCapabilities(parseCapabilities(props.getProperty(`CAP:${a.folderId}`)), congelamento);
+      if (!can(caps, 'dream')) continue;
+      tickDream(a.folderId, d);
+    }
   });
   return drained ?? { n: 0, ms: 0, oldest: null };
 }
@@ -1643,8 +1653,18 @@ function tickProactive(): void {
   const tz = Session.getScriptTimeZone();
   const minutos = Number(Utilities.formatDate(agora, tz, 'H')) * 60 + Number(Utilities.formatDate(agora, tz, 'm'));
   const semana = Number(Utilities.formatDate(agora, tz, 'u')) % 7; // 'u': 1=segunda … 7=domingo
+  const congelamento = props.getProperty('CAPS_ENABLED');
   for (const a of store.listAgents()) {
     if (parseStatus(props.getProperty(`STATUS:${a.folderId}`)) !== 'active') continue;
+    // A CAPACIDADE É O PORTÃO, e ela estava sendo desenhada na tela e ignorada aqui. Sem esta linha,
+    // um agente sem `initiative` com agenda gravada acordaria e agiria sem ninguém olhando — e, pior,
+    // quem DESLIGASSE a capacidade acreditando ter parado o agente continuaria com ele acordando, sem
+    // sinal nenhum disso. A agenda sobrevive ao desligamento; o despertar não pode sobreviver.
+    //
+    // `effectiveCapabilities` e não a lista aprovada: o congelamento de emergência tem de vencer aqui
+    // também, senão a chave que existe para parar tudo não pararia justamente o que roda sozinho.
+    const caps = effectiveCapabilities(parseCapabilities(props.getProperty(`CAP:${a.folderId}`)), congelamento);
+    if (!can(caps, 'initiative')) continue;
     const { jobs } = parseSchedule(props.getProperty(schedProp(a.folderId)));
     if (jobs.length === 0) continue;
     const visto = props.getProperty(seenProp(a.folderId));
