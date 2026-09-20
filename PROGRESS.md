@@ -1,7 +1,7 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, e se já foi resolvido.
-> **Atualizado em:** 2026-09-20 · **1712 testes** · `tsc` limpo · build limpo · dívida de idioma **203**
+> **Atualizado em:** 2026-09-20 · **1715 testes** · `tsc` limpo · build limpo · dívida de idioma **203**
 > · **Auditoria:** seis ✅ eram falsos. Critério: *algum módulo importa isto, e o símbolo aparece em `dist/_motor.js`?*
 > · **P22 aprovada 4/4** · P24 **aprovada por inteiro** · P25 **reprovada** (sem combustível)
 > **Fontes:** [spec](docs/specs/), [ADRs](docs/adr/README.md), [CHANGELOG](CHANGELOG.md),
@@ -71,7 +71,11 @@
 | ~~31~~ | ✅ **Fiar `subagent.ts` (personas)** | Órfão, 0 no bundle. É também o **quarto controle** do item 16: a interseção de ferramentas no repasse | nada |
 | ~~32~~ | ✅ **Ferramenta `agent.*` no registro fechado** | Não existe nenhuma. Os controles do item 16 protegem um mecanismo que **ainda não foi construído** | 31 (a interseção precisa existir antes do repasse) |
 | 33 | Fechar a entrega da chave | 🔨 **Metade feita**: o segredo passou a ser escrito e a rota `childkey` existe. A outra metade é uma **tensão entre três regras nossas** (ADR-040 puxa a chave · web app `MYSELF` exige token do dono · o crivo da ADR-041 proíbe `getOAuthToken` no filho). A **P27** mede se o token do filho é aceito — sem ela, não se afirma | P27 |
-| ~~34~~ | ✅ **Teto familiar com efeito** | `capAction` informa e nada age: ninguém lê `stop-creating`/`freeze` | nada |
+| ~~34~~ | ✅ **Teto familiar com efeito** |
+| ~~40~~ | ✅ **`agent.create` no registro fechado** | Cria agente com pasta própria e **nada mais**: sem ferramenta, sem acesso, sem capacidade. `approval: 'always'` porque criar é o ato que multiplica |
+| ~~41~~ | ✅ **Capacidades destravadas** | `initiative`, `succeed` e `create` com `missing: null`. Guarda **inversa** no teste: `missing: null` exige o mecanismo CHAMADO no bundle |
+| ~~42~~ | ✅ **Painel: tabelas e Drive** | Filhos e arquivados em tabela; botão Drive no agente; `Remove`/`Forget` confirmam e dizem o que **não** apagam |
+| ~~43~~ | ✅ **Portão da capacidade nos laços autônomos** | `tickProactive` e `tickDream` conferiam status e ignoravam a CAPACIDADE — defeito de privilégio achado na revisão desta rodada | `capAction` informa e nada age: ninguém lê `stop-creating`/`freeze` | nada |
 | ~~35~~ | ✅ **Tela da sucessão e da linhagem** | `signMandate`, `passBaton`, `lineage` e `writeSuccessor` existem no servidor; o painel só mostra o último | nada |
 | ~~36~~ | ✅ **Tela do ciclo de sonho (DreamBoard)** | `startAgentDream` e `agentDream` existem; falta a tela com diff e placar | nada |
 | ~~37~~ | ✅ **Vocabulário "sub-agente"** | Significa duas coisas: declaração no run do pai (ADR-039) e projeto filho com pasta. Renomear a primeira para **persona** | nada |
