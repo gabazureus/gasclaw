@@ -1,60 +1,13 @@
-// Entrega da chave ao filho e teto familiar.
+// Teto familiar, e a AUSÊNCIA da entrega de chave.
 //
-// O desenho parte de uma decisão do usuário (filho usa a mesma chave do pai) e de um problema que
-// ela NÃO resolve: o segredo continua no fonte do filho. A unicidade da entrega é o que fecha isso.
+// Este arquivo testava um mecanismo que não existe mais. A P27 mediu que o filho não alcança o motor
+// para pedir a chave, e o dono escolheu a opção 4 da ADR-040: filhos são só `automation`, que nunca
+// falam com modelo e nunca precisam de credencial. Os testes da entrega foram substituídos pelos
+// testes da ausência dela — que são os que importam agora, porque o risco mudou de lado: não é mais
+// "a entrega funciona direito", é "a entrega não volta sem ninguém perceber".
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
-import {
-  afterDelivery,
-  armDelivery,
-  capAction,
-  childrenSpendUpperBound,
-  deliverySpan,
-  FAMILY_CAP_USD,
-  FAMILY_LAG_MS,
-  FAMILY_NOTE,
-  mayDeliverKey,
-  rearmDelivery,
-} from '../src/family';
-
-describe('entrega da chave: uma vez, autenticada, rastreada', () => {
-  const d = armDelivery('filho1');
-
-  test('entrega ao filho certo, com o segredo certo, com a janela armada', () => {
-    expect(mayDeliverKey(d, 'filho1', true).ok).toBe(true);
-  });
-
-  test('segredo errado não entrega — é o que prova que o pai criou este filho', () => {
-    expect(mayDeliverKey(d, 'filho1', false).ok).toBe(false);
-  });
-
-  test('outro filho não entrega, mesmo com segredo válido do dele', () => {
-    expect(mayDeliverKey(d, 'filho2', true).ok).toBe(false);
-  });
-
-  test('sem estado de entrega, recusa: filho que este agente não criou', () => {
-    expect(mayDeliverKey(null, 'filho1', true).ok).toBe(false);
-  });
-
-  test('SEGUNDA entrega é recusada — e é isto que faz um segredo vazado não valer nada', () => {
-    const depois = afterDelivery(d, 1000);
-    const v = mayDeliverKey(depois, 'filho1', true);
-    expect(v.ok).toBe(false);
-    expect(v.reason).toContain('re-arm');
-  });
-
-  test('rearmar devolve a janela, e é ato do dono; a CONTAGEM não zera', () => {
-    const depois = afterDelivery(d, 1000);
-    const rearmado = rearmDelivery(depois);
-    expect(mayDeliverKey(rearmado, 'filho1', true).ok).toBe(true);
-    expect(rearmado.deliveries).toBe(1); // entrega repetida é sinal, não rotina
-    expect(afterDelivery(rearmado, 2000).deliveries).toBe(2);
-  });
-
-  test('a entrega deixa rastro nomeado no trace', () => {
-    expect(deliverySpan('filho1')).toBe('key_delivery:filho1');
-  });
-});
+import { capAction, childrenSpendUpperBound, FAMILY_CAP_USD, FAMILY_LAG_MS, FAMILY_NOTE } from '../src/family';
 
 describe('teto familiar: o offset de -79% usado a favor', () => {
   test('consumo dos filhos = família menos pai, e nunca negativo', () => {
@@ -98,28 +51,53 @@ describe('ao estourar: a reação é reversível e a menos destrutiva que resolv
   });
 });
 
-// A FIAÇÃO do teto familiar e da entrega da chave (itens 21 e 19).
-describe('fiação: credencial fail-closed e conta reusada', () => {
-  const main = readFileSync('src/main.ts', 'utf8');
+// A FIAÇÃO do teto familiar, e a PROVA DE AUSÊNCIA do caminho de credencial.
+describe('fiação: a chave não sai daqui, e a conta é reusada', () => {
+  // SEM COMENTÁRIOS. A prova é sobre o CÓDIGO: os comentários deste projeto explicam justamente o que
+  // foi removido e por quê, e citam os nomes. Buscar no arquivo cru daria falso vermelho na
+  // documentação da própria remoção — e a tentação seguinte seria apagar a explicação para o teste
+  // passar, trocando uma prova por um silêncio.
+  const semComentarios = (f: string) =>
+    readFileSync(f, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+  const main = semComentarios('src/main.ts');
+  const familia = semComentarios('src/family.ts');
 
-  // Este é o caminho por onde a credencial do DONO trafega. `===` vazaria o prefixo certo pelo tempo.
-  test('o segredo do filho é comparado em tempo constante', () => {
-    expect(main).toContain('cliAuthorized(guardado, String(secret))');
-    expect(main).not.toContain('d.secret === String(secret)');
+  // O TESTE QUE IMPORTA. Enquanto existia, `childkey` era a única rota do projeto que devolvia a chave
+  // do OpenRouter por HTTP — e a janela ficava ARMADA para todo filho criado. Ela não pode voltar por
+  // distração: se voltar, é decisão, e uma decisão derruba este teste e obriga a mexer na ADR-040.
+  for (const simbolo of ['childkey', 'deliverKeyToChild', 'rearmChildKey', 'mayDeliverKey', 'armDelivery']) {
+    test(`\`${simbolo}\` não existe em main.ts — a entrega de credencial foi removida, não desligada`, () => {
+      expect(main).not.toContain(simbolo);
+    });
+  }
+
+  // As duas Properties da entrega podem ser CITADAS — `forgetChild` as apaga, e apagar é o oposto de
+  // usar. O que não pode voltar é LER ou ESCREVER: ler é o que autorizava a entrega, escrever é o que
+  // armava a janela. Proibir a palavra obrigaria a deixar o resíduo no lugar para o teste passar.
+  for (const prop of ['KEYSEC:', 'KEYDEL:']) {
+    test(`\`${prop}\` só pode ser APAGADA — nunca lida nem escrita`, () => {
+      expect(main).not.toMatch(new RegExp(`(get|set)Property\\(\`${prop}`));
+      expect(main).toContain(`deleteProperty(\`${prop}`);
+    });
+  }
+
+  test('nenhuma rota devolve a chave do OpenRouter', () => {
+    expect(main).not.toContain('key: store.getApiKey()');
   });
 
-  test('estado de entrega ilegível NÃO entrega — fail-closed para credencial', () => {
-    expect(main).toMatch(/return null; \/\/ estado ilegível = não pode entregar/);
+  test('o núcleo da família não tem mais a metade da entrega', () => {
+    for (const simbolo of ['KeyDelivery', 'armDelivery', 'mayDeliverKey', 'rearmDelivery', 'deliverySpan']) {
+      expect(familia).not.toContain(`export ${simbolo}`);
+      expect(familia).not.toContain(`export function ${simbolo}`);
+      expect(familia).not.toContain(`export const ${simbolo}`);
+      expect(familia).not.toContain(`export type ${simbolo}`);
+    }
   });
 
-  // Rearmar automático desfaria a proteção que a unicidade cria: é ato humano.
-  test('rearmar exige o dono, e a contagem de entregas NÃO zera', () => {
-    const bloco = main.slice(main.indexOf('export function rearmChildKey'), main.indexOf('// ---------- Campos declarados'));
-    expect(bloco).toContain('assertOwner()');
-    expect(bloco).toMatch(/A CONTAGEM NÃO ZERA/);
-  });
-
-  // Recalcular a conta abriria espaço para os dois lados divergirem em silêncio.
+  // O teto familiar SOBREVIVE: `agent.create` cria agentes no MESMO projeto, na MESMA chave, então o
+  // offset continua medindo o que eles gastam. Remover a entrega não removeu o instrumento.
   test('o gasto da família reusa a conferência que já existe, em vez de recalcular', () => {
     expect(main).toContain('observe.usageView(store.getApiKey()).check');
     expect(main).toContain('childrenSpendUpperBound(c.informed, c.measured)');

@@ -104,12 +104,13 @@ describe('nada é publicado sem passar no crivo', () => {
 // executa na coleção, e o registro de chamadas do mock é limpo antes do primeiro teste rodar — o que
 // fazia `api.mock.calls` chegar vazio e um teste correto falhar por motivo nenhum.
 describe('o caminho feliz publica um filho com o que foi pedido, e só isso', () => {
-  test('devolve o filho como SUBAGENT com a URL da implantação', () => {
+  test('devolve o filho como AUTOMATION, sem pasta, com a URL da implantação', () => {
     const r = generateSuccessor(pedido, deps());
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.child.scriptId).toBe('child-1');
-    expect(r.child.kind).toBe('subagent');
+    expect(r.child.kind).toBe('automation'); // ADR-040 opção 4: a forma que nunca precisa de chave
+    expect(r.child.folderId).toBeNull();
     expect(r.child.url).toBe('https://script.google.com/macros/s/child/exec');
     expect(r.child.parent).toBe('f1');
   });

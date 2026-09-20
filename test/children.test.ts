@@ -10,8 +10,8 @@ import { AUTH_LABEL, authState, KIND_LABEL, KIND_WHAT, parseChild, parseChildren
 
 const filho = (o: Partial<Child> = {}): Child => ({
   scriptId: 'abc123',
-  kind: 'subagent',
-  folderId: 'pasta-do-filho',
+  kind: 'automation',
+  folderId: null,
   title: 'agenda specialist',
   url: 'https://script.google.com/macros/s/x/exec',
   scopes: ['https://www.googleapis.com/auth/calendar.events'],
@@ -90,15 +90,20 @@ describe('tipo do filho: automação x sub-agente', () => {
     expect(parseChild({ scriptId: 'a', kind: 'automation', folderId: 'pasta' })?.folderId).toBeNull();
   });
 
-  test('sub-agente guarda a pasta dele', () => {
-    expect(parseChild({ scriptId: 'a', kind: 'subagent', folderId: 'pasta' })?.folderId).toBe('pasta');
+  // O REBAIXAMENTO, que é o que torna a opção 4 da ADR-040 retroativa. Um filho gravado como
+  // `subagent` ANTES da decisão volta da Property como `automation`, e a pasta dele é descartada.
+  // Sem isso, o dado antigo continuaria nomeando uma forma que não existe mais — e a tela mostraria
+  // um "sub agent" que nenhum código sabe mais tratar.
+  test('um `subagent` GRAVADO volta como automação, e a pasta dele é descartada', () => {
+    const c = parseChild({ scriptId: 'a', kind: 'subagent', folderId: 'pasta' });
+    expect(c?.kind).toBe('automation');
+    expect(c?.folderId).toBeNull();
   });
 
-  test('o texto de cada tipo diz o que muda: chave ou nenhuma chave', () => {
+  test('só existe um tipo, e o texto dele diz a coisa que importa: nenhuma chave', () => {
     expect(KIND_WHAT.automation).toMatch(/no API key/i);
-    expect(KIND_WHAT.subagent).toMatch(/needs the API key/i);
     expect(KIND_LABEL.automation).toBe('automation');
-    expect(KIND_LABEL.subagent).toBe('sub agent');
+    expect(Object.keys(KIND_LABEL)).toEqual(['automation']);
   });
 });
 

@@ -10,17 +10,23 @@
 // rede, corpo estranho, código inesperado — é `unknown`, e `unknown` não é permissão.
 
 /**
- * Um filho é UMA DE DUAS COISAS, e a diferença é de segurança, não de rótulo:
+ * Um filho é UMA COISA SÓ: `automation`. SÓ CÓDIGO — sem pasta, sem prompt, sem modelo, e por isso
+ * SEM CHAVE. Ele faz uma coisa e devolve o resultado.
  *
- * - `automation`: SÓ CÓDIGO. Sem pasta, sem prompt, sem modelo — e por isso SEM CHAVE. Ela faz uma coisa
- *   e devolve o resultado. A parte mais arriscada do desenho (o pai entregar a credencial do OpenRouter)
- *   NÃO SE APLICA aqui. É o caminho barato de crescer em capacidade.
- * - `subagent`: código MAIS pasta própria no Drive, com prompt e papéis. Conversa, raciocina, pode
- *   receber capacidades — e só ele precisa da chave, entregue uma vez e com rastro.
+ * O tipo tinha um segundo membro, `subagent`: código MAIS pasta própria, que conversava e por isso
+ * precisava da chave do OpenRouter entregue pelo pai. A P27 mediu que essa entrega NÃO FUNCIONA — um
+ * token do projeto do filho é recusado pelo web app do motor, antes de chegar ao nosso código — e o
+ * dono escolheu a opção 4 da [ADR-040](../docs/adr/040-isolamento-e-privilegio.md): só `automation`.
  *
- * Chamar os dois de "projeto filho" escondia exatamente a distinção que decide se há credencial em jogo.
+ * O membro foi REMOVIDO do tipo, não desligado por bandeira. A forma que precisa de credencial passa
+ * a ser estado NÃO REPRESENTÁVEL — a mesma disciplina do singleton `CREATOR`. Uma guarda de runtime
+ * dependeria de ela ser chamada em todo caminho novo; um membro que não existe não depende de nada.
+ *
+ * Filho que raciocina continua existindo por dois caminhos que nunca precisaram de entrega de chave:
+ * `persona` (papel na pasta do pai, roda no turno do pai) e `agent.create` (pasta própria, MESMO
+ * projeto Apps Script, lê a chave do motor direto). O que a opção 4 custa está na ADR-040.
  */
-export type ChildKind = 'automation' | 'subagent';
+export type ChildKind = 'automation';
 
 export type Child = {
   scriptId: string;
@@ -28,17 +34,16 @@ export type Child = {
   title: string;
   url: string | null; // URL do web app; null enquanto não foi implantado
   scopes: string[]; // o que ele PEDE — é isto que o dono precisa ler antes de consentir
-  folderId: string | null; // só `subagent` tem pasta; `automation` é null por definição
+  folderId: null; // automação não tem pasta, por definição — e automação é a única forma que existe
   parent: string | null; // folderId do agente que o criou
   reason: string; // por que ele existe: a evidência que justificou a criação
   at: number;
 };
 
 /** O que a tela mostra, e o que cada tipo implica. Em inglês (ADR-033). */
-export const KIND_LABEL: Record<ChildKind, string> = { automation: 'automation', subagent: 'sub agent' };
+export const KIND_LABEL: Record<ChildKind, string> = { automation: 'automation' };
 export const KIND_WHAT: Record<ChildKind, string> = {
   automation: 'Code only — no folder, no prompt, no model, and no API key. It does one thing and returns the result.',
-  subagent: 'Code plus its own Drive folder with a prompt. It can hold a conversation, so it needs the API key — delivered once, with a trace.',
 };
 
 export type AuthState = 'authorized' | 'needs-consent' | 'not-deployed' | 'unknown';
@@ -58,14 +63,14 @@ export function parseChild(raw: unknown): Child | null {
   if (!scriptId) return null;
   const scopes = Array.isArray(o.scopes) ? o.scopes.map((s) => str(s, 120)).filter(Boolean) : [];
   const url = str(o.url, 400);
-  // Fail-closed no TIPO: o que não se declara como sub-agente é automação, que é a forma SEM credencial.
-  // Errar para o lado barato é errar para o lado seguro.
-  const kind: ChildKind = o.kind === 'subagent' ? 'subagent' : 'automation';
-  const folderId = str(o.folderId, 120);
+  // O TIPO É CONSTANTE, e isso vale para o dado JÁ GRAVADO: um `kind: 'subagent'` escrito antes da
+  // opção 4 volta da Property como `automation`. Rebaixar é a direção segura — a forma que precisava
+  // da chave some, e some para os registros antigos também, sem migração e sem o dono clicar em nada.
+  const kind: ChildKind = 'automation';
   return {
     scriptId,
     kind,
-    folderId: kind === 'subagent' && folderId ? folderId : null, // automação não tem pasta, por definição
+    folderId: null, // a pasta era do `subagent`, que não existe mais: qualquer valor gravado é descartado
     title: str(o.title, 120) || scriptId,
     url: url && /^https:\/\//i.test(url) ? url : null, // só https: um destino http seria degradação silenciosa
     scopes,

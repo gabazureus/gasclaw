@@ -3,7 +3,7 @@ import { startDream, tickDream, type DreamDeps } from './dreamTick';
 import { dreamIO } from './dreamStore';
 import { failProp, failuresFrom, parseFailures, serializeFailures, withFailure } from './failureLog';
 import { mergeAcrossGenerations, originLabel, parseSchema, validateValues, type ConfigField } from './agentConfig';
-import { afterDelivery, armDelivery, capAction, childrenSpendUpperBound, deliverySpan, FAMILY_CAP_USD, FAMILY_NOTE, mayDeliverKey, rearmDelivery, type KeyDelivery } from './family';
+import { capAction, childrenSpendUpperBound, FAMILY_CAP_USD, FAMILY_NOTE } from './family';
 import { cluster, hasMaterial, type Failure } from './dreamCycle';
 import { AUTO_NOTE, cleanAutoList, mayAutoApprove, NEVER_AUTO, noReplySpan, onProactiveBlock } from './autoApprove';
 import { dueJobs, JOB_MAX, jobText, parseSchedule, serializeSchedule } from './schedule';
@@ -239,18 +239,11 @@ export function doPost(e: GoogleAppsScript.Events.DoPost) {
     assertOwner();
     const props = PropertiesService.getScriptProperties();
     const stored = props.getProperty('CLI_SECRET');
-    // ITEM 33, A OUTRA METADE: o filho é OUTRO PROJETO — ele não alcança `deliverKeyToChild` por
-    // `google.script.run`, que é da tela. Sem rota, o caminho da entrega existia e ninguém podia
-    // percorrê-lo. Vem ANTES do `CLI_SECRET` de propósito: o filho não tem o segredo da CLI, e não
-    // deve ter — ele se autentica com o SEGREDO DELE, que só vale para ele e só uma vez.
-    if (action === 'childkey') {
-      try {
-        return json({ ok: true, ...deliverKeyToChild(p.child ?? '', p.secret ?? '') });
-      } catch (err) {
-        // 403 e não 400: a recusa aqui é sempre de autorização, e o motivo já vem pronto do núcleo.
-        return json({ ok: false, status: 403, error: (err as Error).message });
-      }
-    }
+    // A ROTA `childkey` FOI REMOVIDA (2026-09-20, ADR-040 opção 4). Ela era o único ponto do projeto
+    // que devolvia a chave do OpenRouter por HTTP. A P27 mediu que o filho não consegue alcançá-la —
+    // o Google recusa o token de outro projeto antes de chegar aqui —, então ela não servia a ninguém
+    // além de quem já é o dono, e continuava sendo a porta que se abriria sozinha no dia em que o
+    // `access` do manifesto mudasse. Filhos agora são só `automation`, que nunca precisam de chave.
     if (action === 'setsecret') {
       // primeira vez: o dono grava o segredo gerado no PC; depois, só quem já tem o segredo atual
       if (!validSecret(p.secret ?? '')) return json({ ok: false, status: 400, error: 'invalid secret: use 64 hexadecimal characters (openssl rand -hex 32)' });
@@ -1518,6 +1511,12 @@ export function forgetChild(scriptId: string, folderId?: string) {
   const id = String(scriptId ?? '').trim();
   if (!id) throw new Error('unknown child project');
   props.setProperty('CHILDREN', serializeChildren(withoutChild(parseChildren(props.getProperty('CHILDREN')), id)));
+  // RESÍDUO DA ENTREGA DE CHAVE, que existiu até 2026-09-20 (ADR-040, opção 4). Nada mais LÊ estas
+  // duas Properties — a prova está em `test/family.test.ts` —, então elas são dado inerte. Apagá-las
+  // aqui é barato e fecha o par que sobrou: o segredo guardado deste lado e a cópia dele no fonte do
+  // filho. Um par inerte volta a valer no dia em que alguém restaurar a rota; um par ausente, não.
+  props.deleteProperty(`KEYSEC:${id}`);
+  props.deleteProperty(`KEYDEL:${id}`);
   if (props.getProperty('P24_CHILD') === id) {
     props.deleteProperty('P24_CHILD');
     props.deleteProperty('P24_URL'); // a URL sozinha reapareceria como filho meio registrado
@@ -2168,13 +2167,9 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
 
   props.setProperty('CHILDREN', serializeChildren(withChild(parseChildren(props.getProperty('CHILDREN')), r.child)));
   props.setProperty(genStamp(id), String(Date.now())); // o intervalo mínimo conta a partir de AGORA
-  // Sub-agente conversa, logo precisa da chave: a janela nasce ARMADA e é consumida na primeira vez.
-  props.setProperty(deliveryProp(r.child.scriptId), JSON.stringify(armDelivery(r.child.scriptId)));
-  // ITEM 33 — O SEGREDO POR FILHO, QUE NUNCA ERA ESCRITO. A auditoria achou `KEYSEC:<filho>` sendo só
-  // LIDO: `cliAuthorized(null, …)` é sempre falso, então a entrega da chave SEMPRE recusava. O núcleo
-  // estava certo e o caminho inteiro era inalcançável — outro caso de peça pronta que ninguém ligou.
-  const segredo = childSecret();
-  props.setProperty(`KEYSEC:${r.child.scriptId}`, segredo);
+  // NADA DE JANELA DE ENTREGA NEM DE `KEYSEC:` AQUI. Este bloco armava a entrega da credencial e
+  // gravava o segredo por filho para TODO sucessor gerado — e este é o único produtor de filhos, então
+  // a janela ficava armada para todos eles, indefinidamente. O filho é `automation`: só código.
   // A linhagem registra a GERAÇÃO DE CÓDIGO com o custo. Sem esta entrada, "ele se reescreveu" seria
   // uma frase na tela sem nada por trás; com ela, é um registro com data, pai, filho e dólar.
   const anterior = lineage().entries;
@@ -2190,9 +2185,10 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
   };
   props.setProperty(lineageProp, JSON.stringify([...anterior, entrada].slice(-100)));
 
-  // O segredo volta UMA vez, para quem cria poder embuti-lo no fonte do filho. Ele não é a chave do
-  // OpenRouter: serve só para o filho provar, uma única vez, que é o filho que este ambiente criou.
-  return { ok: true as const, child: r.child, secret: segredo, costUsd: r.costUsd, needsConsent: true, budget: { spentToday: codegenSpentToday(Date.now()), cap: CODEGEN_DAILY_CAP_USD, perRun: CODEGEN_BUDGET_USD } };
+  // NÃO VOLTA SEGREDO NENHUM. Voltava, para quem cria embutir no fonte do filho e o filho pedir a
+  // chave — o caminho que a P27 reprovou e a opção 4 da ADR-040 encerrou. Um campo `secret` que
+  // ninguém mais usa seria a promessa sobrevivendo ao mecanismo.
+  return { ok: true as const, child: r.child, costUsd: r.costUsd, needsConsent: true, budget: { spentToday: codegenSpentToday(Date.now()), cap: CODEGEN_DAILY_CAP_USD, perRun: CODEGEN_BUDGET_USD } };
 }
 
 /** Pode gerar agora? O intervalo mínimo é trava de custo E de descontrole, não conforto. */
@@ -2205,17 +2201,6 @@ export function mayGenerateNow(folderId: string) {
 }
 
 // ---------- Teto familiar e entrega da chave (itens 21 e 19) ----------
-
-const deliveryProp = (child: string) => `KEYDEL:${child}`;
-
-const readDelivery = (child: string): KeyDelivery | null => {
-  try {
-    const raw = PropertiesService.getScriptProperties().getProperty(deliveryProp(child));
-    return raw ? (JSON.parse(raw) as KeyDelivery) : null;
-  } catch {
-    return null; // estado ilegível = não pode entregar. Fail-closed é a resposta certa para credencial.
-  }
-};
 
 /**
  * O gasto da FAMÍLIA, e o que fazer quando ele sobe.
@@ -2247,75 +2232,6 @@ export function familySpend() {
   const c = observe.usageView(store.getApiKey()).check;
   const filhos = c.informed === null ? null : childrenSpendUpperBound(c.informed, c.measured);
   return { family: c.informed, parent: c.measured, children: filhos, cap: FAMILY_CAP_USD, action: capAction(filhos), note: FAMILY_NOTE };
-}
-
-/**
- * Entrega a chave a UM filho, uma vez, com rastro.
- *
- * Só vale para `subagent`: uma `automation` nunca fala com modelo, logo nunca precisa de credencial — e
- * foi essa distinção que tirou a entrega do caminho crítico. O segredo prova que o filho é aquele que
- * este ambiente criou; a unicidade é o que torna um segredo vazado inútil passada a janela.
- */
-export function deliverKeyToChild(child: string, secret: string) {
-  const id = String(child ?? '').trim();
-  const props = PropertiesService.getScriptProperties();
-  // TRÊS INVARIANTES QUE O DOCSTRING AFIRMAVA E O CÓDIGO NÃO CONFERIA (revisão de 2026-09-20). Esta é
-  // a entrega de CREDENCIAL: o ato mais irreversível do conjunto, e o único que estava fail-OPEN.
-  //
-  // 1. Só `subagent`. O texto logo acima diz "uma `automation` nunca fala com modelo, logo nunca
-  //    precisa de credencial" — e uma automação com a janela armada recebia a chave.
-  const registro = parseChildren(props.getProperty('CHILDREN')).find((c) => c.scriptId === id);
-  if (!registro) throw new Error('this child is not registered here');
-  if (registro.kind !== 'subagent') throw new Error('an automation never needs the API key');
-  // 2. O congelamento de emergência. Ele para `dream`, `initiative`, `succeed` e `create` — e não
-  //    parava a entrega de credencial, que é mais grave que as quatro juntas.
-  if (!capsEnabled(props.getProperty('CAPS_ENABLED'))) throw new Error('everything is frozen by the emergency switch');
-  // 3. O PAI precisa estar ativo. Um pai arquivado seguia entregando a chave do dono.
-  if (registro.parent && !isRunnable(parseStatus(props.getProperty(`STATUS:${registro.parent}`)))) {
-    throw new Error('the agent that created this child is archived');
-  }
-  const d = readDelivery(id);
-  // O segredo mora em Property PRÓPRIA e é comparado em TEMPO CONSTANTE: comparar com `===` vazaria o
-  // prefixo certo pelo tempo de resposta, e este é o caminho por onde a credencial do dono trafega.
-  const guardado = props.getProperty(`KEYSEC:${id}`);
-  const v = mayDeliverKey(d, id, cliAuthorized(guardado, String(secret)));
-  const t = runlog.begin('config', { question: deliverySpan(id), agent: 'family' });
-  if (!v.ok) {
-    t.end({ answer: `refused: ${v.reason}` });
-    throw new Error(v.reason);
-  }
-  props.setProperty(deliveryProp(id), JSON.stringify(afterDelivery(d as KeyDelivery, Date.now())));
-  t.end({ answer: 'delivered once' });
-  return { key: store.getApiKey() };
-}
-
-/** Segredo por filho: 64 hex, o mesmo formato e a mesma força do `CLI_SECRET` (ADR-022). */
-const childSecret = (): string => Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
-
-/** Rearma a entrega. ATO HUMANO: automático desfaria a proteção que a unicidade cria. */
-export function rearmChildKey(child: string) {
-  assertOwner();
-  const id = String(child ?? '').trim();
-  const d = readDelivery(id);
-  // ESTADO ILEGÍVEL NÃO PODE SER SEM SAÍDA. `readDelivery` devolve `null` tanto para "não existe"
-  // quanto para "o JSON quebrou", e recusar nos dois casos deixava o dono TRANCADO: a entrega
-  // recusava para sempre, e o rearme — que É o caminho de recuperação — recusava sobre o mesmo dado.
-  // É a mesma classe do carimbo "NaN", com o agravante de a recuperação ser fail-closed contra si.
-  //
-  // Recuperar é rearmar do zero, e a contagem só se preserva quando dá para lê-la: perder o contador
-  // de um filho é ruim, mas trancar o dono fora do próprio painel é pior.
-  if (!d) {
-    if (!parseChildren(PropertiesService.getScriptProperties().getProperty('CHILDREN')).some((c) => c.scriptId === id)) {
-      throw new Error('unknown child project');
-    }
-    const novo = armDelivery(id);
-    PropertiesService.getScriptProperties().setProperty(deliveryProp(id), JSON.stringify(novo));
-    return { child: id, armed: true, deliveries: 0, recovered: true };
-  }
-  // A CONTAGEM NÃO ZERA: entrega repetida vira sinal, não rotina. Um filho que pede a chave cinco vezes
-  // aparece — e é isso que separa "republiquei o projeto" de "algo está pedindo demais".
-  PropertiesService.getScriptProperties().setProperty(deliveryProp(String(child)), JSON.stringify(rearmDelivery(d)));
-  return { child, armed: true, deliveries: d.deliveries };
 }
 
 // ---------- Campos declarados pelo agente (item 20): a mutação aparece no painel ----------
@@ -2802,151 +2718,13 @@ function pocP26(step?: string): unknown {
   return { pass: false, error: 'steps: scopes, budget' };
 }
 
-/**
- * Sonda da P27 (só no dev): **o filho consegue chegar ao motor para pedir a chave?**
- *
- * A pergunta existe porque o desenho tem uma tensão que eu mesmo criei e não posso resolver por
- * raciocínio:
- *
- * - A ADR-040 diz que o filho PUXA a chave (embutir no fonte a faria vazar junto com o projeto).
- * - O web app do motor é `access: MYSELF`, logo a chamada precisa de um token do DONO.
- * - O crivo da ADR-041 RECUSA código gerado que chame `ScriptApp.getOAuthToken()`.
- *
- * Os três juntos tornam a entrega impossível. O argumento a favor de abrir a exceção para o filho é
- * que o token dele é limitado ao MANIFESTO dele, que `narrowScopes` garante ser estritamente menor e
- * nunca conter `script.projects` — o "chave da casa" vale para o token do MOTOR (17 escopos), não
- * para o do filho. Mas se um token assim é ACEITO por um web app `MYSELF` de outro script é fato
- * sobre a plataforma, não sobre o nosso desenho. Ou se mede, ou não se afirma.
- */
-function pocP27(step?: string): unknown {
-  const props = PropertiesService.getScriptProperties();
-  if (step === 'secret') {
-    // C1: o segredo por filho passou a EXISTIR? Era este o defeito: `KEYSEC:` só era lido.
-    const filhos = parseChildren(props.getProperty('CHILDREN'));
-    const comSegredo = filhos.filter((c) => !!props.getProperty(`KEYSEC:${c.scriptId}`)).length;
-    return { pass: filhos.length === 0 || comSegredo === filhos.length, children: filhos.length, withSecret: comSegredo, reading: filhos.length === 0 ? 'no child yet: C1 is vacuous until one is created' : '' };
-  }
-  if (step === 'route') {
-    // C2: a rota existe e RECUSA sem o segredo certo. Recusar é o comportamento correto aqui — um
-    // "pass" neste passo significa que a porta existe E está trancada.
-    const url = ScriptApp.getService().getUrl();
-    const t0 = Date.now();
-    const res = UrlFetchApp.fetch(url, {
-      method: 'post',
-      payload: { action: 'childkey', child: 'nao-existe', secret: 'x'.repeat(64) },
-      headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` },
-      muteHttpExceptions: true,
-    });
-    const body = res.getContentText();
-    const recusou = /was not created by this agent|wrong or missing child secret|already been delivered/i.test(body);
-    return { pass: recusou, ms: Date.now() - t0, code: res.getResponseCode(), body: body.slice(0, 300), reading: recusou ? 'the route exists and refuses an unknown child' : 'the route did NOT refuse — read the body' };
-  }
-  if (step === 'child') {
-    // C3, A PERGUNTA QUE DECIDE O ITEM 33: um token do FILHO é aceito pelo web app `MYSELF` do motor?
-    //
-    // Reusa o filho que a P24 já criou e que o dono já autorizou — não cria projeto novo e não gasta
-    // Opus. O que muda é o CÓDIGO dele: ele passa a chamar a rota `childkey` com o próprio token.
-    //
-    // O manifesto do filho ganha `script.external_request` (para poder chamar) e continua SEM
-    // `script.projects` — `CHILD_FORBIDDEN_SCOPES` garante isso, e é essa garantia que sustenta o
-    // argumento de que o token do filho não é 'a chave da casa'. Um escopo novo no manifesto exige um
-    // NOVO CONSENTIMENTO do dono: a plataforma cobra o clique, e é bom que cobre.
-    const child = props.getProperty('P24_CHILD');
-    if (!child) return { pass: false, error: 'the P24 child does not exist: run `poc p24 create` first' };
-    const own = ScriptApp.getScriptId();
-    const guard = mayWriteProject(child, own);
-    if (!guard.ok) return { pass: false, error: guard.reason };
-
-    const token = ScriptApp.getOAuthToken();
-    const api = 'https://script.googleapis.com/v1/projects';
-    const call = (url: string, method: GoogleAppsScript.URL_Fetch.HttpMethod, payload?: unknown) => {
-      const res = UrlFetchApp.fetch(url, { method, contentType: 'application/json', headers: { Authorization: `Bearer ${token}` }, ...(payload ? { payload: JSON.stringify(payload) } : {}), muteHttpExceptions: true });
-      return { code: res.getResponseCode(), full: res.getContentText() };
-    };
-
-    // Um segredo de verdade para este filho, gravado do nosso lado: sem ele a rota recusaria por
-    // autenticação e a medição responderia a pergunta ERRADA (mediria o segredo, não o token).
-    const segredo = childSecret();
-    props.setProperty(`KEYSEC:${child}`, segredo);
-    // REARMA preservando a contagem, em vez de armar do zero. `armDelivery` devolve `deliveries: 0`,
-    // e rodar esta sonda apagaria o sinal de "este filho já pediu a chave cinco vezes" — que é
-    // exatamente o que `rearmDelivery` foi escrito para preservar ("entrega repetida vira sinal, não
-    // rotina"). Uma sonda de medição não pode desfazer a invariante que ela mede.
-    const anteriorD = readDelivery(child);
-    props.setProperty(deliveryProp(child), JSON.stringify(anteriorD ? rearmDelivery(anteriorD) : armDelivery(child)));
-
-    const motor = ScriptApp.getService().getUrl();
-    // O filho NÃO recebe a chave do OpenRouter no fonte: ele recebe o SEGREDO, que só serve para pedir
-    // a chave uma vez. É essa a diferença que a ADR-040 protege.
-    const fonte = [
-      'function doGet() {',
-      `  var r = UrlFetchApp.fetch(${JSON.stringify(motor)}, {`,
-      "    method: 'post',",
-      `    payload: { action: 'childkey', child: ${JSON.stringify(child)}, secret: ${JSON.stringify(segredo)} },`,
-      "    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },",
-      '    muteHttpExceptions: true,',
-      '  });',
-      "  return ContentService.createTextOutput(r.getResponseCode() + '|' + r.getContentText().slice(0, 200));",
-      '}',
-      '',
-    ].join('\n');
-    const files = [
-      { name: 'appsscript', type: 'JSON', source: JSON.stringify({ timeZone: 'America/Sao_Paulo', runtimeVersion: 'V8', oauthScopes: ['https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/script.external_request'], webapp: { executeAs: 'USER_DEPLOYING', access: 'MYSELF' } }) },
-      { name: 'Code', type: 'SERVER_JS', source: fonte },
-    ];
-    const w = call(`${api}/${child}/content`, 'put', { files });
-    if (w.code !== 200) return { pass: false, error: `could not write the child: HTTP ${w.code}`, body: w.full.slice(0, 200) };
-    const ver = call(`${api}/${child}/versions`, 'post', { description: 'p27' });
-    const dep = call(`${api}/${child}/deployments`, 'post', { manifestFileName: 'appsscript', description: 'p27', ...(ver.code === 200 ? { versionNumber: (JSON.parse(ver.full) as { versionNumber?: number }).versionNumber } : {}) });
-    let url: string | null = null;
-    try {
-      url = ((JSON.parse(dep.full) as { entryPoints?: { webApp?: { url?: string } }[] }).entryPoints ?? []).map((e) => e.webApp?.url).find((u) => !!u) ?? null;
-    } catch {
-      url = null;
-    }
-    // DEFEITO QUE ESTA MEDIÇÃO TEVE, e ele custou um clique do dono para nada: a sonda cria uma
-    // implantação NOVA a cada execução e não guardava a URL dela. O painel seguia apontando para a
-    // implantação ANTIGA — então o dono autorizava um endereço que não era o que estava sendo medido,
-    // e a sonda continuava dizendo "precisa consentir". Guardar a URL é o conserto; dizê-la no
-    // resultado é o que evita o dono adivinhar onde clicar.
-    if (url) {
-      props.setProperty('P24_URL', url);
-      // Os escopos guardados também estavam velhos: a tabela mostrava `calendar.events` sozinho
-      // enquanto o manifesto já pedia dois. Escopo desatualizado na tela de autorização é o pior
-      // lugar possível para um dado velho — é EXATAMENTE o que o dono lê antes de decidir.
-      const lista = parseChildren(props.getProperty('CHILDREN'));
-      const atual = lista.find((c) => c.scriptId === child);
-      if (atual) props.setProperty('CHILDREN', serializeChildren(withChild(lista, { ...atual, url, scopes: ['https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/script.external_request'] })));
-    }
-    url = url ?? props.getProperty('P24_URL');
-    if (!url) return { pass: false, error: 'no web app URL for the child', version: ver.code, deployment: dep.code };
-
-    const hit = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { Authorization: `Bearer ${token}` } });
-    // A CHAVE NÃO SAI DAQUI. O corpo que o filho devolve contém `{"ok":true,"key":"sk-or-v1-..."}`
-    // quando a entrega funciona, e este objeto inteiro vai para o trace (planilha no Drive) e para o
-    // stdout da CLI (histórico de shell, log de CI). Seria a credencial que a ADR-040 inteira existe
-    // para manter numa Property, gravada em claro num segundo e num terceiro lugar.
-    const corpo = hit.getContentText().replace(/sk-or-[A-Za-z0-9-]+/g, 'sk-or-[redacted]');
-    const chegou = /"ok":true/.test(corpo) || /\|.*sk-or/.test(corpo);
-    const precisaConsentir = /Authorization needed|enable_granular_consent/i.test(corpo);
-    return {
-      // `pass` afirma SÓ que o filho conseguiu falar com o motor. Se ele precisa de um novo clique,
-      // isso NÃO é falha do desenho — é a plataforma cobrando pelo escopo novo, e o dono decide.
-      pass: chegou,
-      needsNewConsent: precisaConsentir,
-      url, // a URL MEDIDA, para o dono autorizar a certa e não a que o painel guardou antes
-      code: hit.getResponseCode(),
-      body: corpo.slice(0, 300),
-      reading: chegou
-        ? "the child's OWN token was accepted by the engine's MYSELF web app: the pull design works, and the ADR-041 rule can carve out the child"
-        : precisaConsentir
-          ? `the child needs a consent click at THIS url (the panel may still show an older deployment): ${url}`
-          : 'the child could NOT reach the engine — read `body` before concluding anything',
-    };
-  }
-
-  return { pass: false, error: 'steps: secret, route, child' };
-}
+// A SONDA DA P27 FOI REMOVIDA (2026-09-20). Ela perguntava "o filho consegue chegar ao motor para
+// pedir a chave?" e a resposta está medida e registrada na ADR-040: NÃO — o Google recusa o token de
+// outro projeto com 401, antes de chegar ao nosso código. Pergunta respondida, sonda encerrada.
+//
+// Removê-la não é limpeza de estilo: ela gravava `KEYSEC:` e ARMAVA a janela de entrega como efeito
+// colateral de medir. Com a rota `childkey` removida, ela mediria um endereço que não existe mais e
+// deixaria para trás exatamente o estado que a opção 4 apaga.
 
 /**
  * Sonda da P28: **o contador do item 24 está de fato contando?**
@@ -2996,7 +2774,6 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p22: (step, params = {}) => pocP22(step, params),
   p24: (step) => pocP24(step),
   p26: (step) => pocP26(step),
-  p27: (step) => pocP27(step),
   p28: (step) => pocP28(step),
   p6: (step) => pocP6(step, ownerEmail()),
   p18: (step, params) => pocP18(step, params),

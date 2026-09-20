@@ -45,6 +45,12 @@ const FORBIDDEN: readonly { re: RegExp; reason: string }[] = [
   { re: /getOAuthToken\s*\(/, reason: 'the generated code asks for the OAuth token: with it a child writes to any project the owner has' },
   { re: /script\.googleapis\.com/, reason: 'the generated code calls the Apps Script API: a child that creates children has no bottom' },
   { re: /sk-or-v1-[A-Za-z0-9]{20,}/, reason: 'the generated code embeds an API key in the source: it would leak with the project if it is ever shared' },
+  { re: /sk-ant-[A-Za-z0-9-]{20,}/, reason: 'the generated code embeds an API key in the source: it would leak with the project if it is ever shared' },
+  // A REGRA QUE A OPÇÃO 4 DA ADR-040 TORNOU NECESSÁRIA. O filho é `automation`: só código, sem
+  // modelo, e portanto SEM CHAVE. Isso era afirmação em docstring e nada conferia — um sucessor que
+  // chamasse um provedor de modelo seria implantado e falharia em execução, sem chave e sem motivo
+  // visível. Recusar no crivo é dizer a verdade no lugar onde ela ainda custa barato.
+  { re: /\b(openrouter\.ai|api\.openai\.com|api\.anthropic\.com|generativelanguage\.googleapis\.com|api\.mistral\.ai|api\.groq\.com)/i, reason: 'the generated code calls a model provider: a child is code only (ADR-040, option 4) — it never gets the API key, so this would deploy and then fail with no key and no reason on screen' },
 ];
 
 /** Um ponto de entrada de verdade. Um filho que não roda não é sucessor, é custo. */
@@ -126,6 +132,8 @@ export function successorMessages(incumbentSource: string, material: string, sco
         'It must define doGet, doPost, main or run as its entry point. ' +
         'It must NOT call eval or build a Function from a string, must NOT ask for the OAuth token (ScriptApp.getOAuthToken), ' +
         'must NOT call the Apps Script API (script.googleapis.com), and must NOT embed any API key in the source. ' +
+        'It is code only: it has no language model and no API key, so it must NOT call any model provider ' +
+        '(openrouter.ai, api.openai.com, api.anthropic.com and the like). Decide with plain code. ' +
         'Use only the OAuth scopes listed as granted: asking for more is refused, not granted.',
     },
     {

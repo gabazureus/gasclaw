@@ -1045,7 +1045,7 @@
     ajuda.append(
       el('summary', { textContent: 'What am I looking at?' }),
       // Os TRES nomes, com a unica diferenca que muda a decisao do dono em primeiro lugar: credencial.
-      el('p', { className: 'muted', textContent: 'An automation is code only \u2014 no folder, no prompt, no model, and no API key. A sub agent also has its own Drive folder with a prompt, so it can hold a conversation, and only that kind needs the API key. A persona is neither: it lives inside this agent\u2019s own folder and never becomes a project.' }),
+      el('p', { className: 'muted', textContent: 'A child project is always an automation: code only \u2014 no folder, no prompt, no model, and no API key. Children that reason are not projects at all: a persona lives inside this agent\u2019s own folder and runs inside its turn, and a new agent gets its own folder but runs in this same engine. Neither one is ever handed a key.' }),
       el('p', { className: 'muted', textContent: 'Google will not let a child project run until you authorize it: one click, once. This panel cannot do it for you \u2014 it can only show what the project is asking for and take you there.' }),
       el('p', { className: 'muted', textContent: '\u201cForget\u201d only removes it from this list. The project stays in your Google account until you delete it there.' }),
     );
@@ -1065,7 +1065,7 @@
         const nome = el('td', {}, el('strong', { textContent: c.title }));
         if (c.reason) nome.append(el('div', { className: 'muted', textContent: c.reason }));
         tr.append(nome);
-        tr.append(el('td', {}, el('span', { className: 'badge' + (c.kind === 'subagent' ? ' gasclaw' : ''), textContent: c.kindLabel })));
+        tr.append(el('td', {}, el('span', { className: 'badge', textContent: c.kindLabel })));
         tr.append(el('td', {}, el('span', { className: CHILD_STATE_CLASS[c.state] || 'badge', textContent: c.stateLabel })));
         // Escopo e o que o dono precisa LER antes de autorizar: fica em coluna propria, nao espremido
         // numa linha de detalhe junto do motivo.

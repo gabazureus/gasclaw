@@ -1,53 +1,23 @@
-// A família: entrega da chave ao filho e o teto de gasto familiar (ADR-040). NÚCLEO PURO.
+// A família: o teto de gasto familiar (ADR-040). NÚCLEO PURO.
 //
-// Decisão do usuário (2026-09-19): o filho é agente completo e usa A MESMA CHAVE do pai. Gerenciar
-// N chaves viraria trabalho do dono, e o argumento é bom.
+// Decisão do usuário (2026-09-19): o filho usa A MESMA CHAVE do pai. Gerenciar N chaves viraria
+// trabalho do dono, e o argumento é bom.
 //
-// Duas consequências, e a segunda é um instrumento que não existiria com chaves separadas.
+// ENTREGA DE CHAVE AO FILHO: REMOVIDA (2026-09-20). Este arquivo tinha uma primeira metade —
+// `KeyDelivery`, `mayDeliverKey`, a janela única e o rearme — que implementava o pai entregar a
+// credencial ao filho. A P27 mediu que o filho NÃO ALCANÇA o motor (o web app recusa o token de
+// outro projeto antes de chegar ao nosso código), e o dono escolheu a opção 4 da ADR-040: filhos
+// são só `automation`, que nunca falam com modelo e portanto nunca precisam de chave.
+//
+// Foi removida em vez de desligada porque, enquanto existia, ela era a ÚNICA rota do projeto que
+// devolvia a credencial do dono — e ficava ARMADA para todo filho criado, esperando alguém abrir o
+// web app. Um caminho de credencial sem caller é a forma mais cara de código morto que existe.
+// O desenho está preservado na ADR-040 (opção 2) e no git, caso um dia se decida o contrário.
+//
+// O teto familiar SOBREVIVE intacto, e continua valendo: os filhos que existem por `agent.create`
+// rodam no mesmo projeto e na mesma chave, logo o offset abaixo continua medindo o que eles gastam.
 
-// ---------- 1. A chave não vai no fonte ----------
-
-/**
- * Embutir a chave no código do filho significa que, se o projeto do filho for compartilhado um dia,
- * a chave vai junto. Em vez disso o filho **pede** a chave ao pai na primeira execução, autenticado
- * pelo segredo por filho, e guarda nas Script Properties DELE.
- *
- * **O problema que este desenho NÃO elimina, e precisa estar dito:** o *segredo* continua no fonte
- * do filho. Quem receber o projeto do filho recebe o segredo, e com ele poderia pedir a chave.
- * Por isso a entrega é **de uma vez só**: passada a janela, um segredo vazado não vale nada.
- *
- * E por isso a janela é **rearmável pelo dono** — se o filho for republicado e perder as
- * Properties, uma entrega única e definitiva o deixaria inútil para sempre. Rearmar é ato humano
- * no painel, nunca automático: automático desfaria a proteção que a unicidade cria.
- */
-export type KeyDelivery = { child: string; armed: boolean; deliveredAt: number | null; deliveries: number };
-
-export const armDelivery = (child: string): KeyDelivery => ({ child, armed: true, deliveredAt: null, deliveries: 0 });
-
-export type DeliveryVerdict = { ok: boolean; reason: string };
-
-/**
- * O pai entrega a chave? Só para o filho que ele criou (o segredo prova), só com a janela armada.
- * Fail-closed em tudo: sem estado, sem segredo, segredo errado ou janela fechada.
- */
-export function mayDeliverKey(d: KeyDelivery | null | undefined, child: string, secretOk: boolean): DeliveryVerdict {
-  if (!d) return { ok: false, reason: 'this child was not created by this agent' };
-  if (d.child !== child) return { ok: false, reason: 'delivery state belongs to another child' };
-  if (!secretOk) return { ok: false, reason: 'wrong or missing child secret' };
-  if (!d.armed) return { ok: false, reason: 'the key was already delivered to this child; the owner can re-arm it in the panel' };
-  return { ok: true, reason: '' };
-}
-
-/** Consome a janela. A contagem CRESCE mesmo depois de rearmar: entrega repetida é sinal, não rotina. */
-export const afterDelivery = (d: KeyDelivery, now: number): KeyDelivery => ({ ...d, armed: false, deliveredAt: now, deliveries: d.deliveries + 1 });
-
-/** Rearmar é ato do dono no painel. Nunca automático. */
-export const rearmDelivery = (d: KeyDelivery): KeyDelivery => ({ ...d, armed: true });
-
-/** Entrega de credencial sem rastro é o tipo de coisa que ninguém descobre depois. */
-export const deliverySpan = (child: string): string => `key_delivery:${child}`;
-
-// ---------- 2. O teto familiar ----------
+// ---------- O teto familiar ----------
 
 /**
  * Como o OpenRouter reporta uso POR CHAVE e a família inteira usa a mesma chave:

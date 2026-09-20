@@ -34,7 +34,6 @@ const acoes: [string, (m: Motor) => unknown][] = [
   ['successorOptions', (m) => m.successorOptions('fa')],
   ['setAgentSchedule', (m) => m.setAgentSchedule('fa', [])],
   ['setAgentAutoApprove', (m) => m.setAgentAutoApprove('fa', [])],
-  ['rearmChildKey', (m) => m.rearmChildKey('x')],
   ['forgetChild', (m) => m.forgetChild('x')],
   ['removeAgent', (m) => m.removeAgent('fa')],
 ];

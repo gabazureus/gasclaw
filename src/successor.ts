@@ -107,11 +107,15 @@ export function generateSuccessor(req: SuccessorRequest, d: SuccessorDeps): Succ
 
   const child: Child = {
     scriptId,
-    kind: 'subagent',
+    // AUTOMATION, e não `subagent`: o filho gerado é só código. Era aqui que a forma "precisa da
+    // chave" nascia — e nascia SEMPRE, porque este é o único produtor de filhos. A guarda que a
+    // ADR-042 chamava de fail-closed (`kind !== 'subagent'` recusa a entrega) nunca mordia, porque
+    // nada produzia uma `automation`. Agora o tipo só tem um membro (ver `children.ts`).
+    kind: 'automation',
     title: req.title,
     url,
     scopes: escopos.scopes,
-    folderId: null, // a pasta do sucessor é criada depois, pelo painel: nascer sem ela é o estado honesto
+    folderId: null, // automação não tem pasta: é a forma que nunca precisa de credencial (ADR-040, opção 4)
     parent: req.folderId,
     reason: req.material.slice(0, 300),
     at: d.now(),

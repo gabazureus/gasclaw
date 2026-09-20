@@ -89,6 +89,23 @@ describe('checkSuccessorSource: o crivo do que pode ser publicado', () => {
     expect(v.reason).toMatch(/API key/);
   });
 
+  // A REGRA QUE A OPÇÃO 4 DA ADR-040 EXIGIU. O filho é `automation`: nunca recebe chave. Um sucessor
+  // que chamasse um provedor de modelo seria implantado e falharia em execução, sem chave e sem
+  // motivo visível em tela nenhuma. Recusar no crivo é dizer a verdade onde ela ainda é barata.
+  for (const host of ['openrouter.ai', 'api.openai.com', 'api.anthropic.com', 'generativelanguage.googleapis.com']) {
+    test(`recusa fonte que chama ${host}: o filho não tem modelo e nunca terá chave`, () => {
+      const v = checkSuccessorSource(`${bom}\nUrlFetchApp.fetch('https://${host}/v1/chat');`);
+      expect(v.ok).toBe(false);
+      expect(v.reason).toMatch(/model provider/);
+    });
+  }
+
+  test('recusa uma chave da Anthropic embutida no fonte, como já recusava a do OpenRouter', () => {
+    const v = checkSuccessorSource(`${bom}\nvar k = "sk-ant-${'a'.repeat(40)}";`);
+    expect(v.ok).toBe(false);
+    expect(v.reason).toMatch(/API key/);
+  });
+
   test('recusa fonte grande demais para caber numa revisão humana', () => {
     const v = checkSuccessorSource(`${bom}\n${'// x\n'.repeat(4000)}`);
     expect(v.ok).toBe(false);
@@ -168,6 +185,10 @@ describe('successorMessages: o pedido diz o que é proibido, não só o que é d
     const sys = ms[0].content;
     expect(sys).toMatch(/eval/);
     expect(sys).toMatch(/OAuth token/);
+    // Sem esta linha o Opus escreveria um filho que chama um modelo, e a geração inteira morreria no
+    // crivo — o caso exato que este `describe` existe para evitar.
+    expect(sys).toMatch(/no language model and no API key/i);
+    expect(sys).toMatch(/must NOT call any model provider/i);
     expect(sys).toMatch(/Apps Script API/);
     expect(sys).toMatch(/code only/i);
   });
