@@ -5,6 +5,8 @@ import { failProp, failuresFrom, parseFailures, serializeFailures, withFailure }
 import { mergeAcrossGenerations, originLabel, parseSchema, validateValues, type ConfigField } from './agentConfig';
 import { afterDelivery, armDelivery, capAction, childrenSpendUpperBound, deliverySpan, FAMILY_CAP_USD, FAMILY_NOTE, mayDeliverKey, rearmDelivery, type KeyDelivery } from './family';
 import { cluster, hasMaterial, type Failure } from './dreamCycle';
+import { AUTO_NOTE, cleanAutoList, mayAutoApprove, NEVER_AUTO, noReplySpan, onProactiveBlock } from './autoApprove';
+import { dueJobs, JOB_MAX, jobText, parseSchedule, serializeSchedule } from './schedule';
 import { AUTH_LABEL, authState, KIND_LABEL, KIND_WHAT, parseChildren, serializeChildren, withChild, withoutChild, type Child } from './children';
 import { pocP10 } from '../poc/p10-editor/harness';
 import { pocP14 } from '../poc/p14-trace/harness';
@@ -637,6 +639,29 @@ function stepDeps(budgetMs = STEP_BUDGET_MS, io = runIO()): StepDeps {
         //
         // Aqui, e não no `agent.ts`: contar é efeito em Script Properties, e o turno é núcleo.
         // Só quando o passo NÃO está pendente: um run esperando o clique do dono não falhou, está esperando.
+        // ITEM 25/28 — AUTO-APROVAÇÃO E FALHA HONESTA, o que faltava fiar do `autoApprove.ts`.
+        //
+        // Um run PROATIVO que esbarra num card não tem direito de perguntar: ninguém pediu este run, e
+        // ficar `waiting` o deixaria pendurado esperando um clique que nunca vem, segurando lease e
+        // sumindo do radar — para quem olha o painel, um run esperando é indistinguível de um run
+        // trabalhando. Ou a ferramenta está na LISTA que o dono aprovou, e segue; ou ele FALHA e registra.
+        if (r.proactive && turn.pending?.kind === 'approval') {
+          const lista = autoListOf(r.folderId);
+          const v = mayAutoApprove(turn.pending.name, lista, true);
+          const bloqueio = onProactiveBlock(turn.pending.name, true);
+          if (!v.auto && bloqueio.status === 'failed') throw new Error(`${bloqueio.reason} (${v.reason})`);
+          // Na lista: segue o passo com a decisão já tomada, pelo MESMO caminho de retomada que o
+          // clique do dono usaria. Um atalho aqui seria um segundo caminho de aprovação para manter.
+          const segue = chatTurn({
+            spec, kit, text: r.text, history: d.history(r.session), ownerDm, runId: r.runId, budgetMs, llm,
+            resume: { ...turn.state!, decision: { approved: true } },
+            done: turn.done, granted: turn.granted,
+            beforeEffect: (name) => io.save(markInflight(r, name, Date.now())),
+          }).turn;
+          countTurnFailures(r.folderId, segue);
+          t.mark('reply');
+          return { turn: segue, usd: t.end({ answer: segue.text }).cost ?? 0 };
+        }
         if (!turn.pending) countTurnFailures(r.folderId, turn);
         t.mark('reply');
         return { turn, usd: t.end({ answer: turn.text }).cost ?? 0 };
@@ -1474,11 +1499,118 @@ export function drainRuns() {
   isolado('drain', () => void (drained = observe.drain()));
   isolado('runs', () => workRuns()); // gravar o trace em lote e avançar o run durável (ADR-027)
   // O sonho é o ÚLTIMO e toma no máximo 5 passos: o trabalho que o dono pediu vem primeiro, sempre.
+  // Proatividade: o MESMO worker, nenhum gatilho novo (item 28). Isolado como os outros — um defeito
+  // no despertar não pode cancelar o trabalho que o dono pediu.
+  isolado('wake', () => tickProactive());
   isolado('dream', () => {
     const d = dreamDeps();
     for (const a of store.listAgents()) tickDream(a.folderId, d);
   });
   return drained ?? { n: 0, ms: 0, oldest: null };
+}
+
+// ---------- Proatividade: a agenda mora no PAINEL (itens 25 e 28) ----------
+
+const schedProp = (folderId: string) => `SCHED:${folderId}`;
+const seenProp = (folderId: string) => `SCHEDSEEN:${folderId}`;
+const autoProp = (folderId: string) => `AUTOOK:${folderId}`;
+
+/** A lista de auto-aprovação já limpa. Ilegível vira VAZIA: nenhuma ferramenta, nunca todas. */
+function autoListOf(folderId: string): string[] {
+  try {
+    const raw = PropertiesService.getScriptProperties().getProperty(autoProp(folderId));
+    return cleanAutoList(JSON.parse(raw ?? '[]'), toolCatalog().map((t) => t.name)).list;
+  } catch {
+    return [];
+  }
+}
+
+/** A agenda e a lista de auto-aprovação deste agente, para a tela. */
+export function agentSchedule(folderId: string) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const id = String(folderId ?? '').trim();
+  const { jobs, errors } = parseSchedule(props.getProperty(schedProp(id)));
+  const auto = cleanAutoList(JSON.parse(props.getProperty(autoProp(id)) ?? '[]'), toolCatalog().map((t) => t.name));
+  return {
+    folderId: id,
+    jobs: jobs.map((j) => ({ ...j, when: jobText(j) })),
+    errors,
+    max: JOB_MAX,
+    autoApprove: auto.list,
+    dropped: auto.dropped,
+    neverAuto: NEVER_AUTO,
+    note: AUTO_NOTE,
+    // A frase que explica por que isto não está na pasta. Ela precisa estar na TELA, não só na ADR:
+    // é o dono que decide, e ele decide melhor sabendo o que a escolha evita.
+    why: 'The schedule lives here, not in the agent folder. The folder can be shared — and whoever could edit it would be writing the prompt and the delivery target of a run nobody is watching.',
+  };
+}
+
+/** Grava a agenda. Só o dono, e o servidor VALIDA: a tela é conveniência, não autoridade (ADR-021). */
+export function setAgentSchedule(folderId: string, jobs: unknown) {
+  assertOwner();
+  const id = String(folderId ?? '').trim();
+  const { jobs: limpos, errors } = parseSchedule(JSON.stringify(jobs ?? []));
+  if (errors.length) throw new Error(errors.join('; ')); // recusa inteira: meia agenda é pior que nenhuma
+  PropertiesService.getScriptProperties().setProperty(schedProp(id), serializeSchedule(limpos));
+  return agentSchedule(id);
+}
+
+/** Grava a lista de auto-aprovação, recusando o que nunca pode entrar. */
+export function setAgentAutoApprove(folderId: string, list: unknown) {
+  assertOwner();
+  const id = String(folderId ?? '').trim();
+  const r = cleanAutoList(list, toolCatalog().map((t) => t.name));
+  // O que foi descartado VOLTA na resposta: aceitar calado daria ao dono a impressão de ter aprovado
+  // o que ele não aprovou — a mesma razão pela qual `parseCapabilities` invalida a lista inteira.
+  PropertiesService.getScriptProperties().setProperty(autoProp(id), JSON.stringify(r.list));
+  return { ...agentSchedule(id), dropped: r.dropped };
+}
+
+/**
+ * O despertar: roda DENTRO do worker de 1 min que já existe. **Nenhum gatilho novo** — a P22 mediu
+ * que perguntar "tem algo vencido?" custa 13,87% da cota diária e que cabem 6 agentes.
+ *
+ * Silêncio é resposta VÁLIDA e precisa aparecer: sem o span, "acordou, olhou e não tinha nada" fica
+ * indistinguível de "o gatilho não rodou". A primeira é o comportamento certo; a segunda é defeito.
+ */
+function tickProactive(): void {
+  const props = PropertiesService.getScriptProperties();
+  const agora = new Date();
+  const tz = Session.getScriptTimeZone();
+  const minutos = Number(Utilities.formatDate(agora, tz, 'H')) * 60 + Number(Utilities.formatDate(agora, tz, 'm'));
+  const semana = Number(Utilities.formatDate(agora, tz, 'u')) % 7; // 'u': 1=segunda … 7=domingo
+  for (const a of store.listAgents()) {
+    if (parseStatus(props.getProperty(`STATUS:${a.folderId}`)) !== 'active') continue;
+    const { jobs } = parseSchedule(props.getProperty(schedProp(a.folderId)));
+    if (jobs.length === 0) continue;
+    const visto = props.getProperty(seenProp(a.folderId));
+    const devidos = dueJobs(jobs, visto === null ? null : Number(visto), minutos, semana);
+    // O carimbo anda SEMPRE, inclusive quando nada venceu: não andar faria a janela crescer até
+    // disparar tudo de uma vez no primeiro tique que pegasse um job.
+    props.setProperty(seenProp(a.folderId), String(minutos));
+    if (devidos.length === 0) {
+      const span = noReplySpan('nothing was due');
+      runlog.begin('config', { question: span.name, agent: a.name }).end({ answer: span.why });
+      continue;
+    }
+    const io = runIO();
+    for (const j of devidos) {
+      const now = Date.now();
+      const r = newRun({
+        runId: `wake-${now}-${Utilities.getUuid().slice(0, 8)}`,
+        session: `${a.folderId}:schedule`,
+        folderId: a.folderId,
+        user: ownerEmail(),
+        text: j.prompt,
+        now,
+        ownerDm: false, // um run que ninguém pediu não escreve na memória do dono
+        proactive: true,
+      });
+      io.enqueue(r, now);
+    }
+  }
 }
 
 // ---------- Sucessão: o bastão, o mandato e a linhagem (item 17) ----------

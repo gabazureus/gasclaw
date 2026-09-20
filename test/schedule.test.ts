@@ -1,0 +1,123 @@
+// A agenda da proatividade (item 28): quando o agente acorda, e por que isso não mora na pasta.
+//
+// O buraco que a F3a fecha não é de conveniência. Um `jobs.md` na pasta COMPARTILHÁVEL entregaria ao
+// editor do Drive o PROMPT de um run não supervisionado e o DESTINO da entrega — quem edita a pasta
+// passaria a escrever o que o agente faz às 3 da manhã e para onde o resultado vai.
+import { describe, expect, test } from 'vitest';
+import { dueJobs, JOB_MAX, jobText, parseSchedule, serializeSchedule } from '../src/schedule';
+
+describe('parseSchedule: entrada ruim é recusada COM MOTIVO, nunca corrigida em silêncio', () => {
+  test('vazio é vazio, sem erro', () => {
+    expect(parseSchedule(null)).toEqual({ jobs: [], errors: [] });
+  });
+
+  test('aceita HH:MM e minutos', () => {
+    const r = parseSchedule(JSON.stringify([{ at: '08:30', prompt: 'resumo do dia' }, { at: 540, prompt: 'agenda' }]));
+    expect(r.jobs.map((j) => j.at)).toEqual([510, 540]);
+    expect(r.errors).toEqual([]);
+  });
+
+  // Corrigir em silêncio faria o agente acordar numa hora que o dono não pediu — e ele descobriria
+  // pelo resultado, não pelo aviso.
+  test.each(['25:00', '8:70', 'amanhã', ''])('horário inválido %s vira erro, não hora arredondada', (at) => {
+    const r = parseSchedule(JSON.stringify([{ at, prompt: 'x' }]));
+    expect(r.jobs).toEqual([]);
+    expect(r.errors[0]).toMatch(/invalid time/);
+  });
+
+  test('job sem prompt é recusado: acordar sem saber para quê é só custo', () => {
+    expect(parseSchedule(JSON.stringify([{ at: '08:00', prompt: '   ' }])).errors[0]).toMatch(/say what/);
+  });
+
+  test('ilegível não vira agenda vazia silenciosa: o erro aparece', () => {
+    const r = parseSchedule('{isto não é json');
+    expect(r.jobs).toEqual([]);
+    expect(r.errors[0]).toMatch(/could not be read/);
+  });
+
+  test('acima do teto, avisa em vez de cortar calado', () => {
+    const r = parseSchedule(JSON.stringify(Array.from({ length: JOB_MAX + 3 }, () => ({ at: '08:00', prompt: 'x' }))));
+    expect(r.jobs).toHaveLength(JOB_MAX);
+    expect(r.errors.join(' ')).toMatch(new RegExp(`first ${JOB_MAX}`));
+  });
+
+  test('dias inválidos somem do job, e os válidos ficam sem repetição', () => {
+    expect(parseSchedule(JSON.stringify([{ at: '08:00', prompt: 'x', days: [1, 1, 9, -2, 6] }])).jobs[0].days).toEqual([1, 6]);
+  });
+
+  test('o que sai do serialize volta igual no parse', () => {
+    const jobs = parseSchedule(JSON.stringify([{ at: '07:15', prompt: 'bom dia', days: [1, 2] }])).jobs;
+    expect(parseSchedule(serializeSchedule(jobs)).jobs).toEqual(jobs);
+  });
+});
+
+describe('dueJobs: janela, não igualdade', () => {
+  const j = (at: number, days: number[] = []) => ({ at, prompt: 'x', days });
+
+  // Comparar `at === agora` perderia o job no minuto em que o tique não rodou — e a P22 mediu tiques
+  // de até 1.090 ms num desenho que já regrediu antes. Perder um despertar calado é o modo de falha
+  // que a proatividade não pode ter.
+  test('um tique atrasado ainda pega o job que venceu no caminho', () => {
+    expect(dueJobs([j(510)], 505, 515, 1)).toHaveLength(1);
+  });
+
+  test('o mesmo job não dispara duas vezes: a janela anda com o lastSeen', () => {
+    expect(dueJobs([j(510)], 510, 515, 1)).toEqual([]);
+  });
+
+  // Acordar para tudo que passou enquanto estava desligado seria avalanche, não proatividade.
+  test('sem lastSeen (primeira volta, ou estado perdido) NÃO dispara nada', () => {
+    expect(dueJobs([j(510)], null, 900, 1)).toEqual([]);
+  });
+
+  test('virada do dia recomeça limpo em vez de disparar o dia inteiro', () => {
+    expect(dueJobs([j(510)], 1400, 10, 1)).toEqual([]);
+  });
+
+  test('dias declarados são respeitados', () => {
+    expect(dueJobs([j(510, [1])], 505, 515, 1)).toHaveLength(1);
+    expect(dueJobs([j(510, [1])], 505, 515, 3)).toEqual([]);
+  });
+
+  test('sem dias declarados, todo dia', () => {
+    expect(dueJobs([j(510)], 505, 515, 0)).toHaveLength(1);
+  });
+});
+
+describe('jobText: o dono lê o que marcou', () => {
+  test('hora com zero à esquerda e os dias por nome', () => {
+    expect(jobText({ at: 510, prompt: 'x', days: [1, 5] })).toBe('08:30 · Mon, Fri');
+    expect(jobText({ at: 65, prompt: 'x', days: [] })).toBe('01:05 · every day');
+  });
+});
+
+// A fiação, pelo critério que derrubou seis itens na auditoria: o símbolo aparece no bundle, chamado?
+describe('a proatividade está LIGADA, e sem gatilho novo', () => {
+  test('o despertar roda dentro do worker de 1 min que já existe', async () => {
+    const main = (await import('node:fs')).readFileSync('src/main.ts', 'utf8');
+    expect(main).toContain("isolado('wake', () => tickProactive())");
+    // NENHUM gatilho novo: a P22 mediu 13,87% da cota para o worker que já existe, e um segundo
+    // gatilho cobraria de novo os 1.440 tiques do dia.
+    expect(main).not.toMatch(/newTrigger\([^)]*[Ww]ake/);
+  });
+
+  test('a agenda mora em Script Properties, não na pasta', async () => {
+    const main = (await import('node:fs')).readFileSync('src/main.ts', 'utf8');
+    expect(main).toContain('SCHED:');
+    // O buraco real: `jobs.md` na pasta compartilhável entregaria o prompt E o destino de um run
+    // não supervisionado a quem tivesse acesso de edição ao Drive.
+    const ws = (await import('node:fs')).readFileSync('src/workspace.ts', 'utf8');
+    expect(ws).not.toContain('jobs.md');
+  });
+
+  test('o run proativo esbarrando num card falha em vez de ficar pendurado', async () => {
+    const main = (await import('node:fs')).readFileSync('src/main.ts', 'utf8');
+    expect(main).toContain('onProactiveBlock(');
+    expect(main).toContain('mayAutoApprove(');
+  });
+
+  test('silêncio deixa rastro: acordou e não tinha nada é diferente de não acordou', async () => {
+    const main = (await import('node:fs')).readFileSync('src/main.ts', 'utf8');
+    expect(main).toContain('noReplySpan(');
+  });
+});

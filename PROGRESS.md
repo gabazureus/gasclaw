@@ -27,7 +27,7 @@
 | 12 | Núcleo do ciclo de sonho | ✅ | Plano de passos, retomada provada, veredito declarando o próprio alcance |
 | 13 | Candidatos por temperatura | ✅ | Três temperaturas, frontmatter descartado |
 | 14 | Fiação do ciclo de sonho | ✅ | `dreamTick.ts` no gatilho (5 passos/tique), juiz no bundle, contagem de falhas. Falta só MEDIR um ciclo real |
-| 15 | **Proatividade** | 🔨 | **P22 APROVADA 4/4**. Mas `autoApprove.ts` é **ÓRFÃO**: nenhum módulo o importa e ele tem **0 ocorrências no bundle**. Núcleo testado que ninguém chama |
+| 15 | **Proatividade** | ✅ | **P22 4/4** + F3a entregue: agenda no **painel** (não na pasta), auto-aprovação por lista fechada, falha honesta em vez de `paused`, `NO_REPLY` com span, **nenhum gatilho novo** |
 | 16 | Mensagem entre agentes | ✅ | **Os 4 controles fiados e no bundle**, e agora existe a mensagem: `agent.message` no registro fechado, com card `always`. Um run repassado recebe `tools(A) ∩ tools(B)`, teto de 1 salto e recusa de volta |
 | 17 | Sucessão com bastão e mandato | ✅ | Bastão, mandato com prazo e linhagem verificável. Coroar segue sendo ato humano: **não depende** do sonho, porque o sucessor é código |
 | 18 | Organismo: contagem instrumentada | ✅ | **Ligado**: `failuresFrom` no passo do run durável, provado no bundle. Repetição no mesmo turno conta 1×, `deadline` não conta, eval não alimenta |
@@ -47,10 +47,10 @@
 | # | O que falta | Por que ainda não está pronto | Depende de |
 |---|---|---|---|
 | ~~24~~ | ✅ **Alimentar o contador de falhas** | `recordFailure` tem **0 call sites**: nenhum run que termina mal o chama. É a causa raiz de o trace ter zero aglomerados — e, portanto, de 26, 27, 29 e 30 estarem travados | nada — pode começar, e destrava 4 itens |
-| 25 | Fiar `autoApprove.ts` | Órfão, 0 ocorrências no bundle. A F3a inteira depende dele | nada |
+| ~~25~~ | ✅ **Fiar `autoApprove.ts`** | Órfão, 0 ocorrências no bundle. A F3a inteira depende dele | nada |
 | 26 | Medir um ciclo de sonho real | O ciclo roda e recusa começar sem material. A recusa é o estado honesto; o material é que não chega | 24 |
 | 27 | C2–C5 da P23 | Medem custo de ciclo, e não há ciclo para medir | 26 |
-| 28 | Proatividade (F3a) | Agenda sai da pasta e vai para o painel, falha honesta em vez de `paused`, lista fechada de auto-aprovação, `NO_REPLY` com span, **sem gatilho novo** | 25 |
+| ~~28~~ | ✅ **Proatividade (F3a)** | Agenda sai da pasta e vai para o painel, falha honesta em vez de `paused`, lista fechada de auto-aprovação, `NO_REPLY` com span, **sem gatilho novo** | 25 |
 | 29 | Poda do organismo | O gatilho inverso: especialista ocioso propõe a própria aposentadoria; o que não reduziu o aglomerado é arquivado | 26 |
 | 30 | Limiar do aglomerado | Está em 3 ocorrências, **marcado no código como palpite**, não medida | dado real acumulando (24) |
 | ~~31~~ | ✅ **Fiar `subagent.ts` (personas)** | Órfão, 0 no bundle. É também o **quarto controle** do item 16: a interseção de ferramentas no repasse | nada |

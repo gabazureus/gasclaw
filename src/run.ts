@@ -120,6 +120,14 @@ export type DurableRun = {
    */
   originAgent?: string;
   /**
+   * Run que NINGUÉM pediu: nasceu da agenda do painel, não de uma mensagem.
+   *
+   * Vai ASSINADO (não está em `RUN_UNSIGNED_FIELDS`) porque é ele que decide duas coisas: quais
+   * ferramentas podem ser auto-aprovadas, e o que fazer quando uma precisa de clique. Um campo que se
+   * pudesse apagar editando o arquivo transformaria um run não supervisionado num run comum.
+   */
+  proactive?: boolean;
+  /**
    * SHA-256 do candidato (e do placar) que o card está propondo (ADR-040 §B). O arquivo mora fora
    * do run; sem o selo aqui — onde a assinatura o protege — trocar o `.md` durante as 24 h do card
    * mantém o run íntegro e o dono aprova o diff de ontem promovendo o texto de hoje.
@@ -133,7 +141,7 @@ export type DurableRun = {
   updatedAt: number;
 };
 
-export const newRun = (i: { runId: string; session: string; folderId: string; user: string; text: string; now: number; ownerDm?: boolean; capUsd?: number; delivery?: ChatDelivery; originAgent?: string }): DurableRun => ({
+export const newRun = (i: { runId: string; session: string; folderId: string; user: string; text: string; now: number; ownerDm?: boolean; capUsd?: number; delivery?: ChatDelivery; originAgent?: string; proactive?: boolean }): DurableRun => ({
   runId: i.runId,
   session: i.session,
   folderId: i.folderId,
@@ -148,6 +156,7 @@ export const newRun = (i: { runId: string; session: string; folderId: string; us
   // (`RUN_UNSIGNED_FIELDS` não o contém), então não dá para apagá-lo editando o arquivo do run —
   // e é exatamente esse apagamento que transformaria um run de terceiro num run do dono.
   ...(i.originAgent ? { originAgent: i.originAgent } : {}),
+  ...(i.proactive ? { proactive: true } : {}),
   budget: { usedUsd: 0, capUsd: i.capUsd ?? RUN_BUDGET_USD },
   startedAt: i.now,
   updatedAt: i.now,
@@ -330,6 +339,9 @@ export function parseRun(raw: string | null | undefined): DurableRun | null {
       // Fora da whitelist o campo seria DESCARTADO na volta do Drive — e um run relaído voltaria como
       // run do dono. É o mesmo defeito do `depth` (§D), que aqui seria catastrófico em vez de só permissivo.
       ...(typeof o.originAgent === 'string' && o.originAgent ? { originAgent: o.originAgent } : {}),
+      // Só o `true` LITERAL sobrevive: qualquer outra coisa (string 'true', 1, objeto) vira ausente.
+      // Errar para "não é proativo" é errar para o lado em que o motor PERGUNTA em vez de assumir.
+      ...(o.proactive === true ? { proactive: true } : {}),
       ...(typeof o.candidateSeal === 'string' && o.candidateSeal ? { candidateSeal: o.candidateSeal } : {}),
       ...(parseChatDelivery(o.delivery) ? { delivery: parseChatDelivery(o.delivery) } : {}),
       budget: { usedUsd: Number(o.budget?.usedUsd) || 0, capUsd: Number(o.budget?.capUsd) || RUN_BUDGET_USD },
