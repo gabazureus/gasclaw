@@ -49,7 +49,10 @@ import { offsetMinutes } from './agenda';
 import { folderModel, getOverride, listModels as openRouterModels, type ModelInfo, setOverride, validateChoice } from './models';
 import * as observe from './observe';
 import * as runlog from './runlog';
-import { CAPABILITIES, can, creatorOf, forgetAgentProps, parseCapabilities, setCreator, type Capability } from './agentCaps';
+import {
+  CAPABILITIES, can, canSucceed, capsAfterSuccession, creatorOf, DEFAULT_INTERVAL_MS, forgetAgentProps, intervalOf, mayGenerate,
+  nextGeneration, parseCapabilities, parseStatus, setCreator, type Capability, type LineageEntry,
+} from './agentCaps';
 import { mayWriteProject } from './dream';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
@@ -1316,6 +1319,113 @@ export function drainRuns() {
     for (const a of store.listAgents()) tickDream(a.folderId, d);
   });
   return drained ?? { n: 0, ms: 0, oldest: null };
+}
+
+// ---------- Sucessão: o bastão, o mandato e a linhagem (item 17) ----------
+
+const genStamp = (folderId: string) => `LASTGEN:${folderId}`;
+const lineageProp = 'LINEAGE';
+const mandateProp = (folderId: string) => `MANDATE:${folderId}`;
+
+type Mandate = { folderId: string; left: number; minDelta: number; until: number };
+
+const readMandate = (folderId: string): Mandate | null => {
+  try {
+    const raw = PropertiesService.getScriptProperties().getProperty(mandateProp(folderId));
+    const m = raw ? (JSON.parse(raw) as Mandate) : null;
+    return m && Number.isFinite(m.until) && Number.isFinite(m.left) ? m : null;
+  } catch {
+    return null; // mandato ilegível = sem mandato. Autorização não se presume.
+  }
+};
+
+/**
+ * O mandato: um ORÇAMENTO DE EVOLUÇÃO com escopo e validade, não um interruptor permanente.
+ *
+ * É a mesma forma do `once`/`granted` que o motor já usa para ferramentas. Dentro dele a sucessão
+ * acontece sozinha e notifica; fora, volta a exigir clique. E ele EXPIRA — foi isso que separou
+ * "ele vai evoluindo" de "você aprovou uma vez e delegou para sempre".
+ */
+export function signMandate(folderId: string, successions: number, minDelta: number, days: number) {
+  assertOwner();
+  const n = Math.max(1, Math.min(10, Math.trunc(Number(successions) || 0)));
+  const d = Math.max(1, Math.min(30, Math.trunc(Number(days) || 0)));
+  const m: Mandate = { folderId, left: n, minDelta: Math.max(1, Math.trunc(Number(minDelta) || 1)), until: Date.now() + d * 24 * 3600_000 };
+  PropertiesService.getScriptProperties().setProperty(mandateProp(folderId), JSON.stringify(m));
+  return m;
+}
+
+/** Fora do mandato a sucessão exige clique. Dentro, ela anda — e o mandato encolhe a cada uso. */
+export function mandateFor(folderId: string) {
+  assertOwner();
+  const m = readMandate(folderId);
+  const vivo = !!m && m.until > Date.now() && m.left > 0;
+  return { folderId, mandate: m, active: vivo, reason: !m ? 'no mandate signed' : m.until <= Date.now() ? 'the mandate expired' : m.left <= 0 ? 'the mandate is used up' : '' };
+}
+
+/** A linhagem inteira: geração, pai, filho, tipo do ato, delta e custo. É o que torna "evoluiu" verificável. */
+export function lineage() {
+  assertOwner();
+  try {
+    const raw = PropertiesService.getScriptProperties().getProperty(lineageProp);
+    const arr: unknown = raw ? JSON.parse(raw) : [];
+    return { entries: Array.isArray(arr) ? (arr as LineageEntry[]) : [] };
+  } catch {
+    return { entries: [] as LineageEntry[] };
+  }
+}
+
+/**
+ * Passa o bastão para o sucessor. DOIS ATOS SEPARADOS: criar e coroar são decisões diferentes, e
+ * separá-las é o que permite avaliar o sucessor antes de ele assumir — e reverter depois.
+ *
+ * Reverter devolve a AUTORIDADE, não desfaz os EFEITOS: agentes já criados continuam criados e
+ * mensagens já enviadas continuam enviadas. Isso está escrito na ADR-038 e é repetido aqui porque é
+ * o tipo de coisa que se descobre tarde demais.
+ */
+export function passBaton(fromFolderId: string, toFolderId: string, delta: number | null) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const caps = parseCapabilities(props.getProperty(`CAP:${fromFolderId}`));
+  const v = canSucceed(caps, parseStatus(props.getProperty(`STATUS:${fromFolderId}`)));
+  if (!v.ok) throw new Error(v.reason);
+
+  const m = mandateFor(fromFolderId);
+  const dentro = m.active && delta !== null && delta >= (m.mandate?.minDelta ?? 1);
+  // Fora do mandato o clique do dono JÁ ACONTECEU (esta função só roda por assertOwner), então o que
+  // muda é o registro: dentro do mandato ele encolhe; fora, fica como decisão avulsa.
+  if (dentro && m.mandate) props.setProperty(mandateProp(fromFolderId), JSON.stringify({ ...m.mandate, left: m.mandate.left - 1 }));
+
+  const anterior = lineage().entries;
+  const geracao = nextGeneration('succession', anterior.filter((e) => e.child === fromFolderId).map((e) => e.generation)[0] ?? 1);
+  // `summary` não é enfeite: sem ele a linhagem vira uma lista de nomes sem parentesco, e "evoluiu"
+  // deixa de ser verificável. O delta entra no texto porque é o número que sustenta a frase.
+  const entrada: LineageEntry = {
+    at: Date.now(),
+    kind: 'succession',
+    parent: fromFolderId,
+    child: toFolderId,
+    generation: geracao,
+    delta,
+    costUsd: 0,
+    summary: delta === null ? 'succession with no measured delta' : `succession with delta ${delta} on the judge set`,
+  };
+  props.setProperty(lineageProp, JSON.stringify([...anterior, entrada].slice(-100)));
+
+  // O sucessor NUNCA nasce com mais do que o antecessor: interseção, nunca união.
+  props.setProperty(`CAP:${toFolderId}`, JSON.stringify(capsAfterSuccession(caps, parseCapabilities(props.getProperty(`CAP:${toFolderId}`)))));
+  props.setProperty(`STATUS:${fromFolderId}`, 'archived'); // o antecessor sai; a conta não cresce
+  props.setProperty(genStamp(fromFolderId), String(Date.now()));
+  return { from: fromFolderId, to: toFolderId, generation: geracao, withinMandate: dentro, entry: entrada };
+}
+
+/** Pode gerar agora? O intervalo mínimo é trava de custo E de descontrole, não conforto. */
+export function mayGenerateNow(folderId: string) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const carimbo = props.getProperty(genStamp(folderId));
+  const v = mayGenerate(carimbo ? Number(carimbo) : null, intervalOf(undefined), Date.now());
+  return { folderId, ok: v.ok, reason: v.reason };
 }
 
 // ---------- Teto familiar e entrega da chave (itens 21 e 19) ----------
