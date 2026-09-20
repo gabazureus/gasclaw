@@ -772,7 +772,26 @@ console.log(`\n${r.day} by model:`);for(const t of r.table)console.log(`  ${t.mo
 const c=r.check;console.log(`\ncross-check (UTC day ${c.dayUtc}): measured by gasclaw US$ ${c.measured} × reported by OpenRouter US$ ${c.informed??"?"}${c.diffPct!==null?` (${c.diffPct}%)`:""} · ${c.nota} · queue: ${r.queue}`)})'
 }
 
-cmd_eval() { lock_dev; [ "$TARGET" = dev ] || die "evals run on dev only"; node scripts/eval.mjs "$(url)" "$@"; }
+cmd_eval() {
+  lock_dev
+  [ "$TARGET" = dev ] || die "evals run on dev only"
+  # MESMO defeito que as POCs ja tinham, por outro caminho: o runner usa exit 2 tanto para 'recusei e
+  # te expliquei o motivo' (cenario offline, que so roda no npm test) quanto para 'quebrei'. A trap de
+  # ERR nao distingue os dois, entao ela imprimia 'stopped unexpectedly … please report this' logo
+  # abaixo de uma recusa perfeitamente explicada — mandando a pessoa abrir um bug por um comportamento
+  # correto. Corromper a medicao por via psicologica e o pior tipo: ninguem confere o que ja acredita
+  # estar quebrado.
+  #
+  # `set +e` NAO basta (medido neste bash): quem cala o trap e `trap - ERR`.
+  trap - ERR
+  set +e
+  node scripts/eval.mjs "$(url)" "$@"
+  local code=$?
+  set -e
+  # O runner ja disse o que houve na linha acima. Repetir aqui viraria ruido; o que falta e so nao
+  # FINGIR que foi crash. Um eval reprovado tambem sai != 0, e isso e resultado, nao defeito.
+  exit "$code"
+}
 
 cmd_tools() { # ferramentas do agente: ./gasclaw tools all | none | <nomes,separados,por,vírgula> [pasta]
   local set="${1:-}" folder="${2:-}"

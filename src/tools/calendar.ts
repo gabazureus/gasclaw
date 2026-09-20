@@ -21,13 +21,13 @@ function period(from: unknown, to: unknown, ctx: ToolCtx) {
   const timeMin = instant(from, 'from', ctx);
   const timeMax = instant(to, 'to', ctx);
   const ms = Date.parse(timeMax) - Date.parse(timeMin);
-  if (!(ms > 0)) throw new Error('"to" precisa ser depois de "from"');
-  if (ms > MAX_DAYS * 86_400_000) throw new Error(`período de no máximo ${MAX_DAYS} dias`);
+  if (!(ms > 0)) throw new Error('"to" must be after "from"');
+  if (ms > MAX_DAYS * 86_400_000) throw new Error(`a range of at most ${MAX_DAYS} days`);
   return { timeMin, timeMax };
 }
 const checkOrder = (start: { dateTime: string }, end: { dateTime: string }, ctx: ToolCtx) => {
   const abs = (d: { dateTime: string }) => Date.parse(HAS_ZONE.test(d.dateTime) ? d.dateTime : `${d.dateTime}${ctx.offset ?? 'Z'}`);
-  if (!(abs(end) > abs(start))) throw new Error('"end" precisa ser depois de "start"');
+  if (!(abs(end) > abs(start))) throw new Error('"end" must be after "start"');
 };
 const meetRequest = () => ({ createRequest: { requestId: `gasclaw-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, conferenceSolutionKey: { type: 'hangoutsMeet' } } });
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- evento da API
@@ -36,14 +36,14 @@ const WRITE = `${CAL}/calendars/primary/events`;
 const WRITE_QS = 'conferenceDataVersion=1&sendUpdates=none'; // minimal: não envia convite por e-mail aos convidados
 
 const str = (description: string, maxLength = 200) => ({ type: 'string' as const, description, maxLength });
-const dt = (d: string) => str(`${d}, ex.: 2030-01-15T10:00 (fuso do gasclaw) ou com fuso`, 40);
+const dt = (d: string) => str(`${d}, e.g. 2030-01-15T10:00 (gasclaw time zone) or with an explicit zone`, 40);
 const schema = (properties: Schema['properties'], required: string[]): Schema => ({ type: 'object', properties, required, additionalProperties: false });
 
 export const CALENDAR_TOOLS: Tool[] = [
   {
     name: 'calendar.list',
-    description: 'Lista os eventos da agenda do dono num período (até 62 dias). Use antes de responder sobre compromissos.',
-    parameters: schema({ from: dt('início do período'), to: dt('fim do período'), query: str('texto para filtrar (opcional)', 100) }, ['from', 'to']),
+    description: "Lists the owner's calendar events in a range (up to 62 days). Use it before answering anything about their schedule.",
+    parameters: schema({ from: dt('start of the range'), to: dt('end of the range'), query: str('text to filter by (optional)', 100) }, ['from', 'to']),
     approval: 'never',
     run: (a, ctx) => {
       const { timeMin, timeMax } = period(a.from, a.to, ctx);
@@ -65,9 +65,9 @@ export const CALENDAR_TOOLS: Tool[] = [
   },
   {
     name: 'calendar.create',
-    description: 'Cria um evento na agenda do dono, com link do Google Meet por padrão. Pede aprovação. Não envia convites por e-mail.',
+    description: "Creates an event on the owner's calendar, with a Google Meet link by default. Asks for approval. Does not e-mail invitations.",
     parameters: schema(
-      { title: str('título'), start: dt('início'), end: dt('fim'), description: str('descrição (opcional)', 2000), attendees: str('e-mails dos convidados separados por vírgula (opcional)', 1000), meet: { type: 'boolean', description: 'criar link do Meet (padrão: sim)' } },
+      { title: str('title'), start: dt('start'), end: dt('fim'), description: str('descrição (opcional)', 2000), attendees: str('e-mails dos convidados separados por vírgula (opcional)', 1000), meet: { type: 'boolean', description: 'criar link do Meet (padrão: sim)' } },
       ['title', 'start', 'end'],
     ),
     approval: 'always',
@@ -93,12 +93,12 @@ export const CALENDAR_TOOLS: Tool[] = [
   },
   {
     name: 'calendar.update',
-    description: 'Altera um evento existente da agenda do dono (use o id de calendar.list). Pede aprovação.',
-    parameters: schema({ id: str('id do evento', 1024), title: str('novo título'), start: dt('novo início'), end: dt('novo fim'), description: str('nova descrição', 2000), meet: { type: 'boolean', description: 'adicionar link do Meet' } }, ['id']),
+    description: "Changes an existing event on the owner's calendar (use the id from calendar.list). Asks for approval.",
+    parameters: schema({ id: str('id do evento', 1024), title: str('new title'), start: dt('new start'), end: dt('novo fim'), description: str('new description', 2000), meet: { type: 'boolean', description: 'adicionar link do Meet' } }, ['id']),
     approval: 'always',
     run: (a, ctx) => {
       const id = String(a.id);
-      if (!/^[a-zA-Z0-9_]{5,1024}$/.test(id)) throw new Error('"id" de evento inválido');
+      if (!/^[a-zA-Z0-9_]{5,1024}$/.test(id)) throw new Error('invalid event "id"');
       const body = {
         ...(a.title !== undefined ? { summary: String(a.title) } : {}),
         ...(a.description !== undefined ? { description: String(a.description) } : {}),
@@ -106,7 +106,7 @@ export const CALENDAR_TOOLS: Tool[] = [
         ...(a.end !== undefined ? { end: when(a.end, 'end', ctx) } : {}),
         ...(a.meet === true ? { conferenceData: meetRequest() } : {}),
       };
-      if (!Object.keys(body).length) throw new Error('nada para alterar');
+      if (!Object.keys(body).length) throw new Error('nothing to change');
       if (body.start && body.end) checkOrder(body.start, body.end, ctx);
       const google = api(ctx);
       ctx.beforeEffect?.();
@@ -115,8 +115,8 @@ export const CALENDAR_TOOLS: Tool[] = [
   },
   {
     name: 'calendar.freebusy',
-    description: 'Mostra quando pessoas (e-mails) estão ocupadas num período, para achar horário livre.',
-    parameters: schema({ emails: str('e-mails separados por vírgula (até 20)', 1000), from: dt('início'), to: dt('fim') }, ['emails', 'from', 'to']),
+    description: 'Shows when people (by e-mail) are busy in a range, to find a free slot.',
+    parameters: schema({ emails: str('comma-separated e-mails (up to 20)', 1000), from: dt('start'), to: dt('fim') }, ['emails', 'from', 'to']),
     approval: 'never',
     run: (a, ctx) => {
       const list = emails(a.emails);
@@ -126,9 +126,9 @@ export const CALENDAR_TOOLS: Tool[] = [
       const cals = (gcall(api(ctx), { method: 'post', url: `${CAL}/freeBusy`, body }, 'consultar a disponibilidade').calendars ?? {}) as Record<string, any>;
       const lines = list.map((e) => {
         const c = cals[e] ?? {};
-        if (c.errors?.length) return `${e}: sem acesso (${c.errors.map((x: { reason?: string }) => x.reason).join(', ')})`;
+        if (c.errors?.length) return `${e}: no access (${c.errors.map((x: { reason?: string }) => x.reason).join(', ')})`;
         const busy = (c.busy ?? []) as { start: string; end: string }[];
-        return busy.length ? `${e}: ocupado ${busy.map((b) => `${b.start} → ${b.end}`).join('; ')}` : `${e}: livre no período`;
+        return busy.length ? `${e}: ocupado ${busy.map((b) => `${b.start} → ${b.end}`).join('; ')}` : `${e}: free in this range`;
       });
       return asData('disponibilidade', lines.join('\n'));
     },

@@ -267,7 +267,7 @@ const DIVIDA: Record<string, number> = {
   'src/sessionQueue.ts': 1,
   'src/sessionQueueStore.ts': 2,
   'src/skills.ts': 3,
-  'src/tools/calendar.ts': 24,
+  'src/tools/calendar.ts': 6,
   'src/tools/contacts.ts': 3,
   'src/tools/driveTools.ts': 13,
   'src/tools/gmail.ts': 11,
@@ -360,5 +360,30 @@ describe('idioma fora do gasclaw: o que chega ao usuário no produto', () => {
     expect(isPortuguese('O gasclaw está pausado pelo administrador')).toBe(true);
     expect(isPortuguese('This action needs your approval')).toBe(false);
     expect(isPortuguese('gasclaw is paused by the administrator')).toBe(false);
+  });
+});
+
+// O NONO defeito de instrumento da semana, achado ao rodar um eval offline.
+//
+// O runner usa exit 2 para duas coisas incompatíveis: "recusei e te expliquei o motivo" (cenário
+// offline, que só roda no npm test) e "quebrei". A trap de ERR do CLI não distinguia, então ela
+// imprimia "stopped unexpectedly … please report this" logo ABAIXO de uma recusa perfeitamente
+// explicada — mandando a pessoa abrir um bug por um comportamento correto.
+//
+// Corromper a medição por via psicológica é o pior tipo: ninguém confere o que já acredita estar
+// quebrado. É o mesmo defeito que as POCs tiveram, e por isso o conserto é o mesmo precedente.
+describe('recusa explicada não vira crash (o mesmo conserto das POCs)', () => {
+  const cli = () => readFileSync('gasclaw', 'utf8');
+
+  test('`cmd_eval` cala o trap ANTES da chamada que pode sair != 0', () => {
+    const corpo = cli().slice(cli().indexOf('cmd_eval()'), cli().indexOf('cmd_eval()') + 1400);
+    expect(corpo).toContain('trap - ERR');
+    // `set +e` sozinho NÃO basta — medido neste bash, o trap dispara mesmo com ele desligado.
+    expect(corpo.indexOf('trap - ERR')).toBeLessThan(corpo.indexOf('node scripts/eval.mjs'));
+  });
+
+  test('o código de saída é PRESERVADO: a recusa continua falhando o CI', () => {
+    const corpo = cli().slice(cli().indexOf('cmd_eval()'), cli().indexOf('cmd_eval()') + 1400);
+    expect(corpo).toContain('exit "$code"');
   });
 });

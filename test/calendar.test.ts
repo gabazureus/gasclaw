@@ -52,8 +52,8 @@ describe('calendar.list', () => {
     expect(out.split(DATA_END)).toHaveLength(2);
   });
   test.each([
-    [{ from: '2030-01-16T00:00', to: '2030-01-15T00:00' }, 'depois'],
-    [{ from: '2030-01-01T00:00', to: '2030-04-01T00:00' }, '62 dias'],
+    [{ from: '2030-01-16T00:00', to: '2030-01-15T00:00' }, 'must be after'],
+    [{ from: '2030-01-01T00:00', to: '2030-04-01T00:00' }, 'at most 62 days'],
     [{ from: 'amanhã', to: '2030-01-15T00:00' }, 'from'],
   ])('recusa período inválido %j', (args, msg) => {
     const { c, reqs } = ctx([]);
@@ -86,7 +86,7 @@ describe('calendar.create', () => {
     expect(body.start).toEqual({ dateTime: '2030-01-15T13:00:00Z' });
   });
   test.each([
-    [{ title: 'X', start: '2030-01-15T10:00', end: '2030-01-15T09:00' }, 'depois'],
+    [{ title: 'X', start: '2030-01-15T10:00', end: '2030-01-15T09:00' }, 'must be after'],
     [{ title: 'X', start: '2030-01-15T10:00', end: '2030-01-15T11:00', attendees: 'não é email' }, 'e-mail'],
     [{ title: '  ', start: '2030-01-15T10:00', end: '2030-01-15T11:00' }, 'title'],
   ])('recusa %j sem chamar a API', (args, msg) => {
@@ -109,7 +109,7 @@ describe('calendar.update', () => {
     expect(Object.keys(body).sort()).toEqual(['conferenceData', 'summary']);
   });
   test.each([
-    [{ id: 'ev123' }, 'nada para alterar'],
+    [{ id: 'ev123' }, 'nothing to change'],
     [{ id: '../x', title: 'a' }, 'id'],
     [{ id: 'ev1', title: 'a' }, 'id'], // doc Calendar: id tem de 5 a 1024 caracteres
   ])('recusa %j', (args, msg) => {
@@ -135,8 +135,8 @@ describe('calendar.freebusy', () => {
     });
     expect(out).toMatch(/^\[DADO EXTERNO de disponibilidade/);
     expect(out).toContain('ana@x.com: ocupado 2030-01-15T13:00:00Z → 2030-01-15T14:00:00Z');
-    expect(out).toContain('bob@y.com: livre no período');
-    expect(out).toContain('zed@z.com: sem acesso (notFound)');
+    expect(out).toContain('bob@y.com: free in this range');
+    expect(out).toContain('zed@z.com: no access (notFound)');
   });
   test('recusa mais de 20 e-mails', () => {
     const { c } = ctx([]);

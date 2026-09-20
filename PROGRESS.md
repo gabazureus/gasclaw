@@ -1,7 +1,7 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, e se já foi resolvido.
-> **Atualizado em:** 2026-09-20 · **1724 testes** · `tsc` limpo · build limpo · dívida de idioma **189**
+> **Atualizado em:** 2026-09-20 · **1726 testes** · `tsc` limpo · build limpo · dívida de idioma **171**
 > · **Auditoria:** seis ✅ eram falsos. Critério: *algum módulo importa isto, e o símbolo aparece em `dist/_motor.js`?*
 > · **P22 aprovada 4/4** · P24 **aprovada por inteiro** · P25 **reprovada** (sem combustível)
 > **Fontes:** [spec](docs/specs/), [ADRs](docs/adr/README.md), [CHANGELOG](CHANGELOG.md),
@@ -83,7 +83,7 @@
 | ~~38~~ | ✅ **ADR dos dois tipos de filho** | `automation` × `subagent` está no código e não em ADR | nada |
 | ~~46~~ | ✅ **Singleton do `create`, dos dois lados** | O projeto afirmava "singleton por forma do dado" — e isso valia só para `CREATOR`. A lista `CAP:` guardava `create` no antecessor, e o portão que eu fiei lia a LISTA: dois agentes passariam pela capacidade que **multiplica**. Agora o portão lê `CREATOR` (a Property que não consegue representar dois) e mover o bastão limpa a lista do anterior |
 | 45 | **Três módulos órfãos, achados na varredura** | A auditoria olhou só os itens da F5; a varredura olhou o projeto inteiro e achou mais três. **`sessionQueue.ts` + `sessionQueueStore.ts` (93 linhas)**: fila de sessões com teste verde e **zero consumidores** — nem o motor, nem POC. O motor grava a sessão direto pelo `sessionIO`, e funciona; a fila nunca foi ligada. **`voice.ts` (38 linhas)**: órfão por DECISÃO sua (voz adiada, ADR-019) — este é parado de propósito, não esquecido. Decisão pendente: apagar a fila ou ligá-la | decisão do dono |
-| 39 | **189** strings em pt-BR | Catraca: **208 → 189** nesta rodada (−9%), e não pode subir. Contínuo por natureza — traduzir as descrições de ferramenta exige rodar os evals, porque elas mudam o que o modelo vê, e a bolha do chat é do AGENTE (idioma vem da pasta, ADR-002). **Dois pedaços ficam em pt-BR de propósito**: os nomes de seção dos evals (`## turnos`, `## verificações`) são a GRAMÁTICA dos 36 cenários, e o cabeçalho da planilha de limites — renomear coluna numa planilha que o dono já tem desalinha o que ele já filtrou | contínuo |
+| 39 | **171** strings em pt-BR | Catraca: **208 → 171** nesta rodada (**−18%**), e não pode subir. As descrições de `calendar.ts` foram traduzidas **com eval antes e depois** (`e6-agenda` ✓ nos dois, mesmas 4 verificações) — elas mudam o que o modelo vê, então não saem sem medição. Contínuo por natureza — traduzir as descrições de ferramenta exige rodar os evals, porque elas mudam o que o modelo vê, e a bolha do chat é do AGENTE (idioma vem da pasta, ADR-002). **Dois pedaços ficam em pt-BR de propósito**: os nomes de seção dos evals (`## turnos`, `## verificações`) são a GRAMÁTICA dos 36 cenários, e o cabeçalho da planilha de limites — renomear coluna numa planilha que o dono já tem desalinha o que ele já filtrou | contínuo |
 
 ### POCs
 
@@ -107,6 +107,7 @@ Sete defeitos desta semana estavam na **medição**, não no produto:
 | Credencial gcloud presumida | Conta listada ≠ conta válida. Morria na linha 44 sem dizer o comando |
 | Painel dizendo "autorizado" sem estar | Chamava o filho **sem token**, recebia o login, lia como sucesso |
 | Sonda cortando a evidência | `slice(0,900)` antes do parse reprovava um desenho **correto** |
+| Recusa explicada virando crash | Eval offline recusado com motivo, e o CLI imprimia **"stopped unexpectedly… please report this"** logo abaixo |
 
 ---
 
