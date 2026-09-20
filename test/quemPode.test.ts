@@ -45,6 +45,30 @@ describe('quem NÃO é o dono não muda poder nenhum', () => {
     expect(() => chamar(m)).toThrow(/owner/i);
   });
 
+  // O TESTE ACIMA NÃO BASTA, e a mutação mostrou: apagar o `assertOwner()` do `setAgentCapability`
+  // ainda recusa, porque `agentCapabilities` re-assere no fim. Isso é defesa em profundidade de
+  // verdade — mas significa que "lançou" não prova que a guarda DAQUELA função existe.
+  //
+  // O que prova é o ESTADO: se um estranho não pode mudar poder, a Property não pode ter mudado.
+  // Uma função que recusa DEPOIS de gravar recusa tarde demais.
+  test('e o estado NÃO muda: recusar depois de gravar é recusar tarde demais', async () => {
+    env.activeUser = 'estranho@x.com';
+    env.props['CAP:fa'] = JSON.stringify([]);
+    env.props['CREATOR'] = 'fb';
+    const antes = { cap: env.props['CAP:fa'], creator: env.props['CREATOR'], status: env.props['STATUS:fa'] };
+    const m = await import('../src/main');
+    for (const tentar of [() => m.setAgentCapability('fa', 'create', true), () => m.passBaton('fa', 'fb', 5)]) {
+      try {
+        tentar();
+      } catch {
+        /* a recusa é o esperado; o que importa é o estado abaixo */
+      }
+    }
+    expect(env.props['CAP:fa']).toBe(antes.cap);
+    expect(env.props['CREATOR']).toBe(antes.creator);
+    expect(env.props['STATUS:fa']).toBe(antes.status);
+  });
+
   // CONTROLE POSITIVO: sem ele, os dez acima ficariam verdes se TODAS as funções lançassem por
   // qualquer motivo — inclusive por um erro que nada tem a ver com autorização.
   test('controle positivo: o DONO consegue', async () => {
