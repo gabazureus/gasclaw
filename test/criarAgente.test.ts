@@ -160,3 +160,32 @@ describe('a sucessão não pode deixar NINGUÉM podendo criar', () => {
     expect(() => m.passBaton('fa', 'nao-existe', 5)).toThrow(/not a registered agent/);
   });
 });
+
+// ADR-038 §F: arquivar precisa ENCERRAR O QUE ESTÁ EM VOO, não só impedir o que vem depois.
+//
+// `claimable` existia em `agentCaps.ts` com um docstring dizendo que valia para `claimNext` e
+// `claimById` — e tinha ZERO importadores. Era cosmético: o antecessor arquivado continuava dono de
+// lease, o pump retomava os runs dele, e ele agia em paralelo com o sucessor.
+describe('arquivar tira os runs da fila', () => {
+  test('um run de agente arquivado não é reivindicado — e sai da fila', async () => {
+    env.props['AGENTS'] = JSON.stringify([{ name: 'alpha', folderId: 'fa' }]);
+    env.props['STATUS:fa'] = 'archived';
+    const { newRun } = await import('../src/run');
+    const { runIO } = await import('../src/runStore');
+    const r = newRun({ runId: 'r-morto', session: 'fa:x', folderId: 'fa', user: 'dono@x.com', text: 'oi', now: 1000 });
+    runIO().enqueue(r, 1000);
+    expect(runIO().claimNext(9_999_999)).toBeNull();
+    // E não fica girando: o ponteiro some, senão o pump tentaria de novo a cada minuto para sempre.
+    expect(Object.keys(env.props).some((k) => k.includes('r-morto'))).toBe(false);
+  });
+
+  // CONTROLE POSITIVO: sem ele, o teste acima ficaria verde com `claimNext` devolvendo null sempre.
+  test('controle positivo: o run de um agente ATIVO continua sendo reivindicado', async () => {
+    env.props['AGENTS'] = JSON.stringify([{ name: 'alpha', folderId: 'fa' }]);
+    env.props['STATUS:fa'] = 'active';
+    const { newRun } = await import('../src/run');
+    const { runIO } = await import('../src/runStore');
+    runIO().enqueue(newRun({ runId: 'r-vivo', session: 'fa:x', folderId: 'fa', user: 'dono@x.com', text: 'oi', now: 1000 }), 1000);
+    expect(runIO().claimNext(9_999_999)?.run.runId).toBe('r-vivo');
+  });
+});

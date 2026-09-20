@@ -4,6 +4,7 @@
 // Por que o estado não mora nas Properties: um Snapshot com a conversa passa fácil dos 9 KB por valor. Por que o
 // ponteiro não mora no Drive: a fila é lida a cada minuto pelo pump, e listar pasta a cada minuto é caro e lento.
 import { redeemGrant, type GrantResult } from './approval';
+import { claimable, parseStatus } from './agentCaps';
 import type { Decision } from './agent';
 import { authKey, claim, isFinished, nextClaimable, nextExhausted, parseRun, pointerOf, queueKey, runAuthority, splitRunQueue, type DurableRun, type RunAuthority, type RunPointer } from './run';
 
@@ -186,6 +187,17 @@ export function runIO(
     setProp(authKey(r.runId), JSON.stringify({ ...destino, auth: sign(runAuthority(r)) } satisfies RunAuthority));
   };
 
+  /**
+   * O agente dono deste run ainda pode trabalhar?
+   *
+   * `claimable` existia em `agentCaps.ts` com um docstring dizendo "vale para `claimNext` e
+   * `claimById`: os dois consultam o estado antes de tomar o run, senão o arquivamento seria só
+   * cosmético" — e tinha ZERO importadores. Era cosmético mesmo: o antecessor arquivado continuava
+   * dono de lease, o pump retomava os runs dele, e o card dele seguia clicável pela janela inteira.
+   * O antecessor agia em paralelo com o sucessor, que é o que a substituição 1→1 existe para evitar.
+   */
+  const agenteAtivo = (folderId: string): boolean => claimable(parseStatus(props.getProperties()[`STATUS:${folderId}`] ?? null));
+
   /** O arquivo do Drive bate com o que nós gravamos? Divergência é adulteração, não falha transitória. */
   const untampered = (r: DurableRun): boolean => {
     const a = readAuthority(r.runId);
@@ -240,6 +252,16 @@ export function runIO(
       try {
         const p = splitRunQueue(props.getProperties()).find((candidate) => candidate.runId === runId);
         if (!p) return null;
+        // Arquivado não é reivindicável. Sai da fila em vez de ficar rodando: deixá-lo ali faria o
+        // pump tentar de novo a cada minuto, para sempre, num agente que não existe mais.
+        if (!agenteAtivo(p.folderId)) {
+          // A AUTORIDADE SAI JUNTO. Um run que nunca mais vai rodar não pode deixar credencial viva:
+          // o card dele continuaria resgatável pela janela inteira, e é exatamente isso que arquivar
+          // existe para encerrar (ADR-038 §F).
+          props.deleteProperty(queueKey(runId));
+          props.deleteProperty(authKey(runId));
+          return null;
+        }
         const c = claim(p, now);
         if (!c.ok) return null;
         props.setProperty(queueKey(runId), JSON.stringify(c.pointer));
@@ -259,7 +281,19 @@ export function runIO(
       let taken: RunPointer;
       let gaveUp = false;
       try {
-        const queue = splitRunQueue(props.getProperties());
+        // Os runs de agentes arquivados saem da fila ANTES da escolha: um deles seria o mais antigo
+        // reivindicável e travaria a fila inteira, girando em falso a cada tique.
+        // UMA leitura de Properties para a fila inteira: `agenteAtivo` por run seria N leituras por
+        // tique, e a P3 mediu que é exatamente esse tipo de N+1 que fez o tique subir de 716 para
+        // 974 ms.
+        const tudo = props.getProperties();
+        const ativo = (folderId: string) => claimable(parseStatus(tudo[`STATUS:${folderId}`] ?? null));
+        const todos = splitRunQueue(tudo);
+        for (const morto of todos.filter((x) => !ativo(x.folderId))) {
+          props.deleteProperty(queueKey(morto.runId));
+          props.deleteProperty(authKey(morto.runId)); // a credencial do card morre com o run
+        }
+        const queue = todos.filter((x) => ativo(x.folderId));
         const p = nextClaimable(queue, now);
         if (p) {
           const c = claim(p, now);
