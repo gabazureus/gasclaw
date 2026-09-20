@@ -62,7 +62,14 @@ const names = [
   ...[...src.matchAll(/^export const (\w+)\s*(?::[^=]+)?=\s*(?:async\s*)?(?:<[^>]*>)?\(/gm)].map((m) => m[1]),
 ];
 if (names.length === 0) throw new Error('build: no callable export in src/main.ts');
-appendFileSync(`${OUT}/_motor.js`, '\n' + names.map((n) => `function ${n}(...a) { return gasclaw.${n}(...a); }`).join('\n') + '\n');
+// PORTAS DE TESTE NÃO VIRAM GLOBAIS. Um export com prefixo `__` existe para o vitest alcançar a
+// função real; virar global do Apps Script o torna chamável por `google.script.run` a partir das
+// telas. Pior: a autorização deste projeto é POR GLOBAL — cada um chama `assertOwner()` por si —, e
+// uma porta de teste não chama. Um único global sem a asserção não é exceção pequena: é o
+// contraexemplo que o próximo leitor copia.
+const publicos = names.filter((n) => !n.startsWith('__'));
+if (publicos.length !== names.length) console.log(`build: ${names.length - publicos.length} porta(s) de teste fora do escopo global`);
+appendFileSync(`${OUT}/_motor.js`, '\n' + publicos.map((n) => `function ${n}(...a) { return gasclaw.${n}(...a); }`).join('\n') + '\n');
 const manifest = JSON.parse(readFileSync('appsscript.json', 'utf8'));
 const iamScope = 'https://www.googleapis.com/auth/iam';
 manifest.oauthScopes = (manifest.oauthScopes ?? []).filter((scope) => scope !== iamScope);
@@ -71,4 +78,7 @@ writeFileSync(`${OUT}/appsscript.json`, JSON.stringify(manifest, null, 2) + '\n'
 copyFileSync('src/settings.html', `${OUT}/settings.html`);
 copyFileSync('src/chat.html', `${OUT}/chat.html`); // tela de conversa (doGet?page=chat)
 copyFileSync('src/hub.html', `${OUT}/hub.html`); // hub de painéis (doGet?page=hub)
-console.log(`build: ${OUT}/_motor.js with ${names.length} global functions: ${names.join(', ')}`);
+// O log conta os GLOBAIS de verdade, não os exports. Ele listava as portas de teste como globais
+// depois de elas terem sido excluídas — e um log que mente sobre a superfície publicada é o mesmo
+// tipo de defeito que esta sessão inteira vem caçando.
+console.log(`build: ${OUT}/_motor.js with ${publicos.length} global functions: ${publicos.join(', ')}`);
