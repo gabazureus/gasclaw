@@ -580,7 +580,7 @@ function durableChatClick(e: ChatEvent): ChatReply {
     cacheTickets().put(t);
     return updateCard(approvalCard(t, done.answer ?? 'I need an answer.'));
   }
-  return updateCard({ text: done.answer ?? (done.status === 'failed' ? `I could not finish: ${done.error ?? 'erro desconhecido'}` : 'Approval recorded; I will carry on with the task.'), cardsV2: [] });
+  return updateCard({ text: done.answer ?? (done.status === 'failed' ? `I could not finish: ${done.error ?? 'unknown error'}` : 'Approval recorded; I will carry on with the task.'), cardsV2: [] });
 }
 
 export function onMessage(e: ChatEvent) {
@@ -1184,7 +1184,7 @@ const asAccess = (a: Partial<Access> | null | undefined): Access => ({
   tools: Array.isArray(a?.tools) ? a!.tools.map(String) : [],
 });
 const agentName = (folderId: string) => store.listAgents().find((a) => a.folderId === folderId)?.name ?? folderId;
-const describeAccess = (a: Access) => `${a.users.length ? a.users.join(', ') : 'só o dono'} · ${a.tools.length ? a.tools.join(', ') : 'sem ferramentas'}`;
+const describeAccess = (a: Access) => `${a.users.length ? a.users.join(', ') : 'só o dono'} · ${a.tools.length ? a.tools.join(', ') : 'sem ferramentas'}`; // lang-ok: rotulo do TRACE, lido pelo dono no historico em pt-BR
 
 /** O que a pasta sugere, o que está aprovado, o que falta aprovar e o catálogo para o liga/desliga por ferramenta. */
 export function agentAccess(folderId: string) {
@@ -1219,7 +1219,7 @@ export function setAgentSteps(folderId: string, steps: number | null) {
   const before = stepsOf(folderId);
   const t = runlog.begin('config', { question: `passos de ${name}: ${before ?? 'da pasta'} → ${next ?? 'da pasta'}`, agent: name }); // lang-ok: texto do TRACE, que e pt-BR por decisao
   t.step('set_steps', () => (next === null ? props.deleteProperty(`STEPS:${folderId}`) : props.setProperty(`STEPS:${folderId}`, String(next))), () => ({ folderId, before, after: next }));
-  t.end({ answer: `passos: ${next ?? 'da pasta'}` });
+  t.end({ answer: `passos: ${next ?? 'da pasta'}` }); // lang-ok: rotulo do TRACE (origem da mudanca)
   return agentAccess(folderId);
 }
 
@@ -1260,7 +1260,7 @@ export function setAgentUser(folderId: string, email: string, allowed: boolean) 
     const name = agentName(folderId);
     const t = runlog.begin('config', { question: `pessoa ${email} em ${name}: ${on ? 'liberar' : 'revogar'}`, agent: name });
     t.step('set_user', () => props.setProperty(`ACCESS:${folderId}`, JSON.stringify(next)), () => ({ folderId, email, allowed: on, before, after: next }));
-    t.end({ answer: `pessoas: ${next.users.length ? next.users.join(', ') : 'só o dono'}` });
+    t.end({ answer: `pessoas: ${next.users.length ? next.users.join(', ') : 'só o dono'}` }); // lang-ok: rotulo do TRACE
     return { folderId, approved: next, enabled: enabledTools(next) };
   });
 }
@@ -2396,25 +2396,62 @@ function agentMaterial(folderId: string): string {
   return m.ok && m.top ? `${m.top.count} runs failed with ${m.top.kind}${m.top.tool ? ` on ${m.top.tool}` : ''} in the last 30 days` : '';
 }
 
+/**
+ * Memória de mentira para o ciclo de sonho: vive em RAM e morre com a execução.
+ *
+ * Existe porque `runEval` honra `memory: reset` chamando `env.memory.write('')`, e dez cenários do
+ * conjunto declaram isso. Apontada para a pasta viva, essa linha apagava a memória curada do dono.
+ */
+function sandboxMemory(): { read: () => string; write: (t: string) => void; day: (d: string) => string; saveDay: (d: string, t: string) => void; today: () => string; recall: () => string } {
+  let curada = '';
+  const dias: Record<string, string> = {};
+  return {
+    read: () => curada,
+    write: (t) => void (curada = t),
+    day: (d) => dias[d] ?? '',
+    saveDay: (d, t) => void (dias[d] = t),
+    today: () => new Date().toISOString().slice(0, 10),
+    recall: () => curada,
+  };
+}
+
 function dreamDeps(): DreamDeps {
   const key = store.getApiKey();
   const tz = Session.getScriptTimeZone();
   return {
     spec: (folderId) => withAccess(loadAgent(folderId), approvedOf(folderId)),
+    // O SONHO RODA EM CAIXA DE AREIA. Esta é a correção mais grave dos três ciclos, e o defeito era
+    // destruição de dado do dono por gatilho automático:
+    //
+    // O laço de sonho roda o harness de EVAL, e os evals têm efeito REAL — `e6-agenda` diz, com todas
+    // as letras, que "o clique em Aprovar cria o evento real (com Meet) na agenda do dono". No caminho
+    // do sonho não há clique: `evalApproves` aprova sozinho. Com `google: gasGoogle` e a pasta VIVA,
+    // ligar `dream` fazia o gatilho de 1 minuto criar eventos, documentos, tarefas e rascunhos de
+    // verdade na conta do dono — várias vezes por ciclo, 27 cenários de gate por candidato.
+    //
+    // Pior: dez cenários declaram `memory: reset`, e `runEval` faz `env.memory.write('')`. A memória
+    // CURADA do dono era zerada e sobrescrita com lixo de teste ("prefiro café") no primeiro tique.
+    // Sem arquivo, sem lixeira, sem desfazer.
+    //
+    // A caixa de areia é a única resposta: um sonho que precisa tocar a conta do dono para se medir
+    // não é um sonho, é um agente agindo sem supervisão com o nome trocado.
     env: (folderId) => ({
       owner: ownerEmail(),
       apiKey: key,
       agent: () => withAccess(loadAgent(folderId), approvedOf(folderId)),
       folderId,
-      memory: memoryIO(folderId),
+      // Memória DESCARTÁVEL: o cenário pode escrever e apagar à vontade sem tocar no `MEMORY.md`.
+      memory: sandboxMemory(),
       now: () => Utilities.formatDate(new Date(), tz, "yyyy-MM-dd'T'HH:mm:ssXXX (EEEE)") + ` fuso ${tz}`,
       llm: (m, messages, defs) => complete(key ?? '', m, messages, 1000, undefined, defs),
       clock: Date.now,
       tickets: cacheTickets(),
       newToken,
       skill: (name) => skillsIO(folderId).body(name),
-      bootstrap: bootstrapIO(folderId),
-      google: gasGoogle,
+      enabled: store.isEnabled, // a chave geral do dono para o sonho também
+      sandboxed: true, // ninguém está olhando: o cenário não concede nada
+      // Sem `bootstrap`: `bootstrap.consume()` manda o `BOOTSTRAP.md` vivo para a lixeira.
+      // Sem `google`: nenhuma ferramenta do Workspace alcança a conta do dono a partir daqui.
       zone: zone(),
     }),
     generate: (messages, temperature) => {

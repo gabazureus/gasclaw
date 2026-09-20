@@ -31,6 +31,15 @@ export type EvalEnv = {
   bootstrap?: { read: () => string | null; consume: () => void }; // ritual de estreia (delivery 4)
   google?: Google; // ferramentas do Workspace (E6); o runner também usa para apagar os dados de teste
   zone?: { timeZone: string; offset: string };
+  /** A chave geral do dono (`./gasclaw disable`). Ausente = ligado, para o harness de teste. */
+  enabled?: () => boolean;
+  /**
+   * Modo CAIXA DE AREIA: ninguém está olhando, então nada do cenário concede poder.
+   *
+   * Ligado só no ciclo de sonho. No `./gasclaw eval` o dono digitou o comando, e o que o cenário pede
+   * é o que ele quis rodar — tratar os dois iguais confundiria "o dono mandou" com "a pasta pediu".
+   */
+  sandboxed?: boolean;
 };
 export type EvalResult = Report & { replies: string[]; ms: number; errors: string[]; grade?: { grade: number; reason: string }; cleanup?: { removed: number; missing: number; failed: string[] } };
 
@@ -83,7 +92,20 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
   if (s.resetMemory) env.memory.write('');
   const spec = env.agent();
   const model = s.model ?? modelOverride ?? spec.config.model;
-  const allow = s.tools ?? spec.access.tools; // sem tools: no cenário, vale o acesso efetivo do agente (ADR-021)
+  // INTERSECTA, NÃO SUBSTITUI (ciclo 3, 2026-09-20). Era `s.tools ?? spec.access.tools`: o frontmatter
+  // do cenário — que vem da pasta COMPARTILHÁVEL — trocava a lista que o dono aprovou no painel.
+  // `allowedTools` filtra só contra o REGISTRO, então isto era literalmente a "união disfarçada de
+  // filtro" que o cabeçalho do `subagent.ts` escreveu para não cometer, e que `subagentTools` existe
+  // por causa dela.
+  //
+  // A distinção que importa e que eu quase achatei: quando o DONO digita `./gasclaw eval e6-agenda`,
+  // os tools do cenário SÃO a intenção dele — ele escolheu rodar aquilo. Quando o SONHO roda sozinho,
+  // a cada minuto, não são: ali o frontmatter da pasta compartilhável estaria concedendo `calendar`,
+  // `drive` e `gmail` na OAuth do dono, sem ninguém olhando.
+  //
+  // Por isso a interseção vale só no modo `sandboxed`, que é o do sonho. Aplicá-la nos dois quebraria
+  // o harness manual — e foi o que 17 testes me disseram, corretamente.
+  const allow = s.tools ? (env.sandboxed ? s.tools.filter((t) => spec.access.tools.includes(t)) : s.tools) : spec.access.tools;
   const base = env.tickets ?? memoryTickets();
   let lastToken = '';
   let lastDecision = 'approve';
@@ -116,7 +138,10 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
       const steps = s.steps ?? spec.config.steps ?? DEFAULT_STEPS; // mesma precedência da produção (main.ts toolkit)
       let turn: TurnResult | undefined;
       const d: ChatDeps = {
-        enabled: () => true,
+        // A CHAVE GERAL DO DONO VALE AQUI TAMBÉM. Era `() => true` fixo, então `./gasclaw disable` —
+        // o interruptor que se puxa numa emergência — não alcançava o caminho autônomo do sonho.
+        // Duas grafias para a mesma intenção é a deriva que o `mayAct` existe para acabar.
+        enabled: () => env.enabled?.() ?? true,
         owner: () => env.owner,
         apiKey: () => env.apiKey ?? 'roteiro',
         defaultAgent: () => ({ folderId: env.folderId, name: spec.name }),

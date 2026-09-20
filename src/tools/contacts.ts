@@ -43,7 +43,7 @@ export const CONTACTS_TOOLS: Tool[] = [
           const emails = (p.emailAddresses ?? []).map((e) => String(e.value ?? '').trim()).filter((e) => e && !seen.has(e.toLowerCase()));
           if (!emails.length) continue;
           emails.forEach((e) => seen.add(e.toLowerCase()));
-          lines.push(`${String(p.names?.[0]?.displayName ?? '(sem nome)').slice(0, 100)} | ${emails.join(', ')} | ${origin}`);
+          lines.push(`${String(p.names?.[0]?.displayName ?? '(no name)').slice(0, 100)} | ${emails.join(', ')} | ${origin}`);
         }
       };
       add(search(g, 'people:searchContacts', name), 'contatos');

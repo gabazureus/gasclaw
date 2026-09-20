@@ -167,7 +167,7 @@ export function buildSpec(folderId: string, name: string, texts: Partial<Record<
     if (text === undefined) return `## ${r}.md\n(missing)`;
     const cut = text.slice(0, cotas[k]);
     // Cortar em silêncio era metade do defeito: nem o modelo nem o dono sabiam que faltava pedaço.
-    return `## ${r}.md\n${cut}${cut.length < text.length ? '\n(cortado: o arquivo não cabe no orçamento do prompt)' : ''}`;
+    return `## ${r}.md\n${cut}${cut.length < text.length ? '\n(trimmed: this file does not fit the prompt budget)' : ''}`;
   });
   return { folderId, name, config: mergeConfig(data, configRows), system: parts.join('\n\n'), access: effectiveAccess(null) };
 }

@@ -305,7 +305,23 @@ function stringsDe(arquivo: string): { n: number; texto: string }[] {
       if (/^\s*(\/\/|\*|\/\*)/.test(linha)) return;
       if (ISENTA.test(linha)) return; // mesma isenção explícita do bash, com o motivo na linha
       const semComentario = withoutComment(linha);
+      // PONTO CEGO CONSERTADO (ciclo 3, 2026-09-20): a alternativa de crase engolia o template
+      // INTEIRO e o `${...}` era apagado ANTES de `isPortuguese` rodar. Toda string dentro de uma
+      // interpolação era invisível — e é exatamente ali que mora o texto de fallback
+      // (`?? 'mensagem padrão'`). Dez strings escapavam, incluindo uma que vai para o CARD do Chat.
+      //
+      // Pior: a catraca ficava VERDE, o que é falsa confiança e não arquivo limpo. Foi por este furo
+      // que a tradução do `calendar.ts` — feita com eval dos dois lados — deixou `'(sem título)'`
+      // para trás. O detector não conseguia vê-lo.
+      const pedacos: string[] = [];
       for (const bruto of semComentario.match(/"[^"]*"|'[^']*'|`[^`]*`/g) ?? []) {
+        pedacos.push(bruto);
+        // As strings DENTRO das interpolações entram na mesma peneira, uma a uma.
+        for (const interp of bruto.match(/\$\{[^}]*\}/g) ?? []) {
+          for (const dentro of interp.match(/"[^"]*"|'[^']*'/g) ?? []) pedacos.push(dentro);
+        }
+      }
+      for (const bruto of pedacos) {
         const texto = bruto.slice(1, -1).replace(/\$\{[^}]*\}/g, ' ').replace(NOMES_PROPRIOS, ' ');
         // Só PROSA conta. Uma string de uma palavra é identificador, não frase: o literal de união
         // `'tela' | 'pasta'`, a chave `entrada_sincrona`, o caminho `../poc/p15-limites/harness`. Exigir

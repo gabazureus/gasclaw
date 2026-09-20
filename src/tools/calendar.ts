@@ -53,7 +53,7 @@ export const CALENDAR_TOOLS: Tool[] = [
       const items = (r.items ?? []) as Record<string, any>[];
       const lines = items.map((e) =>
         [
-          `${e.id} | ${e.start?.dateTime ?? e.start?.date ?? '?'} → ${e.end?.dateTime ?? e.end?.date ?? '?'} | ${String(e.summary ?? '(sem título)').slice(0, 200)}`,
+          `${e.id} | ${e.start?.dateTime ?? e.start?.date ?? '?'} → ${e.end?.dateTime ?? e.end?.date ?? '?'} | ${String(e.summary ?? '(no title)').slice(0, 200)}`,
           e.location ? `local: ${String(e.location).slice(0, 120)}` : '',
           e.hangoutLink ? `meet: ${e.hangoutLink}` : '',
         ]

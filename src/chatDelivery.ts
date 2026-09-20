@@ -58,7 +58,7 @@ export function authorizedDelivery(delivery: ChatDelivery | undefined, authority
 }
 
 export function chatMessageFor(run: DurableRun): ChatMessage {
-  const text = safeChatMarkdown(run.answer ?? (run.status === 'failed' ? `Nao consegui terminar: ${run.error ?? 'erro desconhecido'}` : 'Pronto.'));
+  const text = safeChatMarkdown(run.answer ?? (run.status === 'failed' ? `Nao consegui terminar: ${run.error ?? 'unknown error'}` : 'Pronto.'));
   if (run.delivery?.probe === 'p2') return {
     text,
     markupSyntax: CHAT_MARKUP_SYNTAX,

@@ -38,7 +38,7 @@ describe('nenhum papel é zerado por causa do tamanho dos outros', () => {
 
   test('corte deixa marca: silêncio era o problema', () => {
     const s = buildSpec('f1', 'a', { AGENTS: encher(50_000), SOUL: encher(50_000), IDENTITY: encher(50_000), USER: encher(50_000) }).system;
-    expect(s).toContain('(cortado');
+    expect(s).toContain('(trimmed');
   });
 
   test('papel ausente continua marcado como (missing), sem gastar orçamento', () => {

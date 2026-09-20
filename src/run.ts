@@ -308,7 +308,7 @@ export const resumeOf = (r: DurableRun): (Snapshot & { decision?: Decision }) | 
 /** O que a tela mostra agora, sem precisar entender o modelo de estado. */
 export const view = (r: DurableRun): { status: RunStatus; text: string; spent: string; waiting: boolean } => ({
   status: r.status,
-  text: r.answer ?? (r.status === 'failed' ? `Não consegui terminar: ${r.error ?? 'erro desconhecido'}` : 'Trabalhando…'),
+  text: r.answer ?? (r.status === 'failed' ? `Não consegui terminar: ${r.error ?? 'unknown error'}` : 'Trabalhando…'),
   spent: money(r.budget.usedUsd),
   waiting: r.status === 'waiting' || r.status === 'paused',
 });
