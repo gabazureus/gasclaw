@@ -103,7 +103,7 @@ describe('destino da entrega: autoridade no ponteiro, nao no arquivo', () => {
     expect(enviados).toHaveLength(0); // nada foi publicado no espaço do atacante
     expect(out.delivery?.status).toBe('failed'); // recusa definitiva, não retry
     expect(out.answer).toBe('segredo do dono'); // a resposta continua no painel
-    expect(out.error).toMatch(/destino/i);
+    expect(out.error).toMatch(/destination/i);
     expect(salvos).toHaveLength(1);
   });
 

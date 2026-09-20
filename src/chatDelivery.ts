@@ -50,10 +50,10 @@ export type DeliveryTarget = { ok: true; space: string; thread?: string } | { ok
  * recusa e falha fechada. Ponteiro legado, sem destino gravado, tambem recusa — ver README/ADR.
  */
 export function authorizedDelivery(delivery: ChatDelivery | undefined, authority: RunAuthority | null | undefined): DeliveryTarget {
-  if (!delivery) return { ok: false, reason: 'run sem entrega' };
-  if (!authority?.space) return { ok: false, reason: 'destino nao registrado (run anterior a esta versao): nao da para confirmar para onde a resposta deve ir' };
-  if (delivery.space !== authority.space) return { ok: false, reason: 'destino do arquivo do run diverge do destino registrado' };
-  if ((delivery.thread ?? '') !== (authority.thread ?? '')) return { ok: false, reason: 'thread do arquivo do run diverge da registrada' };
+  if (!delivery) return { ok: false, reason: 'this run has no delivery' };
+  if (!authority?.space) return { ok: false, reason: 'no destination on record (run predates this version): there is no way to confirm where the answer should go' };
+  if (delivery.space !== authority.space) return { ok: false, reason: 'the destination in the run file differs from the one on record' };
+  if ((delivery.thread ?? '') !== (authority.thread ?? '')) return { ok: false, reason: 'the thread in the run file differs from the one on record' };
   return { ok: true, space: authority.space, ...(authority.thread ? { thread: authority.thread } : {}) };
 }
 

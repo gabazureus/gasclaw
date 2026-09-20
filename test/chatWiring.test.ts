@@ -143,7 +143,7 @@ describe('fiação do gatilho: o que realmente sobe para os sistemas externos', 
     expect(env.fetched('chat.googleapis.com')).toHaveLength(0); // nem tentou
     const saved = parseRun(env.drive.get(`${FOLDER}/.gasclaw/runs/${runFile(r.runId)}`));
     expect(saved?.delivery?.status).toBe('failed'); // recusa definitiva
-    expect(saved?.error).toMatch(/destino/i); // e o motivo é honesto
+    expect(saved?.error).toMatch(/destination/i); // e o motivo é honesto
     expect(saved?.answer).toBe('o saldo da conta é 42'); // a resposta continua acessível no painel
     expect(env.props[queueKey(r.runId)]).toBeUndefined();
   });

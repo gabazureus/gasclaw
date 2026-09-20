@@ -248,7 +248,7 @@ const DIVIDA: Record<string, number> = {
   'src/batch.ts': 2,
   'src/bootstrap.ts': 1,
   'src/chatApi.ts': 6,
-  'src/chatDelivery.ts': 9,
+  'src/chatDelivery.ts': 5,
   'src/drive.ts': 1,
   'src/eval.ts': 7,
   'src/evalEntry.ts': 5,
