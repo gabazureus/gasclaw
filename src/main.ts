@@ -57,7 +57,7 @@ import * as observe from './observe';
 import * as runlog from './runlog';
 import {
   CAPABILITIES, can, canSucceed, capsAfterSuccession, creatorOf, DEFAULT_INTERVAL_MS, forgetAgentProps, intervalOf, mayGenerate,
-  capsAfterCreatorMoved, capsEnabled, effectiveCapabilities, nextGeneration, parseCapabilities, parseStatus, setCreator, type Capability, type LineageEntry,
+  accessAfterArchive, capsAfterCreatorMoved, capsEnabled, clearCreator, effectiveCapabilities, isRunnable, nextGeneration, parseCapabilities, parseStatus, setCreator, type Capability, type LineageEntry,
 } from './agentCaps';
 import { CODEGEN_BUDGET_USD, CODEGEN_DAILY_CAP_USD, mayWriteProject } from './dream';
 import { generateSuccessor, type SuccessorDeps } from './successor';
@@ -410,33 +410,52 @@ function toolsOfAgent(name: string): string[] {
  */
 function bornAgent(parent: AgentSpec, name: string, role: string): string {
   const props = PropertiesService.getScriptProperties();
-  if (!validAgentName(name)) throw new Error('invalid agent name');
-  if (store.listAgents().some((a) => a.name.toLowerCase() === name)) throw new Error(`there is already an agent named "${name}"`);
+  const nome = String(name ?? '').trim().toLowerCase(); // normaliza AQUI: quem chama não precisa saber a regra
+  if (!validAgentName(nome)) throw new Error('invalid agent name: use lowercase letters, numbers and hyphens');
+  if (store.listAgents().some((a) => a.name.toLowerCase() === nome)) throw new Error(`there is already an agent named "${nome}"`);
   // O teto familiar vale aqui também, e é onde ele morde primeiro: `stop-creating` existe exatamente
   // para parar de criar ANTES de congelar.
   const acao = capAction(familySpendQuiet());
   if (acao !== 'ok') throw new Error(`the family spend cap says ${acao}: not creating another agent`);
 
-  const pasta = ensureFolderPath(agentFolderPath(name));
+  // PASTA EXISTENTE NÃO É REUSADA, e este era o pior defeito desta rodada — perda silenciosa de texto
+  // ESCRITO PELO DONO. `ensureFolderPath` reusa a primeira pasta homônima, e o `saveRole` abaixo
+  // sobrescreve o AGENTS.md sem perguntar. O caminho concreto: o dono remove "vendas" do painel (o
+  // diálogo PROMETE que a pasta não é apagada), o agente criador cria "vendas" de novo, e o papel que
+  // o dono escreveu é substituído por um que o modelo escreveu. A tela prometia e o código desfazia.
+  const raiz = ensureFolderPath(agentFolderPath(nome).slice(0, -1));
+  if (raiz.getFoldersByName(nome).hasNext()) {
+    throw new Error(`a Drive folder named "${nome}" already exists: rename it or pick another name — I will not write over what is in it`);
+  }
+
+  const pasta = ensureFolderPath(agentFolderPath(nome));
   const folderId = pasta.getId();
   seedAgent(folderId, ownerEmail()); // cria os papéis padrão na pasta
   // O PAPEL que o criador escreveu entra como sugestão em AGENTS.md, e é só isso que ele decide: as
   // ferramentas e o acesso continuam fechados até o clique do dono (ADR-021).
-  saveRole(folderId, 'AGENTS', `# ${name}\n\n${role}\n`);
-  addAgent(folderId);
+  saveRole(folderId, 'AGENTS', `# ${nome}\n\n${role}\n`);
+  // `addAgent` chama `assertOwner()`, e ISSO QUEBRA AQUI: `agent.create` é `approval: 'always'`, então
+  // o efeito roda na RETOMADA depois do card — por gatilho, sem usuário ativo, onde o Apps Script
+  // devolve string vazia. A ação já foi autorizada pelo dono no card; recusá-la por falta de dono
+  // ativo seria negar autoridade a quem acabou de concedê-la. O precedente é o `relayToAgent`, que
+  // usa `ownerEmail()` pelo mesmo motivo.
+  store.saveAgents([...store.listAgents(), { name: nome, folderId }]);
   // Capacidades: NENHUMA, explicitamente. Gravar a lista vazia é diferente de não gravar — quem lê
   // depois vê uma decisão tomada, não uma ausência que alguém possa interpretar como padrão.
   props.setProperty(`CAP:${folderId}`, JSON.stringify([]));
-  props.setProperty('CREATOR', setCreator(parent.folderId)); // o criador continua sendo quem criou
+  // NÃO se regrava `CREATOR` aqui. Era escrita de identidade (`setCreator` é `x => x`) com um risco
+  // real: se o dono tivesse acabado de passar o bastão para B enquanto um turno de A estava em voo,
+  // esta linha devolveria `CREATOR=A` — com `CAP:A` já sem `create` e `CAP:B` com. Resultado:
+  // NINGUÉM mais poderia criar, e sem sinal nenhum. `setAgentCapability` roda sob lock; isto não.
 
   const anterior = lineage().entries;
   const entrada: LineageEntry = {
     at: Date.now(), kind: 'creation', parent: parent.folderId, child: folderId,
     generation: nextGeneration('creation', 1), delta: null, costUsd: 0,
-    summary: `created agent "${name}" with no tools, no access and no capabilities`,
+    summary: `created agent "${nome}" with no tools, no access and no capabilities`,
   };
   props.setProperty(lineageProp, JSON.stringify([...anterior, entrada].slice(-100)));
-  return `created agent "${name}". It has no tools, no access and no capabilities until the owner approves them in the panel.`;
+  return `created agent "${nome}". It has no tools, no access and no capabilities until the owner approves them in the panel.`;
 }
 
 function relayToAgent(from: AgentSpec, to: string, text: string): string {
@@ -752,7 +771,7 @@ function runResponse(io: RunIO, r: DurableRun, now: number, token?: string) {
  */
 export function runAsk(text: string) {
   const me = assertOwner();
-  const entry = store.listAgents()[0];
+  const entry = defaultAgent();
   if (!entry) return { ok: false, error: 'No agent set up yet. Paste the URL of a Drive folder into the gasclaw panel.' };
   const t = String(text ?? '').slice(0, 4000).trim();
   if (!t) return { ok: false, error: 'Send me some text and I will answer.' };
@@ -767,7 +786,7 @@ export function runAsk(text: string) {
 /** A tela acompanha um run em andamento. Só o dono do run o enxerga. */
 export function runState(runId: string, approvalToken?: string) {
   const me = assertOwner();
-  const entry = store.listAgents()[0];
+  const entry = defaultAgent();
   if (!entry) return { ok: false, error: 'No agent set up yet.' };
   const r = runIO().load(entry.folderId, String(runId ?? ''));
   if (!r) return { ok: false, error: 'I could not find that task.' };
@@ -781,7 +800,7 @@ export function runState(runId: string, approvalToken?: string) {
  */
 export function runDecide(runId: string, params: Record<string, string>) {
   const me = assertOwner();
-  const entry = store.listAgents()[0];
+  const entry = defaultAgent();
   if (!entry) return { ok: false, error: 'No agent set up yet.' };
   const io = runIO();
   const r = io.load(entry.folderId, String(runId ?? ''));
@@ -1585,13 +1604,63 @@ export function drainRuns() {
       // Este laço rodava para TODOS os agentes, sem conferir nada. Um agente ARQUIVADO continuaria
       // sonhando e gastando cota — o oposto do que arquivar significa — e a chave de emergência não
       // pararia justamente o que roda sozinho, que é o que ela existe para parar.
-      if (parseStatus(props.getProperty(`STATUS:${a.folderId}`)) !== 'active') continue;
-      const caps = effectiveCapabilities(parseCapabilities(props.getProperty(`CAP:${a.folderId}`)), congelamento);
-      if (!can(caps, 'dream')) continue;
+      if (!mayAct(a.folderId, 'dream').ok) continue;
       tickDream(a.folderId, d);
     }
   });
   return drained ?? { n: 0, ms: 0, oldest: null };
+}
+
+/**
+ * **O ponto ÚNICO onde se pergunta "este agente pode agir?"** (revisão de 2026-09-20).
+ *
+ * A guarda estava escrita à mão em oito lugares, em duas grafias, e quatro delas PULAVAM o
+ * congelamento de emergência. A deriva já era concreta e visível ao dono: com a chave desligada,
+ * `successorOptions` (o read-model) dizia `can: true` e `writeSuccessor` (a ação) recusava — a tela
+ * prometendo o que o motor não honra, que é o defeito desta rodada inteira em terceira forma.
+ *
+ * A DECISÃO continua pura e continua em `agentCaps.ts`/`family.ts`. O que faltava era um lugar só
+ * de LEITURA — sem ele, endurecer um sítio deixa os irmãos para trás, e o próximo revisor
+ * redescobre o mesmo buraco.
+ */
+function mayAct(folderId: string, cap: Capability): { ok: boolean; reason: string } {
+  const props = PropertiesService.getScriptProperties();
+  const id = String(folderId ?? '').trim();
+  if (!id) return { ok: false, reason: 'unknown agent' };
+  const status = parseStatus(props.getProperty(`STATUS:${id}`));
+  if (status !== 'active') return { ok: false, reason: `this agent is ${status}` };
+  // EFETIVAS e não aprovadas: o congelamento vence qualquer aprovação individual, e precisa vencer
+  // aqui — senão a chave que existe para parar tudo não para o que o dono aciona pelo painel.
+  const caps = effectiveCapabilities(parseCapabilities(props.getProperty(`CAP:${id}`)), props.getProperty('CAPS_ENABLED'));
+  if (!can(caps, cap)) {
+    const aprovada = can(parseCapabilities(props.getProperty(`CAP:${id}`)), cap);
+    return { ok: false, reason: aprovada ? 'every capability is frozen by the emergency switch' : `${cap} is off for this agent` };
+  }
+  // O teto familiar só barra o que MULTIPLICA. Congelar o sonho por gasto dos filhos puniria a
+  // capacidade errada: sonhar não cria ninguém.
+  if (cap === 'create' || cap === 'succeed') {
+    const gasto = familySpendQuiet();
+    const acao = capAction(gasto);
+    if (acao !== 'ok') return { ok: false, reason: `the family spend cap says ${acao}: children have used up to US$ ${(gasto ?? 0).toFixed(2)} of US$ ${FAMILY_CAP_USD.toFixed(2)}` };
+  }
+  return { ok: true, reason: '' };
+}
+
+/**
+ * O agente PADRÃO — o que a tela e o Chat usam quando ninguém escolhe.
+ *
+ * Pula os arquivados, e isso é conserto de um achado da revisão de segurança: `passBaton` gravava
+ * `archived` e não reordenava a lista, então o antecessor continuava sendo `listAgents()[0]`. O dono
+ * passava o bastão, lia "archived" no painel, e seguia conversando com quem achava ter aposentado —
+ * com as ferramentas dele e `isOwner` verdadeiro. Arquivar tem de significar a mesma coisa nos dois
+ * lugares, senão o painel vira uma promessa que o motor não cumpre.
+ *
+ * Se TODOS estiverem arquivados, devolve `null`: o certo é dizer que não há agente ativo, não
+ * ressuscitar um por conveniência.
+ */
+function defaultAgent(): { name: string; folderId: string } | null {
+  const props = PropertiesService.getScriptProperties();
+  return store.listAgents().find((a) => isRunnable(parseStatus(props.getProperty(`STATUS:${a.folderId}`)))) ?? null;
 }
 
 // ---------- Proatividade: a agenda mora no PAINEL (itens 25 e 28) ----------
@@ -1664,27 +1733,40 @@ function tickProactive(): void {
   const props = PropertiesService.getScriptProperties();
   const agora = new Date();
   const tz = Session.getScriptTimeZone();
-  const minutos = Number(Utilities.formatDate(agora, tz, 'H')) * 60 + Number(Utilities.formatDate(agora, tz, 'm'));
+  const minutos = Number(Utilities.formatDate(agora, tz, 'HH')) * 60 + Number(Utilities.formatDate(agora, tz, 'mm'));
   const semana = Number(Utilities.formatDate(agora, tz, 'u')) % 7; // 'u': 1=segunda … 7=domingo
+  // SE O RELÓGIO NÃO PUDER SER LIDO, NÃO SE GRAVA NADA. Sem esta guarda, `minutos` viraria `NaN`, o
+  // carimbo seria gravado como a string "NaN", e `dueJobs` passaria a recusar TUDO para sempre —
+  // porque toda comparação com NaN é falsa. O agente nunca mais despertaria, sem erro e sem sinal.
+  // Um relógio ilegível é falha transitória; um carimbo envenenado é permanente.
+  if (!Number.isInteger(minutos) || !Number.isInteger(semana)) {
+    console.warn('tickProactive: could not read the clock; skipping this tick without touching the stamps');
+    return;
+  }
   const congelamento = props.getProperty('CAPS_ENABLED');
   for (const a of store.listAgents()) {
-    if (parseStatus(props.getProperty(`STATUS:${a.folderId}`)) !== 'active') continue;
-    // A CAPACIDADE É O PORTÃO, e ela estava sendo desenhada na tela e ignorada aqui. Sem esta linha,
-    // um agente sem `initiative` com agenda gravada acordaria e agiria sem ninguém olhando — e, pior,
-    // quem DESLIGASSE a capacidade acreditando ter parado o agente continuaria com ele acordando, sem
-    // sinal nenhum disso. A agenda sobrevive ao desligamento; o despertar não pode sobreviver.
-    //
-    // `effectiveCapabilities` e não a lista aprovada: o congelamento de emergência tem de vencer aqui
-    // também, senão a chave que existe para parar tudo não pararia justamente o que roda sozinho.
-    const caps = effectiveCapabilities(parseCapabilities(props.getProperty(`CAP:${a.folderId}`)), congelamento);
-    if (!can(caps, 'initiative')) continue;
     const { jobs } = parseSchedule(props.getProperty(schedProp(a.folderId)));
     if (jobs.length === 0) continue;
+
+    // O CARIMBO ANDA ANTES DO PORTÃO, e esta ordem é o conserto de um defeito que a revisão pegou.
+    //
+    // Eu tinha posto a checagem de capacidade ANTES desta linha. O efeito: com `initiative` desligada
+    // (ou o agente arquivado, ou tudo congelado), o carimbo parava — e a janela do `dueJobs` crescia
+    // sozinha. Religar depois de dez horas dispararia os jobs dessas dez horas DE UMA VEZ, e o
+    // comentário logo abaixo, escrito por mim, já dizia exatamente por que isso não pode acontecer.
+    //
+    // A regra certa: o relógio é do MUNDO e anda sempre; a autorização é do DONO e decide se o
+    // despertar acontece. Confundir os dois transforma "estava desligado" em "tem dez horas de fila".
+    // LÊ ANTES DE GRAVAR. Na primeira versão deste conserto eu gravava o carimbo e lia em seguida —
+    // então `lastSeen` já era `minutos`, a janela nascia vazia e NADA vencia nunca. O controle
+    // positivo do teste foi quem pegou: os seis testes de portão continuavam verdes, porque um motor
+    // que não desperta nunca também não desperta quando não deve.
     const visto = props.getProperty(seenProp(a.folderId));
-    const devidos = dueJobs(jobs, visto === null ? null : Number(visto), minutos, semana);
-    // O carimbo anda SEMPRE, inclusive quando nada venceu: não andar faria a janela crescer até
-    // disparar tudo de uma vez no primeiro tique que pegasse um job.
     props.setProperty(seenProp(a.folderId), String(minutos));
+
+    const v = mayAct(a.folderId, 'initiative');
+    if (!v.ok) continue;
+    const devidos = dueJobs(jobs, visto === null ? null : Number(visto), minutos, semana);
     if (devidos.length === 0) {
       const span = noReplySpan('nothing was due');
       runlog.begin('config', { question: span.name, agent: a.name }).end({ answer: span.why });
@@ -1801,7 +1883,29 @@ export function passBaton(fromFolderId: string, toFolderId: string, delta: numbe
 
   // O sucessor NUNCA nasce com mais do que o antecessor: interseção, nunca união.
   props.setProperty(`CAP:${toFolderId}`, JSON.stringify(capsAfterSuccession(caps, parseCapabilities(props.getProperty(`CAP:${toFolderId}`)))));
-  props.setProperty(`STATUS:${fromFolderId}`, 'archived'); // o antecessor sai; a conta não cresce
+  // ARQUIVAR PRECISA DESLIGAR DE VERDADE (revisão de segurança de 2026-09-20). Gravar `archived` era
+  // o começo e estava sendo tratado como o fim: o status só era conferido em três pontos, e o caminho
+  // da CONVERSA não era um deles. O antecessor continuava sendo `listAgents()[0]` — ou seja, o agente
+  // padrão da tela e do Chat — com todas as ferramentas aprovadas e `isOwner` verdadeiro. O dono
+  // clicava em passar o bastão, lia "archived" no painel, e seguia falando com quem achava ter
+  // aposentado. Achar que revogou e não ter revogado é o pior estado possível.
+  props.setProperty(`STATUS:${fromFolderId}`, 'archived');
+  // As FERRAMENTAS saem junto: um agente que não roda não precisa de ferramenta aprovada, e deixá-las
+  // é deixar poder concedido para um alvo que ninguém mais está vigiando. `accessAfterArchive`
+  // existia para isto e nunca tinha sido chamada.
+  const acessoAntes = parseAccess(props.getProperty(`ACCESS:${fromFolderId}`)) ?? { users: [], tools: [] };
+  props.setProperty(`ACCESS:${fromFolderId}`, JSON.stringify(accessAfterArchive(acessoAntes)));
+  // E o BASTÃO DE CRIAR não desce pela sucessão. `capsAfterSuccession` é interseção, e `create` está
+  // em `CAPABILITIES` — então ele passava, e o sucessor nascia com a caixinha ligada na tela e o
+  // portão do motor recusando (porque `CREATOR` continuava no antecessor). Pior: o antecessor
+  // arquivado seguia sendo o único do ambiente que podia multiplicar. Quem passa a criar é decisão
+  // separada, no painel, como sempre foi.
+  props.setProperty(`CAP:${toFolderId}`, JSON.stringify(capsAfterCreatorMoved(parseCapabilities(props.getProperty(`CAP:${toFolderId}`)))));
+  if (props.getProperty('CREATOR') === fromFolderId) {
+    const restante = clearCreator(props.getProperty('CREATOR'), fromFolderId);
+    if (restante === null) props.deleteProperty('CREATOR');
+    props.setProperty(`CAP:${fromFolderId}`, JSON.stringify(capsAfterCreatorMoved(parseCapabilities(props.getProperty(`CAP:${fromFolderId}`)))));
+  }
   props.setProperty(genStamp(fromFolderId), String(Date.now()));
   return { from: fromFolderId, to: toFolderId, generation: geracao, withinMandate: dentro, entry: entrada };
 }
@@ -1858,7 +1962,11 @@ export function successorOptions(folderId: string) {
   assertOwner();
   const props = PropertiesService.getScriptProperties();
   const id = String(folderId ?? '').trim();
-  const cap = canSucceed(parseCapabilities(props.getProperty(`CAP:${id}`)), parseStatus(props.getProperty(`STATUS:${id}`)));
+  // O MESMO ponto de leitura que a ação usa. Antes, este read-model conferia só `canSucceed` enquanto
+  // `writeSuccessor` conferia também congelamento e teto familiar — com a chave de emergência
+  // desligada, a tela dizia `can: true` e a ação recusava. Prometer o que o motor não honra é o
+  // defeito desta rodada inteira, e aqui ele estava em terceira forma.
+  const cap = mayAct(id, 'succeed');
   const gasto = codegenSpentToday(Date.now());
   let escopos: string[] = [];
   let erro = '';
@@ -1893,14 +2001,8 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
   //
   // O que ele NÃO faz, e está na ADR-040: cortar a chave. Cortar pararia o PAI também, e derrubar o
   // agente do dono por causa de um filho gastão seria trocar um problema por outro maior.
-  const gasto = familySpendQuiet();
-  const acao = capAction(gasto);
-  if (acao !== 'ok') return { ok: false as const, reason: `the family spend cap says ${acao}: children have used up to US$ ${(gasto ?? 0).toFixed(2)} of US$ ${FAMILY_CAP_USD.toFixed(2)}`, costUsd: 0 };
-
   // A capacidade e o estado vêm primeiro: um agente arquivado ou sem `succeed` não gera nada.
-  const congelamento = capsEnabled(props.getProperty('CAPS_ENABLED'));
-  if (!congelamento) return { ok: false as const, reason: 'every capability is frozen by the emergency switch', costUsd: 0 };
-  const v = canSucceed(parseCapabilities(props.getProperty(`CAP:${id}`)), parseStatus(props.getProperty(`STATUS:${id}`)));
+  const v = mayAct(id, 'succeed');
   if (!v.ok) return { ok: false as const, reason: v.reason, costUsd: 0 };
   const intervalo = mayGenerateNow(id);
   if (!intervalo.ok) return { ok: false as const, reason: intervalo.reason, costUsd: 0 };
@@ -2048,17 +2150,34 @@ export function familySpend() {
  * este ambiente criou; a unicidade é o que torna um segredo vazado inútil passada a janela.
  */
 export function deliverKeyToChild(child: string, secret: string) {
-  const d = readDelivery(String(child));
+  const id = String(child ?? '').trim();
+  const props = PropertiesService.getScriptProperties();
+  // TRÊS INVARIANTES QUE O DOCSTRING AFIRMAVA E O CÓDIGO NÃO CONFERIA (revisão de 2026-09-20). Esta é
+  // a entrega de CREDENCIAL: o ato mais irreversível do conjunto, e o único que estava fail-OPEN.
+  //
+  // 1. Só `subagent`. O texto logo acima diz "uma `automation` nunca fala com modelo, logo nunca
+  //    precisa de credencial" — e uma automação com a janela armada recebia a chave.
+  const registro = parseChildren(props.getProperty('CHILDREN')).find((c) => c.scriptId === id);
+  if (!registro) throw new Error('this child is not registered here');
+  if (registro.kind !== 'subagent') throw new Error('an automation never needs the API key');
+  // 2. O congelamento de emergência. Ele para `dream`, `initiative`, `succeed` e `create` — e não
+  //    parava a entrega de credencial, que é mais grave que as quatro juntas.
+  if (!capsEnabled(props.getProperty('CAPS_ENABLED'))) throw new Error('everything is frozen by the emergency switch');
+  // 3. O PAI precisa estar ativo. Um pai arquivado seguia entregando a chave do dono.
+  if (registro.parent && !isRunnable(parseStatus(props.getProperty(`STATUS:${registro.parent}`)))) {
+    throw new Error('the agent that created this child is archived');
+  }
+  const d = readDelivery(id);
   // O segredo mora em Property PRÓPRIA e é comparado em TEMPO CONSTANTE: comparar com `===` vazaria o
   // prefixo certo pelo tempo de resposta, e este é o caminho por onde a credencial do dono trafega.
-  const guardado = PropertiesService.getScriptProperties().getProperty(`KEYSEC:${String(child)}`);
-  const v = mayDeliverKey(d, String(child), cliAuthorized(guardado, String(secret)));
-  const t = runlog.begin('config', { question: deliverySpan(String(child)), agent: 'family' });
+  const guardado = props.getProperty(`KEYSEC:${id}`);
+  const v = mayDeliverKey(d, id, cliAuthorized(guardado, String(secret)));
+  const t = runlog.begin('config', { question: deliverySpan(id), agent: 'family' });
   if (!v.ok) {
     t.end({ answer: `refused: ${v.reason}` });
     throw new Error(v.reason);
   }
-  PropertiesService.getScriptProperties().setProperty(deliveryProp(String(child)), JSON.stringify(afterDelivery(d as KeyDelivery, Date.now())));
+  props.setProperty(deliveryProp(id), JSON.stringify(afterDelivery(d as KeyDelivery, Date.now())));
   t.end({ answer: 'delivered once' });
   return { key: store.getApiKey() };
 }
@@ -2234,6 +2353,10 @@ export function agentFailures(folderId: string) {
 /** Começa um ciclo de sonho neste agente. Só o dono, e só com a capacidade `dream` aprovada. */
 export function startAgentDream(folderId: string) {
   assertOwner();
+  // O botão do DONO também passa pelo portão: a chave de emergência que não para o que o dono
+  // aciona não é chave de emergência, é sugestão.
+  const pode = mayAct(folderId, 'dream');
+  if (!pode.ok) return { started: false, cycleId: null, reason: pode.reason };
   const caps = parseCapabilities(PropertiesService.getScriptProperties().getProperty(`CAP:${folderId}`));
   if (!can(caps, 'dream')) throw new Error('this agent does not have the dream capability turned on');
   const nome = agentName(folderId);
@@ -2586,7 +2709,12 @@ function pocP27(step?: string): unknown {
     // autenticação e a medição responderia a pergunta ERRADA (mediria o segredo, não o token).
     const segredo = childSecret();
     props.setProperty(`KEYSEC:${child}`, segredo);
-    props.setProperty(deliveryProp(child), JSON.stringify(armDelivery(child)));
+    // REARMA preservando a contagem, em vez de armar do zero. `armDelivery` devolve `deliveries: 0`,
+    // e rodar esta sonda apagaria o sinal de "este filho já pediu a chave cinco vezes" — que é
+    // exatamente o que `rearmDelivery` foi escrito para preservar ("entrega repetida vira sinal, não
+    // rotina"). Uma sonda de medição não pode desfazer a invariante que ela mede.
+    const anteriorD = readDelivery(child);
+    props.setProperty(deliveryProp(child), JSON.stringify(anteriorD ? rearmDelivery(anteriorD) : armDelivery(child)));
 
     const motor = ScriptApp.getService().getUrl();
     // O filho NÃO recebe a chave do OpenRouter no fonte: ele recebe o SEGREDO, que só serve para pedir
@@ -2635,7 +2763,11 @@ function pocP27(step?: string): unknown {
     if (!url) return { pass: false, error: 'no web app URL for the child', version: ver.code, deployment: dep.code };
 
     const hit = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { Authorization: `Bearer ${token}` } });
-    const corpo = hit.getContentText();
+    // A CHAVE NÃO SAI DAQUI. O corpo que o filho devolve contém `{"ok":true,"key":"sk-or-v1-..."}`
+    // quando a entrega funciona, e este objeto inteiro vai para o trace (planilha no Drive) e para o
+    // stdout da CLI (histórico de shell, log de CI). Seria a credencial que a ADR-040 inteira existe
+    // para manter numa Property, gravada em claro num segundo e num terceiro lugar.
+    const corpo = hit.getContentText().replace(/sk-or-[A-Za-z0-9-]+/g, 'sk-or-[redacted]');
     const chegou = /"ok":true/.test(corpo) || /\|.*sk-or/.test(corpo);
     const precisaConsentir = /Authorization needed|enable_granular_consent/i.test(corpo);
     return {

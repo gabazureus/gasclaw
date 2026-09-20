@@ -10,17 +10,21 @@ import { AUTO_NOTE, cleanAutoList, mayAutoApprove, NEVER_AUTO, noReplySpan, onPr
 const CONHECIDAS = ['now', 'calendar.list', 'calendar.create', 'gmail.send', 'memory.remove', 'calendar.update'];
 
 describe('o que nunca se auto-aprova', () => {
-  // O critério é irreversibilidade PARA TERCEIROS: nenhuma das três se desfaz com um clique, e a pessoa
+  // O critério é irreversibilidade PARA TERCEIROS: nenhuma delas se desfaz com um clique, e a pessoa
   // do outro lado nem sabe que existe um agente.
-  test('as três proibidas são recusadas mesmo estando na lista aprovada', () => {
+  test('as proibidas são recusadas mesmo estando na lista aprovada', () => {
     for (const t of NEVER_AUTO) {
       expect(mayAutoApprove(t, [t], true).auto).toBe(false);
       expect(mayAutoApprove(t, [t], true).reason).toMatch(/cannot be undone/);
     }
   });
 
-  test('e a lista é exatamente essas três', () => {
-    expect([...NEVER_AUTO].sort()).toEqual(['calendar.update', 'gmail.send', 'memory.remove']);
+  // A lista CRESCEU na revisão de segurança de 2026-09-20, e a asserção é exaustiva de propósito:
+  // acrescentar uma tool irreversível e esquecer de proibi-la aqui tem de quebrar um teste, não
+  // passar despercebido. `agent.create` e `agent.message` entraram porque fechavam o único caminho
+  // em que conteúdo de terceiro virava ação sem nenhum clique.
+  test('e a lista é exatamente estas cinco', () => {
+    expect([...NEVER_AUTO].sort()).toEqual(['agent.create', 'agent.message', 'calendar.update', 'gmail.send', 'memory.remove']);
   });
 });
 

@@ -188,9 +188,15 @@ export function stubGas(over: Partial<GasEnv> = {}): GasEnv {
       const map: Record<string, string> = {
         yyyy: String(t.getUTCFullYear()), MM: p(t.getUTCMonth() + 1), dd: p(t.getUTCDate()),
         HH: p(t.getUTCHours()), mm: p(t.getUTCMinutes()), ss: p(t.getUTCSeconds()),
+        // `H`/`m` sem zero e `u` (1=segunda…7=domingo) são os padrões que o Apps Script aceita e que o
+        // motor usa de verdade. Sem eles aqui, o stub devolvia o literal, `Number()` dava NaN, e um
+        // teste de comportamento passava VAZIO — o laço rodava e não fazia nada por motivo errado.
+        H: String(t.getUTCHours()), m: String(t.getUTCMinutes()), u: String(t.getUTCDay() === 0 ? 7 : t.getUTCDay()),
         XXX: '-03:00', EEEE: ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][t.getUTCDay()],
       };
-      return fmt.replace(/yyyy|EEEE|XXX|MM|dd|HH|mm|ss/g, (k) => map[k]);
+      // `u` entra na alternância (dia da semana, 1=segunda…7=domingo) e os de DUAS letras vêm antes
+      // dos de uma, senão `HH` seria consumido como dois `H`.
+      return fmt.replace(/yyyy|EEEE|XXX|MM|dd|HH|mm|ss|H|m|u/g, (k) => map[k]);
     },
     parseCsv: (s: string) => s.split('\n').map((l) => l.split(',')),
     // Digest de 32 bytes, deterministico e de tamanho fixo (o real e SHA-256; aqui basta distinguir).

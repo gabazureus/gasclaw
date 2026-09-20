@@ -26,7 +26,26 @@
  * Esta lista mora aqui e não em configuração de propósito: configurável, ela seria a primeira coisa
  * afrouxada no dia em que o agente ficasse "chato demais".
  */
-export const NEVER_AUTO: readonly string[] = ['gmail.send', 'calendar.update', 'memory.remove'];
+export const NEVER_AUTO: readonly string[] = [
+  'gmail.send',
+  'calendar.update',
+  'memory.remove',
+  // ACRESCENTADAS NA REVISÃO DE SEGURANÇA DE 2026-09-20, e elas fechavam o ÚNICO caminho em que
+  // conteúdo de terceiro virava ação sem nenhum clique:
+  //
+  //   agente com `initiative` + agenda + `agent.message` na lista de auto-aprovação → o job manda ler
+  //   a caixa de entrada → um e-mail de terceiro contém texto que o modelo obedece → ele repassa para
+  //   outro agente, que age. Nenhum card em ponto nenhum do caminho.
+  //
+  // O registro já argumentava que `agent.create` é `always` e não `once` porque "um `once` faria o
+  // dono aprovar o primeiro sem saber que aprovava o quinto". A lista de auto-aprovação fazia PIOR:
+  // aprovava o quinto, o centésimo e todos os seguintes, num run que ninguém está olhando.
+  //
+  // O critério de `NEVER_AUTO` é irreversibilidade para TERCEIROS. Criar agente cria pasta no Drive e
+  // superfície permanente; mandar mensagem faz OUTRO agente agir. As duas se qualificam sem esforço.
+  'agent.create',
+  'agent.message',
+];
 
 export type AutoVerdict = { auto: boolean; reason: string };
 

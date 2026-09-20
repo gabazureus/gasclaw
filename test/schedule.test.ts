@@ -129,32 +129,7 @@ describe('a proatividade está LIGADA, e sem gatilho novo', () => {
 // justamente para ser esse portão, e ela estava sendo desenhada na tela e ignorada no motor.
 //
 // Pior: a agenda sobrevive a desligar a capacidade. Quem desligasse `initiative` acreditando ter
-// parado o agente continuaria com ele acordando, e não haveria sinal nenhum disso.
-describe('o despertar respeita a capacidade e o congelamento', () => {
-  test('o tique confere `initiative` antes de acordar, não só o ciclo de vida', async () => {
-    const main = (await import('node:fs')).readFileSync('src/main.ts', 'utf8');
-    const corpo = main.slice(main.indexOf('function tickProactive'), main.indexOf('function tickProactive') + 1800);
-    expect(corpo).toContain("'initiative'");
-    // A capacidade EFETIVA, não a aprovada: o congelamento de emergência tem de vencer aqui também,
-    // senão a chave que existe para parar tudo não pararia justamente o que roda sozinho.
-    expect(corpo).toContain('effectiveCapabilities(');
-  });
 
-  test('arquivado continua não acordando', async () => {
-    const main = (await import('node:fs')).readFileSync('src/main.ts', 'utf8');
-    const corpo = main.slice(main.indexOf('function tickProactive'), main.indexOf('function tickProactive') + 1800);
-    expect(corpo).toContain("!== 'active'");
-  });
-});
-
-// A catraca que impede a REGRESSÃO da decisão de segurança da F3a.
-//
-// `src/agenda.ts` é o parser do `jobs.md`: a agenda declarada DENTRO da pasta do agente. Ele não é
-// código morto — a P22 o usa para medir — mas é a gramática do desenho que a F3a substituiu, e por um
-// motivo que não é de gosto: a pasta é COMPARTILHÁVEL, e uma agenda ali entrega ao editor do Drive o
-// prompt e o destino de um run que ninguém supervisiona.
-//
-// Nada impedia alguém de religá-lo ao motor daqui a três meses, "porque já estava pronto". Isto impede.
 describe('a agenda da PASTA não volta para o motor', () => {
   test('o motor não importa o parser do jobs.md', async () => {
     const main = (await import('node:fs')).readFileSync('src/main.ts', 'utf8');

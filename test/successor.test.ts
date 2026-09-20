@@ -27,7 +27,7 @@ const pedido = {
 // A API do Apps Script respondendo bem: cria, escreve, versiona e implanta.
 const apiOk = () =>
   vi.fn((url: string, _method?: string, _payload?: unknown) => {
-    if (/\/versions$/.test(url)) return { code: 200, full: '{"versionNumber":1}' };
+    if (/\/versions$/.test(url)) return { code: 200, full: '{"versionNumber":7}' }; // 7, e não 1: o número é LIDO de volta
     if (/\/deployments$/.test(url)) return { code: 200, full: JSON.stringify({ deploymentId: 'd1', entryPoints: [{ webApp: { url: 'https://script.google.com/macros/s/child/exec' } }] }) };
     if (/\/content$/.test(url)) return { code: 200, full: '{"files":[]}' };
     return { code: 200, full: '{"scriptId":"child-1"}' };
@@ -130,7 +130,7 @@ describe('o caminho feliz publica um filho com o que foi pedido, e só isso', ()
     const semUrl = generateSuccessor(
       pedido,
       deps({
-        api: vi.fn((url: string, _m?: string, _p?: unknown) => (/\/deployments$/.test(url) ? { code: 200, full: '{"deploymentId":"d1"}' } : { code: 200, full: '{"scriptId":"child-1"}' })),
+        api: vi.fn((url: string, _m?: string, _p?: unknown) => (/\/deployments$/.test(url) ? { code: 200, full: '{"deploymentId":"d1"}' } : /\/versions$/.test(url) ? { code: 200, full: '{"versionNumber":7}' } : { code: 200, full: '{"scriptId":"child-1"}' })),
       }),
     );
     expect(porque(semUrl)).toMatch(/web app URL/);
@@ -151,7 +151,7 @@ describe('a API falhando é recusa com o código, nunca sucesso presumido', () =
   ])('%s recusada devolve o código HTTP', (_nome, falha) => {
     const r2 = generateSuccessor(
       pedido,
-      deps({ api: vi.fn((url: string, _m?: string, _p?: unknown) => (falha(url) ? { code: 403, full: 'nope' } : { code: 200, full: '{"scriptId":"child-1","deploymentId":"d1","entryPoints":[{"webApp":{"url":"https://x/exec"}}]}' })) }),
+      deps({ api: vi.fn((url: string, _m?: string, _p?: unknown) => (falha(url) ? { code: 403, full: 'nope' } : { code: 200, full: '{"scriptId":"child-1","versionNumber":7,"deploymentId":"d1","entryPoints":[{"webApp":{"url":"https://x/exec"}}]}' })) }),
     );
     expect(porque(r2)).toMatch(/403/);
   });

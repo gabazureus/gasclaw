@@ -91,7 +91,13 @@ export function generateSuccessor(req: SuccessorRequest, d: SuccessorDeps): Succ
 
   const ver = d.api(`${API}/${scriptId}/versions`, 'post', { description: 'successor' });
   if (ver.code !== 200) return fail(`could not create the child's version: HTTP ${ver.code}`, custo);
-  const dep = d.api(`${API}/${scriptId}/deployments`, 'post', { versionNumber: 1, manifestFileName: 'appsscript', description: 'successor' });
+  // O NÚMERO DA VERSÃO É LIDO DE VOLTA, não cravado. Estava `versionNumber: 1` fixo — correto só no
+  // primeiro sucessor de um agente; do segundo em diante a implantação apontaria para a versão 1
+  // enquanto o código novo estaria na 2, 3, 4… O filho rodaria um código que não é o que acabou de
+  // ser escrito, e nada no resultado diria isso. É o tipo de defeito que só aparece na segunda vez.
+  const versao = jsonOf<{ versionNumber?: number }>(ver.full)?.versionNumber;
+  if (!Number.isInteger(versao)) return fail("the child's version came back without a number: refusing to deploy a version I cannot name", custo);
+  const dep = d.api(`${API}/${scriptId}/deployments`, 'post', { versionNumber: versao, manifestFileName: 'appsscript', description: 'successor' });
   if (dep.code !== 200) return fail(`could not deploy the child: HTTP ${dep.code}`, custo);
 
   const url = (jsonOf<{ entryPoints?: { webApp?: { url?: string } }[] }>(dep.full)?.entryPoints ?? []).map((e) => e.webApp?.url).find((u) => !!u) ?? null;
