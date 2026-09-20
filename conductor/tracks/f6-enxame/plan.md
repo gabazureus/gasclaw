@@ -15,21 +15,22 @@ começa antes de a anterior estar verde, e nenhuma "conclui" sem evidência fres
 
 Núcleo puro + sonda. O código do filho é string fixa: mede a **plataforma**, não o modelo.
 
-- [ ] `poc/p29-enxame/README.md` com critérios C1–C4 **antes** de qualquer linha de sonda
-- [ ] sonda `pocP29(step)`: `burst` (5 filhos, ms de cada, primeiro 429), `quota` (onde o dia
+- [x] `poc/p29-enxame/README.md` com critérios C1–C4 **antes** de qualquer linha de sonda
+- [x] sonda `pocP29(step)`: `burst` (5 filhos, ms de cada, primeiro 429), `quota` (onde o dia
       recusa), `consent` (tempo de parede até `authState === 'authorized'`), `cleanup`
-- [ ] rodar no dev, gravar os números **com a versão do dev** no README
-- [ ] **Portão:** se C2 recusar abaixo de 15, a corrida passa a ser "até N", com N medido
+- [x] rodar no dev, gravar os números **com a versão do dev** no README — v132/v133; C3 aguarda o dono
+- [x] **Portão:** ABERTO — 40 criações no dia sem recusa; a corrida continua "até 15"
+- [x] **D3 (achado pela P29):** registro de filhos estourava em 11 — consertado e remedido
 
 ## Fase 2 — P30: encadear a linhagem (conserta D1)
 
 O defeito: `main.ts:2158` passa `incumbentSource: agente.system` em **toda** geração.
 
-- [ ] **Teste primeiro** (falhando): com um filho anterior, o pedido ao Opus contém o **fonte dele**
-- [ ] núcleo: `lastChildSource(lineage, children)` — puro, escolhe de quem herdar
-- [ ] casca: ler `projects/<id>/content` pela API. **Nunca do Drive** (ADR-002)
-- [ ] fallback preservado: sem filho anterior, cai no prompt — o comportamento de hoje
-- [ ] **Mutação:** desfazer o encadeamento tem que matar o teste de C1
+- [x] **Teste primeiro** (falhando): com um filho anterior, o pedido ao Opus contém o **fonte dele**
+- [x] núcleo: `heirOf(lineage, parent)` — puro, escolhe de quem herdar
+- [x] casca: ler `projects/<id>/content` pela API. **Nunca do Drive** (ADR-002)
+- [x] fallback preservado: sem filho anterior, cai no prompt — o comportamento de hoje
+- [x] **Mutação:** desfazer o encadeamento tem que matar o teste de C1 — 5 de 5 mortas
 
 ## Fase 3 — P31: aptidão do filho (conserta D2)
 

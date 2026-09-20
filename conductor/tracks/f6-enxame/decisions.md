@@ -16,6 +16,21 @@ Reabrir isso é reabrir a ADR-040, não ajustar um parâmetro.
 
 Rodar 24 h com os dois de pé custaria ~US$ 15 para provar o que a P24 já provou por US$ 0.
 
+## 2026-09-20 — D3: o registro de filhos, achado pela P29 e não pela leitura
+
+A auditoria de código achou D1 e D2. **D3 só apareceu medindo.** A sonda criou 20 projetos e o Google
+aceitou todos — quem recusou foi o nosso registro: `8315 characters, limit is 8000`.
+
+Medido sobre o código real: **17 filhos** com `reason` curto, **11** com `reason` cheio. A corrida de
+15 quebraria no 12º filho, com o Opus já pago por ele, e o filho ficaria órfão no Google.
+
+Decisão: partir o registro em até 8 Properties em vez de encolher o que cada filho guarda. Encolher
+moveria o número; partir remove a classe do defeito. O pedaço 0 mora na Property de sempre — dado
+antigo continua sendo lido, sem migração.
+
+**É o argumento inteiro para medir antes de gastar:** US$ 0 de sonda achou o que US$ 15 de corrida
+teria achado no pior momento.
+
 ## PENDENTE — H1: o orçamento da corrida
 
 `CODEGEN_DAILY_CAP_USD = 3,00` hoje; a corrida pede **US$ 15,00**. O teto **não reprovou em medição

@@ -1,6 +1,6 @@
 # Spec — Enxame: 15 filhos em 24 h, gerados e implantados pelo Opus 5
 
-- **Data:** 2026-09-20 · **Status:** escrita, **nada medido**
+- **Data:** 2026-09-20 · **Status:** P29 medida (C1, C2, C4 verdes; C3 aguarda o dono) · D1 e D3 consertados
 - **Pedido do usuário (verbatim):** *"criando filhos, eu dou a permissão, vamos criar até 15
   agentes e rodar por 24 horas, para ele ir replicando e evoluindo o código com Opus 5 e
   deployando, e vamos consertando e acompanhando cada parte do processo"* · *"tudo junto,
@@ -55,8 +55,19 @@ valendo: este não reprovou nada.
 | **D1** | **A linhagem não encadeia.** `succeedNow` passa `incumbentSource: agente.system` — o **prompt** — em **toda** geração. O comentário ao lado diz "na primeira geração"; a segunda nunca foi escrita | `main.ts:2158` | A geração 2 **não recebe** o código da geração 1. Cada filho é um novo sorteio do mesmo ponto de partida: isso é **replicação com variância, não evolução** |
 | **D2** | **Não existe aptidão para código.** A linhagem grava `delta: null` sempre, com o comentário honesto *"nada foi medido ainda"*. Nada executa o filho e devolve um número | `main.ts` (entrada `codegen`) | Sem sinal de aptidão **não há o que selecionar**. `isPlateau`/`PLATEAU_AFTER` operam no conjunto-juiz do ciclo de **prompt**, não em código |
 
+| **D3** | **O registro de filhos não cabia 15.** Achado pela P29, não pela leitura: UMA Script Property de 8 KB estourava em **11 filhos** com `reason` cheio (17 com `reason` curto), enquanto `MAX_CHILDREN = 40`. E o erro sobe DEPOIS de o projeto estar criado — em `succeedNow`, Opus pago e filho órfão | medido na P29 (dev v132): `8315 characters, limit is 8000` | **consertado** (registro partido em até 8 Properties) e remedido no v133: 20 de 20 registrados |
+
 **Rodar 24 h com D1 e D2 de pé produziria 15 filhos não medidos e não encadeados** — US$ 15 para
-provar que a API responde, que a P24 já provou por US$ 0.
+provar que a API responde, que a P24 já provou por US$ 0. **E com D3 de pé, a corrida quebraria no
+12º filho** — com o Opus já pago por ele.
+
+### Estado dos defeitos
+
+| # | Estado | Prova |
+|---|---|---|
+| D1 | ✅ **consertado** (P30) | `heirOf` + `sourceOfChild`; 5 mutações, 5 mortas |
+| D2 | ⏳ aberto — é a Fase 3 | — |
+| D3 | ✅ **consertado** | registro partido; 4 mutações mortas + 1 equivalente declarada; remedido no dev v133 |
 
 ### Um limite de desenho, não um defeito
 
@@ -95,6 +106,10 @@ string fixa.
 | C4 `cleanup` | os 5 filhos somem do painel com `forgetChild` e o dono sabe que o projeto continua no Google |
 
 **Se C2 recusar abaixo de 15, a corrida cabe no que C2 disser — e o pedido vira "até N", com N medido.**
+
+> **MEDIDO (dev v133):** o Google aceitou **40 `projects.create` no mesmo dia sem uma recusa** (duas
+> rodadas de 20). O teto absoluto não foi alcançado — está provado acima de 40. **O portão abre: a
+> corrida continua sendo "até 15".** Números completos em [`poc/p29-enxame/README.md`](../../poc/p29-enxame/README.md).
 
 ### P30 — encadear a linhagem (conserta D1)
 
