@@ -25,7 +25,8 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 /** As ações que MUDAM poder. Cada uma tem de recusar quem não é o dono. */
-const acoes: [string, (m: Record<string, (...a: never[]) => unknown>) => unknown][] = [
+type Motor = Record<string, (...a: unknown[]) => unknown>;
+const acoes: [string, (m: Motor) => unknown][] = [
   ['setAgentCapability', (m) => m.setAgentCapability('fa', 'dream', true)],
   ['passBaton', (m) => m.passBaton('fa', 'fb', 5)],
   ['startAgentDream', (m) => m.startAgentDream('fa')],
@@ -41,7 +42,7 @@ const acoes: [string, (m: Record<string, (...a: never[]) => unknown>) => unknown
 describe('quem NÃO é o dono não muda poder nenhum', () => {
   test.each(acoes)('%s recusa um estranho', async (_nome, chamar) => {
     env.activeUser = 'estranho@x.com';
-    const m = (await import('../src/main')) as unknown as Record<string, (...a: never[]) => unknown>;
+    const m = (await import('../src/main')) as unknown as Motor;
     expect(() => chamar(m)).toThrow(/owner/i);
   });
 
