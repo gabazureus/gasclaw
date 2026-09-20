@@ -7,6 +7,7 @@ import { afterDelivery, armDelivery, capAction, childrenSpendUpperBound, deliver
 import { cluster, hasMaterial, type Failure } from './dreamCycle';
 import { AUTO_NOTE, cleanAutoList, mayAutoApprove, NEVER_AUTO, noReplySpan, onProactiveBlock } from './autoApprove';
 import { dueJobs, JOB_MAX, jobText, parseSchedule, serializeSchedule } from './schedule';
+import { board } from './dreamBoard';
 import { AUTH_LABEL, authState, KIND_LABEL, KIND_WHAT, parseChildren, serializeChildren, withChild, withoutChild, type Child } from './children';
 import { pocP10 } from '../poc/p10-editor/harness';
 import { pocP14 } from '../poc/p14-trace/harness';
@@ -2153,7 +2154,10 @@ export function agentDream(folderId: string) {
   assertOwner();
   const io = dreamIO();
   const cycleId = io.active(folderId);
-  return { folderId, cycleId, state: cycleId ? io.load(folderId, cycleId) : null };
+  const state = cycleId ? io.load(folderId, cycleId) : null;
+  // ITEM 36: o placar vem PRONTO do servidor. Calcular na tela significaria a regra de "venceu" morar
+  // em dois lugares — e o dia em que os dois discordassem, o dono acreditaria no que está na frente dele.
+  return { folderId, cycleId, state, board: board(state), material: agentMaterial(folderId) };
 }
 
 export function observability() {

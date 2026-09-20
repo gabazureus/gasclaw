@@ -57,8 +57,8 @@
 | ~~32~~ | ✅ **Ferramenta `agent.*` no registro fechado** | Não existe nenhuma. Os controles do item 16 protegem um mecanismo que **ainda não foi construído** | 31 (a interseção precisa existir antes do repasse) |
 | 33 | Fechar a entrega da chave | 🔨 **Metade feita**: o segredo passou a ser escrito e a rota `childkey` existe. A outra metade é uma **tensão entre três regras nossas** (ADR-040 puxa a chave · web app `MYSELF` exige token do dono · o crivo da ADR-041 proíbe `getOAuthToken` no filho). A **P27** mede se o token do filho é aceito — sem ela, não se afirma | P27 |
 | ~~34~~ | ✅ **Teto familiar com efeito** | `capAction` informa e nada age: ninguém lê `stop-creating`/`freeze` | nada |
-| 35 | Tela da sucessão e da linhagem | `signMandate`, `passBaton`, `lineage` e `writeSuccessor` existem no servidor; o painel só mostra o último | nada |
-| 36 | Tela do ciclo de sonho (DreamBoard) | `startAgentDream` e `agentDream` existem; falta a tela com diff e placar | nada |
+| ~~35~~ | ✅ **Tela da sucessão e da linhagem** | `signMandate`, `passBaton`, `lineage` e `writeSuccessor` existem no servidor; o painel só mostra o último | nada |
+| ~~36~~ | ✅ **Tela do ciclo de sonho (DreamBoard)** | `startAgentDream` e `agentDream` existem; falta a tela com diff e placar | nada |
 | 37 | Vocabulário "sub-agente" | Significa duas coisas: declaração no run do pai (ADR-039) e projeto filho com pasta. Renomear a primeira para **persona** | nada |
 | 38 | ADR dos dois tipos de filho | `automation` × `subagent` está no código e não em ADR | nada |
 | 39 | 208 strings em pt-BR | Dívida de idioma na catraca: só pode encolher | nada — contínuo |
