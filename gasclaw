@@ -697,9 +697,28 @@ cmd_poc() { # POCs automáticas, só no dev: cria fixtures, mede e sai ≠ 0 se 
     if [ -z "$step" ]; then ( . "./$hook" ) || die "POC $id failed (see the output above)"; return 0; fi
     if [ -f "${hook%pc.sh}$step.sh" ]; then ( . "./${hook%pc.sh}$step.sh" ) || die "POC $id $step failed (see the output above)"; return 0; fi
   fi
+  # Parametros `--nome valor` viram query. Sem isto o CLI ACEITAVA `--turno 5483` e o DESCARTAVA em
+  # silencio: o harness recebia `turno` vazio, gravava `realTurnMs: null`, e o C3 recusava projetar —
+  # enquanto quem seguiu o README achava que tinha passado o numero. Documentar uma opcao que a ferramenta
+  # ignora e pior que nao ter a opcao.
+  local extra="" nome valor
+  shift 2 2>/dev/null || shift $# # sobra: tudo depois de <id> [step]
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --*)
+        nome=${1#--}
+        valor="${2:-}"
+        printf '%s' "$nome" | grep -qE '^[a-z][a-z0-9_]*$' || die "invalid option: --$nome"
+        printf '%s' "$valor" | grep -qE '^[A-Za-z0-9._-]+$' || die "invalid value for --$nome: '$valor' (letters, digits, dot, dash and underscore only)"
+        extra="$extra&$nome=$valor"
+        shift 2
+        ;;
+      *) die "unexpected argument: $1" ;;
+    esac
+  done
   say "POC $id on dev (may take a few minutes)"
   case "$id" in p3|p22) trace="&trace=0" ;; esac # a própria POC não pode contaminar a medição do gatilho ocioso
-  r=$(remote "poc&id=$id${step:+&step=$step}$trace") || die "the web app call failed (run ./gasclaw doctor)"
+  r=$(remote "poc&id=$id${step:+&step=$step}$trace$extra") || die "the web app call failed (run ./gasclaw doctor)"
   # Uma POC que REPROVA não é um travamento. Antes, o exit 1 caía no trap de erro do script e
   # imprimia "gasclaw stopped unexpectedly", fazendo um resultado VÁLIDO parecer defeito de
   # ferramenta — e empurrando quem mede a duvidar do próprio número em vez de acreditar nele.

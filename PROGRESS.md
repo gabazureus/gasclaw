@@ -1,10 +1,67 @@
 # PROGRESS — gasclaw
 
-> Onde o gasclaw está, item por item, com a porcentagem de progresso e se já foi resolvido.
-> **Atualizado em:** 2026-09-16 · dev na versão 74 · P3 aprovada 4/4 (worker 3.992 ms, idle completo 716 ms, 8,47% das 6 h) · P4 aprovada 3/3 · P19 aprovada 3/3 · P20 aprovada 5/5 (Drive, 24 h, uso único e vínculo) · testes 748/748 · prod ainda na versão 1.
-> **Fontes:** [spec](docs/specs/), [plano F0](docs/plans/2026-09-14-gasclaw-f0-plano-implementacao.md),
-> [ADRs](docs/adr/README.md), [CHANGELOG](CHANGELOG.md), [log da wiki](docs/wiki/log.md),
-> [tracks](conductor/tracks.md), Beads (`bd list`) e `git log`.
+> Onde o gasclaw está, item por item, e se já foi resolvido.
+> **Atualizado em:** 2026-09-20 · dev na versão 109 · **1518 testes** · `tsc` limpo · build limpo
+> · **P22 aprovada 4/4** · P24 **aprovada por inteiro** · P25 **reprovada** (sem combustível)
+> **Fontes:** [spec](docs/specs/), [ADRs](docs/adr/README.md), [CHANGELOG](CHANGELOG.md),
+> [log da wiki](docs/wiki/log.md), [pesquisa do sinal fraco](docs/pesquisa/2026-09-19-o-sinal-fraco-do-sonho.md)
+
+## F5 — Agente que evolui (sonho, linhagem, filhos)
+
+**Legenda:** ✅ pronto e verificado · 🔨 em andamento · 📐 desenhado, não construído
+· ⚠️ núcleo pronto, **sem fiação** · 🔒 fechado por decisão · ❌ reprovado na medição
+
+| # | Funcionalidade | Status | O que falta / onde está |
+|---|---|:--:|---|
+| 1 | Capacidades por etiqueta (`dream`/`succeed`/`create`/`initiative`) | ✅ | No painel, aprovadas uma a uma, recusando o que não existe e dizendo o que falta |
+| 2 | `create` singleton | ✅ | Por forma do dado: uma Property, um `folderId`. Dois criadores não são representáveis |
+| 3 | Ciclo de vida (ativo → arquivado) | ✅ | Arquivado não roda, não é alvo de gatilho, derruba o que está em voo; chats legíveis |
+| 4 | Congelamento de emergência | ✅ | Chave global: zera capacidades, mantém os agentes atendendo |
+| 5 | Projetos filhos: criar, escrever, publicar | ✅ | **P24**: 10.754 + 1.122 + 868 ms, sem clasp |
+| 6 | Isolamento de escopo entre projetos | ✅ | Filho com **1 escopo** contra 17 do pai, conferido por leitura de volta |
+| 7 | Portão humano por especialista | ✅ | **Medido**: `Authorization needed`. Um clique cada, exigido pela plataforma |
+| 8 | Tela para autorizar o filho | ✅ | Estado **conferido**, não guardado; escopos mostrados antes do botão |
+| 9 | Automação × sub-agente | ✅ | Tipos distintos, fail-closed; **só o sub-agente precisa da chave** |
+| 10 | Recusa de escrever no próprio projeto | ✅ | Quatro bordas em teste, exercitada no dev real |
+| 11 | Conjuntos `gate`/`quality`/`holdout` | ✅ | Réguas separadas, rubrica 0–4, reservado fora da seleção |
+| 12 | Núcleo do ciclo de sonho | ✅ | Plano de passos, retomada provada, veredito declarando o próprio alcance |
+| 13 | Candidatos por temperatura | ✅ | Três temperaturas, frontmatter descartado |
+| 14 | **Fiação do ciclo + ciclo real** | 🔨 | Gancho no gatilho e rodar de ponta a ponta. Destrava C2–C5 da P23 |
+| 15 | **Proatividade** | 🔨 | **P22 APROVADA 4/4** (C1 617 ms · C2 627 ms · C3 13,87%/20%, cabem 6 agentes · C4 1). Falta a F3a: agenda no painel, falha honesta, lista fechada de auto-aprovação |
+| 16 | Mensagem entre agentes | 🔒 | **Fechada por decisão** — precisa dos 4 controles do §A antes de existir |
+| 17 | Sucessão com bastão e mandato | 📐 | Depende do ciclo de sonho ter um vencedor medido |
+| 18 | Organismo que poda | 📐 | **P25 reprovou**: 86 requisições, 100% evals, zero falhas agrupáveis |
+| 19 | Entrega da chave ao filho | 📐 | Única, autenticada, rearmável; só vale para sub-agente |
+| 20 | Campos declarados do agente | ⚠️ | `agentConfig.ts` — 16 exports testados, **nenhum módulo importa** |
+| 21 | Teto familiar de gasto | ⚠️ | `family.ts` — 13 exports testados, **nenhum módulo importa** |
+| 22 | Personas (declaração no run do pai) | ⚠️ | `subagent.ts` — 14 exports testados, **nenhum módulo importa** |
+
+### POCs
+
+| POC | Pergunta | Status |
+|---|---|---|
+| **P22** proatividade | Acordar cabe na cota? | ✅ **APROVADA 4/4** — 13,87% da cota, cabem 6 agentes a 48 despertares/dia |
+| **P23** sonho | Quanto custa um ciclo? | ⚠️ C1 e C6 medidos; **C2–C5 esperam o ciclo real** |
+| **P24** código | Criar filho sem clasp? | ✅ **Aprovada por inteiro**, inclusive o "falhar é passar" |
+| **P25** aglomerado | O trace tem material? | ❌ **Reprovou** — e isso inverteu a ordem do organismo |
+
+### Consertos de instrumento (2026-09-19/20)
+
+Sete defeitos desta semana estavam na **medição**, não no produto:
+
+| O que era | Como apareceu |
+|---|---|
+| N+1 no `reconcile` | 20 leituras de cache por minuto. Tique **974 → 563 ms** |
+| Veredito pela última amostra | 433, 544, **1000** — e o 1000 decidia sozinho. Agora mediana com faixa |
+| `--turno` descartado em silêncio | README documentava, CLI ignorava. `realTurnMs: null` sem avisar |
+| POC reprovada parecendo travamento | Imprimia "stopped unexpectedly" **duas vezes** num resultado válido |
+| Credencial gcloud presumida | Conta listada ≠ conta válida. Morria na linha 44 sem dizer o comando |
+| Painel dizendo "autorizado" sem estar | Chamava o filho **sem token**, recebia o login, lia como sucesso |
+| Sonda cortando a evidência | `slice(0,900)` antes do parse reprovava um desenho **correto** |
+
+---
+
+## Histórico até 2026-09-16 (F0–F4)
 
 ## Como ler
 
