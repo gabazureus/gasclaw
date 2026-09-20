@@ -63,11 +63,11 @@
 |---|---|---|---|
 | ~~24~~ | ✅ **Alimentar o contador de falhas** | `recordFailure` tem **0 call sites**: nenhum run que termina mal o chama. É a causa raiz de o trace ter zero aglomerados — e, portanto, de 26, 27, 29 e 30 estarem travados | nada — pode começar, e destrava 4 itens |
 | ~~25~~ | ✅ **Fiar `autoApprove.ts`** | Órfão, 0 ocorrências no bundle. A F3a inteira depende dele | nada |
-| 26 | Medir um ciclo de sonho real | O ciclo roda e recusa começar sem material. A recusa é o estado honesto; o material é que não chega | 24 |
+| 26 | Medir um ciclo de sonho real | **P28 medida (2026-09-20, v119): 0 linhas, 0 aglomerados.** O instrumento existe e foi verificado à parte (passo `wired`), então zero significa *nenhum run falhou* — não *não há como contar*, que foi a leitura errada da P25 | uso real |
 | 27 | C2–C5 da P23 | Medem custo de ciclo, e não há ciclo para medir | 26 |
 | ~~28~~ | ✅ **Proatividade (F3a)** | Agenda sai da pasta e vai para o painel, falha honesta em vez de `paused`, lista fechada de auto-aprovação, `NO_REPLY` com span, **sem gatilho novo** | 25 |
 | 29 | Poda do organismo | O gatilho inverso: especialista ocioso propõe a própria aposentadoria; o que não reduziu o aglomerado é arquivado | 26 |
-| 30 | Limiar do aglomerado | Está em 3 ocorrências, **marcado no código como palpite**, não medida | dado real acumulando (24) |
+| 30 | Limiar do aglomerado | Segue em 3 ocorrências, **marcado no código como palpite**. Com 0 linhas medidas não há como calibrá-lo, e calibrar no olho seria trocar um palpite por outro com cara de medida | 26 |
 | ~~31~~ | ✅ **Fiar `subagent.ts` (personas)** | Órfão, 0 no bundle. É também o **quarto controle** do item 16: a interseção de ferramentas no repasse | nada |
 | ~~32~~ | ✅ **Ferramenta `agent.*` no registro fechado** | Não existe nenhuma. Os controles do item 16 protegem um mecanismo que **ainda não foi construído** | 31 (a interseção precisa existir antes do repasse) |
 | 33 | Fechar a entrega da chave | 🔨 **Metade feita**: o segredo passou a ser escrito e a rota `childkey` existe. A outra metade é uma **tensão entre três regras nossas** (ADR-040 puxa a chave · web app `MYSELF` exige token do dono · o crivo da ADR-041 proíbe `getOAuthToken` no filho). A **P27** mede se o token do filho é aceito — sem ela, não se afirma | P27 |
