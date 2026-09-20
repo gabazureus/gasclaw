@@ -77,3 +77,42 @@ describe('a tela não re-assina um run ADULTERADO', () => {
     expect(temCredencial()).toBe(false);
   });
 });
+
+// `claimById` — a outra metade do `claimable`, e a que tem uma invariante A MAIS.
+//
+// A auditoria por mutação do ciclo 3 mediu: neutralizar a guarda em `claimNext` mata 1 teste;
+// neutralizar em `claimById` mata ZERO. E `claimById` faz algo que `claimNext` também faz e ninguém
+// provava: apagar a AUTORIDADE junto com o ponteiro. Um run que nunca mais vai rodar não pode deixar
+// credencial viva — o card dele continuaria resgatável pela janela inteira (ADR-038 §F).
+describe('claimById não reivindica run de agente arquivado', () => {
+  const comRun = async (status: string) => {
+    env.props['AGENTS'] = JSON.stringify([{ name: 'alpha', folderId: FOLDER }]);
+    env.props[`STATUS:${FOLDER}`] = status;
+    const { newRun } = await import('../src/run');
+    const { runIO } = await import('../src/runStore');
+    const io = runIO();
+    io.enqueue(newRun({ runId: 'rx', session: `${FOLDER}:x`, folderId: FOLDER, user: 'dono@x.com', text: 'oi', now: 1000 }), 1000);
+    return io;
+  };
+
+  // CONTROLE POSITIVO: sem ele, o teste seguinte passaria com `claimById` devolvendo null sempre.
+  test('controle positivo: agente ATIVO tem o run reivindicado por id', async () => {
+    const io = await comRun('active');
+    expect(io.claimById('rx', 9_999_999)?.run.runId).toBe('rx');
+  });
+
+  test('agente arquivado: recusa, e a fila não fica girando', async () => {
+    const io = await comRun('archived');
+    expect(io.claimById('rx', 9_999_999)).toBeNull();
+    expect(Object.keys(env.props).filter((k) => k.includes('rx') && k.startsWith('Q:'))).toEqual([]);
+  });
+
+  // A invariante que só o `claimById` tinha e que ninguém asseria.
+  test('a CREDENCIAL do card morre junto com o run', async () => {
+    const { authKey } = await import('../src/run');
+    const io = await comRun('archived');
+    expect(env.props[authKey('rx')]).toBeDefined(); // o enqueue a criou
+    io.claimById('rx', 9_999_999);
+    expect(env.props[authKey('rx')]).toBeUndefined(); // e o descarte a levou
+  });
+});
