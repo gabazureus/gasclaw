@@ -81,6 +81,16 @@ export const accessAfterArchive = (a: { users: string[]; tools: string[] }): { u
 /** Apontar o criador: o valor de `CREATOR` passa a ser este folderId. Substitui — não acumula. */
 export const setCreator = (folderId: string): string => folderId;
 
+/**
+ * As capacidades do EX-criador depois que o bastão de criar mudou de mãos.
+ *
+ * O singleton era "por forma do dado" só do lado do `CREATOR`: uma Property, um `folderId`. A lista
+ * `CAP:<pasta>` NÃO tinha essa propriedade — ligar `create` em B apontava `CREATOR=B` e deixava
+ * `create` na lista de A. Dois agentes com a capacidade que MULTIPLICA, e o estado impossível era
+ * representável o tempo todo; só ninguém tinha olhado pelo lado da lista.
+ */
+export const capsAfterCreatorMoved = (previous: readonly Capability[]): Capability[] => previous.filter((c) => c !== 'create');
+
 /** `removeAgent`/arquivar limpam `CREATOR` quando é ele que sai. */
 export const clearCreator = (creator: string | null | undefined, goneFolderId: string): string | null =>
   creator && creator !== goneFolderId ? creator : null;

@@ -57,7 +57,7 @@ import * as observe from './observe';
 import * as runlog from './runlog';
 import {
   CAPABILITIES, can, canSucceed, capsAfterSuccession, creatorOf, DEFAULT_INTERVAL_MS, forgetAgentProps, intervalOf, mayGenerate,
-  capsEnabled, effectiveCapabilities, nextGeneration, parseCapabilities, parseStatus, setCreator, type Capability, type LineageEntry,
+  capsAfterCreatorMoved, capsEnabled, effectiveCapabilities, nextGeneration, parseCapabilities, parseStatus, setCreator, type Capability, type LineageEntry,
 } from './agentCaps';
 import { CODEGEN_BUDGET_USD, CODEGEN_DAILY_CAP_USD, mayWriteProject } from './dream';
 import { generateSuccessor, type SuccessorDeps } from './successor';
@@ -499,7 +499,12 @@ function chatDeps(): ChatDeps {
         // SÓ o agente que tem a capacidade `create` recebe este ponto de entrada. Quem não tem não o
         // encontra no contexto, e a tool recusa antes de qualquer card — a capacidade é o portão, e o
         // portão fica no motor, não numa checagem dentro da ferramenta.
-        ...(can(effectiveCapabilities(parseCapabilities(PropertiesService.getScriptProperties().getProperty(`CAP:${spec.folderId}`)), PropertiesService.getScriptProperties().getProperty('CAPS_ENABLED')), 'create')
+        // O portão lê `CREATOR`, a Property ÚNICA — não a lista de capacidades. A lista consegue
+        // representar dois criadores; a Property não. Para a capacidade que MULTIPLICA, a autoridade
+        // tem de morar no dado que não consegue estar errado. A lista ainda precisa concordar (o
+        // congelamento vence por ela), mas ela não abre nada sozinha.
+        ...(PropertiesService.getScriptProperties().getProperty('CREATOR') === spec.folderId &&
+        can(effectiveCapabilities(parseCapabilities(PropertiesService.getScriptProperties().getProperty(`CAP:${spec.folderId}`)), PropertiesService.getScriptProperties().getProperty('CAPS_ENABLED')), 'create')
           ? { createAgent: (nome: string, papel: string) => bornAgent(spec, nome, papel) }
           : {}),
         google: gasGoogle,
@@ -1354,8 +1359,16 @@ export function setAgentCapability(folderId: string, cap: string, on: boolean) {
         const proximo = on ? [...new Set([...atual, cap as Capability])] : atual.filter((c) => c !== cap);
         props.setProperty(capsProp(folderId), JSON.stringify(proximo));
         if (cap === 'create') {
-          if (on) props.setProperty('CREATOR', setCreator(folderId));
-          else if (props.getProperty('CREATOR') === folderId) props.deleteProperty('CREATOR');
+          if (on) {
+            // O ANTECESSOR perde a capacidade junto com o bastão. Sem isto, `CREATOR` apontava para B
+            // e a lista de A continuava dizendo `create` — e o portão do motor, que lia a lista,
+            // deixava os dois passarem. O singleton só existia de um dos lados.
+            const anterior = props.getProperty('CREATOR');
+            if (anterior && anterior !== folderId) {
+              props.setProperty(capsProp(anterior), JSON.stringify(capsAfterCreatorMoved(parseCapabilities(props.getProperty(capsProp(anterior))))));
+            }
+            props.setProperty('CREATOR', setCreator(folderId));
+          } else if (props.getProperty('CREATOR') === folderId) props.deleteProperty('CREATOR');
         }
       }),
     () => ({ folderId, cap, on }),
