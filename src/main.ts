@@ -2604,6 +2604,20 @@ function pocP27(step?: string): unknown {
     } catch {
       url = null;
     }
+    // DEFEITO QUE ESTA MEDIÇÃO TEVE, e ele custou um clique do dono para nada: a sonda cria uma
+    // implantação NOVA a cada execução e não guardava a URL dela. O painel seguia apontando para a
+    // implantação ANTIGA — então o dono autorizava um endereço que não era o que estava sendo medido,
+    // e a sonda continuava dizendo "precisa consentir". Guardar a URL é o conserto; dizê-la no
+    // resultado é o que evita o dono adivinhar onde clicar.
+    if (url) {
+      props.setProperty('P24_URL', url);
+      // Os escopos guardados também estavam velhos: a tabela mostrava `calendar.events` sozinho
+      // enquanto o manifesto já pedia dois. Escopo desatualizado na tela de autorização é o pior
+      // lugar possível para um dado velho — é EXATAMENTE o que o dono lê antes de decidir.
+      const lista = parseChildren(props.getProperty('CHILDREN'));
+      const atual = lista.find((c) => c.scriptId === child);
+      if (atual) props.setProperty('CHILDREN', serializeChildren(withChild(lista, { ...atual, url, scopes: ['https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/script.external_request'] })));
+    }
     url = url ?? props.getProperty('P24_URL');
     if (!url) return { pass: false, error: 'no web app URL for the child', version: ver.code, deployment: dep.code };
 
@@ -2616,12 +2630,13 @@ function pocP27(step?: string): unknown {
       // isso NÃO é falha do desenho — é a plataforma cobrando pelo escopo novo, e o dono decide.
       pass: chegou,
       needsNewConsent: precisaConsentir,
+      url, // a URL MEDIDA, para o dono autorizar a certa e não a que o painel guardou antes
       code: hit.getResponseCode(),
       body: corpo.slice(0, 300),
       reading: chegou
         ? "the child's OWN token was accepted by the engine's MYSELF web app: the pull design works, and the ADR-041 rule can carve out the child"
         : precisaConsentir
-          ? 'the child needs a new consent click: its manifest gained script.external_request. Authorize it and run this step again'
+          ? `the child needs a consent click at THIS url (the panel may still show an older deployment): ${url}`
           : 'the child could NOT reach the engine — read `body` before concluding anything',
     };
   }

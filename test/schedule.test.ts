@@ -146,3 +146,32 @@ describe('o despertar respeita a capacidade e o congelamento', () => {
     expect(corpo).toContain("!== 'active'");
   });
 });
+
+// A catraca que impede a REGRESSÃO da decisão de segurança da F3a.
+//
+// `src/agenda.ts` é o parser do `jobs.md`: a agenda declarada DENTRO da pasta do agente. Ele não é
+// código morto — a P22 o usa para medir — mas é a gramática do desenho que a F3a substituiu, e por um
+// motivo que não é de gosto: a pasta é COMPARTILHÁVEL, e uma agenda ali entrega ao editor do Drive o
+// prompt e o destino de um run que ninguém supervisiona.
+//
+// Nada impedia alguém de religá-lo ao motor daqui a três meses, "porque já estava pronto". Isto impede.
+describe('a agenda da PASTA não volta para o motor', () => {
+  test('o motor não importa o parser do jobs.md', async () => {
+    const main = (await import('node:fs')).readFileSync('src/main.ts', 'utf8');
+    // `offsetMinutes` é utilitário de fuso e pode ficar; o que não pode é o PARSER.
+    expect(main).not.toContain('parseAgenda');
+    expect(main).toMatch(/import \{ offsetMinutes \} from '\.\/agenda'/);
+  });
+
+  test('o motor não lê nenhum arquivo de agenda da pasta', async () => {
+    const fs = await import('node:fs');
+    for (const f of ['src/main.ts', 'src/workspace.ts', 'src/tools/personaStore.ts']) {
+      expect(fs.readFileSync(f, 'utf8'), `${f} não pode ler agenda da pasta`).not.toContain('jobs.md');
+    }
+  });
+
+  test('o parser continua existindo para a POC medir — não é remoção, é isolamento', async () => {
+    const probe = (await import('node:fs')).readFileSync('poc/p22-proatividade/probe.ts', 'utf8');
+    expect(probe).toContain("from '../../src/agenda'");
+  });
+});
