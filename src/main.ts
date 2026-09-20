@@ -736,6 +736,14 @@ function stepDeps(budgetMs = STEP_BUDGET_MS, io = runIO()): StepDeps {
         // ficar `waiting` o deixaria pendurado esperando um clique que nunca vem, segurando lease e
         // sumindo do radar — para quem olha o painel, um run esperando é indistinguível de um run
         // trabalhando. Ou a ferramenta está na LISTA que o dono aprovou, e segue; ou ele FALHA e registra.
+        // `ask` TAMBÉM pendura, e a falha honesta não o cobria. `ask` tem `approval: 'never'` e produz
+        // `pending.kind === 'ask'`, então nunca entrava no bloco abaixo: o run proativo ficava
+        // `waiting` esperando uma resposta que ninguém vai dar, segurando lease e sumindo do radar —
+        // exatamente o cenário que `onProactiveBlock` foi escrito para impedir, e que o docstring dele
+        // descreve palavra por palavra. Perguntar é o que um run que ninguém pediu não pode fazer.
+        if (r.proactive && turn.pending?.kind === 'ask') {
+          throw new Error(`stopped: this run wanted to ask you something, and nobody asked for this run`);
+        }
         if (r.proactive && turn.pending?.kind === 'approval') {
           const lista = autoListOf(r.folderId);
           // O NÍVEL da tool vai junto: `always` não se auto-aprova, esteja o que estiver na lista.
@@ -751,6 +759,10 @@ function stepDeps(budgetMs = STEP_BUDGET_MS, io = runIO()): StepDeps {
             done: turn.done, granted: turn.granted,
             beforeEffect: (name) => io.save(markInflight(r, name, Date.now())),
           }).turn;
+          // REAVALIA o que veio depois da auto-aprovação. Sem isto, a falha honesta valia só para a
+          // PRIMEIRA pendência do passo: se o turno seguinte pedisse outra aprovação, o run proativo
+          // voltava a ficar pendurado para sempre — o mesmo defeito, uma volta adiante.
+          if (segue.pending) throw new Error(onProactiveBlock(segue.pending.name, true).status === 'failed' ? `stopped: ${segue.pending.name} still needs approval after the auto-approved step, and nobody asked for this run` : 'stopped');
           countTurnFailures(r.folderId, segue);
           t.mark('reply');
           return { turn: segue, usd: t.end({ answer: segue.text }).cost ?? 0 };
@@ -1479,9 +1491,17 @@ function fetchChild(url: string): { code: number; body: string } {
   // responde com a PÁGINA DE LOGIN — um 200 com HTML dentro, sem a marca "Authorization needed". A tela
   // então lia 200 + corpo e concluía "autorizado" para um filho que não estava: o fail-closed do
   // `authState` foi derrotado não pela regra, mas por quem fazia a pergunta.
+  // O TOKEN SÓ VAI PARA O GOOGLE, e sem seguir redirecionamento.
+  //
+  // Este token carrega os 16 escopos do manifesto — Drive inteiro, `gmail.compose`,
+  // `script.projects`. A URL vem de `parseChild`, que aceita QUALQUER `https://`. Hoje só o motor
+  // escreve `CHILDREN`, então não há caminho explorável — mas a combinação (destino não fixado +
+  // `followRedirects` + credencial de altíssimo privilégio no header) é uma exfiltração esperando um
+  // segundo escritor. Fixar o host custa uma linha; descobrir isso depois custaria a conta do dono.
+  if (!/^https:\/\/script\.google\.com\//i.test(url)) return { code: 0, body: 'refused: a child URL must be on script.google.com' };
   const res = UrlFetchApp.fetch(url, {
     muteHttpExceptions: true,
-    followRedirects: true,
+    followRedirects: false, // um redirect levaria o token para onde o destino mandar
     headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` },
   });
   return { code: res.getResponseCode(), body: res.getContentText().slice(0, 1200) };
@@ -1894,39 +1914,31 @@ export function passBaton(fromFolderId: string, toFolderId: string, delta: numbe
   const v = canSucceed(caps, parseStatus(props.getProperty(`STATUS:${fromFolderId}`)));
   if (!v.ok) throw new Error(v.reason);
 
+  // NOVE ESCRITAS SOB UM LOCK SÓ (revisão de 2026-09-20). `setAgentCapability` mexe nas MESMAS chaves
+  // e roda sob `underAccessLock`; isto não rodava, e as duas podiam se intercalar — a concessão de
+  // `create` que o dono acabou de dar podia ser sobrescrita pela sucessão, ou o contrário.
+  //
+  // Não há transação em Script Properties, então o lock não torna isto atômico. O que ele garante é
+  // que ninguém escreve no meio. Contra a MORTE da execução (6 min do GAS), a defesa é a ORDEM: ver
+  // o comentário logo abaixo.
+  return underAccessLock(() => passBatonLocked(fromFolderId, toFolderId, delta));
+}
+
+function passBatonLocked(fromFolderId: string, toFolderId: string, delta: number | null) {
+  const props = PropertiesService.getScriptProperties();
+  const caps = parseCapabilities(props.getProperty(`CAP:${fromFolderId}`));
   const m = mandateFor(fromFolderId);
   const dentro = m.active && delta !== null && delta >= (m.mandate?.minDelta ?? 1);
-  // Fora do mandato o clique do dono JÁ ACONTECEU (esta função só roda por assertOwner), então o que
-  // muda é o registro: dentro do mandato ele encolhe; fora, fica como decisão avulsa.
-  if (dentro && m.mandate) props.setProperty(mandateProp(fromFolderId), JSON.stringify({ ...m.mandate, left: m.mandate.left - 1 }));
-
-  const anterior = lineage().entries;
-  const geracao = nextGeneration('succession', anterior.filter((e) => e.child === fromFolderId).map((e) => e.generation)[0] ?? 1);
-  // `summary` não é enfeite: sem ele a linhagem vira uma lista de nomes sem parentesco, e "evoluiu"
-  // deixa de ser verificável. O delta entra no texto porque é o número que sustenta a frase.
-  const entrada: LineageEntry = {
-    at: Date.now(),
-    kind: 'succession',
-    parent: fromFolderId,
-    child: toFolderId,
-    generation: geracao,
-    delta,
-    costUsd: 0,
-    summary: delta === null ? 'succession with no measured delta' : `succession with delta ${delta} on the judge set`,
-  };
-  props.setProperty(lineageProp, JSON.stringify([...anterior, entrada].slice(-100)));
-
-  // O sucessor NUNCA nasce com mais do que o antecessor: interseção, nunca união.
-  // AQUI HAVIA UM USO ERRADO DE `capsAfterSuccession`, e o teste do singleton foi quem o expôs.
+  // ORDEM DELIBERADA: o RESTRITIVO primeiro (revisão de 2026-09-20).
   //
-  // Essa função foi escrita para o caso em que o sucessor DECLARA capacidades no markdown da pasta —
-  // conteúdo de terceiro, que "no máximo pede MENOS do que o antecessor já tinha". O `passBaton`
-  // estava passando para ela a Property `CAP:<sucessor>`, que não é declaração nenhuma: é a lista que
-  // o DONO aprovou, uma a uma, no painel. Intersectar as duas REVOGAVA EM SILÊNCIO o que o dono tinha
-  // concedido ao sucessor por decisão própria — e ele descobriria pela capacidade sumida, sem aviso.
+  // Não existe transação em Script Properties, e a execução pode morrer a qualquer momento (6 min do
+  // GAS). Então a defesa contra o estado parcial é a ORDEM das escritas: todo prefixo desta sequência
+  // precisa ser MAIS restritivo que o estado anterior, nunca menos.
   //
-  // A propriedade que importa ("a sucessão não CONCEDE") não precisa de escrita nenhuma: não gravar
-  // já não concede. O que precisa de tratamento explícito é só o bastão de criar, logo abaixo.
+  // Antes, a linhagem e o mandato vinham primeiro e o arquivamento por último. Morrer no meio deixava
+  // os DOIS agentes ativos, o antecessor ainda como padrão e com todas as ferramentas — o pior estado
+  // possível, alcançado justamente pela falha. Agora: arquiva, tira as ferramentas, tira o bastão, e
+  // só então registra. Morrer no meio deixa alguém a menos, nunca alguém a mais.
 
   // ARQUIVAR PRECISA DESLIGAR DE VERDADE (revisão de segurança de 2026-09-20). Gravar `archived` era
   // o começo e estava sendo tratado como o fim: o status só era conferido em três pontos, e o caminho
@@ -1964,6 +1976,39 @@ export function passBaton(fromFolderId: string, toFolderId: string, delta: numbe
   }
   // Se `criador === toFolderId`, NADA se mexe: ele já era o criador antes desta sucessão, e tirar a
   // capacidade dele aqui é justamente o defeito que este bloco existe para não cometer.
+
+  // Fora do mandato o clique do dono JÁ ACONTECEU (esta função só roda por assertOwner), então o que
+  // muda é o registro: dentro do mandato ele encolhe; fora, fica como decisão avulsa.
+  if (dentro && m.mandate) props.setProperty(mandateProp(fromFolderId), JSON.stringify({ ...m.mandate, left: m.mandate.left - 1 }));
+
+  const anterior = lineage().entries;
+  const geracao = nextGeneration('succession', anterior.filter((e) => e.child === fromFolderId).map((e) => e.generation)[0] ?? 1);
+  // `summary` não é enfeite: sem ele a linhagem vira uma lista de nomes sem parentesco, e "evoluiu"
+  // deixa de ser verificável. O delta entra no texto porque é o número que sustenta a frase.
+  const entrada: LineageEntry = {
+    at: Date.now(),
+    kind: 'succession',
+    parent: fromFolderId,
+    child: toFolderId,
+    generation: geracao,
+    delta,
+    costUsd: 0,
+    summary: delta === null ? 'succession with no measured delta' : `succession with delta ${delta} on the judge set`,
+  };
+  props.setProperty(lineageProp, JSON.stringify([...anterior, entrada].slice(-100)));
+
+  // O sucessor NUNCA nasce com mais do que o antecessor: interseção, nunca união.
+  // AQUI HAVIA UM USO ERRADO DE `capsAfterSuccession`, e o teste do singleton foi quem o expôs.
+  //
+  // Essa função foi escrita para o caso em que o sucessor DECLARA capacidades no markdown da pasta —
+  // conteúdo de terceiro, que "no máximo pede MENOS do que o antecessor já tinha". O `passBaton`
+  // estava passando para ela a Property `CAP:<sucessor>`, que não é declaração nenhuma: é a lista que
+  // o DONO aprovou, uma a uma, no painel. Intersectar as duas REVOGAVA EM SILÊNCIO o que o dono tinha
+  // concedido ao sucessor por decisão própria — e ele descobriria pela capacidade sumida, sem aviso.
+  //
+  // A propriedade que importa ("a sucessão não CONCEDE") não precisa de escrita nenhuma: não gravar
+  // já não concede. O que precisa de tratamento explícito é só o bastão de criar, logo abaixo.
+
   props.setProperty(genStamp(fromFolderId), String(Date.now()));
   return { from: fromFolderId, to: toFolderId, generation: geracao, withinMandate: dentro, entry: entrada };
 }
@@ -2246,8 +2291,23 @@ const childSecret = (): string => Utilities.getUuid().replace(/-/g, '') + Utilit
 /** Rearma a entrega. ATO HUMANO: automático desfaria a proteção que a unicidade cria. */
 export function rearmChildKey(child: string) {
   assertOwner();
-  const d = readDelivery(String(child));
-  if (!d) throw new Error('unknown child project');
+  const id = String(child ?? '').trim();
+  const d = readDelivery(id);
+  // ESTADO ILEGÍVEL NÃO PODE SER SEM SAÍDA. `readDelivery` devolve `null` tanto para "não existe"
+  // quanto para "o JSON quebrou", e recusar nos dois casos deixava o dono TRANCADO: a entrega
+  // recusava para sempre, e o rearme — que É o caminho de recuperação — recusava sobre o mesmo dado.
+  // É a mesma classe do carimbo "NaN", com o agravante de a recuperação ser fail-closed contra si.
+  //
+  // Recuperar é rearmar do zero, e a contagem só se preserva quando dá para lê-la: perder o contador
+  // de um filho é ruim, mas trancar o dono fora do próprio painel é pior.
+  if (!d) {
+    if (!parseChildren(PropertiesService.getScriptProperties().getProperty('CHILDREN')).some((c) => c.scriptId === id)) {
+      throw new Error('unknown child project');
+    }
+    const novo = armDelivery(id);
+    PropertiesService.getScriptProperties().setProperty(deliveryProp(id), JSON.stringify(novo));
+    return { child: id, armed: true, deliveries: 0, recovered: true };
+  }
   // A CONTAGEM NÃO ZERA: entrega repetida vira sinal, não rotina. Um filho que pede a chave cinco vezes
   // aparece — e é isso que separa "republiquei o projeto" de "algo está pedindo demais".
   PropertiesService.getScriptProperties().setProperty(deliveryProp(String(child)), JSON.stringify(rearmDelivery(d)));
