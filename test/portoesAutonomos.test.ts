@@ -83,14 +83,21 @@ describe('o despertar só acontece com a capacidade LIGADA', () => {
 // `dueJobs` crescia sozinha — religar depois de dez horas dispararia os jobs dessas dez horas DE UMA
 // VEZ. O comentário no código já dizia por que o carimbo tem de andar sempre; a guarda nova o furou.
 describe('o carimbo anda mesmo com o portão FECHADO', () => {
+  // A ASSERÇÃO ERA `>= 0`, e a mutação provou que isso não vale nada: congelar a escrita no literal
+  // '0' — ou seja, o carimbo NUNCA anda, que é exatamente a avalanche que este bloco existe para
+  // pegar — deixava tudo verde. `>= 0` é verdadeiro para qualquer constante não negativa.
+  //
+  // O oráculo certo é IGUALDADE com o minuto de agora: o relógio do agente tem de estar no relógio
+  // do mundo, não em algum número.
   test('desligado, o relógio do agente continua andando', async () => {
     comAgenda([]); // sem `initiative`
     const m = await import('../src/main');
     m.drainRuns();
-    const visto = env.props[`SCHEDSEEN:${FOLDER}`];
-    expect(visto).toBeDefined();
-    // Avançou de '-1' para o minuto atual: não ficou parado esperando a capacidade voltar.
-    expect(Number(visto)).toBeGreaterThanOrEqual(0);
+    const agora = new Date();
+    const minutoAtual = agora.getUTCHours() * 60 + agora.getUTCMinutes();
+    const visto = Number(env.props[`SCHEDSEEN:${FOLDER}`]);
+    // Um minuto de folga: o tique pode cair na virada entre a leitura do motor e a do teste.
+    expect(Math.abs(visto - minutoAtual)).toBeLessThanOrEqual(1);
   });
 });
 
