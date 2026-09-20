@@ -5,6 +5,10 @@ começa antes de a anterior estar verde, e nenhuma "conclui" sem evidência fres
 
 ## Fase 0 — o que é decisão do dono (bloqueia tudo)
 
+- [ ] **H5 — a bateria (portão NOVO, achado na Fase 3).** Quem define o que é "melhor". Não pode vir
+      da pasta (ADR-002) nem do gerador (auto-avaliação). Declarada por `setAgentBattery(pasta, json)`:
+      uma lista de `{ "input": "...", "expected": "..." }`. Sem ela, `measureChild` não mede — e diz por quê.
+
 - [ ] **H1 — orçamento da corrida.** Declarar `CODEGEN_DAILY_CAP_USD` para a corrida (15 filhos ×
       US$ 1,00 = US$ 15,00) e `FAMILY_CAP_USD` acompanhando. Escrever no `decisions.md` o valor,
       a data e **o valor de volta** ao fim. Sem isso, a corrida para na 3ª geração.
@@ -36,11 +40,13 @@ O defeito: `main.ts:2158` passa `incumbentSource: agente.system` em **toda** ger
 
 O defeito: a linhagem grava `delta: null` sempre, e nada executa o filho.
 
-- [ ] contrato do filho no crivo e no pedido ao Opus: `doGet` devolve `{ ok, score }`
-- [ ] **Teste primeiro:** resposta válida → `delta` não nulo; lixo, silêncio ou não autorizado →
+- [x] contrato do filho no crivo e no pedido ao Opus — **CORRIGIDO**: `{ ok, score }` deixava o filho dar a própria nota. Agora `?input=` entra, `{ output }` sai, e o MOTOR compara com o esperado
+- [x] **Teste primeiro:** resposta medida → `delta` real; não autorizado/sem resposta → `null` com motivo; lixo de filho alcançável → caso FALHOU (senão o quebrado escaparia da comparação)
       `delta: null` **com motivo no trace**
-- [ ] `beatsIncumbent` passa a decidir sobre esse número
-- [ ] **Mutação:** trocar o `null` de C2 por `0` mata um teste — zero é nota, ausência não é
+- [x] `beatsIncumbent` decide sobre passes/k — k são CASOS distintos, não repetições (código é determinístico)
+- [x] **Mutação:** trocar o `null` por `0` mata um teste — 8/8 no núcleo, 6/6 na fiação
+- [x] **redirecionamento 302** do Apps Script seguido com segurança (previsto, não medido)
+- [ ] **medição real** — bloqueada por H3 (um filho autorizado) e H5 (a bateria do dono)
 
 ## Fase 4 — a corrida assistida (24 h, até 15 filhos)
 
