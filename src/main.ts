@@ -55,7 +55,7 @@ import {
 } from './agentCaps';
 import { CODEGEN_BUDGET_USD, CODEGEN_DAILY_CAP_USD, mayWriteProject } from './dream';
 import { generateSuccessor, type SuccessorDeps } from './successor';
-import { CHILD_FORBIDDEN_SCOPES, OPUS_MODEL } from './codegen';
+import { CHILD_FORBIDDEN_SCOPES, narrowScopes, OPUS_MODEL } from './codegen';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
 import { allowedTools, toolCatalog } from './tools/registry';
@@ -2049,6 +2049,39 @@ function pocP24(step?: string): unknown {
   return { pass: false, error: 'steps: guard, create, write, deploy, key' };
 }
 
+/**
+ * Sonda da P26 (só no build dev): a parte do gerador de sucessor que NÃO custa nada.
+ *
+ * Mede o passo mais provável de estar quebrado sem ninguém notar: ler os escopos do PRÓPRIO
+ * manifesto pela API. Se essa leitura falhar, `narrowScopes` compararia contra uma lista vazia e
+ * recusaria tudo — uma capacidade morta que a tela descreveria como viva. O Opus não é chamado aqui:
+ * gastar o modelo mais caro do projeto para conferir uma leitura seria pagar pela pergunta errada.
+ */
+function pocP26(step?: string): unknown {
+  if (step === 'scopes') {
+    const proprios = engineScopes(ScriptApp.getOAuthToken(), ScriptApp.getScriptId());
+    const herdaveis = proprios.filter((sc) => !(CHILD_FORBIDDEN_SCOPES as readonly string[]).includes(sc));
+    const proibidos = proprios.filter((sc) => (CHILD_FORBIDDEN_SCOPES as readonly string[]).includes(sc));
+    // Um escopo só é o caso REAL do sucessor: estreito de verdade, e estritamente menor que o do pai.
+    const um = narrowScopes([herdaveis[0]], proprios);
+    const tudo = narrowScopes(herdaveis, proprios);
+    const chave = narrowScopes([proibidos[0] ?? 'https://www.googleapis.com/auth/script.projects'], proprios);
+    return {
+      pass: proprios.length > 0 && um.ok === true && tudo.ok === false && chave.ok === false,
+      ownScopes: proprios.length,
+      inheritable: herdaveis.length,
+      oneScope: um,
+      allOfThem: { ok: tudo.ok, reason: tudo.reason },
+      theKeyToTheHouse: { ok: chave.ok, reason: chave.reason },
+    };
+  }
+  if (step === 'budget') {
+    const hoje = codegenSpentToday(Date.now());
+    return { pass: Number.isFinite(hoje) && hoje >= 0, spentTodayUsd: hoje, capUsd: CODEGEN_DAILY_CAP_USD, perRunUsd: CODEGEN_BUDGET_USD, generator: OPUS_MODEL };
+  }
+  return { pass: false, error: 'steps: scopes, budget' };
+}
+
 const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {
   p1: () => pocUrlFetchTimeout(),
   p2: (step, params = {}) => pocP2(step, params, runIO()),
@@ -2058,6 +2091,7 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p20: (step) => pocP20(step),
   p22: (step, params = {}) => pocP22(step, params),
   p24: (step) => pocP24(step),
+  p26: (step) => pocP26(step),
   p6: (step) => pocP6(step, ownerEmail()),
   p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),
