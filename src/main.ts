@@ -2468,6 +2468,44 @@ function pocP27(step?: string): unknown {
   return { pass: false, error: 'steps: secret, route' };
 }
 
+/**
+ * Sonda da P28: **o contador do item 24 está de fato contando?**
+ *
+ * A P25 mediu um trace vazio e eu li a medição como escassez de uso. Estava errado: o contador nunca
+ * tinha sido ligado. Esta sonda existe para que a MESMA leitura não se repita — ela separa "não houve
+ * falha" de "não há instrumento", que era exatamente a confusão que travou quatro itens.
+ */
+function pocP28(step?: string): unknown {
+  const props = PropertiesService.getScriptProperties();
+  const agentes = store.listAgents();
+  if (step === 'wired') {
+    // C1: o instrumento EXISTE no bundle e está no caminho do passo. Isto não mede falha nenhuma —
+    // mede se seríamos capazes de contar uma, que é a pergunta que a P25 não fez.
+    const amostra = failuresFrom({ events: [{ name: 'gmail.send', status: 'refused' }], text: 'x' }, Date.now());
+    return { pass: amostra.length === 1 && amostra[0].kind === 'refused_tool', sample: amostra, reading: 'the counter can turn a failed turn into a row; whether any row EXISTS is step `count`' };
+  }
+  if (step === 'count') {
+    // C2: quanto já acumulou de USO REAL. Zero aqui é resultado válido e honesto — significa que
+    // nenhum run falhou desde que o instrumento foi ligado (v113), não que o instrumento falte.
+    const linhas = agentes.map((a) => {
+      const fs = parseFailures(props.getProperty(failProp(a.folderId)));
+      const cs = cluster(fs, 30 * 24 * 3600_000, Date.now());
+      const m = hasMaterial(cs);
+      return { agent: a.name, rows: fs.length, clusters: cs.length, top: m.top ?? null, material: m.ok };
+    });
+    const total = linhas.reduce((t, l) => t + l.rows, 0);
+    return {
+      // O `pass` afirma que a LEITURA funcionou, não que há dado. Confundir os dois faria zero parecer
+      // defeito — e zero, aqui, é a medida honesta de um agente que não falhou ainda.
+      pass: true,
+      totalRows: total,
+      agents: linhas,
+      reading: total === 0 ? 'zero rows since the counter was wired (v113): no run has failed yet. This is data, not a defect — items 26/27/29/30 stay open, and the threshold of 3 stays a guess' : `${total} row(s) accumulated: the cluster can start being read`,
+    };
+  }
+  return { pass: false, error: 'steps: wired, count' };
+}
+
 const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {
   p1: () => pocUrlFetchTimeout(),
   p2: (step, params = {}) => pocP2(step, params, runIO()),
@@ -2479,6 +2517,7 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p24: (step) => pocP24(step),
   p26: (step) => pocP26(step),
   p27: (step) => pocP27(step),
+  p28: (step) => pocP28(step),
   p6: (step) => pocP6(step, ownerEmail()),
   p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),

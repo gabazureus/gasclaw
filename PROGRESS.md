@@ -1,7 +1,8 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, e se já foi resolvido.
-> **Atualizado em:** 2026-09-20 · **1635 testes** · `tsc` limpo · build limpo
+> **Atualizado em:** 2026-09-20 · **1712 testes** · `tsc` limpo · build limpo · dívida de idioma **203**
+> · **Auditoria:** seis ✅ eram falsos. Critério: *algum módulo importa isto, e o símbolo aparece em `dist/_motor.js`?*
 > · **P22 aprovada 4/4** · P24 **aprovada por inteiro** · P25 **reprovada** (sem combustível)
 > **Fontes:** [spec](docs/specs/), [ADRs](docs/adr/README.md), [CHANGELOG](CHANGELOG.md),
 > [log da wiki](docs/wiki/log.md), [pesquisa do sinal fraco](docs/pesquisa/2026-09-19-o-sinal-fraco-do-sonho.md)
@@ -36,6 +37,20 @@
 | 21 | Teto familiar de gasto | ✅ | **Age**: `writeSuccessor` lê `capAction` e recusa em `stop-creating` e em `freeze`. Nunca corta a chave — isso pararia o pai também (ADR-040) |
 | 22 | Personas e repasse | ✅ | Tool `persona` no registro + `runPersona` no motor, **chamados no bundle**. Interseção dupla; só ferramentas sem aprovação, porque de dentro de uma tool não há caminho até o card |
 | 23 | **Sucessor como CÓDIGO NOVO (Opus 5)** | ✅ | `codegen.ts` + `successor.ts`: crivo fechado (sem `eval`, sem token OAuth, sem a API do Apps Script, sem chave no fonte), escopos **estritamente menores** que os do motor, teto diário agregado, e o filho nasce precisando do consentimento do dono |
+
+### Fechados nesta rodada (2026-09-20)
+
+| # | Item | Prova no bundle |
+|---|---|---|
+| 24 | Alimentar o contador de falhas | `failuresFrom` chamado no passo do run durável |
+| 25 / 28 | Proatividade (F3a) | `tickProactive`, `mayAutoApprove`, `onProactiveBlock`, `noReplySpan`, `dueJobs` |
+| 31 | Personas | `subagentTools`, `runPersona` |
+| 32 / 16 | `agent.message` + os 4 controles | `foreignMessage`, `relayToAgent`, `toolsOfAgent` |
+| 4 | Congelamento de emergência | `effectiveCapabilities`, `capsEnabled` |
+| 34 / 21 | Teto familiar com efeito | `capAction`, `familySpendQuiet` |
+| 35 / 36 | Telas: linhagem e DreamBoard | `diffLines` no motor; `showDreamBoard`/`showLineage`/`showSchedule` em `dist/settings.html` |
+| 37 / 38 | Vocabulário + ADR-042 | — (documentação) |
+| 39 | Dívida de idioma | 208 → **203**, catraca desceu |
 
 ### O que falta — auditoria de 2026-09-20
 
