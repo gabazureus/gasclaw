@@ -23,8 +23,8 @@ describe('o que nunca se auto-aprova', () => {
   // acrescentar uma tool irreversível e esquecer de proibi-la aqui tem de quebrar um teste, não
   // passar despercebido. `agent.create` e `agent.message` entraram porque fechavam o único caminho
   // em que conteúdo de terceiro virava ação sem nenhum clique.
-  test('e a lista é exatamente estas cinco', () => {
-    expect([...NEVER_AUTO].sort()).toEqual(['agent.create', 'agent.message', 'calendar.update', 'gmail.send', 'memory.remove']);
+  test('e a lista é exatamente estas sete', () => {
+    expect([...NEVER_AUTO].sort()).toEqual(['agent.create', 'agent.message', 'calendar.create', 'calendar.update', 'gmail.send', 'memory.remove', 'sheets.append']);
   });
 });
 
@@ -44,7 +44,20 @@ describe('fail-closed em toda dúvida', () => {
   });
 
   test('o caso bom passa: proativo, na lista, e não proibida', () => {
-    expect(mayAutoApprove('calendar.create', ['calendar.create'], true)).toEqual({ auto: true, reason: '' });
+    expect(mayAutoApprove('calendar.list', ['calendar.list'], true)).toEqual({ auto: true, reason: '' });
+  });
+
+  // O NÍVEL da tool vence a lista. `always` existe para dizer "esta não se aprova em lote"; deixar a
+  // lista desfazer essa declaração daria ao dono um jeito de revogar a própria proteção sem ler que é
+  // isso que está fazendo.
+  test('uma tool `always` não se auto-aprova nem estando na lista', () => {
+    const v = mayAutoApprove('qualquer.coisa', ['qualquer.coisa'], true, 'always');
+    expect(v.auto).toBe(false);
+    expect(v.reason).toMatch(/every time/);
+  });
+
+  test('uma tool `once` na lista continua passando', () => {
+    expect(mayAutoApprove('tasks.create', ['tasks.create'], true, 'once').auto).toBe(true);
   });
 });
 

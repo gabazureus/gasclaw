@@ -45,6 +45,14 @@ export const NEVER_AUTO: readonly string[] = [
   // superfície permanente; mandar mensagem faz OUTRO agente agir. As duas se qualificam sem esforço.
   'agent.create',
   'agent.message',
+  // `sheets.append` é o exemplo que o cabeçalho DESTE módulo usa para explicar por que a linguagem de
+  // predicados foi reprovada — `id` livre e 20.000 caracteres de `rows` — e ele seguia auto-aprovável.
+  // Escrever numa planilha compartilhada é irreversível para quem mais a lê.
+  'sheets.append',
+  // `calendar.create` aceita `attendees`: o evento entra na agenda de TERCEIROS. Ele é o irmão do
+  // `calendar.update`, que já estava na lista — a assimetria não tinha justificativa no critério, e o
+  // próprio `AUTO_NOTE` admite que alguém confunde os dois.
+  'calendar.create',
 ];
 
 export type AutoVerdict = { auto: boolean; reason: string };
@@ -56,11 +64,16 @@ export type AutoVerdict = { auto: boolean; reason: string };
  * (onde ele está do outro lado e pode clicar) ⇒ não. Auto-aprovação existe para o run que ninguém está
  * olhando; quando há alguém olhando, perguntar é barato.
  */
-export function mayAutoApprove(tool: string, approved: readonly string[], proactive: boolean): AutoVerdict {
+export function mayAutoApprove(tool: string, approved: readonly string[], proactive: boolean, level?: 'never' | 'once' | 'always'): AutoVerdict {
   const name = String(tool ?? '').trim();
   if (!name) return { auto: false, reason: 'no tool named' };
   if (!proactive) return { auto: false, reason: 'the owner asked for this run: ask instead of assuming' };
   if (NEVER_AUTO.includes(name)) return { auto: false, reason: `${name} is never auto-approved: it cannot be undone with one click` };
+  // O NÍVEL DA TOOL MANDA (revisão de 2026-09-20). A lista do dono valia sozinha, então uma tool
+  // `always` — que por definição pede clique TODA VEZ — podia ser auto-aprovada para sempre num run
+  // que ninguém está olhando. `always` existe justamente para dizer "esta não se aprova em lote"; a
+  // lista de auto-aprovação não pode ser o caminho que desfaz essa declaração.
+  if (level === 'always') return { auto: false, reason: `${name} asks for approval every time: the list cannot override that` };
   if (!approved.includes(name)) return { auto: false, reason: `${name} is not in the auto-approve list` };
   return { auto: true, reason: '' };
 }

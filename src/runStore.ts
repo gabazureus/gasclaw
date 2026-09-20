@@ -62,6 +62,20 @@ export type RunIO = {
   load: (folderId: string, runId: string) => DurableRun | null;
   save: (r: DurableRun) => void;
   /**
+   * O arquivo do Drive ainda bate com a assinatura que guardamos?
+   *
+   * EXPOSTO na revisão de 2026-09-20 porque ser privado era o buraco: `save` **re-assina** o que
+   * receber — `writeAuthority` recalcula o digest a partir do objeto — então qualquer caminho que
+   * gravasse um run sem conferir antes transformava o motor em ORÁCULO DE ASSINATURA. O atacante
+   * editava o arquivo na pasta compartilhável, o dono só abria o painel, e o estado forjado saía
+   * assinado. Depois disso `decide` conferia e passava, porque a assinatura era a do arquivo dele.
+   *
+   * A integridade aqui vem do digest morar em Script Properties, FORA da pasta — não de resistência
+   * criptográfica: `sign` é sem chave e `runAuthority` é determinístico e público, então o digest de
+   * um estado forjado é trivial de computar. É por isso que re-assinar sem conferir anula tudo.
+   */
+  untampered: (r: DurableRun) => boolean;
+  /**
    * Grava o estado e põe (ou repõe) o ponteiro na fila, na ordem certa: estado primeiro, ponteiro depois.
    * `progressed` zera as tentativas: elas contam **falhas**, não passos — sem isso um run de 5 passos bem-sucedidos
    * morreria na 4ª volta do pump, que é justamente o caso que o loop durável existe para atender.
@@ -96,7 +110,7 @@ export function runIO(
    * Assinatura da autoridade. SHA-256, e não a string canônica inteira, porque ela inclui o `snapshot` com a
    * conversa toda e estouraria os 9 KB por valor das Properties.
    *
-   * A colisão não é explorável aqui: o atacante precisaria de um SEGUNDO PREIMAGE — um estado adulterado
+   * A colisão não é explorável aqui: o atacante precisaria de um SEGUNDO PREIMAGE (ERRADO — ver `untampered`: `sign` é sem chave, logo forjar o digest é trivial; o que protege é o LOCAL onde ele mora) — um estado adulterado
    * cuja string canônica bata com um digest que NÓS já fixamos e ele não escolheu. É o oposto do `jobId` da
    * P22, que usa djb2 de 32 bits e por isso é documentado como "NÃO é credencial": lá uma colisão se acha
    * por força bruta em milissegundos; aqui o espaço é 2^256 e não há ataque prático contra SHA-256 completo.
@@ -181,6 +195,7 @@ export function runIO(
   return {
     load,
     save,
+    untampered,
     pointers,
     authority: readAuthority,
     forget: (runId) => props.deleteProperty(authKey(runId)),
