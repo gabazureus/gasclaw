@@ -23,6 +23,8 @@ export type GasEnv = {
   /** Arquivos da pasta do agente vistos pela Drive API (`files.list`). */
   folderFiles: { id: string; name: string; mimeType: string; text: string }[];
   fetched: (part: string) => Captured[];
+  /** Quem está chamando. Trocar isto é como um teste pergunta "e se não for o dono?". */
+  activeUser: string;
 };
 
 const res = (code: number, body: string) => ({
@@ -120,6 +122,7 @@ function route(env: GasEnv, url: string): ReturnType<typeof res> {
 export function stubGas(over: Partial<GasEnv> = {}): GasEnv {
   const env: GasEnv = {
     props: { OWNER: 'dono@x.com', AGENTS: '[{"folderId":"f1","name":"agente-teste"}]', OPENROUTER_API_KEY: 'sk-or-teste', 'ACCESS:f1': '{"users":[],"tools":[]}' },
+    activeUser: 'dono@x.com',
     cache: {},
     calls: [],
     drive: new Map(),
@@ -173,10 +176,14 @@ export function stubGas(over: Partial<GasEnv> = {}): GasEnv {
   });
   vi.stubGlobal('DriveApp', makeDrive(env));
   vi.stubGlobal('ScriptApp', { getOAuthToken: () => 'owner-token', getScriptId: () => 'script1', getProjectTriggers: () => [], newTrigger: () => ({ timeBased: () => ({ everyMinutes: () => ({ create: () => undefined }) }) }) });
+  // `activeUser` é VARIÁVEL de propósito: sem poder trocá-lo, nenhum teste consegue perguntar "e se
+  // não for o dono?". A auditoria por mutação do ciclo 3 mostrou que apagar `assertOwner()` de
+  // `setAgentCapability` e de `passBaton` deixava 1762 testes verdes — os testes provavam O QUE o ato
+  // faz e nunca QUEM pode fazê-lo.
   vi.stubGlobal('Session', {
     getScriptTimeZone: () => 'America/Sao_Paulo',
-    getEffectiveUser: () => ({ getEmail: () => 'dono@x.com' }),
-    getActiveUser: () => ({ getEmail: () => 'dono@x.com' }),
+    getEffectiveUser: () => ({ getEmail: () => env.activeUser }),
+    getActiveUser: () => ({ getEmail: () => env.activeUser }),
   });
   let uuid = 0;
   vi.stubGlobal('Utilities', {

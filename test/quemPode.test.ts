@@ -1,0 +1,56 @@
+// QUEM pode, não só O QUE acontece.
+//
+// A auditoria por mutação do ciclo 3 achou o maior buraco da suíte: apagar `assertOwner()` de
+// `setAgentCapability` e de `passBaton` deixava os 1762 testes VERDES. Os testes provavam o que o ato
+// faz — o singleton, a ordem das escritas, o arquivamento — e nunca perguntavam quem pode fazê-lo.
+//
+// Num projeto onde a pasta do agente é compartilhável e o painel é a autoridade, "quem" é metade do
+// desenho. A outra metade estava sem rede.
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { stubGas, type GasEnv } from './gasEnv';
+
+let env: GasEnv;
+
+beforeEach(() => {
+  vi.resetModules();
+  env = stubGas();
+  env.props['OWNER'] = 'dono@x.com';
+  env.props['AGENTS'] = JSON.stringify([
+    { name: 'alpha', folderId: 'fa' },
+    { name: 'beta', folderId: 'fb' },
+  ]);
+  env.props['STATUS:fa'] = 'active';
+  env.props['STATUS:fb'] = 'active';
+});
+afterEach(() => vi.unstubAllGlobals());
+
+/** As ações que MUDAM poder. Cada uma tem de recusar quem não é o dono. */
+const acoes: [string, (m: Record<string, (...a: never[]) => unknown>) => unknown][] = [
+  ['setAgentCapability', (m) => m.setAgentCapability('fa', 'dream', true)],
+  ['passBaton', (m) => m.passBaton('fa', 'fb', 5)],
+  ['startAgentDream', (m) => m.startAgentDream('fa')],
+  ['writeSuccessor', (m) => m.writeSuccessor('fa', [])],
+  ['successorOptions', (m) => m.successorOptions('fa')],
+  ['setAgentSchedule', (m) => m.setAgentSchedule('fa', [])],
+  ['setAgentAutoApprove', (m) => m.setAgentAutoApprove('fa', [])],
+  ['rearmChildKey', (m) => m.rearmChildKey('x')],
+  ['forgetChild', (m) => m.forgetChild('x')],
+  ['removeAgent', (m) => m.removeAgent('fa')],
+];
+
+describe('quem NÃO é o dono não muda poder nenhum', () => {
+  test.each(acoes)('%s recusa um estranho', async (_nome, chamar) => {
+    env.activeUser = 'estranho@x.com';
+    const m = (await import('../src/main')) as unknown as Record<string, (...a: never[]) => unknown>;
+    expect(() => chamar(m)).toThrow(/owner/i);
+  });
+
+  // CONTROLE POSITIVO: sem ele, os dez acima ficariam verdes se TODAS as funções lançassem por
+  // qualquer motivo — inclusive por um erro que nada tem a ver com autorização.
+  test('controle positivo: o DONO consegue', async () => {
+    env.activeUser = 'dono@x.com';
+    const m = await import('../src/main');
+    expect(() => m.setAgentCapability('fa', 'dream', true)).not.toThrow();
+    expect(JSON.parse(env.props['CAP:fa'] ?? '[]')).toContain('dream');
+  });
+});
