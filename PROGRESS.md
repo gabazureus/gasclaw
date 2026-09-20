@@ -1,12 +1,16 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, e se já foi resolvido.
-> **Atualizado em:** 2026-09-20 · **1758 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
+> **Atualizado em:** 2026-09-20 · **1777 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
 > · **Auditoria:** seis ✅ eram falsos. Critério: *algum módulo importa isto, e o símbolo aparece em `dist/_motor.js`?*
 > · **P22 aprovada 4/4** · P24 **aprovada por inteiro** · P25 **reprovada** (sem combustível)
 > · **P27 medida e REPROVADA** (o filho executa, o motor recusa o token dele: 401 da plataforma)
 > · **P28 medida:** 0 linhas, 0 aglomerados — o instrumento existe e não houve falha, coisas diferentes
-> · **3 ciclos de revisão:** 1 e 2 fechados (14 achados, 5 altas); 3 pendente
+> · **3 ciclos de revisão CONCLUÍDOS:** 12 revisores, **30+ achados**, 1 **crítico**
+> · · O crítico: o laço de sonho rodava os evals com **efeito real** na conta do dono e **apagava a
+> memória curada dele** — destruição de dado por gatilho automático, na única capacidade ligada.
+> · · A auditoria por **mutação** provou cada guarda: desfazer o conserto mata teste. Onde não matava,
+> o teste era trocado — cinco formas de prova falsa foram encontradas e substituídas.
 > **Fontes:** [spec](docs/specs/), [ADRs](docs/adr/README.md), [CHANGELOG](CHANGELOG.md),
 > [log da wiki](docs/wiki/log.md), [pesquisa do sinal fraco](docs/pesquisa/2026-09-19-o-sinal-fraco-do-sonho.md)
 
