@@ -4,6 +4,7 @@ import { dreamIO } from './dreamStore';
 import { failProp, failuresFrom, parseFailures, serializeFailures, withFailure } from './failureLog';
 import { mergeAcrossGenerations, originLabel, parseSchema, validateValues, type ConfigField } from './agentConfig';
 import { capAction, childrenSpendUpperBound, FAMILY_CAP_USD, FAMILY_NOTE } from './family';
+import { burstReading, consentReading, P29_MAX_CREATES, parseP29State, quotaReading, withCreated, withRefusal, type BurstRow, type ConsentRow, type P29State } from './swarm';
 import { cluster, hasMaterial, type Failure } from './dreamCycle';
 import { AUTO_NOTE, cleanAutoList, mayAutoApprove, NEVER_AUTO, noReplySpan, onProactiveBlock } from './autoApprove';
 import { dueJobs, JOB_MAX, jobText, parseSchedule, serializeSchedule } from './schedule';
@@ -2764,6 +2765,157 @@ function pocP28(step?: string): unknown {
   return { pass: false, error: 'steps: wired, count' };
 }
 
+/** Estado da sonda P29. Vive numa Property porque a execução morre em 6 min e a cota não cabe nela. */
+const P29_PROP = 'P29_STATE';
+
+/**
+ * Sonda da P29 (só no dev): **quantos filhos o dia aceita, e quanto custa um clique?**
+ *
+ * A [P24](../poc/p24-linhagem-de-codigo/README.md) mediu UM filho: criar 10.754 ms, escrever
+ * 1.122 ms, implantar, e o portão humano (`Authorization needed`). O que ela não mediu é o que
+ * decide a corrida da F6: a cota do dia, e o tempo de parede de um consentimento.
+ *
+ * **CUSTO US$ 0.** O código do filho é uma string fixa — o Opus não é chamado. Medir a plataforma
+ * antes de pagar o modelo é o que evita descobrir por US$ 15 um limite que custava nada.
+ *
+ * A leitura mora em `swarm.ts` (núcleo puro, testado e provado por mutação); aqui fica só o I/O.
+ */
+function pocP29(step?: string): unknown {
+  const props = PropertiesService.getScriptProperties();
+  const own = ScriptApp.getScriptId();
+  const token = ScriptApp.getOAuthToken();
+  const api = 'https://script.googleapis.com/v1/projects';
+  const estado = () => parseP29State(props.getProperty(P29_PROP));
+  const salvar = (s: P29State) => props.setProperty(P29_PROP, JSON.stringify(s));
+
+  const call = (url: string, method: GoogleAppsScript.URL_Fetch.HttpMethod, payload?: unknown) => {
+    const t0 = Date.now();
+    const res = UrlFetchApp.fetch(url, {
+      method,
+      contentType: 'application/json',
+      headers: { Authorization: `Bearer ${token}` },
+      ...(payload ? { payload: JSON.stringify(payload) } : {}),
+      muteHttpExceptions: true,
+    });
+    return { code: res.getResponseCode(), ms: Date.now() - t0, full: res.getContentText() };
+  };
+
+  /**
+   * Um filho completo: criar, escrever, versionar, implantar. Devolve a linha da medição.
+   *
+   * O manifesto é o MÍNIMO possível (um escopo) e o código é fixo. A guarda `mayWriteProject` vale
+   * mesmo com um id recém-criado: o dia em que ela importar é o dia em que a API devolveu o id do
+   * próprio motor, e aí é tarde para descobrir que ninguém checou.
+   */
+  const nascer = (n: number): BurstRow => {
+    const criado = call(api, 'post', { title: `gasclaw poc p29 #${n} ${new Date().toISOString().slice(0, 19)}` });
+    let scriptId: string | null = null;
+    try {
+      scriptId = (JSON.parse(criado.full) as { scriptId?: string }).scriptId ?? null;
+    } catch {
+      scriptId = null;
+    }
+    if (!scriptId || criado.code !== 200) return { scriptId: null, code: criado.code, ms: criado.ms };
+    if (!mayWriteProject(scriptId, own).ok) return { scriptId: null, code: criado.code, ms: criado.ms };
+    const files = [
+      { name: 'appsscript', type: 'JSON', source: JSON.stringify({ timeZone: Session.getScriptTimeZone(), runtimeVersion: 'V8', oauthScopes: ['https://www.googleapis.com/auth/calendar.events'], webapp: { executeAs: 'USER_DEPLOYING', access: 'MYSELF' } }) },
+      // String FIXA: nenhuma linha deste filho veio de modelo nenhum. É o que torna a POC US$ 0.
+      { name: 'Code', type: 'SERVER_JS', source: 'function doGet() { return ContentService.createTextOutput("p29-ok"); }\n' },
+    ];
+    const escrita = call(`${api}/${scriptId}/content`, 'put', { files });
+    if (escrita.code !== 200) return { scriptId: null, code: escrita.code, ms: criado.ms + escrita.ms };
+    const ver = call(`${api}/${scriptId}/versions`, 'post', { description: 'p29' });
+    const versao = ver.code === 200 ? (JSON.parse(ver.full) as { versionNumber?: number }).versionNumber : undefined;
+    const dep = call(`${api}/${scriptId}/deployments`, 'post', { manifestFileName: 'appsscript', description: 'p29', ...(Number.isInteger(versao) ? { versionNumber: versao } : {}) });
+    const url = dep.code === 200 ? ((JSON.parse(dep.full) as { entryPoints?: { webApp?: { url?: string } }[] }).entryPoints ?? []).map((e) => e.webApp?.url).find((u) => !!u) ?? null : null;
+    const ms = criado.ms + escrita.ms + ver.ms + dep.ms;
+    if (dep.code !== 200 || !url) return { scriptId: null, code: dep.code, ms };
+    // O instante da IMPLANTAÇÃO é o marco zero da espera do C3: é daqui que o dono passa a poder clicar.
+    salvar(withCreated(estado(), scriptId, Date.now()));
+    const lista = parseChildren(props.getProperty('CHILDREN'));
+    props.setProperty('CHILDREN', serializeChildren(withChild(lista, { scriptId, kind: 'automation', title: `p29 #${n}`, url, scopes: ['https://www.googleapis.com/auth/calendar.events'], folderId: null, parent: null, reason: 'POC P29: platform ceiling, no model involved', at: Date.now() })));
+    return { scriptId, code: 200, ms };
+  };
+
+  if (step === 'burst') {
+    // C1: cinco em sequência. A P24 mediu ~12,7 s por filho; cinco cabem folgados nos 6 minutos.
+    const linhas: BurstRow[] = [];
+    for (let i = 1; i <= 5; i++) {
+      const r = nascer(estado().ids.length + 1);
+      linhas.push(r);
+      if (r.code === 429) {
+        salvar(withRefusal(estado(), estado().ids.length + 1, 429));
+        break; // insistir depois de um 429 não mede nada novo e só empilha recusa
+      }
+    }
+    return { ...burstReading(linhas), rows: linhas.map((r) => ({ code: r.code, ms: r.ms, created: !!r.scriptId })) };
+  }
+
+  if (step === 'quota') {
+    // C2: continua de onde parou, até o teto DA SONDA. Cada chamada avança o que couber em 6 min e
+    // devolve o parcial — o estado vive na Property justamente porque a execução morre antes da cota.
+    const inicio = Date.now();
+    const ORCAMENTO_MS = 4 * 60 * 1000; // margem contra o corte de 6 min: um corte perderia a contagem
+    let s = estado();
+    while (s.ids.length < P29_MAX_CREATES && s.refusedAt === null && Date.now() - inicio < ORCAMENTO_MS) {
+      const r = nascer(s.ids.length + 1);
+      if (r.code !== 200 || !r.scriptId) {
+        salvar(withRefusal(estado(), s.ids.length + 1, r.code));
+        s = estado();
+        break;
+      }
+      s = estado();
+    }
+    const leitura = quotaReading(s.ids.length, s.refusedAt, s.refusedCode);
+    const cabe = s.ids.length >= P29_MAX_CREATES || s.refusedAt !== null;
+    return { ...leitura, done: cabe, ...(cabe ? {} : { next: 'the 6-minute limit stopped this pass, not the quota: run `./gasclaw poc p29 quota` again to continue' }) };
+  }
+
+  if (step === 'consent') {
+    // C3: NÃO espera pelo dono — lê o que já aconteceu. Esperar dentro da execução queimaria os 6
+    // minutos num relógio, e o clique é dele, no tempo dele.
+    const s = estado();
+    const linhas: ConsentRow[] = s.ids.map((id) => {
+      const c = parseChildren(props.getProperty('CHILDREN')).find((x) => x.scriptId === id);
+      let autorizado = false;
+      try {
+        const probe = c?.url ? fetchChild(c.url) : null;
+        autorizado = authState(c?.url ?? null, probe?.code ?? null, probe?.body ?? null) === 'authorized';
+      } catch {
+        autorizado = false; // erro de rede não é autorização: fail-closed, como o `authState`
+      }
+      return { scriptId: id, deployedAt: s.deployedAt[id] ?? 0, authorized: autorizado };
+    });
+    return consentReading(linhas, Date.now());
+  }
+
+  if (step === 'cleanup') {
+    // C4: tirar do painel NÃO basta. `forgetChild` só apaga a linha da tela, e o projeto continua na
+    // conta do dono — vinte projetos de sonda viram vinte exclusões manuais. Aqui eles vão para a
+    // LIXEIRA do Drive (reversível, e o dono pode restaurar), e só os ids que ESTA sonda criou.
+    const s = estado();
+    const resultado = s.ids.map((id) => {
+      try {
+        DriveApp.getFileById(id).setTrashed(true);
+        forgetChild(id);
+        return { scriptId: id, trashed: true };
+      } catch (e) {
+        return { scriptId: id, trashed: false, error: (e as Error).message.slice(0, 120) };
+      }
+    });
+    const n = resultado.filter((r) => r.trashed).length;
+    props.deleteProperty(P29_PROP);
+    return { pass: n === s.ids.length, trashed: n, of: s.ids.length, children: resultado, reading: `${n} of ${s.ids.length} child projects moved to your Drive trash (reversible) and removed from the panel` };
+  }
+
+  // Ler sem mexer: o passo que responde de onde a sonda continua. Sem aspas na frase de propósito —
+  // aspas dentro de comentário são o ponto cego do detector de idioma, e um falso vermelho ali custa
+  // mais caro do que a frase vale.
+  if (step === 'state') return { pass: true, ...estado() };
+
+  return { pass: false, error: 'steps: burst, quota, consent, cleanup, state' };
+}
+
 const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {
   p1: () => pocUrlFetchTimeout(),
   p2: (step, params = {}) => pocP2(step, params, runIO()),
@@ -2775,6 +2927,7 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p24: (step) => pocP24(step),
   p26: (step) => pocP26(step),
   p28: (step) => pocP28(step),
+  p29: (step) => pocP29(step),
   p6: (step) => pocP6(step, ownerEmail()),
   p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),

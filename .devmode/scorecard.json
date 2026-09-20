@@ -1222,5 +1222,31 @@
         "note": "ADR-042 desfaz a ambiguidade de sub-agente; PROGRESS diz o motivo VERIFICADO de cada pendencia"
       }
     }
+  },
+  {
+    "phase": "F6 Plan (Specify) \u2014 plano do enxame",
+    "summary": "Plano em 6 fases com portoes; 7 achados novos, sendo 3 que invalidam partes do brief (beatsIncumbent nao aceita score livre; k muda de significado em codigo deterministico; o conjunto-juiz de evals nao serve para automation). Nada implementado.",
+    "scores": {
+      "correctness": {
+        "score": 8,
+        "note": "cada afirmacao conferida no codigo (dream.ts:66, judgeSet.ts, main.ts:2158, agentCaps.ts:131, dream.ts:102); D1 e D2 confirmados por leitura, nao por memoria"
+      },
+      "design": {
+        "score": 8,
+        "note": "D1 separado em encadeamento-por-recencia (barato) e selecao-por-aptidao (caro); a bateria de codigo declarada como artefato NOVO com 3 opcoes e gate do dono"
+      },
+      "testing": {
+        "score": 6,
+        "note": "criterio medido e prova por mutacao escritos para cada fase; nenhum teste existe ainda \u2014 e planejar nao e provar"
+      },
+      "safety": {
+        "score": 9,
+        "note": "profundidade 1 e ADR-002 tratados como invariantes; portao humano por filho preservado; nenhum teto alterado sem H1"
+      },
+      "clarity": {
+        "score": 8,
+        "note": "o que NAO da para fazer hoje esta nomeado com motivo; o primeiro passo e um unico item de custo zero"
+      }
+    }
   }
 ]
