@@ -17,10 +17,10 @@ export const P22_FIXED_BUDGET_PCT = 20;
 export const TICKS_PER_DAY = 1_440;
 
 export type P22Input = {
-  /** Tique com agenda vazia: a linha de base desta POC. */
-  idle?: { ms: number };
+  /** Tique com agenda vazia: a linha de base desta POC. `ms` é a MEDIANA de `samples`. */
+  idle?: { ms: number; samples?: number[] };
   /** Tique avaliando `jobs` compromissos, nenhum vencido: o acréscimo que a agenda cobra sempre. */
-  agenda?: { ms: number; jobs: number; due: number };
+  agenda?: { ms: number; jobs: number; due: number; samples?: number[] };
   /**
    * Um despertar sintético completo, do vencimento ao run terminal.
    * `ms` usa passo SINTÉTICO: não há chamada ao modelo, então é o **piso** do custo, não o esperado.
@@ -49,6 +49,26 @@ export type P22Check = { id: 'C1' | 'C2' | 'C3' | 'C4'; pass: boolean; detail: s
 export type P22Result = { poc: 'P22'; pass: boolean; aborted: boolean; checks: P22Check[] };
 
 const ms = (n: number) => `${Math.round(n)} ms`;
+
+/**
+ * Mediana, e não a última amostra.
+ *
+ * Esta POC já foi reprovada uma vez por UMA amostra contaminada (1.448 ms numa faixa real de 517–1.160),
+ * e o conserto foi aplicado À MÃO: quem media colhia seis e calculava a mediana de cabeça. O instrumento
+ * continuava julgando pelo último valor — então o cuidado dependia de alguém lembrar dele. Aqui ele passa
+ * a estar embutido: o tique é ruidoso por natureza (limpeza de órfãos, fila, rede), e um outlier não pode
+ * decidir sozinho se a proatividade cabe.
+ */
+export const median = (xs: readonly number[]): number => {
+  if (xs.length === 0) return NaN;
+  const o = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(o.length / 2);
+  return o.length % 2 ? o[m] : (o[m - 1] + o[m]) / 2;
+};
+
+/** Quantas amostras sustentam o número, e qual foi a faixa. Sem isso um valor sozinho parece mais firme do que é. */
+const amostras = (xs?: number[]) =>
+  xs && xs.length > 1 ? ` (mediana de ${xs.length} amostras, ${Math.round(Math.min(...xs))}–${Math.round(Math.max(...xs))} ms)` : xs && xs.length === 1 ? ' (1 amostra só)' : '';
 const pct = (n: number) => `${(Math.round(n * 100) / 100).toFixed(2)}%`;
 
 export function p22Verdict(input: P22Input): P22Result {
@@ -58,7 +78,7 @@ export function p22Verdict(input: P22Input): P22Result {
     checks.push({
       id: 'C1',
       pass: input.idle.ms < P22_IDLE_MAX_MS,
-      detail: `tique com agenda vazia: ${ms(input.idle.ms)}; teto ${ms(P22_IDLE_MAX_MS)}`,
+      detail: `tique com agenda vazia: ${ms(input.idle.ms)}${amostras(input.idle.samples)}; teto ${ms(P22_IDLE_MAX_MS)}`,
     });
   }
 
@@ -72,7 +92,7 @@ export function p22Verdict(input: P22Input): P22Result {
           ? `a medição foi contaminada: ${due} compromisso(s) venceram durante o tique`
           : jobs <= 0
             ? 'a agenda sintética não foi carregada: nada foi avaliado'
-            : `tique avaliando ${jobs} compromisso(s), nenhum vencido: ${ms(got)}; teto ${ms(P22_AGENDA_MAX_MS)}`,
+            : `tique avaliando ${jobs} compromisso(s), nenhum vencido: ${ms(got)}${amostras(input.agenda.samples)}; teto ${ms(P22_AGENDA_MAX_MS)}`,
     });
   }
 

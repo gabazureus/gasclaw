@@ -1,7 +1,7 @@
 // POC P22: mede no dev o que a proatividade acrescenta à cota de gatilho.
 // Cada sonda grava o próprio cronômetro no Cache, de DENTRO do gatilho (ADR-027 §3): a API de
 // processos chega atrasada demais para deltas curtos e já invalidou amostras da P3.
-import { p22Verdict, type P22Input, type P22Result } from './verdict';
+import { median, p22Verdict, type P22Input, type P22Result } from './verdict';
 
 const PARTIAL = 'poc:p22';
 export const TICK_REQ = 'poc:p22:tick:req';
@@ -37,13 +37,22 @@ function ask<T>(reqKey: string, reqValue: string, resultKey: string): T | null {
   return parseProbe<T>(cache().get(resultKey));
 }
 
-function etapaTick(): { poc: 'P22'; step: 'tick'; pass: boolean; idleMs: number | null; agendaMs: number | null; jobs: number | null; due: number | null } {
+function etapaTick(): { poc: 'P22'; step: 'tick'; pass: boolean; idleMs: number | null; agendaMs: number | null; amostras: number; jobs: number | null; due: number | null } {
   // C1: tique com agenda vazia. C2: mesmo tique com 20 compromissos, nenhum vencendo.
   const idle = ask<TickProbe>(TICK_REQ, '0', TICK_RESULT);
   const agenda = ask<TickProbe>(TICK_REQ, '20', TICK_RESULT);
   const p = partial();
-  if (idle?.ok && typeof idle.ms === 'number') p.idle = { ms: idle.ms };
-  if (agenda?.ok && typeof agenda.ms === 'number') p.agenda = { ms: agenda.ms, jobs: agenda.jobs ?? 0, due: agenda.due ?? 0 };
+  // ACUMULA em vez de sobrescrever: rodar `tick` de novo acrescenta uma amostra, e o veredito decide pela
+  // MEDIANA. Antes, cada execução apagava a anterior e o julgamento saía da última — uma amostra ruidosa
+  // reprovava a POC sozinha, que foi exatamente o que aconteceu (433, 544 e 1000 ms, e o 1000 decidiu).
+  if (idle?.ok && typeof idle.ms === 'number') {
+    const s = [...(p.idle?.samples ?? []), idle.ms];
+    p.idle = { ms: median(s), samples: s };
+  }
+  if (agenda?.ok && typeof agenda.ms === 'number') {
+    const s = [...(p.agenda?.samples ?? []), agenda.ms];
+    p.agenda = { ms: median(s), samples: s, jobs: agenda.jobs ?? 0, due: agenda.due ?? 0 };
+  }
   p.triggers = { count: ScriptApp.getProjectTriggers().length };
   savePartial(p);
   return {
@@ -52,6 +61,7 @@ function etapaTick(): { poc: 'P22'; step: 'tick'; pass: boolean; idleMs: number 
     pass: Boolean(p.idle && p.agenda),
     idleMs: p.idle?.ms ?? null,
     agendaMs: p.agenda?.ms ?? null,
+    amostras: p.idle?.samples?.length ?? 0, // quem mede precisa ver quantas já entraram
     jobs: p.agenda?.jobs ?? null,
     due: p.agenda?.due ?? null,
   };

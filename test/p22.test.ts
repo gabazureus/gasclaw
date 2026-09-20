@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { P22_BASELINE_PCT, P22_QUOTA_MS_PER_DAY, agentsThatFit, p22Verdict, projectedFixedMs, type P22Result } from '../poc/p22-proatividade/verdict';
+import { P22_BASELINE_PCT, P22_QUOTA_MS_PER_DAY, agentsThatFit, p22Verdict, projectedFixedMs, type P22Result, median } from '../poc/p22-proatividade/verdict';
 
 const full = {
   idle: { ms: 700 },
@@ -86,5 +86,47 @@ describe('projeção', () => {
 
   it('devolve zero agentes quando nem um cabe', () => {
     expect(agentsThatFit(750, 600_000, 48)).toBe(0);
+  });
+});
+
+// O defeito do INSTRUMENTO, achado medindo: o veredito julgava pela ÚLTIMA amostra.
+//
+// Aconteceu de verdade: as três amostras do tique com agenda foram 433, 544 e 1000 ms, e o 1000 — sozinho,
+// exatamente no teto — reprovou o C2. A medição anterior já tinha esbarrado nisso (1.448 ms numa faixa real
+// de 517–1.160) e o conserto foi aplicado À MÃO: quem media colhia seis e tirava a mediana de cabeça. O
+// cuidado dependia de alguém lembrar dele. Agora está dentro da ferramenta.
+describe('mediana: uma amostra ruidosa não decide sozinha', () => {
+  it('mediana de ímpar e de par', () => {
+    expect(median([433, 544, 1000])).toBe(544);
+    expect(median([2, 4, 6, 8])).toBe(5);
+    expect(median([7])).toBe(7);
+  });
+
+  it('a ordem de chegada não muda o resultado', () => {
+    expect(median([1000, 433, 544])).toBe(median([433, 1000, 544]));
+  });
+
+  it('sem amostra devolve NaN em vez de zero — zero passaria em qualquer teto', () => {
+    expect(Number.isNaN(median([]))).toBe(true);
+  });
+
+  // O caso real: com a última amostra o C2 reprovava; com a mediana das três, passa.
+  it('as três amostras reais: a última reprovava, a mediana aprova', () => {
+    const r = p22Verdict({ agenda: { ms: median([433, 544, 1000]), samples: [433, 544, 1000], jobs: 20, due: 0 } });
+    const c2 = r.checks.find((c) => c.id === 'C2');
+    expect(c2?.pass).toBe(true);
+    expect(c2?.detail).toContain('544 ms');
+  });
+
+  // Um número sozinho parece mais firme do que é: quem lê precisa ver quantas amostras o sustentam.
+  it('o detalhe declara o número de amostras e a faixa', () => {
+    const r = p22Verdict({ idle: { ms: 730, samples: [518, 730, 966] } });
+    expect(r.checks[0].detail).toContain('mediana de 3 amostras');
+    expect(r.checks[0].detail).toContain('518–966 ms');
+  });
+
+  it('com uma amostra só, ele diz isso em vez de fingir robustez', () => {
+    const r = p22Verdict({ idle: { ms: 730, samples: [730] } });
+    expect(r.checks[0].detail).toContain('1 amostra só');
   });
 });
