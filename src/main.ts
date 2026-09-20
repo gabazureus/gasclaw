@@ -64,7 +64,7 @@ import { generateSuccessor, type SuccessorDeps } from './successor';
 import { CHILD_FORBIDDEN_SCOPES, narrowScopes, OPUS_MODEL } from './codegen';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
-import { allowedTools, toolCatalog } from './tools/registry';
+import { allowedTools, findTool, toolCatalog } from './tools/registry';
 import { coverage, redact } from './trace';
 import { agentInfo, llmInfo, traceDeps } from './traced';
 import { webClick, webSend, webSpace } from './webchat';
@@ -487,12 +487,24 @@ function relayToAgent(from: AgentSpec, to: string, text: string): string {
   return `sent to ${to}. It answers in its own run (${r.runId}); you will not see the answer in this turn.`;
 }
 
+/**
+ * Porta de teste para o `chatDeps` de PRODUÇÃO.
+ *
+ * Existe porque todos os testes do caminho de conversa injetam o próprio `ChatDeps` — então nenhum
+ * deles enxergava o objeto real, que era justamente onde o defeito estava (o `defaultAgent` pegando o
+ * primeiro da lista, arquivado ou não). Um mock que substitui a coisa testada não a testa.
+ */
+export const __test_chatDeps = (): ChatDeps => chatDeps();
+
 function chatDeps(): ChatDeps {
   return {
     enabled: store.isEnabled,
     owner: ownerEmail,
     apiKey: store.getApiKey,
-    defaultAgent: () => store.listAgents()[0] ?? null,
+    // `chatDeps` alimenta os TRÊS caminhos de conversa — Chat síncrono, assíncrono e a tela. Enquanto
+    // esta linha pegava o primeiro da lista, o antecessor ARQUIVADO continuava sendo com quem o dono
+    // falava. Duas mensagens de commit minhas já disseram que isso estava consertado antes de estar.
+    defaultAgent,
     load: loadAgentForTurn,
     // ADR-024: a conversa passa a morar na pasta do agente, com compactação por resumo
     history: (k) => sessionMessages(sessionIO(folderOf(k)).load(k)),
@@ -719,7 +731,9 @@ function stepDeps(budgetMs = STEP_BUDGET_MS, io = runIO()): StepDeps {
         // trabalhando. Ou a ferramenta está na LISTA que o dono aprovou, e segue; ou ele FALHA e registra.
         if (r.proactive && turn.pending?.kind === 'approval') {
           const lista = autoListOf(r.folderId);
-          const v = mayAutoApprove(turn.pending.name, lista, true);
+          // O NÍVEL da tool vai junto: `always` não se auto-aprova, esteja o que estiver na lista.
+          const nivel = findTool(kit.tools, turn.pending.name)?.approval;
+          const v = mayAutoApprove(turn.pending.name, lista, true, nivel);
           const bloqueio = onProactiveBlock(turn.pending.name, true);
           if (!v.auto && bloqueio.status === 'failed') throw new Error(`${bloqueio.reason} (${v.reason})`);
           // Na lista: segue o passo com a decisão já tomada, pelo MESMO caminho de retomada que o
@@ -754,6 +768,16 @@ function screenApproval(io: RunIO, r: DurableRun, now: number, knownToken?: stri
   if (r.status !== 'waiting' || r.pending?.kind !== 'approval') return { run: r };
   if (knownToken && r.approval?.tokenHash === hashToken(knownToken) && now >= r.approval.issuedAt && now < r.approval.expiresAt) return { run: r, token: knownToken };
   if (r.approval && now >= r.approval.issuedAt && now < r.approval.expiresAt) return { run: r };
+  // CONFERE ANTES DE RE-ASSINAR (revisão de 2026-09-20, o buraco mais grave dos três ciclos).
+  //
+  // `io.save` recalcula a assinatura a partir do objeto que recebe. Emitir credencial aqui sem
+  // conferir fazia do motor um ORÁCULO DE ASSINATURA: quem tem escrita na pasta compartilhável
+  // editava o arquivo do run — trocava o destinatário do `gmail.send`, ou apagava `originAgent` para
+  // `isOwner` virar verdadeiro —, o dono apenas ABRIA O PAINEL (nem precisava clicar), e o estado
+  // forjado saía assinado. Depois disso `decide` conferia a integridade e PASSAVA, porque a
+  // assinatura já era a do atacante. A defesa anti-adulteração virava teatro: conferia um selo que o
+  // próprio motor tinha acabado de carimbar sobre o que o atacante escreveu.
+  if (!io.untampered(r)) return { run: r };
   const token = knownToken ?? newToken();
   const next = { ...r, approval: issueGrant(r.pending, r.user, hashToken(token), now), updatedAt: now };
   io.save(next);
