@@ -16,7 +16,7 @@
 | 1 | Capacidades por etiqueta (`dream`/`succeed`/`create`/`initiative`) | ✅ | No painel, aprovadas uma a uma, recusando o que não existe e dizendo o que falta |
 | 2 | `create` singleton | ✅ | Por forma do dado: uma Property, um `folderId`. Dois criadores não são representáveis |
 | 3 | Ciclo de vida (ativo → arquivado) | ✅ | Arquivado não roda, não é alvo de gatilho, derruba o que está em voo; chats legíveis |
-| 4 | Congelamento de emergência | ✅ | Chave global: zera capacidades, mantém os agentes atendendo |
+| 4 | Congelamento de emergência | ✅ | **Fiado nesta rodada** — estava órfão: `CAPS_ENABLED` só aparecia num comentário e `effectiveCapabilities` tinha 0 no bundle. Agora vence toda aprovação individual, barra a sucessão e **aparece no painel** |
 | 5 | Projetos filhos: criar, escrever, publicar | ✅ | **P24**: 10.754 + 1.122 + 868 ms, sem clasp |
 | 6 | Isolamento de escopo entre projetos | ✅ | Filho com **1 escopo** contra 17 do pai, conferido por leitura de volta |
 | 7 | Portão humano por especialista | ✅ | **Medido**: `Authorization needed`. Um clique cada, exigido pela plataforma |
@@ -33,7 +33,7 @@
 | 18 | Organismo: contagem instrumentada | ✅ | **Ligado**: `failuresFrom` no passo do run durável, provado no bundle. Repetição no mesmo turno conta 1×, `deadline` não conta, eval não alimenta |
 | 19 | Entrega da chave ao filho | ❌ | O núcleo está certo, mas **`KEYSEC:<filho>` nunca é ESCRITO** — só lido. `cliAuthorized(null, …)` é sempre falso, logo a entrega **sempre recusa**. E o filho, sendo outro projeto, **não tem rota HTTP** para pedir |
 | 20 | Campos declarados do agente | ✅ | `.gasclaw/fields.json` declara, painel decide, servidor valida. Órfão preservado e mostrado |
-| 21 | Teto familiar de gasto | ⚠️ | O cálculo e o `capAction` estão certos e na tela. Mas a ação é **só informativa**: nada no motor lê `stop-creating`/`freeze` para de fato parar de criar ou congelar |
+| 21 | Teto familiar de gasto | ✅ | **Age**: `writeSuccessor` lê `capAction` e recusa em `stop-creating` e em `freeze`. Nunca corta a chave — isso pararia o pai também (ADR-040) |
 | 22 | Personas e repasse | ✅ | Tool `persona` no registro + `runPersona` no motor, **chamados no bundle**. Interseção dupla; só ferramentas sem aprovação, porque de dentro de uma tool não há caminho até o card |
 | 23 | **Sucessor como CÓDIGO NOVO (Opus 5)** | ✅ | `codegen.ts` + `successor.ts`: crivo fechado (sem `eval`, sem token OAuth, sem a API do Apps Script, sem chave no fonte), escopos **estritamente menores** que os do motor, teto diário agregado, e o filho nasce precisando do consentimento do dono |
 
@@ -55,8 +55,8 @@
 | 30 | Limiar do aglomerado | Está em 3 ocorrências, **marcado no código como palpite**, não medida | dado real acumulando (24) |
 | ~~31~~ | ✅ **Fiar `subagent.ts` (personas)** | Órfão, 0 no bundle. É também o **quarto controle** do item 16: a interseção de ferramentas no repasse | nada |
 | ~~32~~ | ✅ **Ferramenta `agent.*` no registro fechado** | Não existe nenhuma. Os controles do item 16 protegem um mecanismo que **ainda não foi construído** | 31 (a interseção precisa existir antes do repasse) |
-| 33 | Fechar a entrega da chave | `KEYSEC:<filho>` nunca é escrito, e o filho não tem rota HTTP para pedir. Hoje a entrega **sempre recusa** | nada |
-| 34 | Teto familiar com **efeito** | `capAction` informa e nada age: ninguém lê `stop-creating`/`freeze` | nada |
+| 33 | Fechar a entrega da chave | 🔨 **Metade feita**: o segredo passou a ser escrito e a rota `childkey` existe. A outra metade é uma **tensão entre três regras nossas** (ADR-040 puxa a chave · web app `MYSELF` exige token do dono · o crivo da ADR-041 proíbe `getOAuthToken` no filho). A **P27** mede se o token do filho é aceito — sem ela, não se afirma | P27 |
+| ~~34~~ | ✅ **Teto familiar com efeito** | `capAction` informa e nada age: ninguém lê `stop-creating`/`freeze` | nada |
 | 35 | Tela da sucessão e da linhagem | `signMandate`, `passBaton`, `lineage` e `writeSuccessor` existem no servidor; o painel só mostra o último | nada |
 | 36 | Tela do ciclo de sonho (DreamBoard) | `startAgentDream` e `agentDream` existem; falta a tela com diff e placar | nada |
 | 37 | Vocabulário "sub-agente" | Significa duas coisas: declaração no run do pai (ADR-039) e projeto filho com pasta. Renomear a primeira para **persona** | nada |

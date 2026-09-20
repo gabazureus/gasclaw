@@ -742,12 +742,18 @@
         const fs = document.createElement('fieldset');
         fs.append(el('legend', { textContent: 'What this agent may do' }));
         fs.append(el('p', { className: 'muted', textContent: 'Everything here starts off. Turning one on does not turn on another.' }));
+        // A chave de emergência precisa APARECER. Uma chave que ninguém vê se está ligada é pior que
+        // não ter: congelado, a tela mostraria tudo desligado e a pessoa procuraria o defeito no lugar
+        // errado. O aviso vem ANTES das caixinhas, porque é ele que explica o que elas estão mostrando.
+        if (caps.frozen) fs.append(el('p', { className: 'err', textContent: caps.frozenNote }));
         caps.capabilities.forEach((c) => {
           const linha = el('div', { className: 'tool' });
           const cb = document.createElement('input');
           cb.type = 'checkbox';
           cb.id = 'cap-' + folderId + '-' + c.name;
-          cb.checked = c.on;
+          // A caixinha reflete o que o DONO aprovou; o efetivo (congelado ou não) vira etiqueta ao lado.
+          // Desmarcar a caixinha no congelamento faria a pessoa achar que perdeu a aprovação dela.
+          cb.checked = c.approved === undefined ? c.on : c.approved;
           cb.disabled = !c.available;
           cb.onchange = () => {
             cb.disabled = true;
@@ -755,7 +761,7 @@
               .then(() => { $('msg').textContent = c.label + (cb.checked ? ' is on.' : ' is off.'); showAgentSettings(folderId, holder); })
               .catch((e) => { cb.checked = !cb.checked; cb.disabled = false; $('msg').className = 'err'; $('msg').textContent = e.message; });
           };
-          const rot = el('label', { htmlFor: cb.id, textContent: c.label + (c.available ? '' : ' (not available yet)') });
+          const rot = el('label', { htmlFor: cb.id, textContent: c.label + (c.available ? '' : ' (not available yet)') + (caps.frozen && c.approved ? ' — frozen right now' : '') });
           linha.append(cb, rot);
           fs.append(linha, el('p', { className: 'muted', textContent: c.what }));
           // Dizer O QUE FALTA, não só que falta: sem isso a pessoa fica sem saber se é bug, permissão

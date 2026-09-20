@@ -54,7 +54,7 @@ import * as observe from './observe';
 import * as runlog from './runlog';
 import {
   CAPABILITIES, can, canSucceed, capsAfterSuccession, creatorOf, DEFAULT_INTERVAL_MS, forgetAgentProps, intervalOf, mayGenerate,
-  nextGeneration, parseCapabilities, parseStatus, setCreator, type Capability, type LineageEntry,
+  capsEnabled, effectiveCapabilities, nextGeneration, parseCapabilities, parseStatus, setCreator, type Capability, type LineageEntry,
 } from './agentCaps';
 import { CODEGEN_BUDGET_USD, CODEGEN_DAILY_CAP_USD, mayWriteProject } from './dream';
 import { generateSuccessor, type SuccessorDeps } from './successor';
@@ -1231,11 +1231,20 @@ const capsProp = (folderId: string) => `CAP:${folderId}`;
 export function agentCapabilities(folderId: string) {
   assertOwner();
   const props = PropertiesService.getScriptProperties();
-  const caps = parseCapabilities(props.getProperty(capsProp(folderId)));
+  const aprovadas = parseCapabilities(props.getProperty(capsProp(folderId)));
+  // ITEM 4, QUE A AUDITORIA DERRUBOU JUNTO COM OS OUTROS: `effectiveCapabilities` tinha teste verde,
+  // ZERO importadores, e `CAPS_ENABLED` só aparecia num COMENTÁRIO. A chave de emergência não existia.
+  // Uma chave que ninguém vê se está ligada é pior que não ter: produz confiança falsa nos dois sentidos.
+  const congelado = !capsEnabled(props.getProperty('CAPS_ENABLED'));
+  const caps = effectiveCapabilities(aprovadas, props.getProperty('CAPS_ENABLED'));
   const creator = creatorOf(props.getProperty('CREATOR'), store.listAgents());
   return {
     folderId,
-    capabilities: CAPABILITIES.map((c) => ({ name: c, on: can(caps, c), label: CAP_TEXT[c].label, what: CAP_TEXT[c].what, missing: CAP_TEXT[c].missing, available: CAP_TEXT[c].missing === null })),
+    // `on` é o EFETIVO (o que vale agora); `approved` é o que o dono marcou. Mostrar só um dos dois
+    // esconderia metade do estado: congelado, a tela mostraria tudo desligado sem dizer por quê.
+    capabilities: CAPABILITIES.map((c) => ({ name: c, on: can(caps, c), approved: can(aprovadas, c), label: CAP_TEXT[c].label, what: CAP_TEXT[c].what, missing: CAP_TEXT[c].missing, available: CAP_TEXT[c].missing === null })),
+    frozen: congelado,
+    frozenNote: congelado ? 'Every capability is frozen by the emergency switch. The agents keep answering; nothing evolves, creates or succeeds until it is turned back on.' : '',
     creator,
     isCreator: creator === folderId,
   };
@@ -1651,7 +1660,19 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
   const id = String(folderId ?? '').trim();
   if (!id) throw new Error('unknown agent');
 
+  // ITEM 34 — O TETO QUE AGE. `capAction` devolvia `stop-creating`/`freeze` e NINGUÉM lia: o painel
+  // informava e o motor seguia criando. Aqui ele passa a barrar, e nas DUAS faixas: `stop-creating`
+  // para de criar antes de congelar, e é essa ordem que evita a parada brusca.
+  //
+  // O que ele NÃO faz, e está na ADR-040: cortar a chave. Cortar pararia o PAI também, e derrubar o
+  // agente do dono por causa de um filho gastão seria trocar um problema por outro maior.
+  const gasto = familySpendQuiet();
+  const acao = capAction(gasto);
+  if (acao !== 'ok') return { ok: false as const, reason: `the family spend cap says ${acao}: children have used up to US$ ${(gasto ?? 0).toFixed(2)} of US$ ${FAMILY_CAP_USD.toFixed(2)}`, costUsd: 0 };
+
   // A capacidade e o estado vêm primeiro: um agente arquivado ou sem `succeed` não gera nada.
+  const congelamento = capsEnabled(props.getProperty('CAPS_ENABLED'));
+  if (!congelamento) return { ok: false as const, reason: 'every capability is frozen by the emergency switch', costUsd: 0 };
   const v = canSucceed(parseCapabilities(props.getProperty(`CAP:${id}`)), parseStatus(props.getProperty(`STATUS:${id}`)));
   if (!v.ok) return { ok: false as const, reason: v.reason, costUsd: 0 };
   const intervalo = mayGenerateNow(id);
@@ -1767,6 +1788,22 @@ const readDelivery = (child: string): KeyDelivery | null => {
  * CHAVE, e a família inteira usa a mesma. Então `família − pai = filhos`. É LIMITE SUPERIOR, não medida —
  * qualquer outra coisa usando a chave entra na conta, e o número tem 10 min de defasagem.
  */
+/**
+ * O gasto dos filhos, sem derrubar nada quando a leitura falha.
+ *
+ * `null` significa "não sei", e `capAction(null)` é `ok` de propósito: o número é LIMITE SUPERIOR, e
+ * punir sobre um limite superior indisponível congelaria o agente do dono por causa de um dado que
+ * não existe. Não punir por suspeita é a mesma regra do `authState`.
+ */
+function familySpendQuiet(): number | null {
+  try {
+    const c = observe.usageView(store.getApiKey()).check;
+    return c.informed === null ? null : childrenSpendUpperBound(c.informed, c.measured);
+  } catch {
+    return null;
+  }
+}
+
 export function familySpend() {
   assertOwner();
   // Reusa a conferência que já existe (`usageView`) em vez de recalcular: `measured` é o que o gasclaw
