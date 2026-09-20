@@ -1,7 +1,7 @@
 import { namesOf, scenarioMd, SCENARIOS } from './judgeSet';
 import { startDream, tickDream, type DreamDeps } from './dreamTick';
 import { dreamIO } from './dreamStore';
-import { failProp, parseFailures, serializeFailures, withFailure } from './failureLog';
+import { failProp, failuresFrom, parseFailures, serializeFailures, withFailure } from './failureLog';
 import { mergeAcrossGenerations, originLabel, parseSchema, validateValues, type ConfigField } from './agentConfig';
 import { afterDelivery, armDelivery, capAction, childrenSpendUpperBound, deliverySpan, FAMILY_CAP_USD, FAMILY_NOTE, mayDeliverKey, rearmDelivery, type KeyDelivery } from './family';
 import { cluster, hasMaterial, type Failure } from './dreamCycle';
@@ -492,6 +492,14 @@ function stepDeps(budgetMs = STEP_BUDGET_MS, io = runIO()): StepDeps {
           d.saveHistory(r.session, turn.history);
           d.compact?.(r.session, (m) => llm(m));
         }
+        // ITEM 24 — A LIGAÇÃO QUE FALTAVA. A auditoria de 2026-09-20 encontrou `recordFailure` com ZERO
+        // call sites: o contador existia, tinha teste verde, e nada o alimentava. Eu vinha lendo o trace
+        // vazio como "falta uso real do agente"; era o contador que nunca tinha sido ligado — e foi isso
+        // que travou o ciclo de sonho esperando um dado que não tinha como chegar.
+        //
+        // Aqui, e não no `agent.ts`: contar é efeito em Script Properties, e o turno é núcleo.
+        // Só quando o passo NÃO está pendente: um run esperando o clique do dono não falhou, está esperando.
+        if (!turn.pending) countTurnFailures(r.folderId, turn);
         t.mark('reply');
         return { turn, usd: t.end({ answer: turn.text }).cost ?? 0 };
       } catch (err) {
@@ -1780,6 +1788,21 @@ function dreamDeps(): DreamDeps {
  * mal desenhado — é que não havia o que agrupar. Instrumentar primeiro e deixar acumular foi a decisão
  * do dono, e é o que esta função implementa: o contador nasce agora, o criador nasce quando houver dado.
  */
+/**
+ * Conta o que deu errado num turno. Chamada pelo passo do run durável — é ESTA a fiação do item 24.
+ *
+ * Nunca lança: um defeito na contagem não pode derrubar a resposta ao dono. Falhar em contar uma falha
+ * é ruim; falhar em responder por causa disso seria pior, e trocaria um problema de dado por um de
+ * produto. O `warn` deixa rastro para não virar silêncio.
+ */
+function countTurnFailures(folderId: string, turn: { events: readonly { name: string; status: string }[]; text: string; stopped?: 'steps' | 'deadline' }): void {
+  try {
+    for (const f of failuresFrom(turn, Date.now())) recordFailure(folderId, f.kind, f.tool);
+  } catch (err) {
+    console.warn(`countTurnFailures: ${redactMsg(err)}`);
+  }
+}
+
 export function recordFailure(folderId: string, kind: Failure['kind'], tool?: string) {
   const props = PropertiesService.getScriptProperties();
   const chave = failProp(folderId);

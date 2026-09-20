@@ -8,7 +8,7 @@
 // que escrevesse na planilha e depois a lesse para justificar criar outro agente teria caneta sobre a
 // própria decisão.
 import { describe, expect, test } from 'vitest';
-import { countByKind, failProp, parseFailures, serializeFailures, withFailure } from '../src/failureLog';
+import { countByKind, failProp, failuresFrom, parseFailures, serializeFailures, withFailure } from '../src/failureLog';
 import type { Failure } from '../src/dreamCycle';
 
 const AGORA = 1_700_000_000_000;
@@ -76,4 +76,84 @@ test('a chave é por agente: um agente não lê a contagem do outro', () => {
 
 test('contagem por tipo, para a tela', () => {
   expect(countByKind([f(), f(), f({ kind: 'no_answer' })])).toEqual({ refused_tool: 2, no_answer: 1 });
+});
+
+// ---------- O que a auditoria de 2026-09-20 encontrou ----------
+//
+// `recordFailure` existia, tinha teste verde e NINGUÉM o chamava: zero call sites no motor inteiro.
+// Eu vinha lendo o trace vazio como "falta uso real do agente". Não era: o contador nunca foi ligado.
+// Estes testes existem para que a leitura de um turno em falha vire contagem, e para que a contagem
+// seja do TAMANHO do problema — não do número de vezes que o modelo insistiu nele.
+describe('failuresFrom: o turno que acabou mal vira contagem', () => {
+  const now = 1_700_000_000_000;
+
+  test('turno limpo não conta nada', () => {
+    expect(failuresFrom({ events: [{ name: 'now', status: 'ok' }], text: 'pronto' }, now)).toEqual([]);
+  });
+
+  test.each([
+    ['refused', 'refused_tool'],
+    ['denied', 'denied'],
+    ['error', 'tool_error'],
+  ])('status %s vira %s, com o nome da ferramenta', (status, kind) => {
+    const r = failuresFrom({ events: [{ name: 'calendar.list', status }], text: 'x' }, now);
+    expect(r).toEqual([{ at: now, kind, tool: 'calendar.list' }]);
+  });
+
+  // Um turno que gastou os passos é UM problema, não um por passo.
+  test('limite de passos vira uma falha sem ferramenta', () => {
+    const r = failuresFrom({ events: [], text: 'Parei', stopped: 'steps' }, now);
+    expect(r).toEqual([{ at: now, kind: 'step_limit' }]);
+  });
+
+  test('prazo estourado NÃO é step_limit: são causas diferentes', () => {
+    expect(failuresFrom({ events: [], text: 'x', stopped: 'deadline' }, now)).toEqual([]);
+  });
+
+  test('turno sem resposta conta como no_answer', () => {
+    expect(failuresFrom({ events: [], text: '   ' }, now)).toEqual([{ at: now, kind: 'no_answer' }]);
+  });
+
+  // A DECISÃO que vale o teste: o modelo insistindo cinco vezes na mesma ferramenta recusada é UM
+  // problema. Contar cinco inflaria o aglomerado a partir de um único run, e o limiar de 3 viraria
+  // ruído — um agente teimoso pareceria um agente com um problema crônico.
+  test('a mesma (falha, ferramenta) repetida no turno conta UMA vez', () => {
+    const eventos = [
+      { name: 'gmail.send', status: 'refused' },
+      { name: 'gmail.send', status: 'refused' },
+      { name: 'gmail.send', status: 'refused' },
+    ];
+    expect(failuresFrom({ events: eventos, text: 'x' }, now)).toEqual([{ at: now, kind: 'refused_tool', tool: 'gmail.send' }]);
+  });
+
+  test('ferramentas diferentes com a mesma falha contam separado', () => {
+    const r = failuresFrom({ events: [{ name: 'a', status: 'refused' }, { name: 'b', status: 'refused' }], text: 'x' }, now);
+    expect(r).toHaveLength(2);
+  });
+
+  // `pending` e `approved` não são falha: um é espera pelo dono, o outro é sucesso COM clique.
+  test.each(['pending', 'approved', 'ok'])('status %s não conta como falha', (status) => {
+    expect(failuresFrom({ events: [{ name: 'x', status }], text: 'ok' }, now)).toEqual([]);
+  });
+});
+
+// A auditoria de 2026-09-20 derrubou cinco itens com UM critério: algum módulo importa isto, e o
+// símbolo aparece no bundle? Global exportado não é fiação. Este teste faz esse critério valer para o
+// item 24, para que ele não possa regredir em silêncio de novo.
+describe('o contador está LIGADO, não só exportado', () => {
+  test('o passo do run durável conta as falhas do turno', async () => {
+    const main = (await import('node:fs')).readFileSync('src/main.ts', 'utf8');
+    expect(main).toContain('countTurnFailures(r.folderId, turn)');
+    // Só quando não está pendente: um run esperando o clique do dono não falhou, está esperando.
+    expect(main).toContain('if (!turn.pending) countTurnFailures');
+    expect(main).toMatch(/import \{[^}]*failuresFrom[^}]*\} from '\.\/failureLog'/);
+  });
+
+  // Contar eval como falha do agente encheria o aglomerado de runs de TESTE, e o ciclo de sonho
+  // passaria a consertar problemas que só existem na bancada.
+  test('o caminho de eval NÃO alimenta o contador', async () => {
+    const evalEntry = (await import('node:fs')).readFileSync('src/evalEntry.ts', 'utf8');
+    expect(evalEntry).not.toContain('recordFailure');
+    expect(evalEntry).not.toContain('failuresFrom');
+  });
 });

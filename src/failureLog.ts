@@ -71,3 +71,51 @@ export function serializeFailures(list: readonly Failure[]): string {
 /** Quantas falhas de cada tipo, para a tela. Só leitura, sem decisão. */
 export const countByKind = (list: readonly Failure[]): Record<string, number> =>
   list.reduce<Record<string, number>>((acc, f) => ({ ...acc, [f.kind]: (acc[f.kind] ?? 0) + 1 }), {});
+
+// ---------- A LIGAÇÃO que faltava (auditoria de 2026-09-20) ----------
+//
+// `recordFailure` existia, tinha teste verde e NINGUÉM o chamava: zero call sites no motor inteiro. Eu
+// vinha lendo o trace vazio como "falta uso real do agente" — e a leitura estava errada. O contador
+// nunca tinha sido ligado, e foi isso que travou o ciclo de sonho esperando um dado que não podia chegar.
+//
+// Esta função é pura de propósito: ela LÊ o resultado de um turno e devolve o que contar. Quem grava é
+// a casca (`main.ts`), porque `agent.ts` não pode tocar em Script Properties sem virar casca também.
+
+/** O bastante de um turno para saber se ele deu errado. Estrutural, para não amarrar ao `TurnResult`. */
+export type TurnOutcome = {
+  events: readonly { name: string; status: string }[];
+  text: string;
+  stopped?: 'steps' | 'deadline';
+};
+
+const STATUS_KIND: Record<string, FailureKind> = { refused: 'refused_tool', denied: 'denied', error: 'tool_error' };
+
+/**
+ * O que contar de um turno. Nada, quando ele foi bem.
+ *
+ * **A decisão que vale o comentário:** a mesma (falha, ferramenta) repetida no turno conta UMA vez.
+ * O modelo insistindo cinco vezes na ferramenta recusada é UM problema, não cinco. Contar cinco
+ * inflaria o aglomerado a partir de um único run, e o limiar de 3 viraria ruído — um agente teimoso
+ * apareceria como um agente com problema crônico, que é exatamente a leitura errada que o aglomerado
+ * existe para evitar.
+ *
+ * `deadline` NÃO conta: estourar o prazo de 6 min do Google é limite de plataforma, não defeito do
+ * agente, e o run durável retoma. Misturá-lo com `step_limit` faria o aglomerado apontar para o
+ * prompt quando o problema é a cota.
+ */
+export function failuresFrom(t: TurnOutcome, now: number): Failure[] {
+  const out: Failure[] = [];
+  const vistos = new Set<string>();
+  for (const e of t.events ?? []) {
+    const kind = STATUS_KIND[e.status];
+    if (!kind) continue; // ok, approved e pending não são falha: sucesso, sucesso com clique, e espera
+    const chave = `${kind}:${e.name}`;
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    out.push({ at: now, kind, ...(e.name ? { tool: e.name } : {}) });
+  }
+  if (t.stopped === 'steps') out.push({ at: now, kind: 'step_limit' });
+  // Turno sem texto é turno sem resposta — e é a falha mais invisível de todas, porque não lança nada.
+  else if (!String(t.text ?? '').trim()) out.push({ at: now, kind: 'no_answer' });
+  return out;
+}
