@@ -2465,7 +2465,87 @@ function pocP27(step?: string): unknown {
     const recusou = /was not created by this agent|wrong or missing child secret|already been delivered/i.test(body);
     return { pass: recusou, ms: Date.now() - t0, code: res.getResponseCode(), body: body.slice(0, 300), reading: recusou ? 'the route exists and refuses an unknown child' : 'the route did NOT refuse — read the body' };
   }
-  return { pass: false, error: 'steps: secret, route' };
+  if (step === 'child') {
+    // C3, A PERGUNTA QUE DECIDE O ITEM 33: um token do FILHO é aceito pelo web app `MYSELF` do motor?
+    //
+    // Reusa o filho que a P24 já criou e que o dono já autorizou — não cria projeto novo e não gasta
+    // Opus. O que muda é o CÓDIGO dele: ele passa a chamar a rota `childkey` com o próprio token.
+    //
+    // O manifesto do filho ganha `script.external_request` (para poder chamar) e continua SEM
+    // `script.projects` — `CHILD_FORBIDDEN_SCOPES` garante isso, e é essa garantia que sustenta o
+    // argumento de que o token do filho não é 'a chave da casa'. Um escopo novo no manifesto exige um
+    // NOVO CONSENTIMENTO do dono: a plataforma cobra o clique, e é bom que cobre.
+    const child = props.getProperty('P24_CHILD');
+    if (!child) return { pass: false, error: 'the P24 child does not exist: run `poc p24 create` first' };
+    const own = ScriptApp.getScriptId();
+    const guard = mayWriteProject(child, own);
+    if (!guard.ok) return { pass: false, error: guard.reason };
+
+    const token = ScriptApp.getOAuthToken();
+    const api = 'https://script.googleapis.com/v1/projects';
+    const call = (url: string, method: GoogleAppsScript.URL_Fetch.HttpMethod, payload?: unknown) => {
+      const res = UrlFetchApp.fetch(url, { method, contentType: 'application/json', headers: { Authorization: `Bearer ${token}` }, ...(payload ? { payload: JSON.stringify(payload) } : {}), muteHttpExceptions: true });
+      return { code: res.getResponseCode(), full: res.getContentText() };
+    };
+
+    // Um segredo de verdade para este filho, gravado do nosso lado: sem ele a rota recusaria por
+    // autenticação e a medição responderia a pergunta ERRADA (mediria o segredo, não o token).
+    const segredo = childSecret();
+    props.setProperty(`KEYSEC:${child}`, segredo);
+    props.setProperty(deliveryProp(child), JSON.stringify(armDelivery(child)));
+
+    const motor = ScriptApp.getService().getUrl();
+    // O filho NÃO recebe a chave do OpenRouter no fonte: ele recebe o SEGREDO, que só serve para pedir
+    // a chave uma vez. É essa a diferença que a ADR-040 protege.
+    const fonte = [
+      'function doGet() {',
+      `  var r = UrlFetchApp.fetch(${JSON.stringify(motor)}, {`,
+      "    method: 'post',",
+      `    payload: { action: 'childkey', child: ${JSON.stringify(child)}, secret: ${JSON.stringify(segredo)} },`,
+      "    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },",
+      '    muteHttpExceptions: true,',
+      '  });',
+      "  return ContentService.createTextOutput(r.getResponseCode() + '|' + r.getContentText().slice(0, 200));",
+      '}',
+      '',
+    ].join('\n');
+    const files = [
+      { name: 'appsscript', type: 'JSON', source: JSON.stringify({ timeZone: 'America/Sao_Paulo', runtimeVersion: 'V8', oauthScopes: ['https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/script.external_request'], webapp: { executeAs: 'USER_DEPLOYING', access: 'MYSELF' } }) },
+      { name: 'Code', type: 'SERVER_JS', source: fonte },
+    ];
+    const w = call(`${api}/${child}/content`, 'put', { files });
+    if (w.code !== 200) return { pass: false, error: `could not write the child: HTTP ${w.code}`, body: w.full.slice(0, 200) };
+    const ver = call(`${api}/${child}/versions`, 'post', { description: 'p27' });
+    const dep = call(`${api}/${child}/deployments`, 'post', { manifestFileName: 'appsscript', description: 'p27', ...(ver.code === 200 ? { versionNumber: (JSON.parse(ver.full) as { versionNumber?: number }).versionNumber } : {}) });
+    let url: string | null = null;
+    try {
+      url = ((JSON.parse(dep.full) as { entryPoints?: { webApp?: { url?: string } }[] }).entryPoints ?? []).map((e) => e.webApp?.url).find((u) => !!u) ?? null;
+    } catch {
+      url = null;
+    }
+    url = url ?? props.getProperty('P24_URL');
+    if (!url) return { pass: false, error: 'no web app URL for the child', version: ver.code, deployment: dep.code };
+
+    const hit = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { Authorization: `Bearer ${token}` } });
+    const corpo = hit.getContentText();
+    const chegou = /"ok":true/.test(corpo) || /\|.*sk-or/.test(corpo);
+    const precisaConsentir = /Authorization needed|enable_granular_consent/i.test(corpo);
+    return {
+      // `pass` afirma SÓ que o filho conseguiu falar com o motor. Se ele precisa de um novo clique,
+      // isso NÃO é falha do desenho — é a plataforma cobrando pelo escopo novo, e o dono decide.
+      pass: chegou,
+      needsNewConsent: precisaConsentir,
+      code: hit.getResponseCode(),
+      body: corpo.slice(0, 300),
+      reading: chegou
+        ? "the child's OWN token was accepted by the engine's MYSELF web app: the pull design works, and the ADR-041 rule can carve out the child"
+        : precisaConsentir
+          ? 'the child needs a new consent click: its manifest gained script.external_request. Authorize it and run this step again'
+          : 'the child could NOT reach the engine — read `body` before concluding anything',
+    };
+  }
+
+  return { pass: false, error: 'steps: secret, route, child' };
 }
 
 /**
