@@ -1,4 +1,8 @@
 import { namesOf, scenarioMd, SCENARIOS } from './judgeSet';
+import { startDream, tickDream, type DreamDeps } from './dreamTick';
+import { dreamIO } from './dreamStore';
+import { failProp, parseFailures, serializeFailures, withFailure } from './failureLog';
+import { cluster, hasMaterial, type Failure } from './dreamCycle';
 import { AUTH_LABEL, authState, KIND_LABEL, KIND_WHAT, parseChildren, serializeChildren, withoutChild, type Child } from './children';
 import { pocP10 } from '../poc/p10-editor/harness';
 import { pocP14 } from '../poc/p14-trace/harness';
@@ -1300,7 +1304,100 @@ export function drainRuns() {
   let drained: ReturnType<typeof observe.drain> | null = null;
   isolado('drain', () => void (drained = observe.drain()));
   isolado('runs', () => workRuns()); // gravar o trace em lote e avançar o run durável (ADR-027)
+  // O sonho é o ÚLTIMO e toma no máximo 5 passos: o trabalho que o dono pediu vem primeiro, sempre.
+  isolado('dream', () => {
+    const d = dreamDeps();
+    for (const a of store.listAgents()) tickDream(a.folderId, d);
+  });
   return drained ?? { n: 0, ms: 0, oldest: null };
+}
+
+/**
+ * O que o sonho precisa do mundo. Tudo que é decisão mora no núcleo; aqui só se entrega o Drive, o
+ * modelo e o relógio.
+ *
+ * O gerador roda em MODELO GRÁTIS por decisão (D4): o ciclo de sonho não gasta dinheiro para descobrir
+ * se o laço funciona. A geração de CÓDIGO é a exceção declarada, e não passa por aqui.
+ */
+function dreamDeps(): DreamDeps {
+  const key = store.getApiKey();
+  const tz = Session.getScriptTimeZone();
+  return {
+    spec: (folderId) => withAccess(loadAgent(folderId), approvedOf(folderId)),
+    env: (folderId) => ({
+      owner: ownerEmail(),
+      apiKey: key,
+      agent: () => withAccess(loadAgent(folderId), approvedOf(folderId)),
+      folderId,
+      memory: memoryIO(folderId),
+      now: () => Utilities.formatDate(new Date(), tz, "yyyy-MM-dd'T'HH:mm:ssXXX (EEEE)") + ` fuso ${tz}`,
+      llm: (m, messages, defs) => complete(key ?? '', m, messages, 1000, undefined, defs),
+      clock: Date.now,
+      tickets: cacheTickets(),
+      newToken,
+      skill: (name) => skillsIO(folderId).body(name),
+      bootstrap: bootstrapIO(folderId),
+      google: gasGoogle,
+      zone: zone(),
+    }),
+    generate: (messages, temperature) => {
+      const r = runFree((id) => complete(key ?? '', id, messages, 2000, undefined, undefined, temperature), { tools: false });
+      return typeof r.text === 'string' ? r.text : '';
+    },
+    // CONTAGEM sobre o trace, nunca impressão do modelo: "7 runs falharam tocando agenda" é um inteiro;
+    // "percebi que você anda precisando de ajuda" não é evidência de nada. Sem material o ciclo não roda.
+    material: (folderId) => {
+      const cs = cluster(parseFailures(PropertiesService.getScriptProperties().getProperty(failProp(folderId))), 30 * 24 * 3600_000, Date.now());
+      const m = hasMaterial(cs);
+      return m.ok && m.top ? `${m.top.count} runs failed with ${m.top.kind}${m.top.tool ? ` on ${m.top.tool}` : ''} in the last 30 days` : '';
+    },
+    now: Date.now,
+    cycleId: () => `d${Date.now().toString(36)}`,
+  };
+}
+
+/**
+ * Registra UMA falha real deste agente. Chamado quando um run termina mal — é o combustível do
+ * aglomerado, e sem ele o organismo não tem o que contar.
+ *
+ * A P25 mediu o trace e achou ZERO falhas agrupáveis: 86 requisições, 100% evals. Não era agrupamento
+ * mal desenhado — é que não havia o que agrupar. Instrumentar primeiro e deixar acumular foi a decisão
+ * do dono, e é o que esta função implementa: o contador nasce agora, o criador nasce quando houver dado.
+ */
+export function recordFailure(folderId: string, kind: Failure['kind'], tool?: string) {
+  const props = PropertiesService.getScriptProperties();
+  const chave = failProp(folderId);
+  const atuais = parseFailures(props.getProperty(chave));
+  props.setProperty(chave, serializeFailures(withFailure(atuais, { at: Date.now(), kind, ...(tool ? { tool } : {}) }, Date.now())));
+}
+
+/** O que já foi contado, e se há material para um ciclo. Leitura para a tela — não decide nada sozinha. */
+export function agentFailures(folderId: string) {
+  assertOwner();
+  const falhas = parseFailures(PropertiesService.getScriptProperties().getProperty(failProp(folderId)));
+  const cs = cluster(falhas, 30 * 24 * 3600_000, Date.now());
+  const m = hasMaterial(cs);
+  return { folderId, total: falhas.length, clusters: cs.slice(0, 5), hasMaterial: m.ok, reason: m.reason };
+}
+
+/** Começa um ciclo de sonho neste agente. Só o dono, e só com a capacidade `dream` aprovada. */
+export function startAgentDream(folderId: string) {
+  assertOwner();
+  const caps = parseCapabilities(PropertiesService.getScriptProperties().getProperty(`CAP:${folderId}`));
+  if (!can(caps, 'dream')) throw new Error('this agent does not have the dream capability turned on');
+  const nome = agentName(folderId);
+  const t = runlog.begin('config', { question: `dream cycle for ${nome}`, agent: nome });
+  const r = t.step('start_dream', () => startDream(folderId, dreamDeps()), () => ({ folderId }));
+  t.end({ answer: r.started ? `cycle ${r.cycleId} started` : `did not start: ${r.reason}` });
+  return r;
+}
+
+/** O estado do ciclo deste agente, para a tela. */
+export function agentDream(folderId: string) {
+  assertOwner();
+  const io = dreamIO();
+  const cycleId = io.active(folderId);
+  return { folderId, cycleId, state: cycleId ? io.load(folderId, cycleId) : null };
 }
 
 export function observability() {
