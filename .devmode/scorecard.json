@@ -1170,5 +1170,57 @@
     "recommendations": {
       "design": "decidir com o usuario entre investigar a regressao do tique ocioso ou rever o teto de 1.000 ms, porque construir proatividade sobre um tique ja no limite e somar a um numero estourado"
     }
+  },
+  {
+    "phase": "F5 \u2014 auditoria e fiacao",
+    "summary": "Auditoria derrubou 6 checkmarks falsos (o pior: a chave de emergencia nao existia); 9 itens fiados e provados no bundle",
+    "scores": {
+      "correctness": {
+        "score": 9,
+        "note": "17 simbolos CHAMADOS em dist/_motor.js + 4 telas em dist/settings.html; 1712 testes, tsc limpo"
+      },
+      "design": {
+        "score": 8,
+        "note": "defesa antes do mecanismo (31 antes de 32); nucleo puro / casca imperativa mantida"
+      },
+      "testing": {
+        "score": 9,
+        "note": "+77 testes; catracas funcionaram nos DOIS sentidos e nenhuma foi afrouxada"
+      },
+      "safety": {
+        "score": 8,
+        "note": "4 controles do repasse em pe; congelamento e teto agora AGEM; item 33 nao declarado pronto por falta de medicao"
+      },
+      "clarity": {
+        "score": 9,
+        "note": "ADR-042 desfaz a ambiguidade de sub-agente; PROGRESS diz o motivo VERIFICADO de cada pendencia"
+      }
+    }
+  },
+  {
+    "phase": "F5 \u2014 auditoria e fiacao",
+    "summary": "Auditoria derrubou 6 checkmarks falsos (o pior: a chave de emergencia nao existia); 9 itens fiados e provados no bundle",
+    "scores": {
+      "correctness": {
+        "score": 9,
+        "note": "17 simbolos CHAMADOS em dist/_motor.js + 4 telas em dist/settings.html; 1712 testes, tsc limpo"
+      },
+      "design": {
+        "score": 8,
+        "note": "defesa antes do mecanismo (31 antes de 32); nucleo puro / casca imperativa mantida"
+      },
+      "testing": {
+        "score": 9,
+        "note": "+77 testes; catracas funcionaram nos DOIS sentidos e nenhuma foi afrouxada"
+      },
+      "safety": {
+        "score": 8,
+        "note": "4 controles do repasse em pe; congelamento e teto agora AGEM; item 33 nao declarado pronto por falta de medicao"
+      },
+      "clarity": {
+        "score": 9,
+        "note": "ADR-042 desfaz a ambiguidade de sub-agente; PROGRESS diz o motivo VERIFICADO de cada pendencia"
+      }
+    }
   }
 ]
