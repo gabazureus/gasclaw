@@ -277,31 +277,46 @@ painel — ligar uma nunca liga outra, e cada uma diz o que custa antes do cliqu
 e essa pergunta lê três coisas de uma vez: a capacidade que você aprovou, o ciclo de vida do agente
 (arquivado não faz nada) e a chave de emergência.
 
-## Três coisas que dividiam um nome só
+## Três formas, e só uma delas é um projeto próprio
 
 "Sub-agente" significava duas coisas incompatíveis, e a ambiguidade escondia a única diferença que
-importa: **se há chave de API em jogo**. São três formas ([ADR-042](docs/adr/042-automation-subagente-persona.md)):
+importa: **se há chave de API em jogo** ([ADR-042](docs/adr/042-automation-subagente-persona.md)).
+A resposta agora é a mesma para as três — **nenhuma chave sai deste projeto**:
 
 ```
-  PERSONA                     AUTOMAÇÃO                   SUB-AGENTE
-  ───────                     ─────────                   ──────────
-  um papel num markdown       um projeto Apps Script      um projeto Apps Script
-  DENTRO da pasta deste       próprio — só código         próprio, MAIS uma pasta
-  agente                                                  no Drive com prompt
+  PERSONA                     AUTOMAÇÃO                   AGENTE NOVO
+  ───────                     ─────────                   ───────────
+  um papel num markdown       um projeto Apps Script      uma pasta no Drive com
+  DENTRO da pasta deste       próprio — só código         prompt próprio
+  agente
   roda como um passo          sem pasta, sem prompt,      conversa, raciocina,
   dentro do turno do pai      sem modelo                  mantém um diálogo
   ┌──────────────────────┐    ┌──────────────────────┐    ┌──────────────────────┐
   │ pasta?       não     │    │ pasta?       não     │    │ pasta?       SIM     │
-  │ chave?       NÃO     │    │ chave?       NÃO     │    │ chave?       SIM     │
-  │ escopos?     não     │    │ escopos?     SIM     │    │ escopos?     SIM     │
+  │ chave?       NÃO     │    │ chave?       NÃO     │    │ chave?       NÃO*    │
+  │ escopos?     não     │    │ escopos?     SIM     │    │ escopos?     não     │
+  │ projeto?     não     │    │ projeto?     SIM     │    │ projeto?     não     │
   └──────────────────────┘    └──────────────────────┘    └──────────────────────┘
-  o jeito barato de            o jeito barato de           o único que algum dia
-  recombinar o que já há       crescer em capacidade       precisa da credencial
+  o jeito barato de           o jeito barato de           * ele roda NESTE motor e
+  recombinar o que já há      crescer em capacidade         lê a chave aqui dentro.
+                                                            Nada é entregue.
 ```
 
-Uma persona recebe a **interseção** do que declara, do que o registro conhece e do que você aprovou
-para o pai — e depois só as ferramentas que não pedem aprovação, porque de dentro de uma ferramenta
-não existe caminho até o card. Ela nunca alcança seu Gmail, Drive ou Agenda.
+**Projeto filho nunca recebe a chave, e não sobrou código capaz de entregar uma.** O motor tinha uma
+rota que entregava a chave do OpenRouter ao filho que provasse identidade com um segredo próprio.
+Medimos (P27): o filho não alcança essa rota — o Google recusa, com 401, um token emitido para outro
+projeto, antes de a chamada chegar perto do nosso código. O dono escolheu então a opção 4 da
+[ADR-040](docs/adr/040-isolamento-e-privilegio.md), e a rota, o segredo, a janela de entrega e o
+botão de rearme foram **removidos**, não desligados.
+
+O que isso custa merece ser dito sem rodeio: **um filho não pode ter escopos OAuth próprios E um
+modelo ao mesmo tempo.** A automação tem escopos mais estreitos que o motor e não raciocina; o agente
+novo raciocina, mas roda com os escopos do motor. Nada do que existia se perdeu — as duas formas já
+funcionavam —, mas esse quarto quadrante está fechado, e segue fechado enquanto a chave ficar aqui.
+
+A persona recebe a **interseção** do que declara, do que o registro de ferramentas conhece e do que
+você aprovou para o pai — e, dentro disso, só as ferramentas que não pedem aprovação, porque de
+dentro de uma ferramenta não existe caminho até o card. Ela nunca alcança seu Gmail, Drive ou Agenda.
 
 ## Agentes conversando entre si
 

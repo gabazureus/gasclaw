@@ -276,27 +276,41 @@ panel — turning one on never turns another on, and each says what it costs bef
 act?* — and that question reads three things at once: the capability you approved, the agent's
 lifecycle (archived agents do nothing), and the emergency switch.
 
-## Three things that used to share one name
+## Three shapes, and only one of them is a project of its own
 
 "Sub-agent" meant two incompatible things, and the ambiguity hid the only difference that matters:
-**whether an API key is involved**. There are three shapes ([ADR-042](docs/adr/042-automation-subagente-persona.md)):
+**whether an API key is involved** ([ADR-042](docs/adr/042-automation-subagente-persona.md)). The
+answer is now the same for all three — **no key ever leaves this project**:
 
 ```
-  PERSONA                     AUTOMATION                  SUB AGENT
+  PERSONA                     AUTOMATION                  NEW AGENT
   ───────                     ──────────                  ─────────
-  a role in a markdown file   an Apps Script project      an Apps Script project
-  inside THIS agent's folder  of its own — code only      of its own, PLUS a Drive
-                                                          folder with a prompt
+  a role in a markdown file   an Apps Script project      a Drive folder with a
+  inside THIS agent's folder  of its own — code only      prompt of its own
   runs as a step inside       no folder, no prompt,       talks, reasons, holds a
   the parent's turn           no model                    conversation
   ┌──────────────────────┐    ┌──────────────────────┐    ┌──────────────────────┐
   │ folder?      no      │    │ folder?      no      │    │ folder?      YES     │
-  │ API key?     NO      │    │ API key?     NO      │    │ API key?     YES     │
-  │ own scopes?  no      │    │ own scopes?  YES     │    │ own scopes?  YES     │
+  │ API key?     NO      │    │ API key?     NO      │    │ API key?     NO*     │
+  │ own scopes?  no      │    │ own scopes?  YES     │    │ own scopes?  no      │
+  │ own project? no      │    │ own project? YES     │    │ own project? no      │
   └──────────────────────┘    └──────────────────────┘    └──────────────────────┘
-  the cheap way to             the cheap way to grow       the only one that ever
-  recombine what you have      in capability               needs the credential
+  the cheap way to            the cheap way to grow       * it runs in THIS engine
+  recombine what you have     in capability                 and reads the key here.
+                                                            Nothing is handed over.
 ```
+
+**A child project never gets the key, and there is no code left that could hand it one.** The engine
+used to have a route that delivered the OpenRouter key to a child that proved its identity with a
+per-child secret. We measured it (P27): a child cannot reach that route at all — Google refuses a
+token issued for another project, with a 401, before the call gets anywhere near our code. So the
+owner chose option 4 of [ADR-040](docs/adr/040-isolamento-e-privilegio.md), and the route, the
+secret, the delivery window and the re-arm button were **removed**, not switched off.
+
+What that costs is worth stating plainly: **a child cannot have both its own OAuth scopes and a
+model.** An automation gets narrower scopes than the engine and cannot reason; a new agent reasons
+but runs under the engine's scopes. Nothing that existed was lost — both shapes already worked — but
+that fourth quadrant is closed, and it stays closed while the key stays here.
 
 A persona gets the **intersection** of what it declares, what the tool registry knows, and what you
 approved for the parent — and then only the tools that need no approval, because from inside a tool

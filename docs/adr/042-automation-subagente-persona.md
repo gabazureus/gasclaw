@@ -45,3 +45,26 @@ humano ([ADR-040](040-isolamento-e-privilegio.md)).
   reservado ao projeto filho com pasta.
 - A tela já mostra a etiqueta de qual dos dois tipos de filho é, e o que cada um implica — porque é
   ali, antes do clique de autorização, que a diferença importa para o dono.
+
+---
+
+## SUPERSEDIDA EM PARTE (2026-09-20): o `sub-agente` não existe mais
+
+O dono escolheu a **opção 4 da [ADR-040](040-isolamento-e-privilegio.md)** depois da medição da P27.
+A terceira linha da tabela acima — o projeto filho **com pasta e prompt**, o único que precisava da
+chave — **foi removida do código**: `ChildKind` só tem `automation`.
+
+A distinção que esta ADR criou **continua valendo e é o que tornou a remoção barata**: ela já havia
+separado a forma que precisa de credencial da que não precisa, então apagar uma não mexeu na outra.
+
+Duas correções ao texto acima, que a auditoria da remoção encontrou:
+
+- *"O código já faz a distinção `automation` × `subagent`, fail-closed para `automation`"* — **era
+  falso na prática**. `successor.ts` é o único produtor de filhos e produzia `subagent` **sempre**,
+  então a guarda nunca chegava a recusar nada. A distinção existia no tipo e não no dado.
+- *"A tela já mostra a etiqueta de qual dos dois tipos de filho é"* — mostrava, e agora mostra uma só,
+  porque só existe uma.
+
+As três formas **reais** hoje são: `persona`, `automation` e o agente criado por `agent.create` —
+que tem pasta e conversa, mas roda **no mesmo projeto Apps Script** e lê a chave daqui, sem entrega
+nenhuma. Ver a ADR-040 para o que esse arranjo custa.

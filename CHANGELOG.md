@@ -17,11 +17,20 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 > Acima das quatro há uma **chave de emergência** global: desligada, tudo congela e os agentes
 > seguem atendendo. ([ADR-038](docs/adr/038-capacidades-e-linhagem.md), [ADR-041](docs/adr/041-sucessor-como-codigo.md))
 >
-> 👥 **Personas, automações e sub-agentes ([ADR-042](docs/adr/042-automation-subagente-persona.md)):**
+> 👥 **Personas, automações e agentes novos ([ADR-042](docs/adr/042-automation-subagente-persona.md)):**
 > três formas que antes dividiam o nome "sub-agente", e a diferença que a palavra escondia é se há
-> chave de API em jogo. **Persona** é um papel em `subagents/<nome>.md` que roda dentro do turno do
-> pai, sem pasta e sem chave. **Automação** é projeto filho só com código. **Sub-agente** é projeto
-> filho com pasta e prompt — o único que precisa da credencial.
+> chave de API em jogo. Hoje a resposta é a mesma para as três: **nenhuma chave sai deste projeto**.
+> **Persona** é um papel em `subagents/<nome>.md` que roda dentro do turno do pai. **Automação** é
+> projeto filho só com código, com escopos OAuth próprios e mais estreitos. **Agente novo** tem pasta
+> e conversa, mas roda neste mesmo motor e lê a chave aqui dentro — nada é entregue.
+>
+> 🔒 **A entrega da chave ao filho foi REMOVIDA ([ADR-040](docs/adr/040-isolamento-e-privilegio.md),
+> opção 4):** o motor tinha uma rota que entregava a chave do OpenRouter ao filho que provasse
+> identidade com um segredo próprio. A medição (P27) mostrou que o filho **não alcança** essa rota —
+> o Google recusa com 401 um token emitido para outro projeto, antes de chegar ao nosso código. A
+> rota, o segredo, a janela de entrega e o botão de rearme saíram do código; não foram desligados por
+> bandeira. **O que você perde:** um filho não pode ter escopos OAuth próprios *e* um modelo ao mesmo
+> tempo. Nada do que já funcionava foi perdido.
 >
 > 🔗 **Mensagem entre agentes:** `agent.message` no registro fechado, com quatro controles que não
 > são opcionais — origem assinada no run, `isOwner` falso em todo repasse, o card nomeando quem

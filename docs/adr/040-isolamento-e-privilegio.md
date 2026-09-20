@@ -301,3 +301,68 @@ nesse caso o segredo precisa ser **rotacionável**, não apenas rearmável, porq
 segunda camada e passa a ser a única.
 
 As opções 2 e 3 trocam segurança por capacidade. Essa troca é decisão do dono, não do agente.
+
+---
+
+## DECIDIDO (2026-09-20): opção 4 — só `automation`, e a entrega de chave deixa de existir
+
+O dono escolheu a **opção 4**. Os filhos são só `automation`: código, sem pasta, sem prompt, sem
+modelo — e portanto **sem chave**.
+
+### O que foi removido, e por que removido em vez de desligado
+
+| O que existia | Onde | Por que saiu |
+|---|---|---|
+| rota `childkey` no `doPost` | `main.ts` | a **única** rota do projeto que devolvia a chave do OpenRouter por HTTP |
+| `deliverKeyToChild`, `rearmChildKey`, `childSecret` | `main.ts` | a casca da entrega: sem rota, não serviam a ninguém |
+| `KeyDelivery`, `mayDeliverKey`, `armDelivery`, `rearmDelivery`, `deliverySpan` | `family.ts` | o núcleo da entrega, sem caller |
+| a janela armada + `KEYSEC:` em `succeedNow` | `main.ts` | **armava a entrega para TODO filho gerado**, indefinidamente |
+| a sonda da P27 | `main.ts` | gravava `KEYSEC:` e armava a janela **como efeito colateral de medir** |
+| `kind: 'subagent'` | `children.ts` | a forma que precisava de credencial vira estado **não representável** |
+
+Uma bandeira (`KEY_DELIVERY_ENABLED=false`) teria deixado de pé a rota que devolve a credencial,
+dependendo de uma leitura correta em todo caminho novo. **Um caminho de credencial sem caller é a
+forma mais cara de código morto que existe** — e este ficava *armado*, esperando alguém mudar o
+`access` do manifesto. O desenho está preservado neste documento (opção 2) e no git.
+
+### O que a auditoria encontrou no caminho, e que não estava na decisão
+
+1. **`successor.ts` é o ÚNICO produtor de filhos, e produzia `kind: 'subagent'` sempre.** A guarda
+   que a ADR-042 chamava de "fail-closed para `automation`" (`if (registro.kind !== 'subagent')
+   throw`) **nunca mordia**, porque nada produzia uma automação. A distinção de segurança existia no
+   texto e não no dado.
+2. **O crivo não proibia o filho de chamar um provedor de modelo.** "Uma `automation` nunca fala com
+   modelo" era afirmação de docstring. Um sucessor que tentasse seria implantado e falharia em
+   execução, sem chave e sem motivo visível em tela nenhuma. Agora é regra do crivo, recusada antes
+   de publicar — e o pedido ao Opus diz isso **antes** de gastar a geração.
+3. **`parseChild` respeitava o `kind` gravado.** Sem rebaixar, um `subagent` escrito antes desta
+   decisão voltaria da Property nomeando uma forma que nenhum código sabe mais tratar. Agora volta
+   como `automation`, e a pasta dele é descartada: a decisão alcança o dado antigo sem migração.
+4. **`KEYSEC:`/`KEYDEL:` residuais.** Nada mais os lê (provado em `test/family.test.ts`), logo são
+   dado inerte. Mas o segredo guardado deste lado tem uma cópia no fonte do filho: o par volta a
+   valer no dia em que alguém restaurar a rota. `forgetChild` passou a apagá-los.
+
+### O que a opção 4 custa, dito uma vez e sem eufemismo
+
+**Um filho não pode ter escopos OAuth próprios E um modelo.** A `automation` tem escopos estritamente
+menores que os do motor e não raciocina; um agente criado por `agent.create` raciocina, mas roda
+**no mesmo projeto Apps Script** e sob os 17 escopos do motor. O quadrante que combina os dois é o
+que fica fechado — e é tudo o que fica.
+
+**Nada do que existia foi perdido.** Filho que raciocina já funcionava por dois caminhos que nunca
+precisaram de entrega de chave: `persona` (papel na pasta do pai, roda no turno do pai) e
+`agent.create` (pasta própria, mesmo motor, lê a chave daqui direto). O que contém um agente criado
+assim não é o OAuth — é a ferramenta aprovada no painel e o `NEVER_AUTO`, que é onde a contenção
+deste projeto sempre esteve.
+
+### Se um dia se decidir o contrário
+
+A porta é a **opção 2**, e ela tem um pré-requisito que hoje não existe: o segredo por filho precisa
+ser **rotacionável**, não apenas rearmável. Deixando de ser a segunda camada e passando a ser a
+única, um segredo que não se revoga não é defesa. Isso é trabalho novo, não ajuste.
+
+### Prova
+
+`test/family.test.ts` testa a **ausência**: nenhum dos símbolos da entrega existe em `main.ts`,
+nenhuma rota contém `key: store.getApiKey()`, e `KEYSEC:`/`KEYDEL:` só podem aparecer em
+`deleteProperty`. Cinco mutações, cinco testes mortos. 1784 testes, 0 falhas.
