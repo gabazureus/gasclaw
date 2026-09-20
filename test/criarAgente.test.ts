@@ -105,3 +105,58 @@ describe('passar o bastão DESLIGA o antecessor de verdade', () => {
     expect(JSON.stringify(r)).not.toContain('"folderId":"fa"');
   });
 });
+
+// A OUTRA METADE da invariante do singleton, e ela veio de um defeito que o revisor MEDIU rodando:
+// "se `CREATOR` existe, aquele agente tem `create` efetivo". Testar só 'no máximo um' deixava passar
+// o estado em que sobra ZERO — que é pior, porque ninguém mais pode criar e nada avisa.
+describe('a sucessão não pode deixar NINGUÉM podendo criar', () => {
+  const cenario = (creator: string) => {
+    env.props['AGENTS'] = JSON.stringify([
+      { name: 'alpha', folderId: 'fa' },
+      { name: 'beta', folderId: 'fb' },
+    ]);
+    env.props['STATUS:fa'] = 'active';
+    env.props['STATUS:fb'] = 'active';
+    env.props['CAP:fa'] = JSON.stringify(['succeed']);
+    env.props['CAP:fb'] = JSON.stringify(['succeed', 'create']);
+    env.props['CREATOR'] = creator;
+  };
+  const temCreate = (f: string) => (JSON.parse(env.props[`CAP:${f}`] ?? '[]') as string[]).includes('create');
+
+  // O defeito: passar o bastão PARA quem já era o criador o deixava sem `create` na lista, com
+  // `CREATOR` ainda apontando para ele — e o portão exige as duas coisas.
+  test('passar o bastão para quem JÁ É o criador não tira a capacidade dele', async () => {
+    cenario('fb');
+    const m = await import('../src/main');
+    m.passBaton('fa', 'fb', 5);
+    expect(env.props['CREATOR']).toBe('fb');
+    expect(temCreate('fb')).toBe(true); // o portão exige lista E ponteiro
+  });
+
+  // A invariante inteira, nas duas direções, depois de uma sucessão.
+  test('se CREATOR existe, aquele agente tem `create`; se não existe, ninguém tem', async () => {
+    for (const quem of ['fa', 'fb']) {
+      vi.resetModules();
+      env = stubGas();
+      env.props['OWNER'] = 'dono@x.com';
+      cenario(quem);
+      const m = await import('../src/main');
+      m.passBaton('fa', 'fb', 5);
+      const c = env.props['CREATOR'];
+      if (c) expect(temCreate(c), `CREATOR=${c} sem create na lista`).toBe(true);
+      else expect(['fa', 'fb'].filter(temCreate)).toEqual([]);
+    }
+  });
+
+  test('um agente não sucede a si mesmo', async () => {
+    cenario('fb');
+    const m = await import('../src/main');
+    expect(() => m.passBaton('fa', 'fa', 5)).toThrow(/cannot succeed itself/);
+  });
+
+  test('o sucessor precisa ser um agente registrado', async () => {
+    cenario('fb');
+    const m = await import('../src/main');
+    expect(() => m.passBaton('fa', 'nao-existe', 5)).toThrow(/not a registered agent/);
+  });
+});

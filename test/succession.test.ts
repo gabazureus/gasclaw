@@ -28,8 +28,15 @@ describe('o mandato é autorização com escopo e validade, não interruptor', (
 
 describe('o bastão não é escada de privilégio', () => {
   // A regra que impede a sucessão de virar acúmulo: o sucessor nunca nasce com mais do que o antecessor.
-  test('as capacidades do sucessor saem de uma INTERSEÇÃO', () => {
-    expect(bloco).toContain('capsAfterSuccession(caps, parseCapabilities');
+  // Este teste EXIGIA que o uso errado existisse. `capsAfterSuccession` foi escrita para capacidades
+  // DECLARADAS no markdown da pasta (conteúdo de terceiro); o `passBaton` a alimentava com a Property
+  // `CAP:<sucessor>`, que é a lista que o DONO aprovou — e a interseção revogava em silêncio o que ele
+  // tinha concedido. A propriedade que importa é "a sucessão não CONCEDE", e ela se prova por
+  // comportamento em `test/criarAgente.test.ts`, não por grep aqui.
+  test('a sucessão não CONCEDE capacidade nenhuma ao sucessor', () => {
+    // Não gravar já não concede: o bloco não pode ter escrita em `CAP:<to>` fora do caso do bastão.
+    const escritas = [...bloco.matchAll(/setProperty\(`CAP:\$\{toFolderId\}`/g)].length;
+    expect(escritas).toBeLessThanOrEqual(2); // só as duas do bloco que tira `create`
   });
 
   test('o antecessor é arquivado no mesmo ato: a conta não cresce', () => {

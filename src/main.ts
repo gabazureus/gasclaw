@@ -1878,6 +1878,10 @@ export function lineage() {
  */
 export function passBaton(fromFolderId: string, toFolderId: string, delta: number | null) {
   assertOwner();
+  // Sem estas duas guardas, `passBaton(x, x)` arquivava e esvaziava o MESMO agente — o dono perdia o
+  // agente tentando promovê-lo. E um alvo inexistente deixava o ambiente sem ninguém ativo.
+  if (String(fromFolderId ?? '').trim() === String(toFolderId ?? '').trim()) throw new Error('an agent cannot succeed itself');
+  if (!store.listAgents().some((a) => a.folderId === toFolderId)) throw new Error('the successor is not a registered agent here');
   const props = PropertiesService.getScriptProperties();
   const caps = parseCapabilities(props.getProperty(`CAP:${fromFolderId}`));
   const v = canSucceed(caps, parseStatus(props.getProperty(`STATUS:${fromFolderId}`)));
@@ -1906,7 +1910,17 @@ export function passBaton(fromFolderId: string, toFolderId: string, delta: numbe
   props.setProperty(lineageProp, JSON.stringify([...anterior, entrada].slice(-100)));
 
   // O sucessor NUNCA nasce com mais do que o antecessor: interseção, nunca união.
-  props.setProperty(`CAP:${toFolderId}`, JSON.stringify(capsAfterSuccession(caps, parseCapabilities(props.getProperty(`CAP:${toFolderId}`)))));
+  // AQUI HAVIA UM USO ERRADO DE `capsAfterSuccession`, e o teste do singleton foi quem o expôs.
+  //
+  // Essa função foi escrita para o caso em que o sucessor DECLARA capacidades no markdown da pasta —
+  // conteúdo de terceiro, que "no máximo pede MENOS do que o antecessor já tinha". O `passBaton`
+  // estava passando para ela a Property `CAP:<sucessor>`, que não é declaração nenhuma: é a lista que
+  // o DONO aprovou, uma a uma, no painel. Intersectar as duas REVOGAVA EM SILÊNCIO o que o dono tinha
+  // concedido ao sucessor por decisão própria — e ele descobriria pela capacidade sumida, sem aviso.
+  //
+  // A propriedade que importa ("a sucessão não CONCEDE") não precisa de escrita nenhuma: não gravar
+  // já não concede. O que precisa de tratamento explícito é só o bastão de criar, logo abaixo.
+
   // ARQUIVAR PRECISA DESLIGAR DE VERDADE (revisão de segurança de 2026-09-20). Gravar `archived` era
   // o começo e estava sendo tratado como o fim: o status só era conferido em três pontos, e o caminho
   // da CONVERSA não era um deles. O antecessor continuava sendo `listAgents()[0]` — ou seja, o agente
@@ -1924,12 +1938,25 @@ export function passBaton(fromFolderId: string, toFolderId: string, delta: numbe
   // portão do motor recusando (porque `CREATOR` continuava no antecessor). Pior: o antecessor
   // arquivado seguia sendo o único do ambiente que podia multiplicar. Quem passa a criar é decisão
   // separada, no painel, como sempre foi.
-  props.setProperty(`CAP:${toFolderId}`, JSON.stringify(capsAfterCreatorMoved(parseCapabilities(props.getProperty(`CAP:${toFolderId}`)))));
-  if (props.getProperty('CREATOR') === fromFolderId) {
-    const restante = clearCreator(props.getProperty('CREATOR'), fromFolderId);
-    if (restante === null) props.deleteProperty('CREATOR');
+  // O BASTÃO DE CRIAR SÓ SAI DE QUEM O TINHA — e este `if` é o conserto de um defeito que a revisão
+  // MEDIU rodando. Antes, `capsAfterCreatorMoved` era aplicado a `CAP:to` INCONDICIONALMENTE. Se o
+  // destinatário JÁ ERA o criador, ele perdia `create` da lista enquanto `CREATOR` seguia apontando
+  // para ele — e o portão do motor exige as DUAS coisas. Resultado: ninguém no ambiente podia mais
+  // criar, sem erro e sem sinal. Exatamente o estado que o comentário do `bornAgent` diz ter evitado,
+  // alcançado por outra porta.
+  const criador = props.getProperty('CREATOR');
+  if (criador === fromFolderId) {
+    // Quem sai leva o bastão junto: a capacidade some da lista dele E o ponteiro é apagado.
+    if (clearCreator(criador, fromFolderId) === null) props.deleteProperty('CREATOR');
     props.setProperty(`CAP:${fromFolderId}`, JSON.stringify(capsAfterCreatorMoved(parseCapabilities(props.getProperty(`CAP:${fromFolderId}`)))));
+    // E o sucessor NÃO herda: quem passa a criar é decisão separada, no painel.
+    props.setProperty(`CAP:${toFolderId}`, JSON.stringify(capsAfterCreatorMoved(parseCapabilities(props.getProperty(`CAP:${toFolderId}`)))));
+  } else if (criador !== toFolderId) {
+    // O criador é um TERCEIRO: o sucessor também não ganha o bastão de brinde pela sucessão.
+    props.setProperty(`CAP:${toFolderId}`, JSON.stringify(capsAfterCreatorMoved(parseCapabilities(props.getProperty(`CAP:${toFolderId}`)))));
   }
+  // Se `criador === toFolderId`, NADA se mexe: ele já era o criador antes desta sucessão, e tirar a
+  // capacidade dele aqui é justamente o defeito que este bloco existe para não cometer.
   props.setProperty(genStamp(fromFolderId), String(Date.now()));
   return { from: fromFolderId, to: toFolderId, generation: geracao, withinMandate: dentro, entry: entrada };
 }
