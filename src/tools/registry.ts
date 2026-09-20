@@ -16,7 +16,7 @@ export type Schema = { type: 'object'; properties: Record<string, Prop>; require
 /** memory: MEMORY.md (read/write) + notas do dia (day/saveDay/today) + recall pronto; day/saveDay/today/recall são opcionais para contextos simples. */
 export type MemoryCtx = { read: () => string; write: (text: string) => void; assertWritable?: () => void; day?: (date: string) => string; saveDay?: (date: string, text: string) => void; today?: () => string; recall?: () => string };
 /** skill: corpo de uma skill sob demanda (skills/<nome>/SKILL.md); é texto, nunca executa (ADR-002). */
-export type ToolCtx = { now: () => string; ownerDm: boolean; memory: MemoryCtx; google?: Google; timeZone?: string; offset?: string; isOwner?: boolean; skill?: (name: string) => string | null; beforeEffect?: () => void };
+export type ToolCtx = { now: () => string; ownerDm: boolean; memory: MemoryCtx; google?: Google; timeZone?: string; offset?: string; isOwner?: boolean; /** Agente que originou o turno, quando ele veio por repasse (ADR-040 §A): o card precisa dizer quem pediu. */ originAgent?: string; skill?: (name: string) => string | null; beforeEffect?: () => void };
 /** ownerOnly: só o dono usa (e aprova); o motor recusa antes de qualquer card. */
 export type Tool = { name: string; description: string; parameters: Schema; approval: Approval; run: (args: Record<string, unknown>, ctx: ToolCtx) => string; ownerOnly?: boolean };
 

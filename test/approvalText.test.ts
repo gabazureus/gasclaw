@@ -16,7 +16,7 @@ describe('card de aprovação mostra tudo que importa (revisão E6, blockers 1 e
     const attendees = Array.from({ length: 20 }, (_, i) => `pessoa${i}@exemplo.com`).join(', ');
     const lines = approvalText('calendar.create', { title: 'Café', start: '2030-01-15T10:00', end: '2030-01-15T10:30', description: 'd'.repeat(400), attendees }).split('\n');
     expect(lines).toContain(`attendees: ${attendees}`);
-    expect(lines[0]).toBe('Posso usar calendar.create? Preciso da sua aprovação.');
+    expect(lines[0]).toBe('May I use calendar.create? I need your approval.');
   });
 
   test('ids, range e títulos longos nunca são cortados', () => {

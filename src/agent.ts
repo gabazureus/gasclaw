@@ -138,12 +138,19 @@ const PREVIEW = 300;
  * range…); só corpo/descrição/conteúdo/notas são cortados, com "(+N chars)". Quebra de linha no valor vira ⏎, para que um
  * corpo não finja outra linha de campo.
  */
-export function approvalText(name: string, args: Record<string, unknown>): string {
+export function approvalText(name: string, args: Record<string, unknown>, originAgent?: string): string {
   const lines = Object.entries(args).map(([k, v]) => {
     const s = (typeof v === 'string' ? v : JSON.stringify(v)).replace(/\r?\n/g, ' ⏎ ');
     return LONG_FIELDS.includes(k) && s.length > PREVIEW ? `${k}: ${s.slice(0, PREVIEW)}… (+${s.length - PREVIEW} chars)` : `${k}: ${s}`;
   });
-  return [`Posso usar ${name}? Preciso da sua aprovação.`, ...lines].join('\n');
+  // ADR-040 §A, controle (c): QUEM PEDIU aparece. Sem isto, um pedido que nasceu de OUTRO agente chegava
+  // ao dono idêntico a um pedido do agente com quem ele está falando — e ele aprovaria achando que era
+  // este. O cabeçalho vem ANTES dos argumentos, porque é o que muda a decisão.
+  // Em inglês como o resto do que o motor escreve (ADR-033). O card antigo estava em pt-BR e entrava na
+  // dívida de idioma; traduzir os DOIS mantém o cartão coerente — um cabeçalho em inglês sobre argumentos
+  // anunciados em português seria pior para quem lê.
+  const cabeca = originAgent ? `Agent ${originAgent} asked for this through me. May I use ${name}?` : `May I use ${name}? I need your approval.`;
+  return [cabeca, ...lines].join('\n');
 }
 
 /** Um turno: LLM com tools → valida → executa `never` (ou aprovada) → devolve ao modelo → repete até a resposta, a pendência ou o limite. */
@@ -200,7 +207,7 @@ export function runTurn(i: TurnInput): TurnResult {
       const needs = tool.name === 'ask' ? 'ask' : tool.approval === 'always' || (tool.approval === 'once' && !granted.has(grant)) ? 'approval' : null;
       if (needs && !d) {
         events.push({ name: tool.name, callId: call.id, key, argsKey, status: 'pending', result: needs === 'ask' ? 'aguardando resposta' : 'aguardando aprovação' });
-        const text = needs === 'ask' ? askText(v.args) : approvalText(tool.name, v.args);
+        const text = needs === 'ask' ? askText(v.args) : approvalText(tool.name, v.args, i.ctx.originAgent);
         return finish(text, { pending: { kind: needs, name: tool.name, callId: call.id, key, args: v.args }, state: { messages: [...messages], step, queue: calls.slice(k) } });
       }
       if (d && tool.approval === 'once') granted.add(grant);

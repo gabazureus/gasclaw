@@ -244,7 +244,7 @@ describe('idioma da CLI (a vitrine é em inglês; comentário de código continu
  */
 const DIVIDA: Record<string, number> = {
   'src/agenda.ts': 10,
-  'src/agent.ts': 13,
+  'src/agent.ts': 12,
   'src/batch.ts': 2,
   'src/bootstrap.ts': 1,
   'src/chatApi.ts': 6,

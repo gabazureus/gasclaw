@@ -450,11 +450,15 @@ function stepDeps(budgetMs = STEP_BUDGET_MS, io = runIO()): StepDeps {
       const apiKey = store.getApiKey();
       if (!apiKey) throw new Error('The OpenRouter key is missing. Paste it into the gasclaw panel.');
       const d = chatDeps();
-      const isOwner = r.user === me.toLowerCase();
+      // ADR-040 §A: SER O E-MAIL DO DONO NÃO BASTA. Um run nascido de mensagem de outro agente carrega
+      // `originAgent` — e ele é ASSINADO, então não dá para apagá-lo editando o arquivo. Sem esta
+      // segunda condição, texto numa pasta compartilhável faria um agente usar as ferramentas de OUTRO
+      // com a autoridade do dono: a interseção protege a composição, não a conversa.
+      const isOwner = r.user === me.toLowerCase() && !r.originAgent;
       const ownerDm = r.ownerDm;
       const base = d.toolkit!(spec, ownerDm);
       // O acesso ao Google só entra no contexto de quem é o dono, igual à conversa (ADR-023).
-      const kit = { ...base, ctx: { ...base.ctx, isOwner, google: isOwner ? base.ctx.google : undefined } };
+      const kit = { ...base, ctx: { ...base.ctx, isOwner, originAgent: r.originAgent, google: isOwner ? base.ctx.google : undefined } };
       const t = runlog.begin(r.delivery ? 'chat' : 'webchat', { question: r.text.slice(0, 2000), user: r.user });
       // TODA chamada ao modelo deste passo passa por aqui. O resumo da sessão e o flush de memória também
       // custam dinheiro: fora do `llm_call` eles não apareciam no trace nem entravam no `usedUsd`, e o teto

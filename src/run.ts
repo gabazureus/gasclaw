@@ -112,6 +112,14 @@ export type DurableRun = {
    */
   subagent?: string;
   /**
+   * Qual AGENTE originou este run, quando ele nasceu de uma mensagem de outro agente (ADR-040 §A).
+   *
+   * Está aqui, e não em memória, porque precisa ser ASSINADO: campo fora do `RUN_UNSIGNED_FIELDS` entra
+   * na assinatura por padrão, e é isso que impede alguém com acesso à pasta de apagar a origem para o run
+   * passar por pedido do dono. Ausente = o dono pediu; presente = terceiro pediu, e `isOwner` cai.
+   */
+  originAgent?: string;
+  /**
    * SHA-256 do candidato (e do placar) que o card está propondo (ADR-040 §B). O arquivo mora fora
    * do run; sem o selo aqui — onde a assinatura o protege — trocar o `.md` durante as 24 h do card
    * mantém o run íntegro e o dono aprova o diff de ontem promovendo o texto de hoje.
@@ -315,6 +323,9 @@ export function parseRun(raw: string | null | undefined): DurableRun | null {
       granted: Array.isArray(o.granted) ? o.granted.filter((g): g is string => typeof g === 'string') : [],
       ...(o.inflight && typeof o.inflight.name === 'string' ? { inflight: { name: o.inflight.name, at: Number(o.inflight.at) || 0 } } : {}),
       ...(typeof o.subagent === 'string' && o.subagent ? { subagent: o.subagent } : {}),
+      // Fora da whitelist o campo seria DESCARTADO na volta do Drive — e um run relaído voltaria como
+      // run do dono. É o mesmo defeito do `depth` (§D), que aqui seria catastrófico em vez de só permissivo.
+      ...(typeof o.originAgent === 'string' && o.originAgent ? { originAgent: o.originAgent } : {}),
       ...(typeof o.candidateSeal === 'string' && o.candidateSeal ? { candidateSeal: o.candidateSeal } : {}),
       ...(parseChatDelivery(o.delivery) ? { delivery: parseChatDelivery(o.delivery) } : {}),
       budget: { usedUsd: Number(o.budget?.usedUsd) || 0, capUsd: Number(o.budget?.capUsd) || RUN_BUDGET_USD },
