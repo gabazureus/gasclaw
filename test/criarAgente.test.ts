@@ -196,3 +196,54 @@ describe('arquivar tira os runs da fila', () => {
     expect(runIO().claimNext(9_999_999)?.run.runId).toBe('r-vivo');
   });
 });
+
+// `bornAgent` é o ato que MULTIPLICA — e NENHUM teste o executava, apesar de ele ter ganhado quatro
+// consertos nesta rodada. A auditoria por mutação confirmou: apagar a guarda de pasta existente,
+// apagar a checagem de nome duplicado, ou apagar a escrita de `CAP:[]` — tudo passava.
+describe('criar agente não escreve por cima do que o dono escreveu', () => {
+  /** O agente criador, ligado e apontado. */
+  const criador = () => {
+    env.props['AGENTS'] = JSON.stringify([{ name: 'chefe', folderId: 'fc' }]);
+    env.props['STATUS:fc'] = 'active';
+    env.props['CAP:fc'] = JSON.stringify(['create']);
+    env.props['CREATOR'] = 'fc';
+  };
+
+  const nascer = async (nome: string) => {
+    criador();
+    const m = (await import('../src/main')) as unknown as { __test_born: (p: string, n: string, r: string) => string };
+    return m.__test_born('fc', nome, 'cuida de vendas');
+  };
+
+  test('controle positivo: um nome livre cria o agente com NADA além da pasta', async () => {
+    const r = await nascer('vendas');
+    expect(r).toMatch(/created agent/);
+    const novo = JSON.parse(env.props['AGENTS']).find((a: { name: string }) => a.name === 'vendas');
+    expect(novo).toBeDefined();
+    // A promessa da ADR-040: nasce sem ferramenta, sem acesso, sem capacidade.
+    expect(JSON.parse(env.props[`CAP:${novo.folderId}`])).toEqual([]);
+  });
+
+  // O PIOR DEFEITO DA RODADA: `ensureFolderPath` reusa a primeira pasta homônima e o `saveRole`
+  // sobrescreve o AGENTS.md. O dono remove "vendas" do painel — o diálogo PROMETE que a pasta não é
+  // apagada —, o criador cria "vendas" de novo, e o papel que ELE escreveu vira o que o modelo escreveu.
+  test('pasta homônima existente é RECUSADA, e o que está nela não é tocado', async () => {
+    criador();
+    // A pasta já existe no Drive, com o texto do dono dentro.
+    DriveApp.getFolderById('root').createFolder('gasclaw').createFolder('agents').createFolder('vendas');
+    env.drive.set('root/gasclaw/agents/vendas/AGENTS.md', '# o que EU escrevi');
+    const m = (await import('../src/main')) as unknown as { __test_born: (p: string, n: string, r: string) => string };
+    expect(() => m.__test_born('fc', 'vendas', 'papel novo')).toThrow(/will not write over/);
+    // E o conteúdo continua lá: recusar sem preservar seria metade do conserto.
+    expect(env.drive.get('root/gasclaw/agents/vendas/AGENTS.md')).toBe('# o que EU escrevi');
+  });
+
+  test('nome já registrado é recusado antes de tocar no Drive', async () => {
+    await expect(nascer('chefe')).rejects.toThrow(/already an agent named/).catch(async () => {
+      // `bornAgent` é síncrono: a recusa vem por throw direto.
+      criador();
+      const m = (await import('../src/main')) as unknown as { __test_born: (p: string, n: string, r: string) => string };
+      expect(() => m.__test_born('fc', 'chefe', 'x')).toThrow(/already an agent named/);
+    });
+  });
+});

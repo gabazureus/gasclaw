@@ -408,6 +408,10 @@ function toolsOfAgent(name: string): string[] {
  * O singleton do criador também protege isto por forma do dado: `CREATOR` é UMA Property com UM
  * folderId, então não existe estado com dois criadores.
  */
+/** Porta de teste: `bornAgent` recebe um `AgentSpec` inteiro e o teste só precisa de nome e pasta. */
+export const __test_born = (parentFolder: string, nome: string, papel: string): string =>
+  bornAgent({ name: 'pai', folderId: parentFolder } as AgentSpec, nome, papel);
+
 function bornAgent(parent: AgentSpec, name: string, role: string): string {
   const props = PropertiesService.getScriptProperties();
   const nome = String(name ?? '').trim().toLowerCase(); // normaliza AQUI: quem chama não precisa saber a regra
