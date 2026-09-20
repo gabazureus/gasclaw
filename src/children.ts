@@ -50,7 +50,16 @@ export type AuthState = 'authorized' | 'needs-consent' | 'not-deployed' | 'unkno
 
 export const PROP = 'CHILDREN';
 const PROP_MAX = 8_000; // Script Properties: 9 KB por valor, mesma margem do usage.ts e do saveAgents
-const MAX_CHILDREN = 40;
+export const MAX_CHILDREN = 40;
+
+/**
+ * Quantas Properties o registro pode ocupar. 40 filhos com `reason` no máximo dão ~27 KB; 8 pedaços
+ * de 8 KB é folga, e 64 KB contra as 500 KB do total do Apps Script não aperta ninguém.
+ */
+export const CHILDREN_CHUNKS = 8;
+
+/** O pedaço 0 mora na Property DE SEMPRE: dado gravado antes desta mudança continua sendo lido. */
+export const propOfChunk = (i: number): string => (i === 0 ? PROP : `${PROP}:${i}`);
 const REASON_MAX = 300;
 
 const str = (x: unknown, max = 200): string => (typeof x === 'string' ? x.trim().slice(0, max) : '');
@@ -132,3 +141,65 @@ export const AUTH_LABEL: Record<AuthState, string> = {
   'not-deployed': 'Not deployed',
   unknown: 'Could not check',
 };
+
+// ---------- O registro partido em pedaços (D3, medido na P29) ----------
+
+/**
+ * **O defeito que isto conserta, com o número que a P29 mediu no dev v132:** o registro inteiro
+ * morava em UMA Script Property, e o teto de 8 KB estourava em **17 filhos** com `reason` curto e em
+ * **11** com `reason` no máximo (300 chars — o que um sucessor real carrega). `MAX_CHILDREN = 40`
+ * era promessa inalcançável, e a corrida de 15 da F6 **não cabia**.
+ *
+ * Pior que o número: `serializeChildren` lança DEPOIS de o projeto já ter sido criado e implantado.
+ * Em `succeedNow` isso é Opus pago, filho vivo no Google e nada na tela — um órfão caro. O limite do
+ * Apps Script é 9 KB **por valor** e 500 KB **no total**: o gargalo era o formato, não a plataforma.
+ *
+ * **Devolve SEMPRE `CHILDREN_CHUNKS` posições**, e as sobras vêm como string vazia. Não é detalhe:
+ * se a escrita só devolvesse os pedaços usados, uma lista que encolhe deixaria o pedaço antigo
+ * gravado e os filhos esquecidos RESSUSCITARIAM na próxima leitura. Vazio quer dizer *apague este*.
+ */
+export function chunkChildren(list: Child[]): string[] {
+  if (list.length > MAX_CHILDREN) throw new Error(`too many child projects: ${list.length}, limit is ${MAX_CHILDREN}`);
+  const pedacos: string[] = [];
+  let resto = [...list];
+  while (resto.length) {
+    // Do maior pedaço que couber para baixo: um filho por vez seria O(n²) de JSON.stringify, e com
+    // 40 filhos isso é trabalho à toa dentro de uma execução que tem 6 minutos no total.
+    let n = resto.length;
+    while (n > 0 && JSON.stringify(resto.slice(0, n)).length > PROP_MAX) n--;
+    // Um único filho que não cabe sozinho é dado impossível de guardar, e vale dizer isso em vez de
+    // entrar em laço infinito descartando em silêncio.
+    if (n === 0) throw new Error(`a single child project does not fit in one property: ${JSON.stringify(resto[0]).length} characters, limit is ${PROP_MAX}`);
+    pedacos.push(JSON.stringify(resto.slice(0, n)));
+    resto = resto.slice(n);
+  }
+  if (pedacos.length > CHILDREN_CHUNKS) throw new Error(`the child project list needs ${pedacos.length} properties, limit is ${CHILDREN_CHUNKS}`);
+  while (pedacos.length < CHILDREN_CHUNKS) pedacos.push(''); // vazio = apague este pedaço
+  return pedacos;
+}
+
+/**
+ * Lê os pedaços na ordem. Um pedaço ilegível é descartado **sem derrubar os outros** — a mesma regra
+ * de `parseChildren`, um filho ruim não cega o painel, agora valendo para o pedaço inteiro.
+ *
+ * Um valor único gravado pelo formato antigo é simplesmente o pedaço 0: não há migração a fazer.
+ */
+export const unchunkChildren = (chunks: readonly (string | null | undefined)[]): Child[] => (chunks ?? []).flatMap((c) => parseChildren(c ?? null));
+
+/**
+ * A LEITURA e a ESCRITA como decisões PURAS, sobre o mapa cru das Properties.
+ *
+ * Elas existem porque duas mutações sobreviveram quando só o formato era puro e o acesso ficava na
+ * casca: ler apenas o pedaço 0, e gravar sem apagar as sobras. As duas quebram em silêncio — filho
+ * some da tela, ou filho esquecido ressuscita — e nenhuma tinha teste possível, porque a casca de
+ * `main.ts` não é chamável de um teste. Com a decisão aqui, a casca vira um laço sem julgamento.
+ */
+export const readChildrenFrom = (all: Record<string, string | null | undefined>): Child[] =>
+  unchunkChildren(Array.from({ length: CHILDREN_CHUNKS }, (_, i) => (all ?? {})[propOfChunk(i)]));
+
+/**
+ * O que gravar em cada Property. `value: null` quer dizer **APAGUE** — e é isso que impede a lista
+ * que encolheu de ressuscitar quem foi esquecido no pedaço seguinte.
+ */
+export const childrenWrites = (list: Child[]): { prop: string; value: string | null }[] =>
+  chunkChildren(list).map((pedaco, i) => ({ prop: propOfChunk(i), value: pedaco || null }));

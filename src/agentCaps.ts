@@ -179,6 +179,32 @@ export type LineageEntry = {
  */
 export const nextGeneration = (kind: ActKind, parentGeneration: number): number => (kind === 'succession' ? parentGeneration + 1 : kind === 'codegen' ? parentGeneration : 1);
 
+/**
+ * De quem a PRÓXIMA geração de código herda o fonte. Puro: escolhe o nome, não lê o código.
+ *
+ * **O defeito que esta função existe para consertar (D1, achado em 2026-09-20):** `succeedNow`
+ * passava `incumbentSource: agente.system` — o PROMPT do agente — em TODA geração. O comentário ao
+ * lado dizia "na primeira geração: não existe fonte anterior até o primeiro sucessor nascer", e a
+ * segunda metade nunca foi escrita. A geração 2 nunca recebia o código da 1: cada filho era um
+ * sorteio novo do mesmo ponto de partida. Isso é REPLICAÇÃO COM VARIÂNCIA, não evolução — e a tela
+ * dizia "evolução".
+ *
+ * **Por RECÊNCIA, e não por aptidão.** Herdar do MELHOR exigiria o filho ter rodado, e rodar exige o
+ * clique do dono (portão da plataforma, medido na P24). Por recência a corrente anda sozinha; a
+ * seleção por aptidão depende de existir aptidão, que é outro trabalho e outra POC.
+ *
+ * Só `codegen` deixa fonte: herdar de uma `creation` seria herdar de um agente que nunca teve fonte.
+ */
+export function heirOf(entries: readonly LineageEntry[], parent: string): string | null {
+  const pai = String(parent ?? '').trim();
+  if (!pai) return null;
+  const meus = (entries ?? []).filter((e) => e && e.kind === 'codegen' && e.parent === pai && String(e.child ?? '').trim() && Number.isFinite(e.at));
+  if (!meus.length) return null;
+  // `reduce` e não `sort`: a lista vem de uma Property e ordená-la faria a escolha depender da ordem
+  // de gravação, que ninguém garante. O carimbo é o critério, e ele é explícito.
+  return meus.reduce((a, b) => (b.at > a.at ? b : a)).child;
+}
+
 // ---------- Escalonamento de privilégio ----------
 
 /**

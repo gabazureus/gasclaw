@@ -9,7 +9,7 @@ import { cluster, hasMaterial, type Failure } from './dreamCycle';
 import { AUTO_NOTE, cleanAutoList, mayAutoApprove, NEVER_AUTO, noReplySpan, onProactiveBlock } from './autoApprove';
 import { dueJobs, JOB_MAX, jobText, parseSchedule, serializeSchedule } from './schedule';
 import { board } from './dreamBoard';
-import { AUTH_LABEL, authState, KIND_LABEL, KIND_WHAT, parseChildren, serializeChildren, withChild, withoutChild, type Child } from './children';
+import { AUTH_LABEL, authState, childrenWrites, KIND_LABEL, KIND_WHAT, readChildrenFrom, withChild, withoutChild, type Child } from './children';
 import { pocP10 } from '../poc/p10-editor/harness';
 import { pocP14 } from '../poc/p14-trace/harness';
 import { pocP15 } from '../poc/p15-limites/harness';
@@ -1451,7 +1451,7 @@ export function setAgentCapability(folderId: string, cap: string, on: boolean) {
 export function listChildren(folderId?: string) {
   assertOwner();
   const props = PropertiesService.getScriptProperties();
-  const list = parseChildren(props.getProperty('CHILDREN'));
+  const list = readChildren(props);
   // O filho da POC P24 é real e está na conta do dono: mostrá-lo é o que permite conferir a tela de ponta
   // a ponta hoje, em vez de uma seção vazia que ninguém sabe se funciona.
   const poc = props.getProperty('P24_CHILD');
@@ -1505,13 +1505,32 @@ function fetchChild(url: string): { code: number; body: string } {
   return { code: res.getResponseCode(), body: res.getContentText().slice(0, 1200) };
 }
 
+/**
+ * O registro de filhos, partido em pedaços (D3, medido na P29 no dev v132).
+ *
+ * Existia UMA Property `CHILDREN`, e o teto de 8 KB dela estourava em 11 filhos com `reason` cheio —
+ * enquanto `MAX_CHILDREN` prometia 40 e a corrida da F6 pedia 15. Toda leitura e toda escrita do
+ * registro passam por estas duas funções agora; um `props.getProperty('CHILDREN')` solto voltaria a
+ * enxergar só o primeiro pedaço, e os filhos do pedaço 2 sumiriam da tela sem erro nenhum.
+ */
+// UMA chamada a `getProperties()`: ler oito Properties uma a uma seriam oito viagens. Quem decide
+// o que ler e o que gravar é `children.ts` — aqui não há julgamento nenhum, só I/O.
+const readChildren = (props: GoogleAppsScript.Properties.Properties): Child[] => readChildrenFrom(props.getProperties());
+
+const writeChildren = (props: GoogleAppsScript.Properties.Properties, list: Child[]): void => {
+  for (const { prop, value } of childrenWrites(list)) {
+    if (value === null) props.deleteProperty(prop);
+    else props.setProperty(prop, value);
+  }
+};
+
 /** Tira o filho da lista do painel. NÃO apaga o projeto no Google — dizer isso na tela é parte do controle. */
 export function forgetChild(scriptId: string, folderId?: string) {
   assertOwner();
   const props = PropertiesService.getScriptProperties();
   const id = String(scriptId ?? '').trim();
   if (!id) throw new Error('unknown child project');
-  props.setProperty('CHILDREN', serializeChildren(withoutChild(parseChildren(props.getProperty('CHILDREN')), id)));
+  writeChildren(props, withoutChild(readChildren(props), id));
   // RESÍDUO DA ENTREGA DE CHAVE, que existiu até 2026-09-20 (ADR-040, opção 4). Nada mais LÊ estas
   // duas Properties — a prova está em `test/family.test.ts` —, então elas são dado inerte. Apagá-las
   // aqui é barato e fecha o par que sobrou: o segredo guardado deste lado e a cópia dele no fonte do
@@ -2166,7 +2185,7 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
   );
   if (!r.ok) return { ok: false as const, reason: r.reason, costUsd: r.costUsd };
 
-  props.setProperty('CHILDREN', serializeChildren(withChild(parseChildren(props.getProperty('CHILDREN')), r.child)));
+  writeChildren(props, withChild(readChildren(props), r.child));
   props.setProperty(genStamp(id), String(Date.now())); // o intervalo mínimo conta a partir de AGORA
   // NADA DE JANELA DE ENTREGA NEM DE `KEYSEC:` AQUI. Este bloco armava a entrega da credencial e
   // gravava o segredo por filho para TODO sucessor gerado — e este é o único produtor de filhos, então
@@ -2832,8 +2851,8 @@ function pocP29(step?: string): unknown {
     if (dep.code !== 200 || !url) return { scriptId: null, code: dep.code, ms };
     // O instante da IMPLANTAÇÃO é o marco zero da espera do C3: é daqui que o dono passa a poder clicar.
     salvar(withCreated(estado(), scriptId, Date.now()));
-    const lista = parseChildren(props.getProperty('CHILDREN'));
-    props.setProperty('CHILDREN', serializeChildren(withChild(lista, { scriptId, kind: 'automation', title: `p29 #${n}`, url, scopes: ['https://www.googleapis.com/auth/calendar.events'], folderId: null, parent: null, reason: 'POC P29: platform ceiling, no model involved', at: Date.now() })));
+    const lista = readChildren(props);
+    writeChildren(props, withChild(lista, { scriptId, kind: 'automation', title: `p29 #${n}`, url, scopes: ['https://www.googleapis.com/auth/calendar.events'], folderId: null, parent: null, reason: 'POC P29: platform ceiling, no model involved', at: Date.now() }));
     return { scriptId, code: 200, ms };
   };
 
@@ -2876,7 +2895,7 @@ function pocP29(step?: string): unknown {
     // minutos num relógio, e o clique é dele, no tempo dele.
     const s = estado();
     const linhas: ConsentRow[] = s.ids.map((id) => {
-      const c = parseChildren(props.getProperty('CHILDREN')).find((x) => x.scriptId === id);
+      const c = readChildren(props).find((x) => x.scriptId === id);
       let autorizado = false;
       try {
         const probe = c?.url ? fetchChild(c.url) : null;
