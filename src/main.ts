@@ -1067,8 +1067,8 @@ const CAP_TEXT: Record<Capability, { label: string; what: string; missing: strin
   },
   succeed: {
     label: 'Succeed',
-    what: 'Generates a successor with an improved prompt. Succession replaces: the previous one is archived, so the count does not grow.',
-    missing: 'it needs Dream first (there is no winning prompt without a measured cycle), plus code generation and the key handover to the child, which are designed and not built',
+    what: 'Writes a successor — its CODE, generated with Opus 5, as its own Apps Script project with its own, narrower permissions. Succession replaces: the previous one is archived, so the count does not grow.',
+    missing: 'the code generation step is not wired yet: P24 measured that creating, writing and deploying a child project works (10.7 s + 1.1 s + 0.9 s, no clasp), and the key handover is built, but nothing calls Opus 5 to write the successor',
   },
   create: {
     label: 'Create agents',
