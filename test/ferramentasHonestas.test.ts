@@ -25,7 +25,7 @@ describe('gmail.search recusa busca vazia em vez de devolver a caixa de entrada'
     const search = GMAIL_TOOLS.find((t) => t.name === 'gmail.search')!;
     const ctx = { isOwner: true, google: () => ({ code: 200, body: '{}' }) } as never;
     for (const vazio of ['', '   ', '\n']) {
-      expect(() => search.run({ query: vazio }, ctx)).toThrow(/vazia|inválid/i);
+      expect(() => search.run({ query: vazio }, ctx)).toThrow(/empty|invalid/i);
     }
   });
 });

@@ -108,7 +108,7 @@ describe('gmail.draft e gmail.send (RFC 2822 em base64url)', () => {
     expect(decode(reqs[0], 'raw')).toContain('To: dono@x.com\r\n');
   });
   test.each([
-    [{ to: '', subject: 'a', body: 'b' }, 'destinatário'],
+    [{ to: '', subject: 'a', body: 'b' }, 'who it goes to'],
     [{ to: 'x@y.com', subject: 'a\r\nBcc: atacante@example.com', body: 'b' }, 'quebra de linha'],
     [{ to: 'x@y.com, não-email', subject: 'a', body: 'b' }, 'e-mail inválido'],
   ])('recusa %j sem chamar a API', (args, msg) => {
