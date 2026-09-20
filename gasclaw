@@ -350,6 +350,16 @@ ensure_auth() {
     gcloud auth login --enable-gdrive-access
     acct=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -1)
   fi
+  # ESTAR LISTADO NAO E ESTAR VALIDO. Uma conta com token expirado continua aparecendo no `auth list`,
+  # entao a verificacao acima passa e a falha so estoura MUITO DEPOIS, na primeira chamada real — com a
+  # mensagem generica de travamento, sem dizer o que fazer. E a mesma licao que o `pull_into` ja aprendeu
+  # para o clasp: perguntar se existe credencial e diferente de perguntar se ela funciona.
+  if ! gcloud auth print-access-token >/dev/null 2>&1; then
+    die "the Google Cloud credential for $acct expired. Run: gcloud auth login --enable-gdrive-access
+
+This is separate from the clasp credential (~/.clasprc.json): they expire on their own schedules, and
+signing in to one does NOT renew the other. Nothing was published."
+  fi
   setvar ACCOUNT "$acct"
   setvar DOMAIN "${acct#*@}"
   setvar ACCOUNT_KIND "$(kind_of_email "$acct")"

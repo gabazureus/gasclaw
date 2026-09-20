@@ -68,3 +68,35 @@ describe('pull do clasp: distinguir rede de credencial', () => {
     }
   });
 });
+
+// A mesma lição do `pull_into`, que faltava no caminho do gcloud: PERGUNTAR SE EXISTE CREDENCIAL É
+// DIFERENTE DE PERGUNTAR SE ELA FUNCIONA.
+//
+// `ensure_auth` conferia se havia conta listada como ativa. Uma conta com token expirado CONTINUA
+// listada — então a verificação passava e a falha estourava muito depois, na primeira chamada real, como
+// "gasclaw stopped unexpectedly near line 44". Aconteceu de verdade nesta sessão, numa tentativa de
+// publicar: o log trazia `invalid_grant / invalid_rapt` e a tela dizia travamento.
+describe('credencial do gcloud expirada: dizer o comando, não travar', () => {
+  const fonte = readFileSync('gasclaw', 'utf8');
+  const bloco = fonte.slice(fonte.indexOf('ensure_auth()'), fonte.indexOf('ensure_gcp()'));
+
+  test('a conta listada é VERIFICADA, não presumida', () => {
+    expect(bloco).toContain('gcloud auth print-access-token >/dev/null 2>&1');
+    // a verificação vem ANTES de gravar o ACCOUNT: seguir com uma credencial morta é o defeito
+    expect(bloco.indexOf('print-access-token')).toBeLessThan(bloco.indexOf('setvar ACCOUNT'));
+  });
+
+  test('a mensagem traz o comando exato, com a flag que o projeto precisa', () => {
+    expect(bloco).toContain('gcloud auth login --enable-gdrive-access');
+  });
+
+  // A confusão cara: quem acabou de rodar `npx clasp login` acha que resolveu, e o erro se repete igual.
+  test('diz que o cofre do clasp é outro, e que entrar num não renova o outro', () => {
+    expect(bloco).toMatch(/separate from the clasp credential/i);
+    expect(bloco).toMatch(/does NOT renew the other/i);
+  });
+
+  test('e diz que nada foi publicado — senão a pessoa fica sem saber em que estado ficou', () => {
+    expect(bloco).toMatch(/Nothing was published/i);
+  });
+});
