@@ -17,7 +17,7 @@ export type Schema = { type: 'object'; properties: Record<string, Prop>; require
 /** memory: MEMORY.md (read/write) + notas do dia (day/saveDay/today) + recall pronto; day/saveDay/today/recall são opcionais para contextos simples. */
 export type MemoryCtx = { read: () => string; write: (text: string) => void; assertWritable?: () => void; day?: (date: string) => string; saveDay?: (date: string, text: string) => void; today?: () => string; recall?: () => string };
 /** skill: corpo de uma skill sob demanda (skills/<nome>/SKILL.md); é texto, nunca executa (ADR-002). */
-export type ToolCtx = { now: () => string; ownerDm: boolean; memory: MemoryCtx; google?: Google; timeZone?: string; offset?: string; isOwner?: boolean; /** Agente que originou o turno, quando ele veio por repasse (ADR-040 §A): o card precisa dizer quem pediu. */ originAgent?: string; skill?: (name: string) => string | null; /** Delega a uma PERSONA declarada em `subagents/<nome>.md` da própria pasta (ADR-039); ausente nos canais que não a montam. */ persona?: (name: string, task: string) => string; beforeEffect?: () => void };
+export type ToolCtx = { now: () => string; ownerDm: boolean; memory: MemoryCtx; google?: Google; timeZone?: string; offset?: string; isOwner?: boolean; /** Agente que originou o turno, quando ele veio por repasse (ADR-040 §A): o card precisa dizer quem pediu. */ originAgent?: string; skill?: (name: string) => string | null; /** Delega a uma PERSONA declarada em `subagents/<nome>.md` da própria pasta (ADR-039); ausente nos canais que não a montam. */ persona?: (name: string, task: string) => string; /** Manda uma mensagem a OUTRO agente (ADR-040 §A); ausente nos canais que não a montam. */ relay?: (to: string, text: string) => string; beforeEffect?: () => void };
 /** ownerOnly: só o dono usa (e aprova); o motor recusa antes de qualquer card. */
 export type Tool = { name: string; description: string; parameters: Schema; approval: Approval; run: (args: Record<string, unknown>, ctx: ToolCtx) => string; ownerOnly?: boolean };
 
@@ -132,6 +132,31 @@ export const TOOLS: Tool[] = [
       if (!task) throw new Error('say what the persona should do');
       if (!ctx.persona) throw new Error('personas are not available on this channel');
       return ctx.persona(name, task);
+    },
+  },
+  {
+    name: 'agent.message',
+    description: 'Sends a message to ANOTHER agent of this owner. It runs on its own and answers in its own run; you do not get the answer back in this turn.',
+    parameters: {
+      type: 'object',
+      properties: {
+        to: { type: 'string', description: 'the name of the other agent', maxLength: 40 },
+        text: { type: 'string', description: 'what to say to it', maxLength: 2000 },
+      },
+      required: ['to', 'text'],
+      additionalProperties: false,
+    },
+    // `always`, e não `once`: aqui SAI da fronteira deste agente. Outro agente vai rodar, gastar e
+    // possivelmente agir. Uma aprovação `once` liberaria todas as mensagens seguintes do turno, e o
+    // dono teria aprovado a primeira conversa sem saber que aprovava as próximas.
+    approval: 'always',
+    run: (a, ctx) => {
+      const to = String(a.to ?? '').trim().toLowerCase();
+      if (!SUBAGENT_NAME.test(to)) throw new Error('invalid agent name');
+      const text = String(a.text ?? '').trim();
+      if (!text) throw new Error('say what to send');
+      if (!ctx.relay) throw new Error('messaging other agents is not available on this channel');
+      return ctx.relay(to, text);
     },
   },
   ...[...CALENDAR_TOOLS, ...GMAIL_TOOLS, ...CONTACTS_TOOLS, ...TASKS_TOOLS, ...DRIVE_TOOLS].map((t) => ({ ...t, ownerOnly: true })),

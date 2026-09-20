@@ -22,6 +22,7 @@ const NOMES: Record<string, { en: string; pt: string }> = {
   tasks: { en: 'Tasks', pt: 'Tarefas' },
   drive: { en: 'Drive, Docs and Sheets', pt: 'Drive, Docs e Planilhas' },
   memory: { en: 'Memory', pt: 'Memória' },
+  agent: { en: 'Agent', pt: 'Agente' },
   '': { en: 'General', pt: 'Gerais' },
 };
 

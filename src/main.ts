@@ -23,7 +23,7 @@ import { acceptChatMessage } from './chatAsync';
 import { deliveryDue, sendChatDelivery } from './chatDelivery';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
 import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, reply, runTurn } from './agent';
-import { parseSubagent, subagentGrants, subagentSpan, subagentTools } from './subagent';
+import { foreignMessage, parseSubagent, subagentGrants, subagentSpan, subagentTools } from './subagent';
 import type { AgentSpec } from './workspace';
 import { personaIO } from './tools/personaStore';
 import { approvalCard, decisionFrom, issue, issueGrant } from './approval';
@@ -356,6 +356,62 @@ function runPersona(spec: AgentSpec, name: string, task: string): string {
   }
 }
 
+/**
+ * Manda uma mensagem a OUTRO agente do mesmo dono (itens 16 e 32, ADR-040 §A).
+ *
+ * Esta função não podia existir antes do item 31: a ADR-040 §A diz que os quatro controles são
+ * **pré-requisito de qualquer linha de `message`**, e o quarto deles (`tools(A) ∩ tools(B)`) morava
+ * num módulo órfão até a auditoria de 2026-09-20. A ordem importa — a defesa antes do mecanismo.
+ *
+ * O que ela NÃO faz: devolver a resposta de B. O run de B é próprio, durável e assíncrono; fingir uma
+ * resposta síncrona significaria segurar o turno de A esperando, e é assim que um agente trava o outro.
+ */
+/**
+ * As ferramentas aprovadas do agente que ORIGINOU o repasse, pelo nome.
+ *
+ * Devolve lista VAZIA quando o agente não existe mais — e vazia é o lado seguro: o run repassado fica
+ * sem nenhuma ferramenta em vez de ficar com todas as do destinatário. Um agente apagado não deve
+ * poder ampliar poder justamente por ter sumido.
+ */
+function toolsOfAgent(name: string): string[] {
+  const a = store.listAgents().find((x) => x.name.toLowerCase() === String(name ?? '').toLowerCase());
+  if (!a) return [];
+  try {
+    return withAccess(loadAgent(a.folderId), approvedOf(a.folderId)).access.tools;
+  } catch {
+    return []; // pasta ilegível: sem ferramenta, nunca com todas
+  }
+}
+
+function relayToAgent(from: AgentSpec, to: string, text: string): string {
+  const me = ownerEmail();
+  const alvo = store.listAgents().find((a) => a.name.toLowerCase() === to);
+  if (!alvo) throw new Error(`there is no agent named "${to}"`);
+  if (alvo.folderId === from.folderId) throw new Error('an agent cannot message itself');
+  // Arquivado não recebe: um run para quem saiu de cena gastaria e nunca seria lido (ADR-038 §F).
+  if (parseStatus(PropertiesService.getScriptProperties().getProperty(`STATUS:${alvo.folderId}`)) !== 'active') {
+    throw new Error(`the agent "${to}" is archived`);
+  }
+
+  const now = Date.now();
+  const r = newRun({
+    runId: `relay-${now}-${Utilities.getUuid().slice(0, 8)}`,
+    session: `${alvo.folderId}:relay/${from.name}`,
+    folderId: alvo.folderId,
+    user: me,
+    // A mensagem entra como DADO com procedência declarada. O motor não censura o conteúdo: a defesa
+    // real é a aprovação da tool no lado de B, provada pelo eval `e6-injecao` — mesmo com o modelo
+    // enganado, `gmail.send` para no card e não sai.
+    text: foreignMessage(from.name, text),
+    now,
+    // `ownerDm: false` fecha a memória: um agente não escreve na memória do dono em nome de outro.
+    ownerDm: false,
+    originAgent: from.name,
+  });
+  runIO().enqueue(r, now);
+  return `sent to ${to}. It answers in its own run (${r.runId}); you will not see the answer in this turn.`;
+}
+
 function chatDeps(): ChatDeps {
   return {
     enabled: store.isEnabled,
@@ -383,6 +439,7 @@ function chatDeps(): ChatDeps {
         memory: memoryIO(spec.folderId, zone().timeZone),
         skill: (name: string) => skillsIO(spec.folderId).body(name),
         persona: (name: string, task: string) => runPersona(spec, name, task),
+        relay: (to: string, text: string) => relayToAgent(spec, to, text),
         google: gasGoogle,
         ...zone(),
       },
@@ -528,7 +585,11 @@ function stepDeps(budgetMs = STEP_BUDGET_MS, io = runIO()): StepDeps {
       const ownerDm = r.ownerDm;
       const base = d.toolkit!(spec, ownerDm);
       // O acesso ao Google só entra no contexto de quem é o dono, igual à conversa (ADR-023).
-      const kit = { ...base, ctx: { ...base.ctx, isOwner, originAgent: r.originAgent, google: isOwner ? base.ctx.google : undefined } };
+      // ADR-040 §A, CONTROLE (d): um run repassado recebe no máximo `tools(A) ∩ tools(B)`. Sem isto,
+      // texto na pasta COMPARTILHÁVEL de A faria B usar as ferramentas de B — a união das ferramentas
+      // de todos os agentes, com a autoridade do dono. A interseção é o que torna a composição segura.
+      const tools = r.originAgent ? allowedTools(subagentTools(toolsOfAgent(r.originAgent), spec.access.tools)) : base.tools;
+      const kit = { ...base, tools, ctx: { ...base.ctx, isOwner, originAgent: r.originAgent, google: isOwner ? base.ctx.google : undefined } };
       const t = runlog.begin(r.delivery ? 'chat' : 'webchat', { question: r.text.slice(0, 2000), user: r.user });
       // TODA chamada ao modelo deste passo passa por aqui. O resumo da sessão e o flush de memória também
       // custam dinheiro: fora do `llm_call` eles não apareciam no trace nem entravam no `usedUsd`, e o teto

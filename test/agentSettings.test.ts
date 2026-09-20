@@ -177,7 +177,7 @@ describe('ação `tools` da CLI: liga a lista inteira de uma vez', () => {
     m.setAgentUser('f1', 'ana@x.com', true);
     const tudo = await post({ action: 'tools', set: 'all' });
     expect(tudo.ok).toBe(true);
-    expect(tudo.enabled).toHaveLength(24);
+    expect(tudo.enabled).toHaveLength(25);
     expect(tudo.users).toEqual(['ana@x.com']); // ligar ferramenta não mexe em quem conversa
     const nada = await post({ action: 'tools', set: 'none' });
     expect(nada.enabled).toEqual([]);
@@ -207,7 +207,7 @@ describe('ação `tools` da CLI: liga a lista inteira de uma vez', () => {
     await post({ action: 'tools', set: 'all' });
     const r = await post({ action: 'tools', set: '' });
     expect(r.ok).toBe(false);
-    expect(access().tools).toHaveLength(24);
+    expect(access().tools).toHaveLength(25);
   });
 });
 

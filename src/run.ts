@@ -133,7 +133,7 @@ export type DurableRun = {
   updatedAt: number;
 };
 
-export const newRun = (i: { runId: string; session: string; folderId: string; user: string; text: string; now: number; ownerDm?: boolean; capUsd?: number; delivery?: ChatDelivery }): DurableRun => ({
+export const newRun = (i: { runId: string; session: string; folderId: string; user: string; text: string; now: number; ownerDm?: boolean; capUsd?: number; delivery?: ChatDelivery; originAgent?: string }): DurableRun => ({
   runId: i.runId,
   session: i.session,
   folderId: i.folderId,
@@ -144,6 +144,10 @@ export const newRun = (i: { runId: string; session: string; folderId: string; us
   done: {},
   granted: [],
   ...(i.delivery ? { delivery: i.delivery } : {}),
+  // ADR-040 §A: quem ORIGINOU o run, quando ele nasceu de mensagem de outro agente. Vai ASSINADO
+  // (`RUN_UNSIGNED_FIELDS` não o contém), então não dá para apagá-lo editando o arquivo do run —
+  // e é exatamente esse apagamento que transformaria um run de terceiro num run do dono.
+  ...(i.originAgent ? { originAgent: i.originAgent } : {}),
   budget: { usedUsd: 0, capUsd: i.capUsd ?? RUN_BUDGET_USD },
   startedAt: i.now,
   updatedAt: i.now,

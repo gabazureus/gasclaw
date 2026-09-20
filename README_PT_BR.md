@@ -208,7 +208,7 @@ Depois, procure o app no Google Chat (`gasclaw dev`, ou `gasclaw` em prod), mand
 
 ## O que o seu agente faz
 
-**24 ferramentas hoje**, agrupadas como o painel agrupa. O painel mostra o catálogo inteiro com um
+**25 ferramentas hoje**, agrupadas como o painel agrupa. O painel mostra o catálogo inteiro com um
 liga/desliga por ferramenta — e **tudo começa desligado até você aprovar** ([ADR-021](docs/adr/021-acesso-aprovado-no-painel.md)).
 
 | Grupo | O que cobre |
@@ -220,6 +220,7 @@ liga/desliga por ferramenta — e **tudo começa desligado até você aprovar** 
 | Drive, Docs e Planilhas | achar arquivos, ler e criar Docs, ler e acrescentar linhas em planilhas |
 | Memória | o que o agente lembra de você entre as conversas |
 | Gerais | a hora certa, fazer uma pergunta de volta, ler uma skill |
+| Agente | conversar com outro agente seu, e delegar a uma persona declarada na pasta deste agente |
 
 ### Na prática
 

@@ -28,13 +28,13 @@
 | 13 | Candidatos por temperatura | ✅ | Três temperaturas, frontmatter descartado |
 | 14 | Fiação do ciclo de sonho | ✅ | `dreamTick.ts` no gatilho (5 passos/tique), juiz no bundle, contagem de falhas. Falta só MEDIR um ciclo real |
 | 15 | **Proatividade** | 🔨 | **P22 APROVADA 4/4**. Mas `autoApprove.ts` é **ÓRFÃO**: nenhum módulo o importa e ele tem **0 ocorrências no bundle**. Núcleo testado que ninguém chama |
-| 16 | Mensagem entre agentes | ⚠️ | **3 dos 4 controles**: origem assinada ✅, `isOwner` ✅, card nomeia quem pediu ✅. A **interseção de ferramentas mora em `subagent.ts`, que é órfão**. E **não existe mensagem**: o registro fechado não tem nenhuma tool `agent.*` |
+| 16 | Mensagem entre agentes | ✅ | **Os 4 controles fiados e no bundle**, e agora existe a mensagem: `agent.message` no registro fechado, com card `always`. Um run repassado recebe `tools(A) ∩ tools(B)`, teto de 1 salto e recusa de volta |
 | 17 | Sucessão com bastão e mandato | ✅ | Bastão, mandato com prazo e linhagem verificável. Coroar segue sendo ato humano: **não depende** do sonho, porque o sucessor é código |
-| 18 | Organismo: contagem instrumentada | ❌ | **`recordFailure` NUNCA é chamado internamente** (0 call sites fora da própria definição). O contador é global de painel e nada o alimenta quando um run falha — **é esta a causa de o trace ter zero aglomerados**, e não a falta de uso |
+| 18 | Organismo: contagem instrumentada | ✅ | **Ligado**: `failuresFrom` no passo do run durável, provado no bundle. Repetição no mesmo turno conta 1×, `deadline` não conta, eval não alimenta |
 | 19 | Entrega da chave ao filho | ❌ | O núcleo está certo, mas **`KEYSEC:<filho>` nunca é ESCRITO** — só lido. `cliAuthorized(null, …)` é sempre falso, logo a entrega **sempre recusa**. E o filho, sendo outro projeto, **não tem rota HTTP** para pedir |
 | 20 | Campos declarados do agente | ✅ | `.gasclaw/fields.json` declara, painel decide, servidor valida. Órfão preservado e mostrado |
 | 21 | Teto familiar de gasto | ⚠️ | O cálculo e o `capAction` estão certos e na tela. Mas a ação é **só informativa**: nada no motor lê `stop-creating`/`freeze` para de fato parar de criar ou congelar |
-| 22 | Personas e repasse | ❌ | **`subagent.ts` é ÓRFÃO**: nenhum módulo o importa, **0 ocorrências no bundle**. O ✅ anterior estava errado — código testado que ninguém chama parece pronto e não está |
+| 22 | Personas e repasse | ✅ | Tool `persona` no registro + `runPersona` no motor, **chamados no bundle**. Interseção dupla; só ferramentas sem aprovação, porque de dentro de uma tool não há caminho até o card |
 | 23 | **Sucessor como CÓDIGO NOVO (Opus 5)** | ✅ | `codegen.ts` + `successor.ts`: crivo fechado (sem `eval`, sem token OAuth, sem a API do Apps Script, sem chave no fonte), escopos **estritamente menores** que os do motor, teto diário agregado, e o filho nasce precisando do consentimento do dono |
 
 ### O que falta — auditoria de 2026-09-20
@@ -46,15 +46,15 @@
 
 | # | O que falta | Por que ainda não está pronto | Depende de |
 |---|---|---|---|
-| 24 | **Alimentar o contador de falhas** | `recordFailure` tem **0 call sites**: nenhum run que termina mal o chama. É a causa raiz de o trace ter zero aglomerados — e, portanto, de 26, 27, 29 e 30 estarem travados | nada — pode começar, e destrava 4 itens |
+| ~~24~~ | ✅ **Alimentar o contador de falhas** | `recordFailure` tem **0 call sites**: nenhum run que termina mal o chama. É a causa raiz de o trace ter zero aglomerados — e, portanto, de 26, 27, 29 e 30 estarem travados | nada — pode começar, e destrava 4 itens |
 | 25 | Fiar `autoApprove.ts` | Órfão, 0 ocorrências no bundle. A F3a inteira depende dele | nada |
 | 26 | Medir um ciclo de sonho real | O ciclo roda e recusa começar sem material. A recusa é o estado honesto; o material é que não chega | 24 |
 | 27 | C2–C5 da P23 | Medem custo de ciclo, e não há ciclo para medir | 26 |
 | 28 | Proatividade (F3a) | Agenda sai da pasta e vai para o painel, falha honesta em vez de `paused`, lista fechada de auto-aprovação, `NO_REPLY` com span, **sem gatilho novo** | 25 |
 | 29 | Poda do organismo | O gatilho inverso: especialista ocioso propõe a própria aposentadoria; o que não reduziu o aglomerado é arquivado | 26 |
 | 30 | Limiar do aglomerado | Está em 3 ocorrências, **marcado no código como palpite**, não medida | dado real acumulando (24) |
-| 31 | Fiar `subagent.ts` (personas) | Órfão, 0 no bundle. É também o **quarto controle** do item 16: a interseção de ferramentas no repasse | nada |
-| 32 | Ferramenta `agent.*` no registro fechado | Não existe nenhuma. Os controles do item 16 protegem um mecanismo que **ainda não foi construído** | 31 (a interseção precisa existir antes do repasse) |
+| ~~31~~ | ✅ **Fiar `subagent.ts` (personas)** | Órfão, 0 no bundle. É também o **quarto controle** do item 16: a interseção de ferramentas no repasse | nada |
+| ~~32~~ | ✅ **Ferramenta `agent.*` no registro fechado** | Não existe nenhuma. Os controles do item 16 protegem um mecanismo que **ainda não foi construído** | 31 (a interseção precisa existir antes do repasse) |
 | 33 | Fechar a entrega da chave | `KEYSEC:<filho>` nunca é escrito, e o filho não tem rota HTTP para pedir. Hoje a entrega **sempre recusa** | nada |
 | 34 | Teto familiar com **efeito** | `capAction` informa e nada age: ninguém lê `stop-creating`/`freeze` | nada |
 | 35 | Tela da sucessão e da linhagem | `signMandate`, `passBaton`, `lineage` e `writeSuccessor` existem no servidor; o painel só mostra o último | nada |
