@@ -1055,7 +1055,10 @@ const CAP_TEXT: Record<Capability, { label: string; what: string; missing: strin
   dream: {
     label: 'Dream',
     what: 'Rewrites its own prompt and scores itself against the judge set. Costs quota; nothing takes effect without your click.',
-    missing: 'the cycle that wakes up, gathers real failures, writes candidates and scores them does not exist yet',
+    // O ciclo EXISTE: `dreamTick` está fiado no gatilho, o juiz veio no build e a contagem de falhas
+    // roda. O que ainda não há é MATERIAL — e isso o próprio ciclo diz ao recusar começar, o que é
+    // diferente de a capacidade não existir.
+    missing: null,
   },
   initiative: {
     label: 'Reach out',

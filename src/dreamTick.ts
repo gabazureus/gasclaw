@@ -46,6 +46,10 @@ export function startDream(folderId: string, d: DreamDeps): { started: boolean; 
 
   const base = d.spec(folderId);
   const material = d.material(folderId);
+  // D5: CICLO SEM MATERIAL NÃO RODA, e diz por quê. Sonho sem falha real é o modelo inventando o
+  // problema, a solução e a nota — o modo de falha que a decisão recusa. A P25 mediu zero falhas
+  // agrupáveis no trace, então esta recusa é o estado honesto até haver uso real.
+  if (!material) return { started: false, cycleId: null, reason: 'no real failures to dream about: the cluster count has nothing above the threshold yet' };
   const candidatos = CANDIDATE_TEMPERATURES.map((t) => cleanCandidate(d.generate(candidateMessages(base.system, material), t))).filter((c) => c.length > 0);
   if (candidatos.length === 0) return { started: false, cycleId: null, reason: 'no candidate was generated' };
 

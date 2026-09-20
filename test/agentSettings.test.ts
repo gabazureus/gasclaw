@@ -259,7 +259,9 @@ describe('capacidade sem mecanismo não liga, e explica por quê', () => {
   test('as quatro capacidades declaram o que falta, e nenhuma está pronta ainda', () => {
     const cap = main().slice(main().indexOf('const CAP_TEXT'), main().indexOf('const capsProp'));
     for (const nome of ['dream', 'initiative', 'succeed', 'create']) expect(cap).toContain(`${nome}: {`);
-    expect((cap.match(/missing: '/g) ?? [])).toHaveLength(4); // quatro capacidades, quatro pendências declaradas
-    expect(cap).not.toContain('missing: null'); // nenhuma pronta ainda — este número é o placar do trabalho
+    // O placar do trabalho: quantas ainda faltam. `dream` virou `null` quando o ciclo passou a EXISTIR —
+    // não quando ele passou a dar resultado, que é outra pergunta e tem outra medida.
+    expect((cap.match(/missing: '/g) ?? [])).toHaveLength(3);
+    expect((cap.match(/missing: null/g) ?? [])).toHaveLength(1);
   });
 });
