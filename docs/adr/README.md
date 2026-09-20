@@ -41,3 +41,7 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [035](035-procedencia-dos-papeis-no-painel.md) | A procedência de cada papel aparece no painel | Aceito |
 | [036](036-chegar-ao-agente-sem-digitar-o-link.md) | Chegar ao agente sem digitar o link (e por que não encurtamos) | Aceito; QR code no terminal em aberto |
 | [037](037-custo-por-mes-e-valor-por-modelo.md) | Custo por mês (dia dobrado em mês, 24 meses) e o valor de cada modelo no gráfico | Aceito |
+| [038](038-capacidades-e-linhagem.md) | Capacidades por etiqueta, ciclo de vida e linhagem verificável | Aceito |
+| [039](039-subagente-e-declaracao.md) | Sub-agente, persona e os campos que o agente declara | Aceito |
+| [040](040-isolamento-e-privilegio.md) | Isolamento entre projetos e os quatro controles contra escalonamento | Aceito |
+| [041](041-sucessor-como-codigo.md) | O sucessor é código novo (Opus 5), não um prompt melhor | Aceito; nenhum código gerado rodou ainda |

@@ -5,7 +5,7 @@ import { failProp, parseFailures, serializeFailures, withFailure } from './failu
 import { mergeAcrossGenerations, originLabel, parseSchema, validateValues, type ConfigField } from './agentConfig';
 import { afterDelivery, armDelivery, capAction, childrenSpendUpperBound, deliverySpan, FAMILY_CAP_USD, FAMILY_NOTE, mayDeliverKey, rearmDelivery, type KeyDelivery } from './family';
 import { cluster, hasMaterial, type Failure } from './dreamCycle';
-import { AUTH_LABEL, authState, KIND_LABEL, KIND_WHAT, parseChildren, serializeChildren, withoutChild, type Child } from './children';
+import { AUTH_LABEL, authState, KIND_LABEL, KIND_WHAT, parseChildren, serializeChildren, withChild, withoutChild, type Child } from './children';
 import { pocP10 } from '../poc/p10-editor/harness';
 import { pocP14 } from '../poc/p14-trace/harness';
 import { pocP15 } from '../poc/p15-limites/harness';
@@ -53,7 +53,9 @@ import {
   CAPABILITIES, can, canSucceed, capsAfterSuccession, creatorOf, DEFAULT_INTERVAL_MS, forgetAgentProps, intervalOf, mayGenerate,
   nextGeneration, parseCapabilities, parseStatus, setCreator, type Capability, type LineageEntry,
 } from './agentCaps';
-import { mayWriteProject } from './dream';
+import { CODEGEN_BUDGET_USD, CODEGEN_DAILY_CAP_USD, mayWriteProject } from './dream';
+import { generateSuccessor, type SuccessorDeps } from './successor';
+import { CHILD_FORBIDDEN_SCOPES, OPUS_MODEL } from './codegen';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
 import { allowedTools, toolCatalog } from './tools/registry';
@@ -1068,7 +1070,7 @@ const CAP_TEXT: Record<Capability, { label: string; what: string; missing: strin
   succeed: {
     label: 'Succeed',
     what: 'Writes a successor — its CODE, generated with Opus 5, as its own Apps Script project with its own, narrower permissions. Succession replaces: the previous one is archived, so the count does not grow.',
-    missing: 'the code generation step is not wired yet: P24 measured that creating, writing and deploying a child project works (10.7 s + 1.1 s + 0.9 s, no clasp), and the key handover is built, but nothing calls Opus 5 to write the successor',
+    missing: 'the code is written and deployed, but no successor has been measured against the incumbent yet, so passing the baton is still a human decision in this panel — and the generated code has never run here',
   },
   create: {
     label: 'Create agents',
@@ -1422,6 +1424,167 @@ export function passBaton(fromFolderId: string, toFolderId: string, delta: numbe
   return { from: fromFolderId, to: toFolderId, generation: geracao, withinMandate: dentro, entry: entrada };
 }
 
+// ---------- O sucessor é CÓDIGO NOVO, escrito pelo Opus (item 5) ----------
+
+const codegenDayProp = (now: number) => `CODEGEN:${new Date(now).toISOString().slice(0, 10)}`;
+
+/**
+ * O gasto do gerador no dia, AGREGADO sobre todos os agentes.
+ *
+ * Por agente não seria teto: `succeed` pode estar ligada em vários, e N agentes custariam N vezes o
+ * orçamento sem ninguém ter decidido isso. A chave é por DIA (UTC) e some sozinha — nada a podar.
+ */
+function codegenSpentToday(now: number): number {
+  const raw = PropertiesService.getScriptProperties().getProperty(codegenDayProp(now));
+  const n = raw === null ? 0 : Number(raw);
+  // Valor ilegível conta como TETO ATINGIDO, não como zero: na dúvida sobre quanto já se gastou, a
+  // recusa custa uma geração adiada; o zero otimista custa dinheiro real.
+  return Number.isFinite(n) && n >= 0 ? n : CODEGEN_DAILY_CAP_USD;
+}
+
+/** Os escopos do MOTOR, lidos do próprio manifesto pela API: é o teto do que um filho pode herdar. */
+function engineScopes(token: string, own: string): string[] {
+  const res = UrlFetchApp.fetch(`https://script.googleapis.com/v1/projects/${own}/content`, { headers: { Authorization: `Bearer ${token}` }, muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error(`could not read this project's own scopes: HTTP ${res.getResponseCode()}`);
+  const files = (JSON.parse(res.getContentText()) as { files?: { name: string; source: string }[] }).files ?? [];
+  const man = files.find((f) => f.name === 'appsscript');
+  if (!man) throw new Error("could not read this project's own manifest");
+  return (JSON.parse(man.source) as { oauthScopes?: string[] }).oauthScopes ?? [];
+}
+
+/**
+ * Escreve o sucessor: o CÓDIGO dele, gerado pelo Opus, como projeto Apps Script próprio.
+ *
+ * Isto NÃO é o ciclo de sonho. O sonho reescreve o TEXTO do papel e mede o candidato contra o
+ * titular; aqui se escreve um PROGRAMA. Confundir os dois fazia a tela prometer uma coisa e o código
+ * fazer outra — foi a correção do usuário em 2026-09-20 que separou os dois.
+ *
+ * O que esta função NÃO faz, e está dito aqui para ninguém procurar: ela não coroa ninguém. Criar e
+ * coroar são atos separados (`passBaton`), e é essa separação que permite avaliar o sucessor antes
+ * de ele assumir. Ela também não consegue autorizar o filho: a P24 mediu que ele não executa até o
+ * dono consentir, e não existe API para consentir por ele — o painel só mostra onde clicar.
+ */
+/**
+ * O que a tela precisa saber ANTES de mandar escrever um sucessor: quais escopos ele pode herdar,
+ * quanto já se gastou hoje, e se há material.
+ *
+ * Os escopos vêm do manifesto do MOTOR, lido pela API — não de uma lista repetida no código. Uma
+ * lista repetida envelheceria calada no dia em que um escopo entrasse no manifesto, e a tela
+ * ofereceria menos (ou mais) do que o motor de fato tem.
+ */
+export function successorOptions(folderId: string) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const id = String(folderId ?? '').trim();
+  const cap = canSucceed(parseCapabilities(props.getProperty(`CAP:${id}`)), parseStatus(props.getProperty(`STATUS:${id}`)));
+  const gasto = codegenSpentToday(Date.now());
+  let escopos: string[] = [];
+  let erro = '';
+  try {
+    escopos = engineScopes(ScriptApp.getOAuthToken(), ScriptApp.getScriptId()).filter((sc) => !(CHILD_FORBIDDEN_SCOPES as readonly string[]).includes(sc));
+  } catch (e) {
+    erro = (e as Error).message; // a tela mostra o motivo em vez de uma lista vazia sem explicação
+  }
+  return {
+    folderId: id,
+    can: cap.ok,
+    reason: cap.reason,
+    interval: mayGenerateNow(id),
+    scopes: escopos,
+    scopesError: erro,
+    material: agentMaterial(id),
+    generator: OPUS_MODEL,
+    budget: { spentToday: gasto, cap: CODEGEN_DAILY_CAP_USD, perRun: CODEGEN_BUDGET_USD },
+    note: `The successor is new CODE, written by ${OPUS_MODEL}, deployed as its own Apps Script project. It inherits fewer scopes than this engine has — never the same set, and never the ones that let a project write other projects. Google will not run it until you authorize it.`,
+  };
+}
+
+export function writeSuccessor(folderId: string, requestedScopes: string[], goal?: string) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const id = String(folderId ?? '').trim();
+  if (!id) throw new Error('unknown agent');
+
+  // A capacidade e o estado vêm primeiro: um agente arquivado ou sem `succeed` não gera nada.
+  const v = canSucceed(parseCapabilities(props.getProperty(`CAP:${id}`)), parseStatus(props.getProperty(`STATUS:${id}`)));
+  if (!v.ok) return { ok: false as const, reason: v.reason, costUsd: 0 };
+  const intervalo = mayGenerateNow(id);
+  if (!intervalo.ok) return { ok: false as const, reason: intervalo.reason, costUsd: 0 };
+
+  // D5 aplicada ao código: ou existe falha real contada, ou o DONO diz o que quer consertado. O que
+  // a regra proíbe é o MODELO inventar o problema — o dono declarando um objetivo não é isso, e
+  // exigir aglomerado aqui travaria a capacidade inteira até haver falha acumulada.
+  const aglomerado = agentMaterial(id);
+  const pedido = String(goal ?? '').trim().slice(0, 500);
+  const material = aglomerado || pedido;
+  if (!material) return { ok: false as const, reason: 'nothing to improve: no failure cluster yet, and no goal was stated', costUsd: 0 };
+
+  const key = store.getApiKey();
+  if (!key) return { ok: false as const, reason: 'save the OpenRouter key first', costUsd: 0 };
+  const token = ScriptApp.getOAuthToken();
+  const own = ScriptApp.getScriptId();
+  const agente = loadAgent(id);
+
+  const deps: SuccessorDeps = {
+    complete: (messages, model) => {
+      const r = complete(key, model, messages, 8000);
+      return { text: r.text, costUsd: Number(r.usage?.cost ?? 0) };
+    },
+    parentScopes: () => engineScopes(token, own),
+    own: () => own,
+    api: (url, method, payload) => {
+      const res = UrlFetchApp.fetch(url, {
+        method,
+        contentType: 'application/json',
+        headers: { Authorization: `Bearer ${token}` },
+        ...(payload ? { payload: JSON.stringify(payload) } : {}),
+        muteHttpExceptions: true,
+      });
+      return { code: res.getResponseCode(), full: res.getContentText() };
+    },
+    spentToday: () => codegenSpentToday(Date.now()),
+    addSpent: (usd) => props.setProperty(codegenDayProp(Date.now()), String(codegenSpentToday(Date.now()) + usd)),
+    now: () => Date.now(),
+  };
+
+  const r = generateSuccessor(
+    {
+      folderId: id,
+      // O "código vigente" do titular é o PROMPT dele na primeira geração: não existe fonte anterior
+      // até o primeiro sucessor nascer. Dizer isso ao gerador é melhor que mandar um campo vazio e
+      // deixá-lo inventar o que estava lá.
+      incumbentSource: agente.system,
+      material,
+      requestedScopes: Array.isArray(requestedScopes) ? requestedScopes.map(String) : [],
+      title: `${agente.name} — successor ${new Date().toISOString().slice(0, 10)}`,
+      timeZone: Session.getScriptTimeZone(),
+    },
+    deps,
+  );
+  if (!r.ok) return { ok: false as const, reason: r.reason, costUsd: r.costUsd };
+
+  props.setProperty('CHILDREN', serializeChildren(withChild(parseChildren(props.getProperty('CHILDREN')), r.child)));
+  props.setProperty(genStamp(id), String(Date.now())); // o intervalo mínimo conta a partir de AGORA
+  // Sub-agente conversa, logo precisa da chave: a janela nasce ARMADA e é consumida na primeira vez.
+  props.setProperty(deliveryProp(r.child.scriptId), JSON.stringify(armDelivery(r.child.scriptId)));
+  // A linhagem registra a GERAÇÃO DE CÓDIGO com o custo. Sem esta entrada, "ele se reescreveu" seria
+  // uma frase na tela sem nada por trás; com ela, é um registro com data, pai, filho e dólar.
+  const anterior = lineage().entries;
+  const entrada: LineageEntry = {
+    at: Date.now(),
+    kind: 'codegen',
+    parent: id,
+    child: r.child.scriptId,
+    generation: nextGeneration('codegen', anterior.filter((e) => e.parent === id).map((e) => e.generation)[0] ?? 1),
+    delta: null, // nada foi medido ainda: o sucessor não rodou, e inventar um delta seria mentir
+    costUsd: r.costUsd,
+    summary: `successor code written by ${OPUS_MODEL} with ${r.child.scopes.length} scope(s)`,
+  };
+  props.setProperty(lineageProp, JSON.stringify([...anterior, entrada].slice(-100)));
+
+  return { ok: true as const, child: r.child, costUsd: r.costUsd, needsConsent: true, budget: { spentToday: codegenSpentToday(Date.now()), cap: CODEGEN_DAILY_CAP_USD, perRun: CODEGEN_BUDGET_USD } };
+}
+
 /** Pode gerar agora? O intervalo mínimo é trava de custo E de descontrole, não conforto. */
 export function mayGenerateNow(folderId: string) {
   assertOwner();
@@ -1562,6 +1725,20 @@ export function setAgentField(folderId: string, name: string, value: unknown) {
  * O gerador roda em MODELO GRÁTIS por decisão (D4): o ciclo de sonho não gasta dinheiro para descobrir
  * se o laço funciona. A geração de CÓDIGO é a exceção declarada, e não passa por aqui.
  */
+/**
+ * O material do agente: o aglomerado de falhas REAIS, em texto, ou vazio.
+ *
+ * CONTAGEM sobre o trace, nunca impressão do modelo: "7 runs falharam tocando agenda" é um inteiro;
+ * "percebi que você anda precisando de ajuda" não é evidência de nada. É o mesmo material para o
+ * sonho (que reescreve o texto) e para o gerador de código (que reescreve o programa) — a D5 vale
+ * para os dois, e uma função só garante que ela não seja aplicada com dois critérios.
+ */
+function agentMaterial(folderId: string): string {
+  const cs = cluster(parseFailures(PropertiesService.getScriptProperties().getProperty(failProp(folderId))), 30 * 24 * 3600_000, Date.now());
+  const m = hasMaterial(cs);
+  return m.ok && m.top ? `${m.top.count} runs failed with ${m.top.kind}${m.top.tool ? ` on ${m.top.tool}` : ''} in the last 30 days` : '';
+}
+
 function dreamDeps(): DreamDeps {
   const key = store.getApiKey();
   const tz = Session.getScriptTimeZone();
@@ -1589,11 +1766,7 @@ function dreamDeps(): DreamDeps {
     },
     // CONTAGEM sobre o trace, nunca impressão do modelo: "7 runs falharam tocando agenda" é um inteiro;
     // "percebi que você anda precisando de ajuda" não é evidência de nada. Sem material o ciclo não roda.
-    material: (folderId) => {
-      const cs = cluster(parseFailures(PropertiesService.getScriptProperties().getProperty(failProp(folderId))), 30 * 24 * 3600_000, Date.now());
-      const m = hasMaterial(cs);
-      return m.ok && m.top ? `${m.top.count} runs failed with ${m.top.kind}${m.top.tool ? ` on ${m.top.tool}` : ''} in the last 30 days` : '';
-    },
+    material: agentMaterial,
     now: Date.now,
     cycleId: () => `d${Date.now().toString(36)}`,
   };

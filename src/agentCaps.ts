@@ -140,8 +140,14 @@ export function mayGenerate(lastAt: number | null | undefined, intervalMs: numbe
 
 // ---------- Linhagem ----------
 
-/** O tipo do ato. NEM TODO AGENTE GERADO É SUCESSOR — por isso isto existe no modelo. */
-export type ActKind = 'succession' | 'creation';
+/**
+ * O tipo do ato. NEM TODO AGENTE GERADO É SUCESSOR — por isso isto existe no modelo.
+ *
+ * `codegen` é o ato de ESCREVER o código do sucessor; `succession` é o de COROÁ-LO. São separados
+ * porque a decisão é separada: escrever permite avaliar antes de entregar o bastão, e a maioria dos
+ * códigos escritos nunca deve ser coroada.
+ */
+export type ActKind = 'succession' | 'creation' | 'codegen';
 
 /** Uma linha do registro de evolução. Espelhada na planilha; a planilha nunca decide nada (D3). */
 export type LineageEntry = {
@@ -155,8 +161,13 @@ export type LineageEntry = {
   summary: string; // o que mudou / o que ele realiza
 };
 
-/** Sucessão avança a geração; criação começa uma linhagem nova em 1. */
-export const nextGeneration = (kind: ActKind, parentGeneration: number): number => (kind === 'succession' ? parentGeneration + 1 : 1);
+/**
+ * Sucessão avança a geração; criação começa uma linhagem nova em 1.
+ *
+ * `codegen` NÃO avança: escrever o código não coroa ninguém, e contar a geração ali faria o número
+ * subir a cada tentativa — inclusive nas que forem descartadas. Quem avança é o bastão.
+ */
+export const nextGeneration = (kind: ActKind, parentGeneration: number): number => (kind === 'succession' ? parentGeneration + 1 : kind === 'codegen' ? parentGeneration : 1);
 
 // ---------- Escalonamento de privilégio ----------
 

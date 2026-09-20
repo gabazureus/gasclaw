@@ -799,6 +799,11 @@
           box.append(ff);
         }).catch(() => {}); // um esquema ruim não pode derrubar a tela de configuração inteira
 
+        // O sucessor é CÓDIGO NOVO, não um prompt melhor. A seção só existe quando `succeed` está
+        // ligada: oferecer o botão a quem não ligou a capacidade seria a tela contradizendo a caixinha
+        // logo acima dela.
+        if (caps.capabilities.some((c) => c.name === 'succeed' && c.on)) showSuccessor(folderId, box);
+
         const fm = document.createElement('fieldset');
         fm.append(el('legend', { textContent: 'Model' }));
         fm.append(el('p', { className: 'muted', textContent: 'From the folder (AGENTS/spreadsheet): ' + m.fromFolder + ' · Picked here: ' + (m.override || '— (uses the folder one)') + (m.lastModel ? ' · last run: ' + m.lastModel : '') }));
@@ -817,6 +822,61 @@
         holder.replaceChildren(box);
       })
       .catch((e) => { holder.textContent = e.message; });
+  }
+
+  // ----- Escrever o sucessor: o Opus escreve o CÓDIGO, o dono escolhe o que ele herda -----
+  //
+  // Duas coisas ficam VISÍVEIS antes do clique, porque as duas custam: o gasto do dia contra o teto
+  // (o gerador é o modelo mais caro do projeto) e os escopos, um a um. Escolher escopo por caixinha é
+  // o que impede o sucessor de nascer com tudo que o motor tem — e é o dono decidindo, não o modelo.
+  function showSuccessor(folderId, box) {
+    quiet('successorOptions', folderId).then((o) => {
+      const fs = document.createElement('fieldset');
+      fs.append(el('legend', { textContent: 'Write a successor' }), el('p', { className: 'muted', textContent: o.note }));
+      fs.append(el('p', { className: 'muted', textContent: 'Code generation today: ' + money(o.budget.spentToday) + ' of ' + money(o.budget.cap) + ', across every agent.' }));
+      if (o.scopesError) fs.append(el('p', { className: 'err', textContent: 'Could not read this engine\u2019s own scopes: ' + o.scopesError }));
+      if (!o.can) fs.append(el('p', { className: 'muted', textContent: o.reason }));
+      if (!o.interval.ok) fs.append(el('p', { className: 'muted', textContent: o.interval.reason }));
+
+      const marcadas = [];
+      o.scopes.forEach((sc) => {
+        const linha = el('div', { className: 'tool' });
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.id = 'succ-' + folderId + '-' + sc.split('/').pop();
+        cb.value = sc;
+        marcadas.push(cb);
+        linha.append(cb, el('label', { htmlFor: cb.id, textContent: sc.split('/').pop() }));
+        fs.append(linha);
+      });
+      // Nunca TODOS: sucessão estreita, e o motor recusa um pedido que iguale o conjunto do pai. Dizer
+      // isso aqui evita o dono marcar tudo e levar uma recusa depois de esperar a geração.
+      fs.append(el('p', { className: 'muted', textContent: 'Pick fewer than ' + o.scopes.length + ': a successor narrows what it can do, it never matches the parent.' }));
+
+      const goal = document.createElement('input');
+      goal.id = 'succ-goal-' + folderId;
+      goal.placeholder = o.material || 'what should it do better?';
+      fs.append(el('label', { htmlFor: goal.id, textContent: o.material ? 'Real failures found: \u201c' + o.material + '\u201d. Add a goal of your own (optional)' : 'No failure cluster yet \u2014 say what it should do better' }), goal);
+
+      const b = button('Write it with ' + o.generator, () => {
+        const escolhidos = marcadas.filter((c) => c.checked).map((c) => c.value);
+        b.disabled = true;
+        $('msg').textContent = 'Writing the successor\u2026 this calls the most expensive model in the project, so it takes a while.';
+        call('writeSuccessor', folderId, escolhidos, goal.value)
+          .then((r) => {
+            b.disabled = false;
+            if (!r.ok) { $('msg').className = 'err'; $('msg').textContent = r.reason; return; }
+            // O que o dono precisa fazer A SEGUIR, dito no momento em que ele pode fazer: o filho não
+            // executa antes do clique de autorização, e ele aparece na lista de projetos filhos.
+            $('msg').textContent = 'Successor written (' + money(r.costUsd) + '). It does not run until you authorize it \u2014 find it in the child projects list below.';
+            quiet('listChildren').then(showChildren).catch(() => {}); // o filho recém-escrito aparece na lista sem recarregar a tela
+          })
+          .catch((e) => { b.disabled = false; $('msg').className = 'err'; $('msg').textContent = e.message; });
+      });
+      b.disabled = !o.can || !o.interval.ok;
+      fs.append(b);
+      box.append(fs);
+    }).catch(() => {}); // a seção do sucessor não pode derrubar a tela de configuração inteira
   }
 
   // ----- Projetos filhos: onde o dono autoriza um especialista -----

@@ -1,0 +1,116 @@
+// A sucessão por CÓDIGO: do pedido ao Opus até o filho implantado. CASCA IMPERATIVA.
+//
+// A correção do usuário (2026-09-20) que deu origem a este arquivo: "O Succeed não é apenas um novo
+// prompt, é um novo código". O ciclo de sonho reescreve o TEXTO do papel; isto reescreve o PROGRAMA.
+// São dois mecanismos diferentes, e confundi-los fazia a tela prometer uma coisa e o código fazer outra.
+//
+// Duas propriedades organizam a ordem das linhas abaixo, e as duas vêm de erro conhecido:
+//
+// 1. TODA RECUSA BARATA VEM ANTES DE PAGAR O OPUS. Escopo errado, teto estourado e a guarda do motor
+//    são conhecidos antes da chamada; descobri-los depois seria dólar gasto para nada.
+// 2. O CUSTO É CONTADO MESMO QUANDO O RESULTADO É JOGADO FORA. O dinheiro saiu. Não contabilizar uma
+//    geração reprovada furaria o teto diário exatamente pelo caminho mais provável: o das tentativas.
+import { checkSuccessorSource, extractSource, narrowScopes, OPUS_MODEL, successorManifest, successorMessages } from './codegen';
+import { CODEGEN_DAILY_CAP_USD, CODEGEN_BUDGET_USD, mayWriteProject, withinDailyCap } from './dream';
+import type { Child } from './children';
+
+const API = 'https://script.googleapis.com/v1/projects';
+
+export type ApiCall = (url: string, method: 'get' | 'post' | 'put', payload?: unknown) => { code: number; full: string };
+
+export type SuccessorDeps = {
+  /** Chamada ao gerador. O custo vem junto porque é ele que alimenta o teto — não é telemetria. */
+  complete: (messages: ReturnType<typeof successorMessages>, model: string) => { text: string; costUsd: number };
+  /** Os escopos que o MOTOR tem hoje: o teto do que o filho pode herdar. */
+  parentScopes: () => string[];
+  /** O scriptId de quem está executando. Sem ele não se escreve em projeto nenhum. */
+  own: () => string;
+  api: ApiCall;
+  spentToday: () => number;
+  addSpent: (usd: number) => void;
+  now: () => number;
+};
+
+export type SuccessorRequest = {
+  folderId: string;
+  incumbentSource: string;
+  material: string;
+  requestedScopes: string[];
+  title: string;
+  timeZone: string;
+};
+
+export type SuccessorResult = { ok: true; child: Child; needsConsent: true; costUsd: number } | { ok: false; reason: string; costUsd: number };
+
+const fail = (reason: string, costUsd = 0): SuccessorResult => ({ ok: false, reason, costUsd });
+
+const jsonOf = <T>(raw: string): T | null => {
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+};
+
+export function generateSuccessor(req: SuccessorRequest, d: SuccessorDeps): SuccessorResult {
+  // ---- 1. o que se sabe sem gastar nada ----
+  const own = d.own();
+  if (!own) return fail('cannot tell which project is running: refusing to write anywhere');
+  if (!withinDailyCap(d.spentToday(), CODEGEN_BUDGET_USD)) {
+    return fail(`the code generator is at its daily cap: US$ ${d.spentToday().toFixed(2)} spent today, cap is US$ ${CODEGEN_DAILY_CAP_USD.toFixed(2)} across every agent`);
+  }
+  const escopos = narrowScopes(req.requestedScopes, d.parentScopes());
+  if (!escopos.ok) return fail(escopos.reason);
+
+  // ---- 2. a única linha cara do arquivo ----
+  const gen = d.complete(successorMessages(req.incumbentSource, req.material, escopos.scopes), OPUS_MODEL);
+  const custo = Number.isFinite(gen.costUsd) ? gen.costUsd : 0;
+  d.addSpent(custo); // antes de qualquer recusa: o gasto não depende do veredito
+
+  const fonte = extractSource(gen.text);
+  if (!fonte) return fail('the generator returned no code', custo);
+  const crivo = checkSuccessorSource(fonte);
+  if (!crivo.ok) return fail(crivo.reason, custo);
+
+  // ---- 3. criar, escrever, implantar ----
+  const criado = d.api(API, 'post', { title: req.title });
+  const scriptId = criado.code === 200 ? (jsonOf<{ scriptId?: string }>(criado.full)?.scriptId ?? null) : null;
+  if (!scriptId) return fail(`could not create the child project: HTTP ${criado.code}`, custo);
+
+  // A guarda vale mesmo com um id recém-criado: é barata e o dia em que ela importar será o dia em
+  // que algo inesperado devolveu o id do próprio motor.
+  const guarda = mayWriteProject(scriptId, own);
+  if (!guarda.ok) return fail(guarda.reason, custo);
+
+  const files = [
+    { name: 'appsscript', type: 'JSON', source: successorManifest(escopos.scopes, req.timeZone) },
+    { name: 'Code', type: 'SERVER_JS', source: fonte.endsWith('\n') ? fonte : `${fonte}\n` },
+  ];
+  const escrita = d.api(`${API}/${scriptId}/content`, 'put', { files });
+  if (escrita.code !== 200) return fail(`could not write the child's code: HTTP ${escrita.code}`, custo);
+
+  const ver = d.api(`${API}/${scriptId}/versions`, 'post', { description: 'successor' });
+  if (ver.code !== 200) return fail(`could not create the child's version: HTTP ${ver.code}`, custo);
+  const dep = d.api(`${API}/${scriptId}/deployments`, 'post', { versionNumber: 1, manifestFileName: 'appsscript', description: 'successor' });
+  if (dep.code !== 200) return fail(`could not deploy the child: HTTP ${dep.code}`, custo);
+
+  const url = (jsonOf<{ entryPoints?: { webApp?: { url?: string } }[] }>(dep.full)?.entryPoints ?? []).map((e) => e.webApp?.url).find((u) => !!u) ?? null;
+  // Sem URL o dono não tem onde clicar para consentir, e um filho que ninguém pode autorizar nunca
+  // vai executar. Chamar isso de sucesso seria o painel afirmando o que não aconteceu.
+  if (!url) return fail('the deployment came back with no web app URL: the owner would have nowhere to authorize it', custo);
+
+  const child: Child = {
+    scriptId,
+    kind: 'subagent',
+    title: req.title,
+    url,
+    scopes: escopos.scopes,
+    folderId: null, // a pasta do sucessor é criada depois, pelo painel: nascer sem ela é o estado honesto
+    parent: req.folderId,
+    reason: req.material.slice(0, 300),
+    at: d.now(),
+  };
+  // `needsConsent` é constante de propósito, e não uma verificação: a P24 mediu que um filho criado
+  // pela API NÃO executa até o dono consentir. Afirmar outra coisa aqui seria adivinhar.
+  return { ok: true, child, needsConsent: true, costUsd: custo };
+}

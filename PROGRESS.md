@@ -1,7 +1,7 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, e se já foi resolvido.
-> **Atualizado em:** 2026-09-20 · dev na versão 109 · **1567 testes** · `tsc` limpo · build limpo
+> **Atualizado em:** 2026-09-20 · **1635 testes** · `tsc` limpo · build limpo
 > · **P22 aprovada 4/4** · P24 **aprovada por inteiro** · P25 **reprovada** (sem combustível)
 > **Fontes:** [spec](docs/specs/), [ADRs](docs/adr/README.md), [CHANGELOG](CHANGELOG.md),
 > [log da wiki](docs/wiki/log.md), [pesquisa do sinal fraco](docs/pesquisa/2026-09-19-o-sinal-fraco-do-sonho.md)
@@ -29,12 +29,13 @@
 | 14 | Fiação do ciclo de sonho | ✅ | `dreamTick.ts` no gatilho (5 passos/tique), juiz no bundle, contagem de falhas. Falta só MEDIR um ciclo real |
 | 15 | **Proatividade** | 🔨 | **P22 APROVADA 4/4** (C1 617 ms · C2 627 ms · C3 13,87%/20%, cabem 6 agentes · C4 1). Falta a F3a: agenda no painel, falha honesta, lista fechada de auto-aprovação |
 | 16 | Mensagem entre agentes | ✅ | **Os 4 controles em pé e testados**: origem assinada, `isOwner` não deriva só do run.user, o card nomeia quem pediu, interseção de ferramentas |
-| 17 | Sucessão com bastão e mandato | 📐 | Depende do ciclo de sonho ter um vencedor medido |
+| 17 | Sucessão com bastão e mandato | ✅ | Bastão, mandato com prazo e linhagem verificável. Coroar segue sendo ato humano: **não depende** do sonho, porque o sucessor é código |
 | 18 | Organismo: contagem instrumentada | ✅ | `failureLog.ts` conta por agente, poda por idade antes de quantidade. O criador nasce quando houver dado — decisão do dono |
 | 19 | Entrega da chave ao filho | ✅ | Única, segredo comparado em **tempo constante**, rearmar é ato humano e **não zera a contagem** |
 | 20 | Campos declarados do agente | ✅ | `.gasclaw/fields.json` declara, painel decide, servidor valida. Órfão preservado e mostrado |
 | 21 | Teto familiar de gasto | ✅ | Reusa `usageView`; limite superior com a ressalva junto; 80% para de criar, 100% congela, nunca corta a chave |
 | 22 | Personas e repasse | ✅ | `subagent.ts` fiado: interseção, profundidade 1, sem herdar aprovação, span no trace |
+| 23 | **Sucessor como CÓDIGO NOVO (Opus 5)** | ✅ | `codegen.ts` + `successor.ts`: crivo fechado (sem `eval`, sem token OAuth, sem a API do Apps Script, sem chave no fonte), escopos **estritamente menores** que os do motor, teto diário agregado, e o filho nasce precisando do consentimento do dono |
 
 ### POCs
 
