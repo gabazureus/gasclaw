@@ -177,7 +177,7 @@ describe('ação `tools` da CLI: liga a lista inteira de uma vez', () => {
     m.setAgentUser('f1', 'ana@x.com', true);
     const tudo = await post({ action: 'tools', set: 'all' });
     expect(tudo.ok).toBe(true);
-    expect(tudo.enabled).toHaveLength(25);
+    expect(tudo.enabled).toHaveLength(26);
     expect(tudo.users).toEqual(['ana@x.com']); // ligar ferramenta não mexe em quem conversa
     const nada = await post({ action: 'tools', set: 'none' });
     expect(nada.enabled).toEqual([]);
@@ -207,7 +207,7 @@ describe('ação `tools` da CLI: liga a lista inteira de uma vez', () => {
     await post({ action: 'tools', set: 'all' });
     const r = await post({ action: 'tools', set: '' });
     expect(r.ok).toBe(false);
-    expect(access().tools).toHaveLength(25);
+    expect(access().tools).toHaveLength(26);
   });
 });
 
@@ -255,13 +255,26 @@ describe('capacidade sem mecanismo não liga, e explica por quê', () => {
     expect(main()).toContain('available: CAP_TEXT[c].missing === null');
   });
 
-  // Quando a peça ficar pronta, `missing` vira null NUM LUGAR SÓ e a capacidade acende sozinha.
-  test('as quatro capacidades declaram o que falta, e nenhuma está pronta ainda', () => {
+  // Este teste era um PLACAR: contava quantas capacidades ainda faltavam. Ele virou ficção quando as
+  // peças ficaram prontas, e um teste que só conta não protege nada — ele apenas avisa que o número
+  // mudou. A guarda INVERSA é mais forte e é a que a auditoria de 20/09 ensinou: uma capacidade que
+  // se declara pronta (`missing: null`) precisa ter o MECANISMO no bundle. Assim, apagar o `missing`
+  // sem fiar a peça falha aqui — que é exatamente o erro que deixou seis itens com ✅ falso.
+  test('toda capacidade declarada PRONTA tem o mecanismo fiado no bundle', () => {
     const cap = main().slice(main().indexOf('const CAP_TEXT'), main().indexOf('const capsProp'));
     for (const nome of ['dream', 'initiative', 'succeed', 'create']) expect(cap).toContain(`${nome}: {`);
-    // O placar do trabalho: quantas ainda faltam. `dream` virou `null` quando o ciclo passou a EXISTIR —
-    // não quando ele passou a dar resultado, que é outra pergunta e tem outra medida.
-    expect((cap.match(/missing: '/g) ?? [])).toHaveLength(3);
-    expect((cap.match(/missing: null/g) ?? [])).toHaveLength(1);
+    const bundle = readFileSync('dist/_motor.js', 'utf8');
+    /** O símbolo que PROVA que a capacidade existe de verdade, e não só como texto na tela. */
+    const MECANISMO: Record<string, string> = {
+      dream: 'tickDream(',
+      initiative: 'tickProactive(',
+      succeed: 'generateSuccessor(',
+      create: 'bornAgent(',
+    };
+    for (const [nome, simbolo] of Object.entries(MECANISMO)) {
+      const pronta = new RegExp(`${nome}: \\{[^}]*missing: null`, 's').test(cap);
+      if (!pronta) continue;
+      expect(bundle, `${nome} diz estar pronta mas ${simbolo} não é chamado no bundle`).toContain(simbolo);
+    }
   });
 });

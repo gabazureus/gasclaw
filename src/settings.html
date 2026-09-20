@@ -12,6 +12,23 @@
     input, textarea { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font: inherit; }
     button { padding: 8px 12px; border: 0; border-radius: 6px; background: #1d1d1b; color: #fff; cursor: pointer; margin-top: 8px; font: inherit; }
     button.sec { background: #e3e1db; color: #1d1d1b; }
+    /* `Drive` e um LINK (abre outra aba), nao um botao — mas precisa parecer um, senao a linha de acoes
+       fica com um item que nao se le como acao. Ancora com cara de botao: o clique do meio e o "abrir em
+       nova aba" continuam funcionando, o que um <button> com window.open perderia. */
+    a.btn { display: inline-block; padding: 8px 12px; border-radius: 6px; background: #e3e1db; color: #1d1d1b; text-decoration: none; margin-top: 8px; font: inherit; }
+    a.btn:hover { background: #d6d4cd; }
+    /* O unico botao destrutivo da linha nao pode ter o mesmo peso visual dos outros quatro. */
+    button.danger { background: #fff; color: #8a1c1c; box-shadow: inset 0 0 0 1px #e0bcbc; }
+    button.danger:hover { background: #fdf3f3; }
+    /* Tabela dos projetos filhos: densidade em vez de um cartao por item. Com 3 filhos o cartao ja
+       empurra o resto da tela para baixo, e a comparacao entre eles — que e o que o dono faz ali —
+       vira rolagem. */
+    table.list { width: 100%; border-collapse: collapse; font-size: 14px; }
+    table.list th { text-align: left; font-weight: 600; color: #6b6b66; border-bottom: 1px solid #e3e1db; padding: 6px 8px 6px 0; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    table.list td { padding: 8px 8px 8px 0; border-bottom: 1px solid #f0efea; vertical-align: top; }
+    table.list td.acts { white-space: nowrap; text-align: right; }
+    table.list a { color: #1d1d1b; }
+    table.list tr.gone td { opacity: .55; }
     /* Sem isto, um botão desabilitado fica idêntico a um ativo: a pessoa clica e nada acontece, sem retorno. */
     button:disabled { background: #cfcdc7; color: #6b6b66; cursor: not-allowed; }
     .row { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 4px 0; }
@@ -248,11 +265,15 @@
       const box = document.createElement('div');
       const row = document.createElement('div');
       row.className = 'row';
-      const link = document.createElement('a');
-      link.href = 'https://drive.google.com/drive/folders/' + a.folderId;
-      link.textContent = (i === 0 ? '⭐ ' : '') + a.name;
+      // O NOME deixa de ser link. O nome que leva para outro lugar é a armadilha classica: quem clica
+      // esperando abrir o agente cai no Drive, e quem quer o Drive nao sabe que o nome serve para isso.
+      // Agora o nome e texto, e o destino tem botao proprio, com rotulo dizendo para onde vai.
       const folder = document.createElement('span');
-      folder.append(link); // o link do Apps Script é do ambiente, não do agente: mora no cabeçalho (P21)
+      folder.append(
+        el('strong', { textContent: a.name }),
+        ' ',
+        i === 0 ? el('span', { className: 'badge gasclaw', textContent: 'default' }) : '',
+      );
       const actions = document.createElement('span');
       const holder = document.createElement('div');
       holder.className = 'muted';
@@ -296,8 +317,22 @@
       cfgBtn.setAttribute('aria-expanded', 'false');
       actions.append(cfgBtn, ' ');
 
+      // O botao que faltava: a pasta do agente E o agente (ADR-002), e chegar nela era adivinhacao.
+      const drive = el('a', { className: 'btn', textContent: 'Drive', href: 'https://drive.google.com/drive/folders/' + a.folderId });
+      drive.target = '_blank';
+      drive.rel = 'noopener';
+      drive.title = 'Open this agent\u2019s folder in Google Drive';
+      actions.append(drive, ' ');
+
       if (i > 0) actions.append(button('Make default', () => call('makeDefault', a.folderId).then(render)), ' ');
-      actions.append(button('Remove', () => call('removeAgent', a.folderId).then(render)));
+      // Remover e o unico botao destrutivo da linha: ele pede confirmacao e diz o que NAO apaga. Sem
+      // isso, 'Remove' ao lado de 'Drive' parece apagar a pasta — e ele nao apaga.
+      const del = button('Remove', () => {
+        if (!confirm('Remove \u201c' + a.name + '\u201d from gasclaw?\n\nThe Drive folder and its files are NOT deleted \u2014 only this panel stops using them.')) return;
+        call('removeAgent', a.folderId).then(render);
+      });
+      del.className = 'danger';
+      actions.append(del);
       row.append(folder, actions);
       box.append(row, holder, promptHolder, cfgHolder);
       return box;
@@ -997,42 +1032,92 @@
 
   function showChildren(x) {
     const list = x.children || [];
-    // Sem filho, nada aparece: uma seção vazia permanente ensina menos que a ausência dela.
+    const gone = x.archived || [];
     [...document.querySelectorAll('[data-child]')].forEach((n) => n.remove());
+    // Nada para mostrar ⇒ nada aparece. Uma seção vazia permanente ensina menos que a ausência dela.
+    if (!list.length && !gone.length) return;
+
+    const sec = el('section', {});
+    sec.dataset.child = 'table';
+    sec.append(el('h2', { textContent: 'Projects and archived agents' }));
+
     const ajuda = el('details', {});
-    ajuda.dataset.child = 'help';
     ajuda.append(
-      el('summary', { textContent: 'What is a child project?' }),
-      el('p', { className: 'muted', textContent: 'An Apps Script project of its own, with its own — narrower — set of Google permissions. Google will not let one run until you authorize it: one click, once.' }),
-      el('p', { className: 'muted', textContent: 'An automation is code only: no folder, no prompt, no model, and no API key. A sub agent also has its own Drive folder with a prompt, so it can hold a conversation — and only that kind needs the API key.' }),
-      el('p', { className: 'muted', textContent: '"Forget" only removes it from this list. The project stays in your Google account until you delete it there.' }),
+      el('summary', { textContent: 'What am I looking at?' }),
+      // Os TRES nomes, com a unica diferenca que muda a decisao do dono em primeiro lugar: credencial.
+      el('p', { className: 'muted', textContent: 'An automation is code only \u2014 no folder, no prompt, no model, and no API key. A sub agent also has its own Drive folder with a prompt, so it can hold a conversation, and only that kind needs the API key. A persona is neither: it lives inside this agent\u2019s own folder and never becomes a project.' }),
+      el('p', { className: 'muted', textContent: 'Google will not let a child project run until you authorize it: one click, once. This panel cannot do it for you \u2014 it can only show what the project is asking for and take you there.' }),
+      el('p', { className: 'muted', textContent: '\u201cForget\u201d only removes it from this list. The project stays in your Google account until you delete it there.' }),
     );
-    $('agents').append(ajuda, ...list.map((c) => {
-      const box = el('div', { className: 'limit' });
-      box.dataset.child = c.scriptId;
-      // UMA linha de identidade e UMA de detalhe. O texto que explica o que é um projeto filho vive no
-      // `<details>`, não em cada linha: repetir a explicação por item transforma uma lista em parede.
-      // A etiqueta diz QUAL DOS DOIS, não "child project": é a diferença entre haver ou não credencial.
-      const nome = el('span', {}, el('strong', { textContent: c.title }), ' ', el('span', { className: 'badge' + (c.kind === 'subagent' ? ' gasclaw' : ''), textContent: c.kindLabel }));
-      box.append(el('div', { className: 'row' }, nome, el('span', { className: CHILD_STATE_CLASS[c.state] || 'badge', textContent: c.stateLabel })));
-      const curto = (c.scopes.length ? c.scopes.map((x) => x.split('/').pop()).join(', ') : 'no scope declared') + (c.reason ? ' · ' + c.reason : '');
-      box.title = c.kindWhat; // o detalhe de cada tipo fica ao passar o mouse, sem ocupar linha
-      box.append(el('p', { className: 'muted', textContent: curto }));
-      const acoes = el('p', { className: 'links' });
-      if (c.url) {
-        const abrir = el('a', { textContent: c.state === 'authorized' ? 'Open it' : 'Authorize it', href: c.url });
-        abrir.target = '_blank';
-        abrir.rel = 'noopener';
-        acoes.append(abrir);
-      }
-      const editor = el('a', { textContent: 'Editor', href: c.editorUrl });
-      editor.target = '_blank';
-      editor.rel = 'noopener';
-      acoes.append(editor);
-      acoes.append(button('Forget', () => call('forgetChild', c.scriptId).then(showChildren)));
-      box.append(acoes);
-      return box;
-    }));
+    sec.append(ajuda);
+
+    // TABELA e nao cartoes: com tres filhos os cartoes ja empurram o resto da tela para baixo, e a
+    // comparacao entre eles — que e o que o dono faz aqui — vira rolagem. Numa tabela, o tipo e o
+    // estado de cada um ficam na mesma coluna, e a diferenca se le de cima para baixo.
+    if (list.length) {
+      const t = el('table', { className: 'list' });
+      const thead = el('tr', {});
+      ['Name', 'Kind', 'Status', 'Scopes', ''].forEach((h) => thead.append(el('th', { textContent: h })));
+      t.append(thead);
+      list.forEach((c) => {
+        const tr = el('tr', {});
+        tr.title = c.kindWhat;
+        const nome = el('td', {}, el('strong', { textContent: c.title }));
+        if (c.reason) nome.append(el('div', { className: 'muted', textContent: c.reason }));
+        tr.append(nome);
+        tr.append(el('td', {}, el('span', { className: 'badge' + (c.kind === 'subagent' ? ' gasclaw' : ''), textContent: c.kindLabel })));
+        tr.append(el('td', {}, el('span', { className: CHILD_STATE_CLASS[c.state] || 'badge', textContent: c.stateLabel })));
+        // Escopo e o que o dono precisa LER antes de autorizar: fica em coluna propria, nao espremido
+        // numa linha de detalhe junto do motivo.
+        tr.append(el('td', { className: 'muted', textContent: c.scopes.length ? c.scopes.map((v) => v.split('/').pop()).join(', ') : 'no scope declared' }));
+        const acts = el('td', { className: 'acts' });
+        if (c.url) {
+          // O rotulo diz o que o clique FAZ neste estado: 'Authorize it' quando falta consentir,
+          // 'Open it' quando ja esta autorizado. Um rotulo fixo faria o dono procurar um botao
+          // 'Authorize' que nunca existiu — foi exatamente o que aconteceu na v96.
+          const abrir = el('a', { className: 'btn', textContent: c.state === 'authorized' ? 'Open' : 'Authorize', href: c.url });
+          abrir.target = '_blank'; abrir.rel = 'noopener';
+          acts.append(abrir, ' ');
+        }
+        const editor = el('a', { className: 'btn', textContent: 'Code', href: c.editorUrl });
+        editor.target = '_blank'; editor.rel = 'noopener';
+        acts.append(editor, ' ');
+        const esquecer = button('Forget', () => {
+          if (!confirm('Forget \u201c' + c.title + '\u201d?\n\nThe Apps Script project is NOT deleted \u2014 it stays in your Google account.')) return;
+          call('forgetChild', c.scriptId).then(showChildren);
+        });
+        esquecer.className = 'danger';
+        acts.append(esquecer);
+        tr.append(acts);
+        t.append(tr);
+      });
+      sec.append(t);
+    }
+
+    // ARQUIVADOS numa tabela propria. Eles somem da lista de agentes ao serem arquivados, e sumir da
+    // tela e diferente de deixar de existir: os chats seguem legiveis, a pasta segue no Drive, e um
+    // antecessor arquivado e a PROVA de que a sucessao aconteceu.
+    if (gone.length) {
+      sec.append(el('h2', { textContent: 'Archived agents' }));
+      sec.append(el('p', { className: 'muted', textContent: 'They stopped answering and no trigger reaches them. Their chats are still readable and their Drive folder is untouched.' }));
+      const t2 = el('table', { className: 'list' });
+      const h2 = el('tr', {});
+      ['Name', '', ''].forEach((h) => h2.append(el('th', { textContent: h })));
+      t2.append(h2);
+      gone.forEach((a) => {
+        const tr = el('tr', { className: 'gone' });
+        tr.append(el('td', {}, el('strong', { textContent: a.name })));
+        tr.append(el('td', { className: 'muted', textContent: 'archived' }));
+        const acts = el('td', { className: 'acts' });
+        const drive = el('a', { className: 'btn', textContent: 'Drive', href: a.driveUrl });
+        drive.target = '_blank'; drive.rel = 'noopener';
+        acts.append(drive);
+        tr.append(acts);
+        t2.append(tr);
+      });
+      sec.append(t2);
+    }
+    $('agents').append(sec);
   }
   // Conferir a autorização custa uma chamada por filho, então roda junto do desenho da lista, não em laço.
   function loadChildren() {

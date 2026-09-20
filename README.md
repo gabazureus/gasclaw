@@ -207,7 +207,7 @@ Then find the app in Google Chat (`gasclaw dev`, or `gasclaw` in prod), send a D
 
 ## What your agent can do
 
-**25 tools today**, grouped the way the panel groups them. The panel shows the full catalogue with an
+**26 tools today**, grouped the way the panel groups them. The panel shows the full catalogue with an
 on/off switch per tool — and **everything starts off until you approve it** ([ADR-021](docs/adr/021-acesso-aprovado-no-painel.md)).
 
 | Group | What it covers |

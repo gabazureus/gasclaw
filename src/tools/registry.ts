@@ -17,7 +17,7 @@ export type Schema = { type: 'object'; properties: Record<string, Prop>; require
 /** memory: MEMORY.md (read/write) + notas do dia (day/saveDay/today) + recall pronto; day/saveDay/today/recall são opcionais para contextos simples. */
 export type MemoryCtx = { read: () => string; write: (text: string) => void; assertWritable?: () => void; day?: (date: string) => string; saveDay?: (date: string, text: string) => void; today?: () => string; recall?: () => string };
 /** skill: corpo de uma skill sob demanda (skills/<nome>/SKILL.md); é texto, nunca executa (ADR-002). */
-export type ToolCtx = { now: () => string; ownerDm: boolean; memory: MemoryCtx; google?: Google; timeZone?: string; offset?: string; isOwner?: boolean; /** Agente que originou o turno, quando ele veio por repasse (ADR-040 §A): o card precisa dizer quem pediu. */ originAgent?: string; skill?: (name: string) => string | null; /** Delega a uma PERSONA declarada em `subagents/<nome>.md` da própria pasta (ADR-039); ausente nos canais que não a montam. */ persona?: (name: string, task: string) => string; /** Manda uma mensagem a OUTRO agente (ADR-040 §A); ausente nos canais que não a montam. */ relay?: (to: string, text: string) => string; beforeEffect?: () => void };
+export type ToolCtx = { now: () => string; ownerDm: boolean; memory: MemoryCtx; google?: Google; timeZone?: string; offset?: string; isOwner?: boolean; /** Agente que originou o turno, quando ele veio por repasse (ADR-040 §A): o card precisa dizer quem pediu. */ originAgent?: string; skill?: (name: string) => string | null; /** Delega a uma PERSONA declarada em `subagents/<nome>.md` da própria pasta (ADR-039); ausente nos canais que não a montam. */ persona?: (name: string, task: string) => string; /** Manda uma mensagem a OUTRO agente (ADR-040 §A); ausente nos canais que não a montam. */ relay?: (to: string, text: string) => string; /** Cria um AGENTE novo (pasta própria, sem nenhuma capacidade). Só o agente com `create` a recebe. */ createAgent?: (name: string, role: string) => string; beforeEffect?: () => void };
 /** ownerOnly: só o dono usa (e aprova); o motor recusa antes de qualquer card. */
 export type Tool = { name: string; description: string; parameters: Schema; approval: Approval; run: (args: Record<string, unknown>, ctx: ToolCtx) => string; ownerOnly?: boolean };
 
@@ -157,6 +157,33 @@ export const TOOLS: Tool[] = [
       if (!text) throw new Error('say what to send');
       if (!ctx.relay) throw new Error('messaging other agents is not available on this channel');
       return ctx.relay(to, text);
+    },
+  },
+  {
+    name: 'agent.create',
+    description: 'Creates a NEW agent with its own Drive folder and role. It is born with no tools, no access and no capabilities until you approve them.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'lowercase letters, numbers and hyphens', maxLength: 40 },
+        role: { type: 'string', description: 'what this agent is for, in one or two sentences', maxLength: 1000 },
+      },
+      required: ['name', 'role'],
+      additionalProperties: false,
+    },
+    // `always`: criar um agente é o ato que MULTIPLICA. Cada novo agente é mais superfície, mais
+    // gasto e mais uma pasta compartilhável. Um `once` faria o dono aprovar o primeiro sem saber que
+    // aprovava o quinto.
+    approval: 'always',
+    run: (a, ctx) => {
+      const name = String(a.name ?? '').trim().toLowerCase();
+      if (!SUBAGENT_NAME.test(name)) throw new Error('invalid agent name: use lowercase letters, numbers and hyphens');
+      const role = String(a.role ?? '').trim();
+      if (!role) throw new Error('say what the new agent is for');
+      // Só o agente que TEM a capacidade `create` recebe este ponto de entrada. Quem não tem, não o
+      // encontra no contexto — e a recusa é a mesma de qualquer canal que não monta a ferramenta.
+      if (!ctx.createAgent) throw new Error('this agent may not create agents');
+      return ctx.createAgent(name, role);
     },
   },
   ...[...CALENDAR_TOOLS, ...GMAIL_TOOLS, ...CONTACTS_TOOLS, ...TASKS_TOOLS, ...DRIVE_TOOLS].map((t) => ({ ...t, ownerOnly: true })),

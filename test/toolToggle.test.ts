@@ -55,7 +55,7 @@ describe('withTool: liga/desliga UMA ferramenta sem mexer nas outras', () => {
 describe('toolCatalog: o que a tela desenha vem do registry, não de uma lista paralela', () => {
   test('lista todas as ferramentas com grupo, aprovação e se é só do dono', () => {
     const c = toolCatalog();
-    expect(c).toHaveLength(25);
+    expect(c).toHaveLength(26);
     expect(c.find((t) => t.name === 'gmail.send')).toMatchObject({ group: 'gmail', approval: 'always', ownerOnly: true });
     expect(c.find((t) => t.name === 'now')).toMatchObject({ group: '', approval: 'never', ownerOnly: false });
     for (const t of c) expect(t.description.length).toBeGreaterThan(10);

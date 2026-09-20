@@ -398,6 +398,47 @@ function toolsOfAgent(name: string): string[] {
   }
 }
 
+/**
+ * Nasce um AGENTE novo: pasta própria no Drive, papel escrito, e NADA MAIS.
+ *
+ * Sem ferramenta, sem acesso, sem capacidade — `effectiveAccess(null)` já fecha tudo por padrão, e é
+ * o dono quem abre no painel, uma a uma. A squad é feita de EXECUTORES, não de criadores: um agente
+ * criado com a capacidade `create` faria a multiplicação virar cadeia, e uma cadeia não tem fundo.
+ *
+ * O singleton do criador também protege isto por forma do dado: `CREATOR` é UMA Property com UM
+ * folderId, então não existe estado com dois criadores.
+ */
+function bornAgent(parent: AgentSpec, name: string, role: string): string {
+  const props = PropertiesService.getScriptProperties();
+  if (!validAgentName(name)) throw new Error('invalid agent name');
+  if (store.listAgents().some((a) => a.name.toLowerCase() === name)) throw new Error(`there is already an agent named "${name}"`);
+  // O teto familiar vale aqui também, e é onde ele morde primeiro: `stop-creating` existe exatamente
+  // para parar de criar ANTES de congelar.
+  const acao = capAction(familySpendQuiet());
+  if (acao !== 'ok') throw new Error(`the family spend cap says ${acao}: not creating another agent`);
+
+  const pasta = ensureFolderPath(agentFolderPath(name));
+  const folderId = pasta.getId();
+  seedAgent(folderId, ownerEmail()); // cria os papéis padrão na pasta
+  // O PAPEL que o criador escreveu entra como sugestão em AGENTS.md, e é só isso que ele decide: as
+  // ferramentas e o acesso continuam fechados até o clique do dono (ADR-021).
+  saveRole(folderId, 'AGENTS', `# ${name}\n\n${role}\n`);
+  addAgent(folderId);
+  // Capacidades: NENHUMA, explicitamente. Gravar a lista vazia é diferente de não gravar — quem lê
+  // depois vê uma decisão tomada, não uma ausência que alguém possa interpretar como padrão.
+  props.setProperty(`CAP:${folderId}`, JSON.stringify([]));
+  props.setProperty('CREATOR', setCreator(parent.folderId)); // o criador continua sendo quem criou
+
+  const anterior = lineage().entries;
+  const entrada: LineageEntry = {
+    at: Date.now(), kind: 'creation', parent: parent.folderId, child: folderId,
+    generation: nextGeneration('creation', 1), delta: null, costUsd: 0,
+    summary: `created agent "${name}" with no tools, no access and no capabilities`,
+  };
+  props.setProperty(lineageProp, JSON.stringify([...anterior, entrada].slice(-100)));
+  return `created agent "${name}". It has no tools, no access and no capabilities until the owner approves them in the panel.`;
+}
+
 function relayToAgent(from: AgentSpec, to: string, text: string): string {
   const me = ownerEmail();
   const alvo = store.listAgents().find((a) => a.name.toLowerCase() === to);
@@ -455,6 +496,12 @@ function chatDeps(): ChatDeps {
         skill: (name: string) => skillsIO(spec.folderId).body(name),
         persona: (name: string, task: string) => runPersona(spec, name, task),
         relay: (to: string, text: string) => relayToAgent(spec, to, text),
+        // SÓ o agente que tem a capacidade `create` recebe este ponto de entrada. Quem não tem não o
+        // encontra no contexto, e a tool recusa antes de qualquer card — a capacidade é o portão, e o
+        // portão fica no motor, não numa checagem dentro da ferramenta.
+        ...(can(effectiveCapabilities(parseCapabilities(PropertiesService.getScriptProperties().getProperty(`CAP:${spec.folderId}`)), PropertiesService.getScriptProperties().getProperty('CAPS_ENABLED')), 'create')
+          ? { createAgent: (nome: string, papel: string) => bornAgent(spec, nome, papel) }
+          : {}),
         google: gasGoogle,
         ...zone(),
       },
@@ -1236,18 +1283,24 @@ const CAP_TEXT: Record<Capability, { label: string; what: string; missing: strin
   },
   initiative: {
     label: 'Reach out',
-    what: 'Starts a conversation with you without being asked.',
-    missing: 'the proactivity design was rejected in review and has no measurement: `ask` expires in 10 minutes and delivering a new card from the trigger is out of scope',
+    // O texto ANTIGO dizia que o desenho tinha sido reprovado e não tinha medição. Era verdade em
+    // 17/09 e deixou de ser: a P22 passou 4 de 4, e a F3a foi construída com o buraco real tapado —
+    // a agenda saiu da pasta compartilhável e veio para cá.
+    what: 'Wakes up on the schedule YOU set below and acts without being asked. It only uses tools you put on the auto-approve list; anything else makes the run fail and say so, instead of waiting for a click nobody is there to give.',
+    missing: null,
   },
   succeed: {
     label: 'Succeed',
-    what: 'Writes a successor — its CODE, generated with Opus 5, as its own Apps Script project with its own, narrower permissions. Succession replaces: the previous one is archived, so the count does not grow.',
-    missing: 'the code is written and deployed, but no successor has been measured against the incumbent yet, so passing the baton is still a human decision in this panel — and the generated code has never run here',
+    // A capacidade é ESCREVER o sucessor, e isso funciona. Coroar é outro ato, humano, e continua
+    // sendo — a ressalva foi para o `what`, onde ela informa, em vez de ficar no `missing`, onde
+    // bloqueava a capacidade inteira por causa de uma decisão que nunca foi da máquina.
+    what: 'Writes a successor — its CODE, generated with Opus 5, as its own Apps Script project with narrower permissions than this engine has. Writing is not crowning: the successor does not run until you authorize it, and passing the baton stays your click.',
+    missing: null,
   },
   create: {
     label: 'Create agents',
-    what: 'Creates NEW agents that are not successors. This one multiplies, so only ONE agent in the environment can have it.',
-    missing: 'there is no `agent.create` tool in the closed registry, and the P25 measurement found no failure clusters in the trace to justify creating anyone',
+    what: 'Creates NEW agents that are not successors, each with its own Drive folder. Every one is born with no tools, no access and no capabilities until you approve them. This one multiplies, so only ONE agent in the environment can have it.',
+    missing: null,
   },
 };
 
@@ -1334,8 +1387,16 @@ export function listChildren(folderId?: string) {
   // hierarquia. Um filho pode SUCEDER e virar o principal — aninhar exigiria redesenhar a árvore a cada
   // sucessão, e descreveria como permanente uma relação que é temporária.
   const meus = folderId ? todos.filter((c) => c.parent === folderId) : todos;
+  // Os ARQUIVADOS entram na mesma resposta. Eles somem da lista de agentes ao serem arquivados, e some
+  // da tela é diferente de deixou de existir: os chats continuam legíveis, a pasta continua no Drive, e
+  // um antecessor arquivado é justamente a prova de que a sucessão aconteceu. Esconder isso faria a
+  // linhagem parecer ter buracos.
+  const arquivados = store.listAgents()
+    .filter((a) => parseStatus(props.getProperty(`STATUS:${a.folderId}`)) === 'archived')
+    .map((a) => ({ name: a.name, folderId: a.folderId, driveUrl: `https://drive.google.com/drive/folders/${a.folderId}` }));
   return {
     folderId: folderId ?? null,
+    archived: arquivados,
     children: meus.map((c) => {
       let probe: { code: number; body: string } | null = null;
       try {
