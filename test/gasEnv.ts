@@ -15,7 +15,7 @@ export type GasEnv = {
   /** Conteúdo dos arquivos do Drive, por "<folderId>/<caminho>/<arquivo>". */
   drive: Map<string, string>;
   /** Respostas do OpenRouter, na ordem em que serão servidas. */
-  llm: { content: string; cost?: number }[];
+  llm: { content: string; cost?: number; tool?: { name: string; args?: string } }[];
   /** Código HTTP que o Google Chat devolve (400 reproduz o incidente da v83). */
   chatCode: number;
   /** Lista do OpenRouter (`/api/v1/models`); ausente = uma lista padrao que aceita o modelo dos testes. */
@@ -101,7 +101,14 @@ function route(env: GasEnv, url: string): ReturnType<typeof res> {
     return res(200, JSON.stringify({
       id: 'gen-1',
       model: 'test/model',
-      choices: [{ message: { content: next.content }, finish_reason: 'stop' }],
+      // `tool` na fila faz o modelo PEDIR uma ferramenta. Sem isto, nenhum teste conseguia exercitar
+      // o que acontece quando um run proativo esbarra num card — e era justamente ali que a falha
+      // honesta e a auto-aprovação viviam sem prova de comportamento.
+      choices: [
+        next.tool
+          ? { message: { content: next.content, tool_calls: [{ id: 'tc1', type: 'function', function: { name: next.tool.name.replace(/\./g, '_'), arguments: next.tool.args ?? '{}' } }] }, finish_reason: 'tool_calls' }
+          : { message: { content: next.content }, finish_reason: 'stop' },
+      ],
       usage: { prompt_tokens: 10, completion_tokens: 5, cost: next.cost ?? 0.01 },
     }));
   }

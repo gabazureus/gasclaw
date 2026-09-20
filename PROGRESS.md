@@ -1,7 +1,7 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, e se já foi resolvido.
-> **Atualizado em:** 2026-09-20 · **1777 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
+> **Atualizado em:** 2026-09-20 · **1781 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
 > · **Auditoria:** seis ✅ eram falsos. Critério: *algum módulo importa isto, e o símbolo aparece em `dist/_motor.js`?*
 > · **P22 aprovada 4/4** · P24 **aprovada por inteiro** · P25 **reprovada** (sem combustível)
 > · **P27 medida e REPROVADA** (o filho executa, o motor recusa o token dele: 401 da plataforma)
@@ -85,6 +85,30 @@ checkout` levou junto o não commitado. A regra agora: **commitar antes de mutar
 | 35 / 36 | Telas: linhagem e DreamBoard | `diffLines` no motor; `showDreamBoard`/`showLineage`/`showSchedule` em `dist/settings.html` |
 | 37 / 38 | Vocabulário + ADR-042 | — (documentação) |
 | 39 | Dívida de idioma | 208 → **203**, catraca desceu |
+
+### Lacuna declarada: as duas guardas do run proativo (2026-09-20)
+
+Duas guardas do motor existem, estão no bundle, e **matam zero testes quando mutadas**:
+
+| Guarda | Onde | Estado |
+|---|---|---|
+| run proativo pedindo `ask` **falha** em vez de ficar `waiting` | `main.ts`, após o `chatTurn` | sem prova de comportamento |
+| tool de `NEVER_AUTO` **não** é auto-aprovada nem estando na lista | idem | sem prova de comportamento |
+
+Tentei provar por comportamento e não consegui. O que **já foi descartado** como causa, para a
+próxima tentativa não recomeçar do zero:
+
+- as ferramentas chegam ao agente (`allowedTools` devolve `now, ask, gmail.send`);
+- os argumentos estavam certos depois do primeiro erro meu (`ask` exige `question`, não `text`);
+- o run gravado tem `proactive: true` e `ownerDm: false`;
+- o stub serve `tool_calls` de verdade (conferido chamando `complete()` diretamente).
+
+Mesmo assim o turno termina `done` com `answer: "ok"` e `done: {}` — a ferramenta é **recusada antes
+de virar pendência**, e eu não descobri por quê. O controle positivo do arquivo passa, então o laço
+funciona; o que falta é entender a recusa.
+
+**Por que fica declarado em vez de "coberto":** deixar um teste que passa sem exercitar a guarda seria
+a sexta forma de prova falsa desta sessão. As outras cinco estão listadas acima.
 
 ### O que falta — auditoria de 2026-09-20
 
