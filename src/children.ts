@@ -132,6 +132,30 @@ export function authState(url: string | null, code: number | null, body: string 
   return 'unknown';
 }
 
+/**
+ * Para onde seguir um redirecionamento do filho — ou `null`, e não segue.
+ *
+ * Web apps do Apps Script servem a saída do `ContentService` com um 30x para
+ * `script.googleusercontent.com`. `fetchChild` desliga `followRedirects` por um motivo que continua
+ * valendo: seguir às cegas levaria o token de 16 escopos para qualquer host que o destino apontasse.
+ * Mas sem seguir, o motor lê o 302 em vez da resposta — e um filho CORRETO seria julgado falho em
+ * todos os casos, e dado como "unknown" em vez de "authorized".
+ *
+ * A saída é seguir **manualmente**, só para o host exato onde o Apps Script entrega, só por https — e
+ * **sem o token** (quem segue é a casca, e ela não manda o header na segunda perna).
+ *
+ * **PREVISTO, NÃO MEDIDO.** Nenhum filho autorizado foi observado neste projeto até aqui. Se a
+ * segunda perna exigir autenticação, a resposta será uma página de login, e `authState`/`judgeCase`
+ * a tratam como AUSÊNCIA de medição — nunca como falha do filho. O erro, se houver, cai no lado seguro.
+ */
+export function redirectTarget(code: number, location: string | null | undefined): string | null {
+  if (![301, 302, 303, 307, 308].includes(code)) return null;
+  const l = String(location ?? '').trim();
+  // Âncora no host inteiro e na barra que o fecha: `script.googleusercontent.com.evil.example`
+  // começa com o nome certo e é outro domínio.
+  return /^https:\/\/script\.googleusercontent\.com\//i.test(l) ? l : null;
+}
+
 /** O que a tela diz de cada estado. Em inglês (ADR-033) e sem prometer o que não foi verificado. */
 // Curto de propósito: isto é ETIQUETA, e o botão ao lado já diz a ação ("Authorize it" / "Open it").
 // Uma frase inteira numa etiqueta quebra em três linhas e empurra o resto da linha para fora.

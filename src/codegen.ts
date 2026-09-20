@@ -53,8 +53,15 @@ const FORBIDDEN: readonly { re: RegExp; reason: string }[] = [
   { re: /\b(openrouter\.ai|api\.openai\.com|api\.anthropic\.com|generativelanguage\.googleapis\.com|api\.mistral\.ai|api\.groq\.com)/i, reason: 'the generated code calls a model provider: a child is code only (ADR-040, option 4) — it never gets the API key, so this would deploy and then fail with no key and no reason on screen' },
 ];
 
-/** Um ponto de entrada de verdade. Um filho que não roda não é sucessor, é custo. */
-const ENTRY = /\bfunction\s+(doGet|doPost|main|run)\s*\(/;
+/**
+ * O ponto de entrada tem que ser `doGet`, e o motivo é a APTIDÃO (P31), não o estilo.
+ *
+ * Aceitava `doGet`, `doPost`, `main` ou `run`. Todos rodam — mas a aptidão é medida chamando a URL do
+ * filho com `?input=`, e só `doGet` responde a isso. Um filho com `main` seria implantado, teria o
+ * `delta` nulo para sempre, e nunca poderia ser selecionado: um sucessor que não pode ser medido não
+ * pode evoluir. Recusar antes de publicar custa zero; descobrir depois custa o Opus e a implantação.
+ */
+const ENTRY = /\bfunction\s+doGet\s*\(/;
 
 /**
  * Tira o que veio em volta do código. O modo de falha comum é preâmbulo ('Here is the code:') seguido
@@ -78,7 +85,7 @@ export function checkSuccessorSource(source: string): Check {
   if (!s) return { ok: false, reason: 'the generator returned no code' };
   if (s.length > SOURCE_MAX) return { ok: false, reason: `the generated code is too long to review before publishing: ${s.length} characters, limit is ${SOURCE_MAX}` };
   for (const f of FORBIDDEN) if (f.re.test(s)) return { ok: false, reason: f.reason };
-  if (!ENTRY.test(s)) return { ok: false, reason: 'the generated code has no entry point (doGet, doPost, main or run): a child that cannot run is only cost' };
+  if (!ENTRY.test(s)) return { ok: false, reason: 'the generated code has no doGet entry point: fitness is measured by calling the child\'s URL, so a child without doGet can never be measured, and a child that cannot be measured can never be selected' };
   return { ok: true, reason: '' };
 }
 
@@ -129,7 +136,10 @@ export function successorMessages(incumbentSource: string, material: string, sco
       content:
         'You write a Google Apps Script successor: a small, self-contained script that replaces the one given to you and fails less often. ' +
         'Answer with the code only — no preamble, no explanation. ' +
-        'It must define doGet, doPost, main or run as its entry point. ' +
+        'It must define doGet(e) as its entry point. Contract: read the input from e.parameter.input and answer ' +
+        'ContentService.createTextOutput(JSON.stringify({ output: <string> })).setMimeType(ContentService.MimeType.JSON). ' +
+        'The engine compares that output with an expected value the child never sees: the child does not grade itself, ' +
+        'so it must not return any pass/fail field of its own — only its output. ' +
         'It must NOT call eval or build a Function from a string, must NOT ask for the OAuth token (ScriptApp.getOAuthToken), ' +
         'must NOT call the Apps Script API (script.googleapis.com), and must NOT embed any API key in the source. ' +
         'It is code only: it has no language model and no API key, so it must NOT call any model provider ' +

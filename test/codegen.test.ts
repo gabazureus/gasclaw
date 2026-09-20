@@ -50,6 +50,18 @@ describe('checkSuccessorSource: o crivo do que pode ser publicado', () => {
     expect(checkSuccessorSource(bom).ok).toBe(true);
   });
 
+  // P31: A APTIDÃO É MEDIDA POR `doGet`. Um filho com `main` ou `run` roda — mas ninguém consegue
+  // chamá-lo pela URL para medir, então o delta dele seria `null` para sempre e ele nunca poderia ser
+  // selecionado. Um sucessor que não pode ser medido não pode evoluir: recusar antes de publicar é
+  // dizer isso onde ainda custa barato, e não depois de pagar o Opus e implantar.
+  test('sem `doGet` não passa: um filho que não pode ser MEDIDO não pode ser selecionado', () => {
+    for (const s of ['function main() { return 1; }', 'function run() { return 1; }', 'function doPost(e) { return 1; }']) {
+      const v = checkSuccessorSource(s);
+      expect(v.ok).toBe(false);
+      expect(v.reason).toMatch(/doGet/);
+    }
+  });
+
   test('sem ponto de entrada não passa: um filho que não roda é só custo', () => {
     const v = checkSuccessorSource('var x = 1;');
     expect(v.ok).toBe(false);
@@ -189,6 +201,21 @@ describe('successorMessages: o pedido diz o que é proibido, não só o que é d
     // crivo — o caso exato que este `describe` existe para evitar.
     expect(sys).toMatch(/no language model and no API key/i);
     expect(sys).toMatch(/must NOT call any model provider/i);
+  });
+
+  // P31 — O CONTRATO DE APTIDÃO, dito ao gerador ANTES de ele escrever. O filho recebe uma entrada e
+  // devolve a saída; o motor julga. O pedido NÃO pode convidar o filho a se autoavaliar — se o texto
+  // mencionasse `score` ou `ok` como algo que o filho devolve, estaria ensinando a trapaça.
+  test('o pedido descreve o contrato: `input` entra, `{ output }` sai', () => {
+    const sys = ms[0].content;
+    expect(sys).toMatch(/e\.parameter\.input/);
+    expect(sys).toMatch(/\{\s*output/);
+  });
+
+  test('o pedido diz que o filho NÃO se julga — e não sugere campo nenhum para isso', () => {
+    const sys = ms[0].content;
+    expect(sys).toMatch(/does not grade itself|never grades itself|not grade/i);
+    expect(sys).not.toMatch(/\bscore\b/);
     expect(sys).toMatch(/Apps Script API/);
     expect(sys).toMatch(/code only/i);
   });

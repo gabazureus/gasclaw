@@ -167,6 +167,11 @@ export type LineageEntry = {
   child: string; // folderId de quem nasceu
   generation: number; // 1 para o primeiro; só cresce em sucessão
   delta: number | null; // placar contra o conjunto-juiz; null em criação (não há a quem comparar)
+  // P31: a nota MEDIDA deste filho de código — passes de k casos da bateria do dono. Sem ela o filho
+  // seguinte não teria contra quem se comparar, e todo delta seria nulo para sempre. Opcional: as
+  // entradas de antes da P31, e as de `creation`/`succession`, simplesmente não têm.
+  passes?: number | null;
+  k?: number | null;
   costUsd: number; // o que a geração custou (Opus 5 entra só aqui)
   summary: string; // o que mudou / o que ele realiza
 };

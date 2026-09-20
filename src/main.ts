@@ -9,7 +9,7 @@ import { cluster, hasMaterial, type Failure } from './dreamCycle';
 import { AUTO_NOTE, cleanAutoList, mayAutoApprove, NEVER_AUTO, noReplySpan, onProactiveBlock } from './autoApprove';
 import { dueJobs, JOB_MAX, jobText, parseSchedule, serializeSchedule } from './schedule';
 import { board } from './dreamBoard';
-import { AUTH_LABEL, authState, childrenWrites, KIND_LABEL, KIND_WHAT, readChildrenFrom, withChild, withoutChild, type Child } from './children';
+import { AUTH_LABEL, authState, childrenWrites, KIND_LABEL, KIND_WHAT, readChildrenFrom, redirectTarget, withChild, withoutChild, type Child } from './children';
 import { pocP10 } from '../poc/p10-editor/harness';
 import { pocP14 } from '../poc/p14-trace/harness';
 import { pocP15 } from '../poc/p15-limites/harness';
@@ -62,6 +62,7 @@ import {
 } from './agentCaps';
 import { CODEGEN_BUDGET_USD, CODEGEN_DAILY_CAP_USD, mayWriteProject } from './dream';
 import { generateSuccessor, sourceOfChild, type SuccessorDeps } from './successor';
+import { codeDelta, judgeCase, parseBattery, previousScore, scoreRun, withMeasurement } from './fitness';
 import { CHILD_FORBIDDEN_SCOPES, narrowScopes, OPUS_MODEL } from './codegen';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
@@ -1502,6 +1503,18 @@ function fetchChild(url: string): { code: number; body: string } {
     followRedirects: false, // um redirect levaria o token para onde o destino mandar
     headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` },
   });
+  // P31: A SEGUNDA PERNA. O Apps Script entrega a saída do filho com um 30x para
+  // script.googleusercontent.com. Sem segui-la, o motor julgaria o 302 — e todo filho correto
+  // pareceria quebrado. `redirectTarget` só aceita esse host exato, por https.
+  //
+  // SEM O TOKEN aqui, de propósito: a primeira perna já provou quem pergunta, e a credencial de 16
+  // escopos não precisa atravessar um segundo salto. Se a previsão estiver errada e o salto pedir
+  // login, a resposta vira ausência de medição — nunca falha do filho.
+  const alvo = redirectTarget(res.getResponseCode(), (res.getHeaders() as Record<string, string>)['Location'] ?? (res.getHeaders() as Record<string, string>)['location'] ?? null);
+  if (alvo) {
+    const segunda = UrlFetchApp.fetch(alvo, { muteHttpExceptions: true, followRedirects: false });
+    return { code: segunda.getResponseCode(), body: segunda.getContentText().slice(0, 1200) };
+  }
   return { code: res.getResponseCode(), body: res.getContentText().slice(0, 1200) };
 }
 
@@ -2221,6 +2234,80 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
   // chave — o caminho que a P27 reprovou e a opção 4 da ADR-040 encerrou. Um campo `secret` que
   // ninguém mais usa seria a promessa sobrevivendo ao mecanismo.
   return { ok: true as const, child: r.child, costUsd: r.costUsd, needsConsent: true, budget: { spentToday: codegenSpentToday(Date.now()), cap: CODEGEN_DAILY_CAP_USD, perRun: CODEGEN_BUDGET_USD } };
+}
+
+// ---------- Aptidão do filho de código (P31, D2) ----------
+
+/** Onde mora a bateria de um agente. Script Property: o PAINEL decide (ADR-021), nunca a pasta. */
+const batteryProp = (folderId: string) => `BATTERY:${folderId}`;
+
+/** Teto da bateria. Uma Script Property guarda 9 KB; 50 casos com entrada e esperado curtos cabem. */
+const BATTERY_MAX_CASES = 50;
+const BATTERY_MAX_CHARS = 8_000;
+
+/**
+ * O DONO declara a bateria que define o que é "melhor" para os filhos deste agente.
+ *
+ * É o portão H5 da F6, e ele é do dono por três razões que se somam: a bateria não pode vir da
+ * pasta (ADR-002 — quem editasse a pasta escreveria a prova), não pode vir do gerador (auto-
+ * avaliação, arXiv:2310.01798), e define o objetivo — que é decisão de quem manda, não de quem faz.
+ */
+export function setAgentBattery(folderId: string, casesJson: string) {
+  assertOwner();
+  const id = String(folderId ?? '').trim();
+  if (!id) throw new Error('unknown agent');
+  const bruto = String(casesJson ?? '');
+  if (bruto.length > BATTERY_MAX_CHARS) throw new Error(`the battery does not fit: ${bruto.length} characters, limit is ${BATTERY_MAX_CHARS}`);
+  const casos = parseBattery(bruto);
+  if (!casos) throw new Error('the battery must be a non-empty JSON list of { "input": "...", "expected": "..." }, every case complete');
+  if (casos.length > BATTERY_MAX_CASES) throw new Error(`too many cases: ${casos.length}, limit is ${BATTERY_MAX_CASES}`);
+  PropertiesService.getScriptProperties().setProperty(batteryProp(id), JSON.stringify(casos));
+  return { folderId: id, cases: casos.length };
+}
+
+/**
+ * Mede um filho autorizado contra a bateria do dono, e grava a nota na linhagem.
+ *
+ * O filho recebe só a ENTRADA de cada caso; o esperado fica aqui. Ele nunca dá a própria nota — é a
+ * correção do contrato pedido, que deixaria o avaliado declarar `score: 100` e vencer sem fazer nada.
+ *
+ * Tudo que não é medição vira `delta: null` COM o motivo no trace: sem bateria, sem URL, sem
+ * autorização, sem resposta. Nunca um zero inventado.
+ */
+export function measureChild(scriptId: string) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const id = String(scriptId ?? '').trim();
+  const filho = readChildren(props).find((c) => c.scriptId === id);
+  if (!filho) throw new Error('unknown child project');
+  const t = runlog.begin('config', { question: `measure ${id}`, agent: 'fitness' });
+
+  const naoMedido = (reason: string) => {
+    t.end({ answer: `not measured: ${reason}` });
+    return { measured: false as const, delta: null, wins: false, reason };
+  };
+  if (!filho.url) return naoMedido('the child has no web app URL');
+  if (!filho.parent) return naoMedido('the child has no parent agent, so there is no battery to measure it against');
+  // H5 FAIL-CLOSED: sem bateria declarada pelo dono não existe "melhor". Inventar uma aqui seria o
+  // motor decidindo o objetivo — exatamente o que o portão existe para impedir.
+  const bateria = parseBattery(props.getProperty(batteryProp(filho.parent)));
+  if (!bateria) return naoMedido('the owner has not declared a battery for this agent yet (gate H5)');
+
+  const sep = filho.url.includes('?') ? '&' : '?';
+  const vereditos = bateria.map((c) => {
+    try {
+      const r = fetchChild(`${filho.url}${sep}input=${encodeURIComponent(c.input)}`);
+      return judgeCase(c, r.code, r.body);
+    } catch (e) {
+      return { verdict: null, reason: `the call failed: ${(e as Error).message.slice(0, 120)}` };
+    }
+  });
+  const nota = scoreRun(vereditos);
+  const anteriores = lineage().entries;
+  const d = codeDelta(nota, previousScore(anteriores, filho.parent, id));
+  props.setProperty(lineageProp, JSON.stringify(withMeasurement(anteriores, id, d, nota)));
+  t.end({ answer: nota.measured ? `${nota.passes}/${nota.k} passed; delta ${d.delta === null ? 'null' : d.delta.toFixed(3)}${d.reason ? ` (${d.reason})` : ''}; wins ${d.wins}` : `not measured: ${nota.reason}` });
+  return nota.measured ? { measured: true as const, passes: nota.passes, k: nota.k, delta: d.delta, wins: d.wins, reason: d.reason } : { measured: false as const, delta: null, wins: false, reason: nota.reason };
 }
 
 /** Pode gerar agora? O intervalo mínimo é trava de custo E de descontrole, não conforto. */

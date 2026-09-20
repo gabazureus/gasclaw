@@ -6,7 +6,7 @@
 // que não está autorizado. Dizer ao dono que um filho está liberado quando ele não está é pior do que
 // não mostrar nada: ele pararia de procurar o botão.
 import { describe, expect, test } from 'vitest';
-import { AUTH_LABEL, authState, KIND_LABEL, KIND_WHAT, parseChild, parseChildren, serializeChildren, withChild, withoutChild, type Child } from '../src/children';
+import { AUTH_LABEL, authState, KIND_LABEL, KIND_WHAT, parseChild, parseChildren, redirectTarget, serializeChildren, withChild, withoutChild, type Child } from '../src/children';
 
 const filho = (o: Partial<Child> = {}): Child => ({
   scriptId: 'abc123',
@@ -167,5 +167,35 @@ describe('página de login não é autorização', () => {
   // A regra continua valendo para o caso bom: conteúdo do filho de verdade é autorização.
   test('o conteúdo do filho continua sendo lido como autorizado', () => {
     expect(authState('https://x/exec', 200, 'p24-ok')).toBe('authorized');
+  });
+});
+
+// O REDIRECIONAMENTO DO APPS SCRIPT (P31). Web apps servem a saída do `ContentService` com HTTP 302
+// para `script.googleusercontent.com`. `fetchChild` desliga `followRedirects` — e por um bom motivo:
+// seguir às cegas levaria o token de 16 escopos para onde o destino mandasse. Mas sem seguir, o motor
+// recebe o 302 e não a resposta do filho: todo caso de um filho CORRETO seria julgado falho, e o
+// `authState` diria "unknown" para um filho autorizado.
+//
+// PREVISTO, NÃO MEDIDO: nenhum filho autorizado foi observado neste projeto até aqui. A decisão
+// abaixo é escrita para que, se a previsão estiver errada, a falha caia no lado seguro.
+describe('redirectTarget: seguir o 302 só para onde o Apps Script entrega, e nunca com o token', () => {
+  test('302 para script.googleusercontent.com é seguido', () => {
+    expect(redirectTarget(302, 'https://script.googleusercontent.com/macros/echo?user_content_key=abc')).toBe('https://script.googleusercontent.com/macros/echo?user_content_key=abc');
+  });
+
+  test('os outros códigos de redirecionamento também', () => {
+    for (const c of [301, 303, 307, 308]) expect(redirectTarget(c, 'https://script.googleusercontent.com/x')).not.toBeNull();
+  });
+
+  // A razão de `followRedirects: false` existir continua valendo: destino fora do Google é recusado.
+  test('302 para qualquer outro host NÃO é seguido — é a exfiltração que a guarda existe para impedir', () => {
+    for (const l of ['https://evil.example/steal', 'https://script.googleusercontent.com.evil.example/x', 'http://script.googleusercontent.com/x', 'https://accounts.google.com/ServiceLogin']) {
+      expect(redirectTarget(302, l)).toBeNull();
+    }
+  });
+
+  test('200 não tem destino, e 302 sem Location também não', () => {
+    expect(redirectTarget(200, 'https://script.googleusercontent.com/x')).toBeNull();
+    expect(redirectTarget(302, null)).toBeNull();
   });
 });
