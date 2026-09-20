@@ -458,6 +458,13 @@ function bornAgent(parent: AgentSpec, name: string, role: string): string {
   return `created agent "${nome}". It has no tools, no access and no capabilities until the owner approves them in the panel.`;
 }
 
+/**
+ * Porta de teste para o repasse real. `relayToAgent` recebe um `AgentSpec` inteiro, que o teste não
+ * precisa montar — só o nome e a pasta importam para as invariantes do run criado.
+ */
+export const __test_relay = (nome: string, folderId: string, to: string, text: string): string =>
+  relayToAgent({ name: nome, folderId } as AgentSpec, to, text);
+
 function relayToAgent(from: AgentSpec, to: string, text: string): string {
   const me = ownerEmail();
   const alvo = store.listAgents().find((a) => a.name.toLowerCase() === to);
