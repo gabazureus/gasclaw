@@ -9,7 +9,9 @@
 // `heirOf` é a escolha de QUEM herdar, pura e sem I/O. Ler o fonte é da casca (ADR-002: vem da API
 // do Apps Script, nunca do Drive).
 import { describe, expect, test } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { heirOf, type LineageEntry } from '../src/agentCaps';
+import { sourceOfChild } from '../src/successor';
 
 const e = (o: Partial<LineageEntry>): LineageEntry => ({ at: 0, kind: 'codegen', parent: 'pai', child: 'filho', generation: 1, delta: null, costUsd: 0, summary: '', ...o });
 
@@ -47,5 +49,57 @@ describe('heirOf: de quem a próxima geração herda', () => {
   test('carimbo ilegível não ganha de um carimbo válido', () => {
     const l = [e({ child: 'quebrado', at: Number.NaN }), e({ child: 'c1', at: 10 })];
     expect(heirOf(l, 'pai')).toBe('c1');
+  });
+});
+
+// A LEITURA DO FONTE: casca, mas a DECISÃO sobre o que veio é pura e testável.
+//
+// ADR-002: o fonte vem da API do Apps Script, NUNCA do Drive. A pasta é compartilhável, logo não
+// confiável — e um fonte vindo de lá seria texto de terceiro entrando no pedido ao Opus como se
+// fosse o código vigente.
+describe('sourceOfChild: o que a API devolveu vira fonte, ou não vira nada', () => {
+  const resposta = (files: unknown) => JSON.stringify({ files });
+
+  test('o arquivo `Code` é o fonte', () => {
+    expect(sourceOfChild(resposta([{ name: 'appsscript', type: 'JSON', source: '{}' }, { name: 'Code', type: 'SERVER_JS', source: 'function doGet() {}' }]))).toBe('function doGet() {}');
+  });
+
+  // Um manifesto não é código. Herdar dele mandaria JSON ao Opus como "o código vigente".
+  test('sem arquivo de código, devolve null — o manifesto não serve de fonte', () => {
+    expect(sourceOfChild(resposta([{ name: 'appsscript', type: 'JSON', source: '{"timeZone":"x"}' }]))).toBeNull();
+  });
+
+  test('qualquer SERVER_JS serve, mesmo com outro nome', () => {
+    expect(sourceOfChild(resposta([{ name: 'Outro', type: 'SERVER_JS', source: 'function run() {}' }]))).toBe('function run() {}');
+  });
+
+  test('resposta ilegível é null, não string vazia: não sei é diferente de está vazio', () => {
+    for (const bruto of ['', 'não é json', '{}', '{"files":[]}', resposta([{ name: 'Code', type: 'SERVER_JS', source: '   ' }])]) {
+      expect(sourceOfChild(bruto)).toBeNull();
+    }
+  });
+});
+
+// A FIAÇÃO DE D1. Sem isto, `heirOf` e `sourceOfChild` seriam mais duas peças prontas que ninguém
+// ligou — o padrão que esta auditoria já pegou seis vezes.
+describe('fiação: a geração N+1 recebe o fonte da N, e cai no prompt só quando não há N', () => {
+  const main = readFileSync('src/main.ts', 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+  test('`incumbentSource` deixou de ser sempre o prompt', () => {
+    expect(main).not.toContain('incumbentSource: agente.system,');
+  });
+
+  test('a herança é consultada, e o prompt é o fallback declarado', () => {
+    expect(main).toContain('heirOf(');
+    expect(main).toContain('sourceOfChild(');
+    expect(main).toMatch(/\?\?\s*agente\.system/); // sem filho anterior, o prompt continua valendo
+  });
+
+  test('o fonte vem da API do Apps Script, nunca do Drive (ADR-002)', () => {
+    const bloco = main.slice(main.indexOf('const heranca'), main.indexOf('const r = generateSuccessor'));
+    expect(bloco).toContain('/content');
+    expect(bloco).not.toMatch(/DriveApp|getFolderById/);
   });
 });

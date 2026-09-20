@@ -44,6 +44,28 @@ export type SuccessorResult = { ok: true; child: Child; needsConsent: true; cost
 
 const fail = (reason: string, costUsd = 0): SuccessorResult => ({ ok: false, reason, costUsd });
 
+/**
+ * O fonte de um filho, a partir do que `projects/<id>/content` devolveu. Puro: recebe o texto.
+ *
+ * **ADR-002 aplicada ao encadeamento:** o código vigente vem da API do Apps Script, NUNCA do Drive.
+ * A pasta é compartilhável, logo não confiável — um fonte lido de lá entraria no pedido ao Opus como
+ * se fosse o código do titular, e seria texto de terceiro dirigindo a próxima geração.
+ *
+ * `null`, nunca string vazia: "não consegui ler" precisa ser distinguível de "li e está vazio". Um
+ * fonte vazio mandado ao Opus faria a geração N+1 começar do zero sem ninguém perceber.
+ */
+export function sourceOfChild(raw: string | null | undefined): string | null {
+  try {
+    const files = (JSON.parse(String(raw ?? '')) as { files?: { name?: string; type?: string; source?: string }[] }).files ?? [];
+    // Qualquer `SERVER_JS` serve; o manifesto (`JSON`) não. Herdar do manifesto mandaria JSON ao
+    // Opus com o rótulo de "código vigente", que é pior que não herdar nada.
+    const codigo = files.find((f) => f?.type === 'SERVER_JS' && String(f.source ?? '').trim());
+    return codigo ? String(codigo.source).trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 const jsonOf = <T>(raw: string): T | null => {
   try {
     return JSON.parse(raw) as T;

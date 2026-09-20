@@ -57,11 +57,11 @@ import { folderModel, getOverride, listModels as openRouterModels, type ModelInf
 import * as observe from './observe';
 import * as runlog from './runlog';
 import {
-  CAPABILITIES, can, canSucceed, capsAfterSuccession, creatorOf, DEFAULT_INTERVAL_MS, forgetAgentProps, intervalOf, mayGenerate,
+  CAPABILITIES, can, canSucceed, capsAfterSuccession, creatorOf, DEFAULT_INTERVAL_MS, forgetAgentProps, heirOf, intervalOf, mayGenerate,
   accessAfterArchive, capsAfterCreatorMoved, capsEnabled, clearCreator, effectiveCapabilities, isRunnable, nextGeneration, parseCapabilities, parseStatus, setCreator, type Capability, type LineageEntry,
 } from './agentCaps';
 import { CODEGEN_BUDGET_USD, CODEGEN_DAILY_CAP_USD, mayWriteProject } from './dream';
-import { generateSuccessor, type SuccessorDeps } from './successor';
+import { generateSuccessor, sourceOfChild, type SuccessorDeps } from './successor';
 import { CHILD_FORBIDDEN_SCOPES, narrowScopes, OPUS_MODEL } from './codegen';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
@@ -2169,13 +2169,25 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
     now: () => Date.now(),
   };
 
+  // D1 — A LINHAGEM PASSA A ENCADEAR (P30). Esta linha era `incumbentSource: agente.system` SEMPRE,
+  // com um comentário que dizia "na primeira geração" e uma segunda metade que nunca foi escrita: a
+  // geração N+1 nunca recebia o código da N. Cada filho era um sorteio novo do mesmo ponto de
+  // partida — replicação com variância, não evolução, enquanto a tela dizia evolução.
+  //
+  // Por RECÊNCIA, não por aptidão: herdar do MELHOR exigiria o filho ter rodado, e rodar exige o
+  // clique do dono (portão da plataforma, medido na P24). Por recência a corrente anda sozinha.
+  //
+  // O fonte vem da API do Apps Script. NUNCA do Drive (ADR-002): a pasta é compartilhável.
+  const heranca = heirOf(lineage().entries, id);
+  const herdado = heranca ? sourceOfChild(deps.api(`https://script.googleapis.com/v1/projects/${heranca}/content`, 'get').full) : null;
+
   const r = generateSuccessor(
     {
       folderId: id,
-      // O "código vigente" do titular é o PROMPT dele na primeira geração: não existe fonte anterior
-      // até o primeiro sucessor nascer. Dizer isso ao gerador é melhor que mandar um campo vazio e
-      // deixá-lo inventar o que estava lá.
-      incumbentSource: agente.system,
+      // Sem filho anterior — ou com um fonte que não deu para ler — o PROMPT do titular continua
+      // sendo o código vigente. É o comportamento de antes, agora como fallback declarado e não
+      // como regra única. Mandar um campo vazio faria o gerador inventar o que estava lá.
+      incumbentSource: herdado ?? agente.system,
       material,
       requestedScopes: Array.isArray(requestedScopes) ? requestedScopes.map(String) : [],
       title: `${agente.name} — successor ${new Date().toISOString().slice(0, 10)}`,
