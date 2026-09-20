@@ -2,6 +2,7 @@
 //
 // O desenho parte de uma decisão do usuário (filho usa a mesma chave do pai) e de um problema que
 // ela NÃO resolve: o segredo continua no fonte do filho. A unicidade da entrega é o que fecha isso.
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import {
   afterDelivery,
@@ -94,5 +95,37 @@ describe('ao estourar: a reação é reversível e a menos destrutiva que resolv
 
   test('NENHUMA faixa corta a chave: cortar pararia o pai também', () => {
     for (const v of [0, 4, 5, 50]) expect(capAction(v)).not.toBe('revoke-key');
+  });
+});
+
+// A FIAÇÃO do teto familiar e da entrega da chave (itens 21 e 19).
+describe('fiação: credencial fail-closed e conta reusada', () => {
+  const main = readFileSync('src/main.ts', 'utf8');
+
+  // Este é o caminho por onde a credencial do DONO trafega. `===` vazaria o prefixo certo pelo tempo.
+  test('o segredo do filho é comparado em tempo constante', () => {
+    expect(main).toContain('cliAuthorized(guardado, String(secret))');
+    expect(main).not.toContain('d.secret === String(secret)');
+  });
+
+  test('estado de entrega ilegível NÃO entrega — fail-closed para credencial', () => {
+    expect(main).toMatch(/return null; \/\/ estado ilegível = não pode entregar/);
+  });
+
+  // Rearmar automático desfaria a proteção que a unicidade cria: é ato humano.
+  test('rearmar exige o dono, e a contagem de entregas NÃO zera', () => {
+    const bloco = main.slice(main.indexOf('export function rearmChildKey'), main.indexOf('// ---------- Campos declarados'));
+    expect(bloco).toContain('assertOwner()');
+    expect(bloco).toMatch(/A CONTAGEM NÃO ZERA/);
+  });
+
+  // Recalcular a conta abriria espaço para os dois lados divergirem em silêncio.
+  test('o gasto da família reusa a conferência que já existe, em vez de recalcular', () => {
+    expect(main).toContain('observe.usageView(store.getApiKey()).check');
+    expect(main).toContain('childrenSpendUpperBound(c.informed, c.measured)');
+  });
+
+  test('a ressalva viaja com o número: é limite superior, não medida', () => {
+    expect(main).toContain('note: FAMILY_NOTE');
   });
 });

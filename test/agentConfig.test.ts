@@ -3,6 +3,7 @@
 // O ataque que este arquivo existe para impedir: conteúdo da pasta COMPARTILHÁVEL virando interface
 // no painel do DONO. Seria mais elegante que qualquer coisa que a revisão adversarial achou, porque
 // não pede permissão nenhuma — só pede que alguém desenhe a tela a partir de texto.
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { FIELD_TYPES, MAX_FIELDS, mergeAcrossGenerations, originLabel, parseField, parseSchema, RESERVED, validateValues, type ConfigField } from '../src/agentConfig';
 
@@ -140,5 +141,46 @@ describe('procedência na tela, como o ADR-035 fez com os papéis', () => {
     expect(originLabel('editor')).toContain('trusted');
     expect(originLabel('folder')).toContain('shared Drive folder');
     expect(originLabel('inherited')).toContain('previous generation');
+  });
+});
+
+// A FIAÇÃO dos campos declarados (item 20). O núcleo já era testado; o que faltava era o caminho real.
+//
+// A regra que este bloco guarda é a do valor ÓRFÃO: campo que o dono configurou e que a geração atual
+// não declara mais. Ele é PRESERVADO, porque o valor é do DONO e não do agente — uma mutação não pode
+// apagar escolha humana. Se o bastão voltar para a geração anterior, a configuração dela volta junto.
+describe('fiação: a pasta declara, o painel decide, o servidor valida', () => {
+  const main = readFileSync('src/main.ts', 'utf8');
+
+  test('o esquema vem de um arquivo da pasta, não do frontmatter', () => {
+    expect(main).toContain("const FIELDS_FILE = 'fields.json';");
+    expect(main).toContain("getFoldersByName('.gasclaw')");
+  });
+
+  // Arquivo ilegível virando "campo inventado" seria pior que nenhum campo.
+  test('arquivo ausente ou quebrado devolve nenhum campo, com o motivo', () => {
+    expect(main).toContain('could not read ${FIELDS_FILE}');
+    expect(main).toMatch(/return \{ fields: \[\], errors: \[\] \}/);
+  });
+
+  test('gravar valida ANTES de escrever, e recusa com a razão', () => {
+    expect(main).toContain('const v = validateValues(fields, { [String(name)]: value });');
+    expect(main).toContain("if (!v.ok) throw new Error(v.errors.join('; '));");
+    expect(main.indexOf('validateValues(fields')).toBeLessThan(main.indexOf('props.setProperty(cfgProp'));
+  });
+
+  test('o órfão é devolvido à tela, não descartado', () => {
+    expect(main).toContain('const { active, orphans } = mergeAcrossGenerations');
+    expect(main).toContain('orphans,');
+  });
+
+  // A pasta é compartilhável: dizer de onde o esquema veio é o que deixa o dono pesar o que lê (ADR-035).
+  test('a tela recebe a procedência do esquema', () => {
+    expect(main).toContain("origin: originLabel('folder')");
+  });
+
+  // `forgetAgentProps` apaga todo prefixo `*:<folderId>`, então CFG sai junto — é o §C não se repetindo.
+  test('a configuração usa o prefixo por agente, para a remoção levá-la junto', () => {
+    expect(main).toContain('const cfgProp = (folderId: string) => `CFG:${folderId}`;');
   });
 });

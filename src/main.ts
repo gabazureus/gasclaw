@@ -2,6 +2,8 @@ import { namesOf, scenarioMd, SCENARIOS } from './judgeSet';
 import { startDream, tickDream, type DreamDeps } from './dreamTick';
 import { dreamIO } from './dreamStore';
 import { failProp, parseFailures, serializeFailures, withFailure } from './failureLog';
+import { mergeAcrossGenerations, originLabel, parseSchema, validateValues, type ConfigField } from './agentConfig';
+import { afterDelivery, armDelivery, capAction, childrenSpendUpperBound, deliverySpan, FAMILY_CAP_USD, FAMILY_NOTE, mayDeliverKey, rearmDelivery, type KeyDelivery } from './family';
 import { cluster, hasMaterial, type Failure } from './dreamCycle';
 import { AUTH_LABEL, authState, KIND_LABEL, KIND_WHAT, parseChildren, serializeChildren, withoutChild, type Child } from './children';
 import { pocP10 } from '../poc/p10-editor/harness';
@@ -1310,6 +1312,130 @@ export function drainRuns() {
     for (const a of store.listAgents()) tickDream(a.folderId, d);
   });
   return drained ?? { n: 0, ms: 0, oldest: null };
+}
+
+// ---------- Teto familiar e entrega da chave (itens 21 e 19) ----------
+
+const deliveryProp = (child: string) => `KEYDEL:${child}`;
+
+const readDelivery = (child: string): KeyDelivery | null => {
+  try {
+    const raw = PropertiesService.getScriptProperties().getProperty(deliveryProp(child));
+    return raw ? (JSON.parse(raw) as KeyDelivery) : null;
+  } catch {
+    return null; // estado ilegível = não pode entregar. Fail-closed é a resposta certa para credencial.
+  }
+};
+
+/**
+ * O gasto da FAMÍLIA, e o que fazer quando ele sobe.
+ *
+ * A conta usa o offset que já conhecíamos e nos custou uma investigação: o OpenRouter reporta uso POR
+ * CHAVE, e a família inteira usa a mesma. Então `família − pai = filhos`. É LIMITE SUPERIOR, não medida —
+ * qualquer outra coisa usando a chave entra na conta, e o número tem 10 min de defasagem.
+ */
+export function familySpend() {
+  assertOwner();
+  // Reusa a conferência que já existe (`usageView`) em vez de recalcular: `measured` é o que o gasclaw
+  // gravou (o pai), `informed` é o que o OpenRouter reporta para a CHAVE (a família).
+  const c = observe.usageView(store.getApiKey()).check;
+  const filhos = c.informed === null ? null : childrenSpendUpperBound(c.informed, c.measured);
+  return { family: c.informed, parent: c.measured, children: filhos, cap: FAMILY_CAP_USD, action: capAction(filhos), note: FAMILY_NOTE };
+}
+
+/**
+ * Entrega a chave a UM filho, uma vez, com rastro.
+ *
+ * Só vale para `subagent`: uma `automation` nunca fala com modelo, logo nunca precisa de credencial — e
+ * foi essa distinção que tirou a entrega do caminho crítico. O segredo prova que o filho é aquele que
+ * este ambiente criou; a unicidade é o que torna um segredo vazado inútil passada a janela.
+ */
+export function deliverKeyToChild(child: string, secret: string) {
+  const d = readDelivery(String(child));
+  // O segredo mora em Property PRÓPRIA e é comparado em TEMPO CONSTANTE: comparar com `===` vazaria o
+  // prefixo certo pelo tempo de resposta, e este é o caminho por onde a credencial do dono trafega.
+  const guardado = PropertiesService.getScriptProperties().getProperty(`KEYSEC:${String(child)}`);
+  const v = mayDeliverKey(d, String(child), cliAuthorized(guardado, String(secret)));
+  const t = runlog.begin('config', { question: deliverySpan(String(child)), agent: 'family' });
+  if (!v.ok) {
+    t.end({ answer: `refused: ${v.reason}` });
+    throw new Error(v.reason);
+  }
+  PropertiesService.getScriptProperties().setProperty(deliveryProp(String(child)), JSON.stringify(afterDelivery(d as KeyDelivery, Date.now())));
+  t.end({ answer: 'delivered once' });
+  return { key: store.getApiKey() };
+}
+
+/** Rearma a entrega. ATO HUMANO: automático desfaria a proteção que a unicidade cria. */
+export function rearmChildKey(child: string) {
+  assertOwner();
+  const d = readDelivery(String(child));
+  if (!d) throw new Error('unknown child project');
+  // A CONTAGEM NÃO ZERA: entrega repetida vira sinal, não rotina. Um filho que pede a chave cinco vezes
+  // aparece — e é isso que separa "republiquei o projeto" de "algo está pedindo demais".
+  PropertiesService.getScriptProperties().setProperty(deliveryProp(String(child)), JSON.stringify(rearmDelivery(d)));
+  return { child, armed: true, deliveries: d.deliveries };
+}
+
+// ---------- Campos declarados pelo agente (item 20): a mutação aparece no painel ----------
+
+const FIELDS_FILE = 'fields.json';
+const cfgProp = (folderId: string) => `CFG:${folderId}`;
+
+/** O esquema que ESTE agente declara. Arquivo ausente ou ilegível = nenhum campo, nunca campo inventado. */
+function declaredFields(folderId: string): { fields: ConfigField[]; errors: string[] } {
+  try {
+    const dir = DriveApp.getFolderById(folderId).getFoldersByName('.gasclaw');
+    if (!dir.hasNext()) return { fields: [], errors: [] };
+    const it = dir.next().getFilesByName(FIELDS_FILE);
+    if (!it.hasNext()) return { fields: [], errors: [] };
+    return parseSchema(JSON.parse(it.next().getBlob().getDataAsString()));
+  } catch (e) {
+    return { fields: [], errors: [`could not read ${FIELDS_FILE}: ${redactMsg(e)}`] };
+  }
+}
+
+const storedFields = (folderId: string): Record<string, string | number | boolean> => {
+  try {
+    const raw = PropertiesService.getScriptProperties().getProperty(cfgProp(folderId));
+    const v: unknown = raw ? JSON.parse(raw) : {};
+    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, string | number | boolean>) : {};
+  } catch {
+    return {};
+  }
+};
+
+/**
+ * Os campos deste agente para a tela: o que ele DECLAROU, o que o dono JÁ CONFIGUROU, e os órfãos.
+ *
+ * Órfão é valor que o dono configurou e a geração atual não declara mais. Ele é PRESERVADO e mostrado,
+ * nunca apagado em silêncio: o valor é do DONO, não do agente, e uma mutação não pode apagar escolha
+ * humana. Se o bastão voltar para a geração anterior, a configuração dela volta junto.
+ */
+export function agentFields(folderId: string) {
+  assertOwner();
+  const { fields, errors } = declaredFields(folderId);
+  const { active, orphans } = mergeAcrossGenerations(fields, storedFields(folderId));
+  return {
+    folderId,
+    // A procedência é do ARQUIVO, não do campo: este esquema veio da pasta COMPARTILHÁVEL, e dizer isso
+    // é o que permite ao dono pesar o que está lendo (mesma regra do ADR-035 para os papéis).
+    origin: originLabel('folder'),
+    fields: fields.map((f) => ({ ...f, value: active[f.name] ?? f.default ?? null })),
+    orphans,
+    errors,
+  };
+}
+
+/** Grava UM campo. A pasta declara; o painel decide; o servidor valida antes de gravar. */
+export function setAgentField(folderId: string, name: string, value: unknown) {
+  assertOwner();
+  const { fields } = declaredFields(folderId);
+  const v = validateValues(fields, { [String(name)]: value });
+  if (!v.ok) throw new Error(v.errors.join('; '));
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty(cfgProp(folderId), JSON.stringify({ ...storedFields(folderId), ...v.clean }));
+  return agentFields(folderId);
 }
 
 /**

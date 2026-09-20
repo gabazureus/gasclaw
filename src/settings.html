@@ -766,6 +766,39 @@
         if (caps.creator) fs.append(el('p', { className: 'muted', textContent: caps.isCreator ? 'This is the agent that creates others.' : 'Another agent is the one that creates others — turning this on moves that role here.' }));
         box.append(fs);
 
+        // Campos que o AGENTE declarou. Um agente que nunca mutou não declara nenhum, e aí a seção não
+        // aparece — seção vazia permanente ensina menos que a ausência dela.
+        quiet('agentFields', folderId).then((cf) => {
+          if (!cf.fields.length && !Object.keys(cf.orphans || {}).length && !cf.errors.length) return;
+          const ff = document.createElement('fieldset');
+          ff.append(el('legend', { textContent: 'Declared by this agent' }), el('p', { className: 'muted', textContent: cf.origin }));
+          cf.errors.forEach((e) => ff.append(el('p', { className: 'err', textContent: e })));
+          cf.fields.forEach((f) => {
+            const id = 'fld-' + folderId + '-' + f.name;
+            const linha = el('div', { className: 'tool' });
+            let input;
+            if (f.type === 'boolean') { input = document.createElement('input'); input.type = 'checkbox'; input.checked = f.value === true; }
+            else if (f.type === 'choice') { input = document.createElement('select'); (f.choices || []).forEach((c) => input.append(el('option', { value: c, textContent: c }))); input.value = String(f.value ?? ''); }
+            else { input = document.createElement('input'); input.type = f.type === 'number' ? 'number' : 'text'; input.value = String(f.value ?? ''); }
+            input.id = id;
+            input.onchange = () => {
+              const v = f.type === 'boolean' ? input.checked : f.type === 'number' ? Number(input.value) : input.value;
+              call('setAgentField', folderId, f.name, v)
+                .then(() => { $('msg').textContent = f.label + ' saved.'; })
+                .catch((e) => { $('msg').className = 'err'; $('msg').textContent = e.message; });
+            };
+            linha.append(el('label', { htmlFor: id, textContent: f.label }), input);
+            ff.append(linha);
+          });
+          // Órfão: valor que o dono configurou e a geração atual não declara mais. Some da tela seria
+          // apagar escolha humana em silêncio — e ele volta a valer se o bastão voltar.
+          const orf = Object.entries(cf.orphans || {});
+          if (orf.length) {
+            ff.append(el('p', { className: 'muted', textContent: 'Kept from an earlier generation, not used by this one: ' + orf.map(([k, v]) => k + ' = ' + v).join(' · ') }));
+          }
+          box.append(ff);
+        }).catch(() => {}); // um esquema ruim não pode derrubar a tela de configuração inteira
+
         const fm = document.createElement('fieldset');
         fm.append(el('legend', { textContent: 'Model' }));
         fm.append(el('p', { className: 'muted', textContent: 'From the folder (AGENTS/spreadsheet): ' + m.fromFolder + ' · Picked here: ' + (m.override || '— (uses the folder one)') + (m.lastModel ? ' · last run: ' + m.lastModel : '') }));
