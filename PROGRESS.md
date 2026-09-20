@@ -1,9 +1,12 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, e se já foi resolvido.
-> **Atualizado em:** 2026-09-20 · **1726 testes** · `tsc` limpo · build limpo · dívida de idioma **171**
+> **Atualizado em:** 2026-09-20 · **1758 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
 > · **Auditoria:** seis ✅ eram falsos. Critério: *algum módulo importa isto, e o símbolo aparece em `dist/_motor.js`?*
 > · **P22 aprovada 4/4** · P24 **aprovada por inteiro** · P25 **reprovada** (sem combustível)
+> · **P27 medida e REPROVADA** (o filho executa, o motor recusa o token dele: 401 da plataforma)
+> · **P28 medida:** 0 linhas, 0 aglomerados — o instrumento existe e não houve falha, coisas diferentes
+> · **3 ciclos de revisão:** 1 e 2 fechados (14 achados, 5 altas); 3 pendente
 > **Fontes:** [spec](docs/specs/), [ADRs](docs/adr/README.md), [CHANGELOG](CHANGELOG.md),
 > [log da wiki](docs/wiki/log.md), [pesquisa do sinal fraco](docs/pesquisa/2026-09-19-o-sinal-fraco-do-sonho.md)
 
@@ -37,6 +40,33 @@
 | 21 | Teto familiar de gasto | ✅ | **Age**: `writeSuccessor` lê `capAction` e recusa em `stop-creating` e em `freeze`. Nunca corta a chave — isso pararia o pai também (ADR-040) |
 | 22 | Personas e repasse | ✅ | Tool `persona` no registro + `runPersona` no motor, **chamados no bundle**. Interseção dupla; só ferramentas sem aprovação, porque de dentro de uma tool não há caminho até o card |
 | 23 | **Sucessor como CÓDIGO NOVO (Opus 5)** | ✅ | `codegen.ts` + `successor.ts`: crivo fechado (sem `eval`, sem token OAuth, sem a API do Apps Script, sem chave no fonte), escopos **estritamente menores** que os do motor, teto diário agregado, e o filho nasce precisando do consentimento do dono |
+
+### Revisão em ciclos — o que ela custou (2026-09-20)
+
+Quatro revisores independentes, dois ciclos. **O achado mais valioso não foi um defeito de produto:
+foi descobrir que eu estava PROVANDO COISAS ERRADAS**, em cinco formas:
+
+| Forma | Parecia | Era |
+|---|---|---|
+| `toContain("'dream'")` | prova da guarda | **tautologia** — a âncora da fatia já continha a string |
+| `toMatch(/approval === 'never'/)` | prova do filtro | defendia **metade**; apagar `ownerOnly` passava |
+| `toContain('subagentTools')` | prova da interseção | **a linha de import** satisfazia |
+| oráculo `DREAMLOCK:` | prova por comportamento | **falso em todo estado possível** do stub |
+| `toContain('capsAfterSuccession(caps,')` | prova da regra | **defendia o uso errado** — teste hostil |
+
+Todos foram substituídos por testes de comportamento com **mutação conferida**: desfazer o conserto
+mata teste. E três defeitos do ciclo 2 eu declarei consertados **sem estarem no código** — `git
+checkout` levou junto o não commitado. A regra agora: **commitar antes de mutar**.
+
+| Severidade | Achado |
+|---|---|
+| **ALTA** | `screenApproval` **re-assinava run adulterado** — o motor era um oráculo de assinatura |
+| **ALTA** | arquivar não desligava nada na **conversa** (o antecessor seguia sendo o agente padrão) |
+| **ALTA** | `passBaton` **requebrava** o singleton do `create` |
+| **ALTA** | `agent.create`/`agent.message` eram **auto-aprováveis** em run proativo |
+| **ALTA** | `claimable` órfão: arquivar não encerrava lease, run nem card |
+| **ALTA** | chave do OpenRouter ia para o trace pela sonda P27 |
+| MÉDIA | `ask` pendurava run proativo · `KEYDEL:` sem saída · `passBaton` sem lock e em ordem invertida · token de 16 escopos para URL de Property |
 
 ### Fechados nesta rodada (2026-09-20)
 
