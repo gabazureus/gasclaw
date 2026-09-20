@@ -37,5 +37,8 @@
 | ↳ **DÉBITO: P22 (proatividade) sem nenhum número** | `[!]` bloqueia "me mande mensagem" e "me chame quando precisar", pedidos explícitos do usuário. A spec da F3a está **reprovada em revisão de desenho**; o remédio proposto (linguagem de predicados) foi recusado por inseguro e super-construído. Não é esquecimento: está esperando decisão de desenho | [POC P22](../poc/p22-proatividade/README.md) · [spec F3a](tracks/f3-proatividade-e-governanca/spec.md) | — |
 | ↳ P24 — linhagem de CÓDIGO: o agente criador cria o projeto Apps Script do sucessor? | `[ ]` critério escrito, **nada medido**; depende de gate do usuário (escopo novo obriga todos a reautorizar) | [POC P24](../poc/p24-linhagem-de-codigo/README.md) · [ADR-038](../docs/adr/038-capacidades-e-linhagem.md) | — |
 
+| F6 — o enxame: 15 filhos em 24 h, gerados e implantados pelo Opus 5 | `[~]` spec escrita, **nada medido**; bloqueada por H1 (orçamento) e por dois defeitos (D1 linhagem não encadeia, D2 sem aptidão) | [spec](../docs/specs/2026-09-20-enxame-15-agentes-24h.md) · [plano](tracks/f6-enxame/plan.md) · [decisões](tracks/f6-enxame/decisions.md) | — |
+| ↳ P29 — quantos filhos a plataforma aceita por dia? | `[ ]` critérios escritos, **nada medido**. Custo US$ 0: não chama o Opus | [POC P29](../poc/p29-enxame/README.md) | — |
+
 Ressalvas da F0 ainda abertas: verificar o haicai no `SOUL.md` sem deploy, o histórico no Chat e a
 conversa de outra pessoa do domínio (Task 9); salvar a chave e o agente na tela de prod.
