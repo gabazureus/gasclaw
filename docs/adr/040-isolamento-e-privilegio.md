@@ -251,3 +251,53 @@ controlada. **Um filho em laço pode gastar durante essa janela antes de aparece
 
 O que limita o dano nesse intervalo não é o teto familiar: é o intervalo mínimo entre gerações, o
 singleton de `create` e o fato de o filho nascer sem capacidade nenhuma.
+
+---
+
+## MEDIDO (P27, dev v126, 2026-09-20): o filho NÃO alcança o motor
+
+O desenho de *pull* acima — "o filho pede a chave ao pai, autenticado pelo segredo" — **não funciona
+como especificado**, e agora isso é fato medido, não raciocínio.
+
+### O que a P27 mediu
+
+Reusando o filho da P24 (nenhum projeto novo, nenhum Opus gasto), reescrito para chamar a rota
+`childkey` do motor com o **próprio token**:
+
+| Campo | Valor | O que diz |
+|---|---|---|
+| `code` | **200** | o filho EXECUTOU — o consentimento deixou de ser o obstáculo |
+| `needsNewConsent` | **false** | o dono autorizou; não é falta de clique |
+| `body` | **`401\|<html>… ppConfig …`** | o MOTOR recusou o token do filho |
+
+O `401` vem com página de login do Google: a chamada foi barrada **antes de chegar ao nosso código**.
+Não é a rota `childkey` recusando — ela nunca foi alcançada.
+
+**A causa:** um token emitido para o projeto do FILHO carrega apenas os escopos DELE. Nenhum deles
+autoriza invocar o web app de **outro** script como aquele usuário. `access: MYSELF` autentica *a
+pessoa*, e a plataforma não aceita, para essa finalidade, um token de outro projeto.
+
+### O argumento que eu tinha, e por que ele era irrelevante
+
+A ADR-041 proíbe `getOAuthToken` no código gerado. Eu havia construído o argumento de que a exceção
+poderia ser aberta para o filho, porque o token dele é limitado ao manifesto dele, que `narrowScopes`
+garante estritamente menor e sem `script.projects`.
+
+**O argumento não resolvia nada.** O obstáculo não era o crivo — era o Google não aceitar o token.
+Ter "resolvido" a tensão por raciocínio teria enfraquecido o crivo **e** deixado a entrega sem
+funcionar: pior nos dois sentidos. É o caso exemplar de por que se mede em vez de argumentar.
+
+### As opções que sobram — e a escolha é do dono
+
+| # | Opção | O que custa |
+|---|---|---|
+| 1 | Pull com segredo, como está | **Morre com esta medição**: sem token válido, o filho não alcança a rota |
+| 2 | Abrir o web app do motor (`ANYONE_ANONYMOUS`), protegido só pelo segredo por filho | Troca a autenticação da plataforma pela nossa. O segredo vira a **única** defesa, e ele mora no fonte do filho |
+| 3 | Chave do OpenRouter no fonte do filho | Aceita o que esta ADR rejeitou: projeto compartilhado leva a chave junto |
+| 4 | **Só `automation`** — filhos sem conversa, que nunca precisam de chave | Nada. É o caminho que esta ADR já chama de barato, e o único que não abre mão de nada |
+
+**Recomendação:** a 4. A 2 é a segunda opção *se* o dono quiser sub-agentes conversando de fato — e
+nesse caso o segredo precisa ser **rotacionável**, não apenas rearmável, porque ele deixa de ser a
+segunda camada e passa a ser a única.
+
+As opções 2 e 3 trocam segurança por capacidade. Essa troca é decisão do dono, não do agente.
