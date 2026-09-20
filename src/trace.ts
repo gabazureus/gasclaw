@@ -1,7 +1,10 @@
 // Trace do agente (ADR-014), núcleo puro: um run é uma lista de passos (spans) com ms e dados.
 // A borda (runlog.ts) grava o cache ao vivo, a planilha (1 linha por run) e o JSON completo.
 
-export type RunKind = 'chat' | 'test' | 'poc' | 'config' | 'webchat';
+// `subagent`: o turno de uma PERSONA (ADR-039). Run próprio, e não span do pai, porque o contexto de
+// uma tool não carrega o tracer do run que a chamou. A consequência está dita no `runPersona`: o custo
+// dela aparece no uso por modelo, mas não dentro do teto por run do pai.
+export type RunKind = 'chat' | 'test' | 'poc' | 'config' | 'webchat' | 'subagent';
 export type Span = { name: string; startMs: number; ms: number; status: 'ok' | 'error'; data?: Record<string, unknown> };
 export type RunMeta = { question?: string; agent?: string; user?: string };
 export type Run = RunMeta & {

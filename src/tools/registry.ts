@@ -8,6 +8,7 @@ import { GMAIL_TOOLS } from './gmail';
 import { TASKS_TOOLS } from './tasks';
 import type { Google } from './google';
 import { addEntry, RECALL_MAX, removeEntry } from './memory';
+import { SUBAGENT_NAME } from '../subagent';
 
 export type Approval = 'never' | 'once' | 'always';
 type Prop = { type: 'string' | 'integer' | 'number' | 'boolean'; description?: string; maxLength?: number };
@@ -16,7 +17,7 @@ export type Schema = { type: 'object'; properties: Record<string, Prop>; require
 /** memory: MEMORY.md (read/write) + notas do dia (day/saveDay/today) + recall pronto; day/saveDay/today/recall são opcionais para contextos simples. */
 export type MemoryCtx = { read: () => string; write: (text: string) => void; assertWritable?: () => void; day?: (date: string) => string; saveDay?: (date: string, text: string) => void; today?: () => string; recall?: () => string };
 /** skill: corpo de uma skill sob demanda (skills/<nome>/SKILL.md); é texto, nunca executa (ADR-002). */
-export type ToolCtx = { now: () => string; ownerDm: boolean; memory: MemoryCtx; google?: Google; timeZone?: string; offset?: string; isOwner?: boolean; /** Agente que originou o turno, quando ele veio por repasse (ADR-040 §A): o card precisa dizer quem pediu. */ originAgent?: string; skill?: (name: string) => string | null; beforeEffect?: () => void };
+export type ToolCtx = { now: () => string; ownerDm: boolean; memory: MemoryCtx; google?: Google; timeZone?: string; offset?: string; isOwner?: boolean; /** Agente que originou o turno, quando ele veio por repasse (ADR-040 §A): o card precisa dizer quem pediu. */ originAgent?: string; skill?: (name: string) => string | null; /** Delega a uma PERSONA declarada em `subagents/<nome>.md` da própria pasta (ADR-039); ausente nos canais que não a montam. */ persona?: (name: string, task: string) => string; beforeEffect?: () => void };
 /** ownerOnly: só o dono usa (e aprova); o motor recusa antes de qualquer card. */
 export type Tool = { name: string; description: string; parameters: Schema; approval: Approval; run: (args: Record<string, unknown>, ctx: ToolCtx) => string; ownerOnly?: boolean };
 
@@ -105,6 +106,32 @@ export const TOOLS: Tool[] = [
       const md = ctx.skill(name);
       if (md === null) throw new Error(`não existe a skill "${name}"`);
       return skillBody(name, md);
+    },
+  },
+  {
+    name: 'persona',
+    description: 'Delegates part of the task to a persona declared in subagents/<name>.md in this folder (e.g. reviewer, writer). It answers with text and decides nothing on its own.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'the file name under subagents/, without the extension', maxLength: 40 },
+        task: { type: 'string', description: 'what it should do, in one or two sentences', maxLength: 2000 },
+      },
+      required: ['name', 'task'],
+      additionalProperties: false,
+    },
+    // `never` de propósito: DELEGAR não produz efeito externo por si. Cada ferramenta que a persona
+    // usar passa pelo próprio crivo, e ela só recebe as que não pedem aprovação (ver `main.ts`). Um
+    // card para "vou pensar com outro papel" treinaria o dono a clicar sem ler — que é como uma
+    // aprovação deixa de proteger.
+    approval: 'never',
+    run: (a, ctx) => {
+      const name = String(a.name ?? '').trim().toLowerCase();
+      if (!SUBAGENT_NAME.test(name)) throw new Error('invalid persona name');
+      const task = String(a.task ?? '').trim();
+      if (!task) throw new Error('say what the persona should do');
+      if (!ctx.persona) throw new Error('personas are not available on this channel');
+      return ctx.persona(name, task);
     },
   },
   ...[...CALENDAR_TOOLS, ...GMAIL_TOOLS, ...CONTACTS_TOOLS, ...TASKS_TOOLS, ...DRIVE_TOOLS].map((t) => ({ ...t, ownerOnly: true })),

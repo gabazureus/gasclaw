@@ -22,7 +22,10 @@ import { chatAppAvailable, createAsChatApp } from './chatApiGas';
 import { acceptChatMessage } from './chatAsync';
 import { deliveryDue, sendChatDelivery } from './chatDelivery';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
-import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, reply } from './agent';
+import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, reply, runTurn } from './agent';
+import { parseSubagent, subagentGrants, subagentSpan, subagentTools } from './subagent';
+import type { AgentSpec } from './workspace';
+import { personaIO } from './tools/personaStore';
 import { approvalCard, decisionFrom, issue, issueGrant } from './approval';
 import { cacheTickets, decideChatApproval, decideScreenApproval, durableTickets, hashToken, newToken } from './approvalStore';
 import { chatTurn, handleChat, type ChatDeps, type ChatEvent, type ChatReply } from './chat';
@@ -299,6 +302,60 @@ const nowText = () => {
   return `${Utilities.formatDate(new Date(), tz, "yyyy-MM-dd'T'HH:mm:ssXXX (EEEE)")} fuso ${tz}`;
 };
 
+/**
+ * Roda uma PERSONA como passo dentro do turno do pai (item 31, ADR-039).
+ *
+ * `subagent.ts` tinha 14 exports e ZERO importadores até a auditoria de 2026-09-20 — o caso exato de
+ * "código testado que ninguém chama parece pronto e não está". Esta função é a fiação que faltava, e
+ * ela custa dobrado: `subagentTools` é também o QUARTO controle do item 16.
+ *
+ * **A restrição que o desenho IMPÕE, e que precisa estar dita:** de dentro de uma tool NÃO existe
+ * caminho até o card de aprovação. Uma persona que chamasse `gmail.send` ficaria pendurada esperando
+ * um clique que não tem onde aparecer. Por isso ela recebe apenas as ferramentas que não pedem
+ * aprovação — recusa explícita, não sorte. O que precisa de clique continua sendo do pai, na
+ * conversa, onde o dono está olhando.
+ */
+function runPersona(spec: AgentSpec, name: string, task: string): string {
+  const md = personaIO(spec.folderId).body(name);
+  if (md === null) throw new Error(`there is no persona "${name}" in this agent's folder`);
+  const p = parseSubagent(name, md);
+  if (!p) throw new Error(`the persona "${name}" has no role written in it`);
+
+  const key = store.getApiKey();
+  if (!key) throw new Error('the OpenRouter key is missing');
+
+  // Interseção DUPLA: contra o registro e contra o que o dono aprovou para o pai. Depois, só o que
+  // não pede aprovação — ver o comentário acima.
+  const nomes = subagentTools(p.declaredTools, spec.access.tools);
+  const tools = allowedTools(nomes).filter((t) => t.approval === 'never' && !t.ownerOnly);
+  const span = subagentSpan(name);
+  const t = runlog.begin('subagent', { question: task.slice(0, 500), agent: span ?? name });
+  try {
+    const r = runTurn({
+      system: p.role,
+      history: [],
+      text: task,
+      tools,
+      // A persona NÃO herda a memória nem o Google do pai: ela é um papel para pensar, não uma
+      // segunda identidade com as mesmas chaves.
+      ctx: { now: nowText, ownerDm: false, memory: memoryIO(spec.folderId, zone().timeZone) },
+      llm: (m: Message[], defs: ToolDef[]) => complete(key, spec.config.model, m, 1000, undefined, defs),
+      runId: `${spec.folderId}:${span ?? name}`,
+      steps: p.steps,
+      deadlineMs: Date.now() + 60_000,
+      clock: Date.now,
+      // §E: aprovação do pai NÃO é herdada. `once` libera a tool pelo resto do turno DELE; herdar
+      // faria valer para uma persona que o dono não estava olhando quando clicou.
+      granted: subagentGrants(),
+    });
+    t.end({ answer: r.text });
+    return r.text;
+  } catch (err) {
+    t.end({ error: (err as Error).message });
+    throw err;
+  }
+}
+
 function chatDeps(): ChatDeps {
   return {
     enabled: store.isEnabled,
@@ -320,7 +377,15 @@ function chatDeps(): ChatDeps {
     },
     toolkit: (spec, ownerDm) => ({
       tools: allowedTools(spec.access.tools),
-      ctx: { now: nowText, ownerDm, memory: memoryIO(spec.folderId, zone().timeZone), skill: (name: string) => skillsIO(spec.folderId).body(name), google: gasGoogle, ...zone() },
+      ctx: {
+        now: nowText,
+        ownerDm,
+        memory: memoryIO(spec.folderId, zone().timeZone),
+        skill: (name: string) => skillsIO(spec.folderId).body(name),
+        persona: (name: string, task: string) => runPersona(spec, name, task),
+        google: gasGoogle,
+        ...zone(),
+      },
       steps: spec.config.steps ?? DEFAULT_STEPS,
       skills: skillsIO(spec.folderId).index(),
       bootstrap: bootstrapIO(spec.folderId),

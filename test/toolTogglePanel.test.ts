@@ -76,7 +76,7 @@ describe('agentAccess: a tela desenha o catálogo do registry', () => {
     env.props['ACCESS:f1'] = '{"users":[],"tools":["memory"]}';
     const { agentAccess } = await main();
     const x = agentAccess('f1');
-    expect(x.catalog).toHaveLength(23);
+    expect(x.catalog).toHaveLength(24);
     expect(x.enabled).toEqual(['memory.save', 'memory.remove', 'memory.read']);
     expect(x.approved.tools).toEqual(['memory']); // o gravado continua como está até alguém tocar
   });
