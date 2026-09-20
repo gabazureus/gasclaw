@@ -236,6 +236,18 @@ export function doPost(e: GoogleAppsScript.Events.DoPost) {
     assertOwner();
     const props = PropertiesService.getScriptProperties();
     const stored = props.getProperty('CLI_SECRET');
+    // ITEM 33, A OUTRA METADE: o filho é OUTRO PROJETO — ele não alcança `deliverKeyToChild` por
+    // `google.script.run`, que é da tela. Sem rota, o caminho da entrega existia e ninguém podia
+    // percorrê-lo. Vem ANTES do `CLI_SECRET` de propósito: o filho não tem o segredo da CLI, e não
+    // deve ter — ele se autentica com o SEGREDO DELE, que só vale para ele e só uma vez.
+    if (action === 'childkey') {
+      try {
+        return json({ ok: true, ...deliverKeyToChild(p.child ?? '', p.secret ?? '') });
+      } catch (err) {
+        // 403 e não 400: a recusa aqui é sempre de autorização, e o motivo já vem pronto do núcleo.
+        return json({ ok: false, status: 403, error: (err as Error).message });
+      }
+    }
     if (action === 'setsecret') {
       // primeira vez: o dono grava o segredo gerado no PC; depois, só quem já tem o segredo atual
       if (!validSecret(p.secret ?? '')) return json({ ok: false, status: 400, error: 'invalid secret: use 64 hexadecimal characters (openssl rand -hex 32)' });
@@ -1701,6 +1713,11 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
   props.setProperty(genStamp(id), String(Date.now())); // o intervalo mínimo conta a partir de AGORA
   // Sub-agente conversa, logo precisa da chave: a janela nasce ARMADA e é consumida na primeira vez.
   props.setProperty(deliveryProp(r.child.scriptId), JSON.stringify(armDelivery(r.child.scriptId)));
+  // ITEM 33 — O SEGREDO POR FILHO, QUE NUNCA ERA ESCRITO. A auditoria achou `KEYSEC:<filho>` sendo só
+  // LIDO: `cliAuthorized(null, …)` é sempre falso, então a entrega da chave SEMPRE recusava. O núcleo
+  // estava certo e o caminho inteiro era inalcançável — outro caso de peça pronta que ninguém ligou.
+  const segredo = childSecret();
+  props.setProperty(`KEYSEC:${r.child.scriptId}`, segredo);
   // A linhagem registra a GERAÇÃO DE CÓDIGO com o custo. Sem esta entrada, "ele se reescreveu" seria
   // uma frase na tela sem nada por trás; com ela, é um registro com data, pai, filho e dólar.
   const anterior = lineage().entries;
@@ -1716,7 +1733,9 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
   };
   props.setProperty(lineageProp, JSON.stringify([...anterior, entrada].slice(-100)));
 
-  return { ok: true as const, child: r.child, costUsd: r.costUsd, needsConsent: true, budget: { spentToday: codegenSpentToday(Date.now()), cap: CODEGEN_DAILY_CAP_USD, perRun: CODEGEN_BUDGET_USD } };
+  // O segredo volta UMA vez, para quem cria poder embuti-lo no fonte do filho. Ele não é a chave do
+  // OpenRouter: serve só para o filho provar, uma única vez, que é o filho que este ambiente criou.
+  return { ok: true as const, child: r.child, secret: segredo, costUsd: r.costUsd, needsConsent: true, budget: { spentToday: codegenSpentToday(Date.now()), cap: CODEGEN_DAILY_CAP_USD, perRun: CODEGEN_BUDGET_USD } };
 }
 
 /** Pode gerar agora? O intervalo mínimo é trava de custo E de descontrole, não conforto. */
@@ -1779,6 +1798,9 @@ export function deliverKeyToChild(child: string, secret: string) {
   t.end({ answer: 'delivered once' });
   return { key: store.getApiKey() };
 }
+
+/** Segredo por filho: 64 hex, o mesmo formato e a mesma força do `CLI_SECRET` (ADR-022). */
+const childSecret = (): string => Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
 
 /** Rearma a entrega. ATO HUMANO: automático desfaria a proteção que a unicidade cria. */
 export function rearmChildKey(child: string) {
@@ -2231,6 +2253,48 @@ function pocP26(step?: string): unknown {
   return { pass: false, error: 'steps: scopes, budget' };
 }
 
+/**
+ * Sonda da P27 (só no dev): **o filho consegue chegar ao motor para pedir a chave?**
+ *
+ * A pergunta existe porque o desenho tem uma tensão que eu mesmo criei e não posso resolver por
+ * raciocínio:
+ *
+ * - A ADR-040 diz que o filho PUXA a chave (embutir no fonte a faria vazar junto com o projeto).
+ * - O web app do motor é `access: MYSELF`, logo a chamada precisa de um token do DONO.
+ * - O crivo da ADR-041 RECUSA código gerado que chame `ScriptApp.getOAuthToken()`.
+ *
+ * Os três juntos tornam a entrega impossível. O argumento a favor de abrir a exceção para o filho é
+ * que o token dele é limitado ao MANIFESTO dele, que `narrowScopes` garante ser estritamente menor e
+ * nunca conter `script.projects` — o "chave da casa" vale para o token do MOTOR (17 escopos), não
+ * para o do filho. Mas se um token assim é ACEITO por um web app `MYSELF` de outro script é fato
+ * sobre a plataforma, não sobre o nosso desenho. Ou se mede, ou não se afirma.
+ */
+function pocP27(step?: string): unknown {
+  const props = PropertiesService.getScriptProperties();
+  if (step === 'secret') {
+    // C1: o segredo por filho passou a EXISTIR? Era este o defeito: `KEYSEC:` só era lido.
+    const filhos = parseChildren(props.getProperty('CHILDREN'));
+    const comSegredo = filhos.filter((c) => !!props.getProperty(`KEYSEC:${c.scriptId}`)).length;
+    return { pass: filhos.length === 0 || comSegredo === filhos.length, children: filhos.length, withSecret: comSegredo, reading: filhos.length === 0 ? 'no child yet: C1 is vacuous until one is created' : '' };
+  }
+  if (step === 'route') {
+    // C2: a rota existe e RECUSA sem o segredo certo. Recusar é o comportamento correto aqui — um
+    // "pass" neste passo significa que a porta existe E está trancada.
+    const url = ScriptApp.getService().getUrl();
+    const t0 = Date.now();
+    const res = UrlFetchApp.fetch(url, {
+      method: 'post',
+      payload: { action: 'childkey', child: 'nao-existe', secret: 'x'.repeat(64) },
+      headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` },
+      muteHttpExceptions: true,
+    });
+    const body = res.getContentText();
+    const recusou = /was not created by this agent|wrong or missing child secret|already been delivered/i.test(body);
+    return { pass: recusou, ms: Date.now() - t0, code: res.getResponseCode(), body: body.slice(0, 300), reading: recusou ? 'the route exists and refuses an unknown child' : 'the route did NOT refuse — read the body' };
+  }
+  return { pass: false, error: 'steps: secret, route' };
+}
+
 const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {
   p1: () => pocUrlFetchTimeout(),
   p2: (step, params = {}) => pocP2(step, params, runIO()),
@@ -2241,6 +2305,7 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p22: (step, params = {}) => pocP22(step, params),
   p24: (step) => pocP24(step),
   p26: (step) => pocP26(step),
+  p27: (step) => pocP27(step),
   p6: (step) => pocP6(step, ownerEmail()),
   p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),
