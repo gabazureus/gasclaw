@@ -81,6 +81,7 @@
 | ~~36~~ | ✅ **Tela do ciclo de sonho (DreamBoard)** | `startAgentDream` e `agentDream` existem; falta a tela com diff e placar | nada |
 | ~~37~~ | ✅ **Vocabulário "sub-agente"** | Significa duas coisas: declaração no run do pai (ADR-039) e projeto filho com pasta. Renomear a primeira para **persona** | nada |
 | ~~38~~ | ✅ **ADR dos dois tipos de filho** | `automation` × `subagent` está no código e não em ADR | nada |
+| 45 | **Três módulos órfãos, achados na varredura** | A auditoria olhou só os itens da F5; a varredura olhou o projeto inteiro e achou mais três. **`sessionQueue.ts` + `sessionQueueStore.ts` (93 linhas)**: fila de sessões com teste verde e **zero consumidores** — nem o motor, nem POC. O motor grava a sessão direto pelo `sessionIO`, e funciona; a fila nunca foi ligada. **`voice.ts` (38 linhas)**: órfão por DECISÃO sua (voz adiada, ADR-019) — este é parado de propósito, não esquecido. Decisão pendente: apagar a fila ou ligá-la | decisão do dono |
 | 39 | **199** strings em pt-BR | Catraca: **208 → 199** nesta rodada, e não pode subir. Contínuo por natureza — traduzir as descrições de ferramenta exige rodar os evals, porque elas mudam o que o modelo vê, e a bolha do chat é do AGENTE (idioma vem da pasta, ADR-002) | contínuo |
 
 ### POCs
