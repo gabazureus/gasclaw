@@ -21,7 +21,10 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 > A coroa fica em **Projects → Successor agents** e só destrava quando o **health** do sucessor passa
 > nas 9 checagens (autorizado, parado, chave, escopos, Drive, worker, código = este motor + o patch,
 > avaliação recente). **Rebase** reaplica o mesmo patch quando este motor mudou, sem chamar o modelo.
-> ✅ no dev (v153) · primeira geração real: US$ 1,52, um defeito real no ciclo de sonho, health 9/9.
+> ✅ no dev (v156) · **primeiro sucessor coroado**: US$ 1,52, um defeito real no ciclo de sonho (nenhum
+> ciclo conseguia concluir), health 9/9, coroado, e a correção de volta ao `src`. A coroa agora decide
+> pelo estado do sucessor (uma resposta perdida não deixa dois motores ligados), e o `up` não religa o
+> motor que entregou o agente.
 
 > 🧬 **Capacidades por agente (F5):** quatro poderes que você liga UM A UM no painel, e nenhum liga
 > outro — **Sonho** (reescreve o próprio prompt e se mede contra o conjunto-juiz), **Procurar**
