@@ -53,3 +53,23 @@ isso que o próprio `./gasclaw` pausa e pede esse clique na instalação (`GCP_L
 
 **A consequência, e ela vai para a ADR-043:** cada agente sucessor custa ao dono **três atos**, não dois
 — vincular o projeto GCP, autorizar, e colar a chave. A spec só previa os dois últimos.
+
+## Auditoria do sucessor implantado (2026-09-21, pai no dev v151)
+
+O código foi baixado do sucessor com o clasp e comparado arquivo por arquivo com o `dist/` do pai:
+
+| Verificação | Resultado |
+|---|---|
+| `_motor.js`, `settings.html`, `chat.html`, `hub.html`, `appsscript.json` | **idênticos** (sha256) |
+| Único arquivo a mais | `successor_seed.js` |
+| Correção da meia-noite (`const desde = now < lastSeen ? -1 : lastSeen`) | presente; o trecho defeituoso sumiu |
+| `guardsWeakened(pai, sucessor)` | **nenhum** enfraquecimento — 64 `assertOwner`, 9 `mayWriteProject`, 6 `mayAct`, 5 `isEnabled`, 7 `NEVER_AUTO`, 22 tools |
+| Semente | `bornDisabled: true`, pai, 1 agente, `parentUrl`; **nada com cara de segredo** |
+| Escopos | 17 = 17, incluindo `script.projects` (decisão 2) |
+
+**Leitura honesta:** quem montou o projeto foi o MOTOR (cópia do código do pai + semente); o Opus
+escreveu uma troca de uma linha, que chegou pelo `src`. O fluxo "o Opus devolve o patch e o motor o
+implanta como agente" é a Fase 2 da F7 e ainda não está fiado.
+
+**C2 continua não observado ao vivo:** o dono ativou o sucessor antes da leitura, e `p33 check`
+responde `the successor is RUNNING`. **C4** (uma conversa de teste) segue pendente.
