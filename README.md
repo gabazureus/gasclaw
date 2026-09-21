@@ -316,6 +316,53 @@ A persona gets the **intersection** of what it declares, what the tool registry 
 approved for the parent — and then only the tools that need no approval, because from inside a tool
 there is no path to an approval card. It never reaches your Gmail, Drive or Calendar.
 
+## The swarm: children that write their own successor
+
+An agent with the `succeed` capability asks Opus 5 to write the **code** of a child project, deploys
+it, and then measures it. Each generation starts from the best measured child, not from the prompt —
+that is what makes it a ladder instead of fifteen coin flips.
+
+```
+   YOU                    THE ENGINE                       A CHILD
+   ───                    ──────────                       ───────
+   declare what           asks Opus 5 for the code   ──►   its own Apps Script project
+   "better" means         of the next generation           code only: no model, no key
+   (the battery)                  │                              │
+        │                         │ creates + deploys            │
+        │                         ▼                              │
+        │                   Google refuses to run it ──────►  YOU CLICK ONCE
+        │                                                        │
+        └──────── the engine sends each case's INPUT ────────────►│
+                  and compares the OUTPUT itself                  │
+                  (the child never sees the expected value)  ◄────┘
+                                  │
+                                  ▼
+                       passes/k · delta · wins?
+                   the next generation starts from the best
+```
+
+**The child never grades itself.** It receives an input and answers with its output; the engine holds
+the expected value and does the comparison. A child that returns `{"ok":true,"score":100}` scores
+zero — those fields are not read. That is deliberate: a self-graded loop does not improve, and this
+project cites the measurement that shows it.
+
+**Six commands, and nothing is hardcoded** — every id comes from your own environment:
+
+```bash
+./gasclaw swarm capability succeed on          # approve the capability (one agent at a time)
+./gasclaw swarm battery my-battery.json        # declare what "better" means
+./gasclaw swarm interval 60                    # minutes between generations (floor: 60)
+./gasclaw swarm budget 15 18 24                # US$ caps for 24h — they expire on their own
+./gasclaw swarm run "<what the child must do>"  # one generation (this spends Opus)
+./gasclaw swarm status                          # the ladder
+```
+
+The battery is a JSON list of `{ "input": "...", "expected": "..." }`. It lives in a Script Property,
+never in the Drive folder: the folder is shareable, and whoever can edit it would be writing the exam.
+
+`./gasclaw swarm budget end` returns the caps early; otherwise they return by themselves when the
+window closes. `./gasclaw down` stops every autonomous capability, including the one that spends.
+
 ## Agents talking to each other
 
 An agent can message another agent of yours. Four controls make that safe, and none is optional —

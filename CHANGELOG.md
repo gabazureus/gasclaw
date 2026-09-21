@@ -32,6 +32,13 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 > bandeira. **O que você perde:** um filho não pode ter escopos OAuth próprios *e* um modelo ao mesmo
 > tempo. Nada do que já funcionava foi perdido.
 >
+> 🐝 **O enxame: filhos que escrevem o próprio sucessor.** Um agente com `succeed` pede ao Opus 5 o
+> CÓDIGO de um projeto filho, implanta, e depois **mede** contra uma bateria que **você** declara.
+> Cada geração parte do melhor filho medido, não do prompt — escada em vez de sorteio. O filho
+> **nunca se dá nota**: ele recebe uma entrada e devolve a saída, e quem guarda o esperado é o motor.
+> Seis comandos (`./gasclaw swarm capability|battery|interval|budget|run|status`), nenhum id fixo, e
+> tetos de gasto que **expiram sozinhos**. `./gasclaw down` para tudo, inclusive o que gasta.
+>
 > 🔗 **Mensagem entre agentes:** `agent.message` no registro fechado, com quatro controles que não
 > são opcionais — origem assinada no run, `isOwner` falso em todo repasse, o card nomeando quem
 > pediu, e `tools(A) ∩ tools(B)`. Sempre pede aprovação. ([ADR-040](docs/adr/040-isolamento-e-privilegio.md))

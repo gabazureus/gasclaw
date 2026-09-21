@@ -318,6 +318,52 @@ A persona recebe a **interseção** do que declara, do que o registro de ferrame
 você aprovou para o pai — e, dentro disso, só as ferramentas que não pedem aprovação, porque de
 dentro de uma ferramenta não existe caminho até o card. Ela nunca alcança seu Gmail, Drive ou Agenda.
 
+## O enxame: filhos que escrevem o próprio sucessor
+
+Um agente com a capacidade `succeed` pede ao Opus 5 o **código** de um projeto filho, implanta e
+depois mede. Cada geração parte do melhor filho medido, não do prompt — é isso que faz disto uma
+escada em vez de quinze sorteios.
+
+```
+   VOCÊ                   O MOTOR                          UM FILHO
+   ────                   ───────                          ────────
+   declara o que é        pede ao Opus 5 o código    ──►   projeto Apps Script próprio
+   "melhor"               da próxima geração               só código: sem modelo, sem chave
+   (a bateria)                    │                              │
+        │                         │ cria + implanta              │
+        │                         ▼                              │
+        │                 o Google recusa executar ──────►  VOCÊ CLICA UMA VEZ
+        │                                                        │
+        └──────── o motor manda a ENTRADA de cada caso ──────────►│
+                  e compara a SAÍDA ele mesmo                     │
+                  (o filho nunca vê o esperado)              ◄────┘
+                                  │
+                                  ▼
+                       acertos/k · delta · venceu?
+                   a próxima geração parte do melhor
+```
+
+**O filho não se dá nota.** Ele recebe uma entrada e responde com a saída dele; quem guarda o
+esperado e compara é o motor. Um filho que devolve `{"ok":true,"score":100}` tira zero — esses campos
+não são lidos. É deliberado: laço auto-avaliado não melhora, e este projeto cita a medição que mostra isso.
+
+**Seis comandos, e nada fixo no código** — todo id vem do ambiente de quem roda:
+
+```bash
+./gasclaw swarm capability succeed on          # aprova a capacidade (um agente por vez)
+./gasclaw swarm battery minha-bateria.json     # declara o que é "melhor"
+./gasclaw swarm interval 60                    # minutos entre gerações (piso: 60)
+./gasclaw swarm budget 15 18 24                # tetos em US$ por 24h — eles expiram sozinhos
+./gasclaw swarm run "<o que o filho deve fazer>" # uma geração (isto GASTA Opus)
+./gasclaw swarm status                           # a escada
+```
+
+A bateria é uma lista JSON de `{ "input": "...", "expected": "..." }`. Ela mora numa Script Property,
+nunca na pasta do Drive: a pasta é compartilhável, e quem pudesse editá-la estaria escrevendo a prova.
+
+`./gasclaw swarm budget end` devolve os tetos antes da hora; se não, eles voltam sozinhos quando a
+janela fecha. `./gasclaw down` para toda capacidade autônoma, inclusive a que gasta.
+
 ## Agentes conversando entre si
 
 Um agente pode mandar mensagem para outro agente seu. Quatro controles tornam isso seguro, e nenhum é
