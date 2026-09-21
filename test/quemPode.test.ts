@@ -35,6 +35,8 @@ const acoes: [string, (m: Motor) => unknown][] = [
   ['successorOptions', (m) => m.successorOptions('fa')],
   ['evaluateSuccessor', (m) => m.evaluateSuccessor('x')],
   ['crownSuccessor', (m) => m.crownSuccessor('x')],
+  ['successorHealth', (m) => m.successorHealth('x')],
+  ['rebaseSuccessor', (m) => m.rebaseSuccessor('x')],
   ['successionState', (m) => m.successionState()],
   ['writeAutomation', (m) => m.writeAutomation('fa', [])],
   ['automationOptions', (m) => m.automationOptions('fa')],

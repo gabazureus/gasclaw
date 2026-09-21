@@ -64,7 +64,7 @@ import {
 } from './agentCaps';
 import { beatsIncumbent, CODEGEN_BUDGET_USD, mayWriteProject, withinDailyCap } from './dream';
 import { generateSuccessor, sourceOfChild, type SuccessorDeps } from './successor';
-import { crownVerdict, patchMessages, prepareSuccessor, readSuccessorsFrom, slotFor, successorWrites, type EvalRow, type Evaluation, type SuccessorRecord } from './succession';
+import { codeMatches, crownReadiness, crownVerdict, patchMessages, prepareSuccessor, readSuccessorsFrom, slotFor, successorWrites, type EvalRow, type Evaluation, type ReadinessCheck, type SuccessorRecord, type SuccessorSelf } from './succession';
 import { codeDelta, judgeCase, parseBattery, previousScore, scoreRun, withMeasurement } from './fitness';
 import { applyPatch, parsePatch, type Change, type PatchFile } from './patch';
 import { seedSource } from './seed';
@@ -220,6 +220,7 @@ function mutate(action: string, p: Record<string, string>): unknown {
   if (action === 'succeed') return writeSuccessor(pasta, p.goal ?? '');
   if (action === 'automate') return writeAutomation(pasta, (p.scopes ?? '').split(',').filter(Boolean), p.goal ?? '', p.tokens ? Number(p.tokens) : undefined);
   if (action === 'evaluate') return evaluateSuccessor(p.child || '');
+  if (action === 'rebase') return rebaseSuccessor(p.child || '');
   if (action === 'succession') return successionState();
   if (action === 'measure') return measureChild(p.child || '');
   if (action === 'lineage') return lineage();
@@ -277,6 +278,9 @@ export function doPost(e: GoogleAppsScript.Events.DoPost) {
     // guardas de `crownFromParent` (só sucessor, só o PAI da semente) — e o token do dono, sem o qual
     // `assertOwner` acima já recusou. Coroar é o clique do dono no painel do pai (`crownSuccessor`).
     if (action === 'crown') return json(crownFromParent(p.parent ?? ''));
+    // O HEALTH PROFUNDO do sucessor, para o pai decidir se a coroa é possível. Só leitura, e pelo POST
+    // porque a resposta inteira importa (a leitura por GET do pai corta em 1.200 caracteres).
+    if (action === 'readiness') return json(readinessSelf());
     // A ROTA `childkey` FOI REMOVIDA (2026-09-20, ADR-040 opção 4). Ela era o único ponto do projeto
     // que devolvia a chave do OpenRouter por HTTP. A P27 mediu que o filho não consegue alcançá-la —
     // o Google recusa o token de outro projeto antes de chegar aqui —, então ela não servia a ninguém
@@ -328,6 +332,7 @@ export function doGet(e: GoogleAppsScript.Events.DoGet) {
     assertOwner();
     if (MUTATING.has(action)) return json({ ok: false, status: 405, error: 'this action has an effect: use POST with the CLI secret (./gasclaw)' });
     if (action === 'job') return json(readJob(e.parameter.id ?? ''));
+    if (action === 'successorhealth') return json(successorHealth(e.parameter.child ?? ''));
     if (action === 'health') {
       const agents = store.listAgents();
       const folders = agents.map((a) => `${a.name}: https://drive.google.com/drive/folders/${a.folderId}`);
@@ -1528,6 +1533,8 @@ export function listChildren(folderId?: string) {
   return {
     folderId: folderId ?? null,
     archived: arquivados,
+    // Os AGENTES sucessores entram na mesma tela de projetos: é onde o dono os autoriza e os coroa.
+    successors: readSuccessors(props).filter((r) => !folderId || r.folderId === folderId).map((r) => ({ ...r, editorUrl: `https://script.google.com/d/${r.scriptId}/edit` })),
     children: meus.map((c) => {
       let probe: { code: number; body: string } | null = null;
       try {
@@ -3538,6 +3545,10 @@ export function crownSuccessor(scriptId: string) {
   const rec = readSuccessors(props).find((r) => r.scriptId === String(scriptId ?? '').trim());
   if (!rec) return { ok: false as const, reason: 'unknown successor' };
   if (rec.crownedAt !== null) return { ok: false as const, reason: 'this successor was already crowned' };
+  // O HEALTH INTEIRO, não só a nota: a coroa pausa o motor que hoje funciona, e só vale se o sucessor
+  // consegue de fato servir o agente — todas as checagens, lidas AGORA.
+  const saude = healthOf(rec);
+  if (!saude.ok) return { ok: false as const, reason: `the successor is not ready: ${saude.checks.filter((c) => !c.ok).map((c) => `${c.label} — ${c.detail}`).join('; ')}`, checks: saude.checks };
   const veredito = crownVerdict(rec.evaluation);
   if (!veredito.ok) return { ok: false as const, reason: veredito.reason };
   const antes = store.isEnabled();
@@ -3565,8 +3576,98 @@ export function crownSuccessor(scriptId: string) {
  */
 function crownFromParent(parent: string) {
   if (parent !== store.successorOf()) return { ok: false, status: 403, error: 'only the parent named in the seed crowns this engine' };
+  // O WORKER antes de ligar: sem o gatilho de 1 minuto, o agente coroado aceitaria mensagens e nunca as
+  // responderia. Não criou → recusa, e o pai volta a rodar.
+  const gatilho = observe.ensureTrigger();
+  if (gatilho !== 'active') return { ok: false, status: 409, error: `the 1-minute worker could not be created (${gatilho})` };
   store.setEnabled(true);
   return { ok: true };
+}
+
+/** No SUCESSOR: o que ele diz de si mesmo para o pai decidir a coroa. Nada secreto: só estados. */
+function readinessSelf() {
+  const ag = defaultAgent();
+  let leitura = { ok: false, detail: 'there is no agent to serve' };
+  if (ag) {
+    try {
+      // SEM CACHE: a pergunta é se o Drive responde AGORA (o 403 do GCP não vinculado aparece aqui).
+      const a = loadAgent(ag.folderId, { noCache: true });
+      leitura = a.system ? { ok: true, detail: `read the folder of ${ag.name}` } : { ok: false, detail: 'the agent folder has no prompt' };
+    } catch (e) {
+      leitura = { ok: false, detail: (e as Error).message.slice(0, 200) };
+    }
+  }
+  return { ok: true, self: { seedParent: store.successorOf(), enabled: store.isEnabled(), hasKey: !!store.getApiKey(), authRequired: authStatus().required, agentReadable: leitura, trigger: observe.triggerStatus(true) } };
+}
+
+/** No PAI: as 9 checagens da coroa, lidas agora — consentimento, o health profundo e o código implantado. */
+function healthOf(rec: SuccessorRecord) {
+  const own = ScriptApp.getScriptId();
+  let estado = 'unknown';
+  try {
+    const r = fetchChild(`${rec.url}?action=health`);
+    estado = authState(rec.url, r.code, r.body);
+  } catch {
+    estado = 'unknown'; // fora do ar não é permissão
+  }
+  let self: SuccessorSelf | null = null;
+  if (estado === 'authorized') {
+    try {
+      const j = JSON.parse(postChild(rec.url, { action: 'readiness' }).body) as { ok?: boolean; self?: SuccessorSelf };
+      if (j.ok && j.self) self = j.self;
+    } catch {
+      self = null; // um sucessor antigo, sem a porta, não responde: todas as checagens dele reprovam
+    }
+  }
+  let code: { ok: boolean; reason: string } | null = null;
+  try {
+    const call = scriptCall(ScriptApp.getOAuthToken());
+    const lido = call(`${SCRIPT_API}/${rec.scriptId}/content`, 'get');
+    if (lido.code === 200) {
+      const filho = ((JSON.parse(lido.full) as { files?: ProjectFile[] }).files ?? []).map((f) => ({ name: f.name, source: f.source }));
+      code = codeMatches(readOwnFiles(call, own).map((f) => ({ name: f.name, source: f.source })), filho, rec.changes);
+    }
+  } catch {
+    code = null;
+  }
+  return crownReadiness({ parentId: own, authState: estado, self, code, record: rec });
+}
+
+/** O health da coroa de um sucessor registrado, para o painel e a CLI. */
+export function successorHealth(scriptId: string) {
+  assertOwner();
+  const rec = readSuccessors(PropertiesService.getScriptProperties()).find((r) => r.scriptId === String(scriptId ?? '').trim());
+  if (!rec) return { ok: false as const, reason: 'unknown successor', checks: [] as ReadinessCheck[] };
+  if (rec.crownedAt !== null) return { ok: false as const, reason: 'this successor was already crowned', checks: [] as ReadinessCheck[] };
+  return { scriptId: rec.scriptId, ...healthOf(rec) };
+}
+
+/**
+ * REBASE: o mesmo patch, reaplicado sobre o código ATUAL deste motor e reimplantado no mesmo projeto —
+ * sem chamar o Opus. É o que fazer quando este motor mudou depois da geração (um `up` novo): coroar o
+ * sucessor antigo desfaria essas mudanças. Passa pelo MESMO crivo da escrita, e a avaliação anterior
+ * deixa de valer (o código avaliado não é mais o que está lá).
+ */
+export function rebaseSuccessor(scriptId: string) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const rec = readSuccessors(props).find((r) => r.scriptId === String(scriptId ?? '').trim());
+  if (!rec) return { ok: false as const, reason: 'unknown successor' };
+  if (rec.crownedAt !== null) return { ok: false as const, reason: 'this successor was already crowned' };
+  const own = ScriptApp.getScriptId();
+  const guarda = mayWriteProject(rec.scriptId, own);
+  if (!guarda.ok) return { ok: false as const, reason: guarda.reason };
+  const w = slotWritable(rec.url);
+  if (!w.ok) return { ok: false as const, reason: w.reason };
+  const call = scriptCall(ScriptApp.getOAuthToken());
+  const originais = readOwnFiles(call, own).filter((f) => f.name !== 'successor_seed');
+  const prep = prepareSuccessor(originais.map((f) => ({ name: f.name, source: f.source })), JSON.stringify({ explanation: rec.explanation, changes: rec.changes }));
+  if (!prep.ok) return { ok: false as const, reason: `the patch no longer fits this engine (${prep.reason}): write a new successor` };
+  const tipo = (n: string) => originais.find((f) => f.name === n)?.type ?? 'SERVER_JS';
+  const dep = deployAgentProject(call, own, [...prep.files.map((f) => ({ name: f.name, type: tipo(f.name), source: f.source })), successorSeedFile(own)], '', { scriptId: rec.scriptId, url: rec.url });
+  if (!dep.ok) return { ok: false as const, reason: `${dep.stage}: ${dep.reason}` };
+  saveSuccessor(props, { ...rec, at: Date.now() });
+  return { ok: true as const, scriptId: rec.scriptId, version: dep.version, next: 'the same patch now sits on this engine\'s current code. Evaluate it again before the crown.' };
 }
 
 /** O que o painel e a CLI leem: os sucessores, com a explicação, as trocas, a nota e a coroa. */

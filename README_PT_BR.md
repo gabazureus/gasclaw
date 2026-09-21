@@ -467,6 +467,13 @@ o motor com o patch é implantado como outro projeto Apps Script — mesmos esco
   ./gasclaw succession pull ──► a mudança é portada para src/*.ts com teste — senão o próximo `up` a apaga
 ```
 
+**A coroa só destrava quando o health do sucessor passa em todas as checagens**, lidas naquele momento
+em **Projects → Successor agents → Health**: você o autorizou · a semente dele aponta este motor como pai ·
+ele está parado · a chave do OpenRouter está colada · nenhum escopo espera consentimento · ele lê a pasta
+do agente no Drive (é aqui que um GCP não vinculado aparece) · o worker de 1 minuto existe ou pode ser
+criado · o código dele é o código **atual** deste motor mais o patch (se este motor mudou, **Rebase**
+reaplica o mesmo patch sem chamar o modelo) · ele foi julgado de fora **depois** da última escrita, sem nota pior.
+
 **A coroa é o seu clique, no painel, e em nenhum outro lugar.** O painel mostra todos os escopos
 marcados e travados (o sucessor é este agente, não um diferente dele), o diff troca por troca, a
 explicação e a nota da avaliação de fora. Um sucessor com nota **pior** que a deste motor não pode ser
@@ -481,6 +488,8 @@ você o pausa antes.
 ./gasclaw succession write "<objetivo opcional>"  # o Opus lê o código e implanta o sucessor (gasta Opus)
 ./gasclaw succession evaluate <scriptId>           # este motor o julga de fora (pause-o antes)
 ./gasclaw succession status                        # troca, explicação, nota, coroa
+./gasclaw succession health <scriptId>             # as 9 checagens que destravam a coroa
+./gasclaw succession rebase <scriptId>             # o mesmo patch sobre o código atual deste motor (sem modelo)
 ./gasclaw succession pull                          # traz o patch coroado para succession/ para portar ao src
 ```
 
@@ -511,7 +520,7 @@ Todos os comandos aceitam `--prod`; sem a flag, valem para dev.
 | `./gasclaw eval <cenário\|--all> [--model id]` | Roda `evals/*.md` no dev (sai com erro se falhar) |
 | `./gasclaw tools all\|none\|<a,b,c> [pasta]` | Liga e desliga as ferramentas do agente |
 | `./gasclaw swarm <sub>` | A corrida do enxame: battery, interval, budget, run, measure, status |
-| `./gasclaw succession <sub>` | O agente sucessor: write, status, evaluate, pull (a coroa é no painel) |
+| `./gasclaw succession <sub>` | O agente sucessor: write, status, health, evaluate, rebase, pull (a coroa é no painel) |
 | `./gasclaw onboard` | Menu guiado de setup (o padrão antes de qualquer publicação) |
 
 ## Roadmap

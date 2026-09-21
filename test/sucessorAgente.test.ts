@@ -15,6 +15,10 @@ const URL_SLOT = 'https://script.google.com/macros/s/SLOT/exec';
 let env: GasEnv;
 let saude: { enabled: boolean } | 'consent' = { enabled: false };
 let coroa: { ok: boolean; error?: string } = { ok: true };
+// O que o sucessor diz de si pela porta `readiness`, e o código que a API devolve para ele.
+const SELF_OK = { seedParent: 'script1', enabled: false, hasKey: true, authRequired: false, agentReadable: { ok: true, detail: 'read' }, trigger: 'inactive' };
+let self: Record<string, unknown> | null = { ...SELF_OK };
+let codigoFilho: string = MOTOR.replace('return lastSeen;', 'return lastSeen - 1;');
 
 const bom = JSON.stringify({ explanation: 'the midnight job never fired', changes: [{ file: '_motor', find: 'return lastSeen;', replace: 'return lastSeen - 1;' }] });
 
@@ -22,6 +26,8 @@ beforeEach(() => {
   vi.resetModules();
   saude = { enabled: false };
   coroa = { ok: true };
+  self = { ...SELF_OK };
+  codigoFilho = MOTOR.replace('return lastSeen;', 'return lastSeen - 1;');
   env = stubGas();
   env.props['STATUS:f1'] = 'active';
   env.props['CAP:f1'] = JSON.stringify(['succeed']);
@@ -32,13 +38,18 @@ beforeEach(() => {
     if (url.endsWith('/api/v1/key')) return { code: 200, body: JSON.stringify({ data: { usage: 0, limit: null } }) };
     if (url === 'https://script.googleapis.com/v1/projects/script1/content') return { code: 200, body: JSON.stringify({ files: [{ name: '_motor', type: 'SERVER_JS', source: MOTOR }, { name: 'appsscript', type: 'JSON', source: MANIFESTO }] }) };
     if (url === 'https://script.googleapis.com/v1/projects' && init.method === 'post') return { code: 200, body: JSON.stringify({ scriptId: 'NOVO' }) };
+    if (url.endsWith('/projects/SLOT/content') && (init.method ?? 'get') === 'get') return { code: 200, body: JSON.stringify({ files: [{ name: '_motor', type: 'SERVER_JS', source: codigoFilho }, { name: 'appsscript', type: 'JSON', source: MANIFESTO }, { name: 'successor_seed', type: 'SERVER_JS', source: 'var GASCLAW_SEED = {};' }] }) };
     if (/\/projects\/(NOVO|SLOT)\/content$/.test(url)) return { code: 200, body: '{}' };
     if (/\/projects\/(NOVO|SLOT)\/versions$/.test(url)) return { code: 200, body: JSON.stringify({ versionNumber: 7 }) };
     if (url.endsWith('/projects/NOVO/deployments') && init.method === 'post') return { code: 200, body: JSON.stringify({ entryPoints: [{ webApp: { url: URL_NOVO } }] }) };
     if (url.endsWith('/projects/SLOT/deployments') && (init.method ?? 'get') === 'get') return { code: 200, body: JSON.stringify({ deployments: [{ deploymentId: 'HEAD' }, { deploymentId: 'WEB', deploymentConfig: { versionNumber: 3 } }] }) };
     if (url.endsWith('/projects/SLOT/deployments/WEB')) return { code: 200, body: '{}' };
     if (url.endsWith('?action=health')) return saude === 'consent' ? { code: 200, body: 'Authorization needed' } : { code: 200, body: JSON.stringify(saude) };
-    if ((url === URL_SLOT || url === URL_NOVO) && init.method === 'post') return { code: 200, body: JSON.stringify(coroa) };
+    if ((url === URL_SLOT || url === URL_NOVO) && init.method === 'post') {
+      const acao = (init.payload as Record<string, string>).action;
+      if (acao === 'readiness') return self ? { code: 200, body: JSON.stringify({ ok: true, self }) } : { code: 200, body: JSON.stringify({ ok: false, error: 'unknown action: readiness' }) };
+      return { code: 200, body: JSON.stringify(coroa) };
+    }
     return null;
   };
 });
@@ -46,7 +57,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 const motor = async () => (await import('../src/main')) as unknown as Record<string, (...a: unknown[]) => Record<string, unknown>>;
 const escrito = () => {
-  const put = env.calls.find((c) => /\/projects\/(NOVO|SLOT)\/content$/.test(c.url));
+  const put = env.calls.find((c) => /\/projects\/(NOVO|SLOT)\/content$/.test(c.url) && c.init.method === 'put');
   return put ? (JSON.parse(String(put.init.payload)) as { files: { name: string; source: string }[] }).files : null;
 };
 const slotRegistrado = (extra: object = {}) => {
@@ -173,15 +184,17 @@ describe('o SLOT: a próxima geração reusa o sucessor parado — e nunca um li
   });
 });
 
-describe('crownSuccessor: a coroa — o titular para ANTES, e volta se ela falhar', () => {
-  const avaliado = (sp: number, ip: number) => ({ evaluation: { successorPasses: sp, incumbentPasses: ip, k: 6, complete: true, verdictLeaked: false, at: 2, rows: [] } });
+describe('crownSuccessor: a coroa — só com o health inteiro; o titular para ANTES, e volta se ela falhar', () => {
+  const troca = [{ file: '_motor', find: 'return lastSeen;', replace: 'return lastSeen - 1;' }];
+  const avaliado = (sp: number, ip: number) => ({ changes: troca, evaluation: { successorPasses: sp, incumbentPasses: ip, k: 6, complete: true, verdictLeaked: false, at: 2, rows: [] } });
+  const coroou = () => env.calls.some((c) => c.url === URL_SLOT && (c.init.payload as Record<string, string>)?.action === 'crown');
 
   test('sem avaliação, recusa e não toca em nada', async () => {
     slotRegistrado();
     const r = (await motor()).crownSuccessor('SLOT');
     expect(r.ok).toBe(false);
     expect(env.props['RUNTIME_ENABLED']).toBeUndefined();
-    expect(env.calls.some((c) => c.url === URL_SLOT)).toBe(false);
+    expect(coroou()).toBe(false);
   });
 
   test('nota pior que a do titular: recusa', async () => {
@@ -190,12 +203,12 @@ describe('crownSuccessor: a coroa — o titular para ANTES, e volta se ela falha
     expect(env.props['RUNTIME_ENABLED']).toBeUndefined();
   });
 
-  test('empate avaliado: coroa — o titular fica parado e o registro marca a coroa', async () => {
+  test('empate avaliado e health inteiro: coroa — o titular fica parado e o registro marca a coroa', async () => {
     slotRegistrado(avaliado(5, 5));
     const m = await motor();
     expect(m.crownSuccessor('SLOT')).toMatchObject({ ok: true, standing: 'ties' });
     expect(env.props['RUNTIME_ENABLED']).toBe('false');
-    const post = env.calls.find((c) => c.url === URL_SLOT);
+    const post = env.calls.find((c) => c.url === URL_SLOT && (c.init.payload as Record<string, string>)?.action === 'crown');
     expect(post?.init.payload).toEqual({ action: 'crown', parent: 'script1' });
     expect((m.successionState() as unknown as { successors: { crownedAt: number | null }[] }).successors[0].crownedAt).not.toBeNull();
   });
@@ -204,7 +217,40 @@ describe('crownSuccessor: a coroa — o titular para ANTES, e volta se ela falha
     slotRegistrado({ ...avaliado(5, 5), crownedAt: 9 });
     expect((await motor()).crownSuccessor('SLOT').ok).toBe(false);
     expect(env.props['RUNTIME_ENABLED']).toBeUndefined();
-    expect(env.calls.some((c) => c.url === URL_SLOT)).toBe(false);
+    expect(coroou()).toBe(false);
+  });
+
+  // Cada uma é uma forma real de a troca falhar DEPOIS de pausar o motor que funciona.
+  test.each([
+    ['sem a chave', () => void (self = { ...SELF_OK, hasKey: false })],
+    ['sem ler o Drive (GCP não vinculado)', () => void (self = { ...SELF_OK, agentReadable: { ok: false, detail: '403 Drive API disabled' } })],
+    ['já rodando', () => void (self = { ...SELF_OK, enabled: true })],
+    ['sucessor antigo, sem a porta do health', () => void (self = null)],
+    ['código que não é o pai atual + o patch', () => void (codigoFilho = MOTOR)],
+    ['sem o escopo do gatilho', () => void (self = { ...SELF_OK, trigger: 'awaiting authorization' })],
+  ])('health reprovado (%s): não coroa, não pausa o titular, não chama a coroa', async (_n, preparar) => {
+    slotRegistrado(avaliado(5, 5));
+    preparar();
+    const r = (await motor()).crownSuccessor('SLOT');
+    expect(r.ok).toBe(false);
+    expect(String(r.reason)).toContain('not ready');
+    expect(env.props['RUNTIME_ENABLED']).toBeUndefined();
+    expect(coroou()).toBe(false);
+  });
+
+  test('avaliação ANTERIOR à última escrita (rebase): não coroa', async () => {
+    slotRegistrado({ ...avaliado(5, 5), at: 50 });
+    expect((await motor()).crownSuccessor('SLOT').ok).toBe(false);
+    expect(coroou()).toBe(false);
+  });
+
+  test('successorHealth devolve as 9 checagens com o motivo de cada uma', async () => {
+    slotRegistrado(avaliado(5, 5));
+    self = { ...SELF_OK, hasKey: false };
+    const h = (await motor()).successorHealth('SLOT') as unknown as { ok: boolean; checks: { id: string; ok: boolean }[] };
+    expect(h.ok).toBe(false);
+    expect(h.checks).toHaveLength(9);
+    expect(h.checks.filter((c) => !c.ok).map((c) => c.id)).toEqual(['key']);
   });
 
   test('o sucessor recusa a coroa: o titular VOLTA a rodar', async () => {
@@ -216,17 +262,51 @@ describe('crownSuccessor: a coroa — o titular para ANTES, e volta se ela falha
   });
 });
 
-describe('no SUCESSOR, a porta `crown`: só do pai da semente', () => {
-  const post = async (parent: string) => {
+describe('rebaseSuccessor: o mesmo patch sobre o código ATUAL, sem o Opus', () => {
+  const troca = [{ file: '_motor', find: 'return lastSeen;', replace: 'return lastSeen - 1;' }];
+  test('reimplanta no mesmo projeto, sem chamar o modelo, e a avaliação anterior deixa de valer', async () => {
+    slotRegistrado({ changes: troca, evaluation: { successorPasses: 5, incumbentPasses: 5, k: 6, complete: true, verdictLeaked: false, at: 2, rows: [] } });
+    const m = await motor();
+    expect(m.rebaseSuccessor('SLOT')).toMatchObject({ ok: true, scriptId: 'SLOT' });
+    expect(env.fetched('openrouter.ai/api/v1/chat')).toHaveLength(0);
+    expect(escrito()!.find((f) => f.name === '_motor')?.source).toContain('return lastSeen - 1;');
+    const rec = (m.successionState() as unknown as { successors: { at: number; evaluation: { at: number } }[] }).successors[0];
+    expect(rec.at).toBeGreaterThan(rec.evaluation.at);
+  });
+  test('patch que não cabe mais no motor atual: recusa e não escreve', async () => {
+    slotRegistrado({ changes: [{ file: '_motor', find: 'nao existe mais', replace: 'x' }] });
+    const r = (await motor()).rebaseSuccessor('SLOT');
+    expect(r.ok).toBe(false);
+    expect(escrito()).toBeNull();
+  });
+  test('sucessor ligado: recusa e não escreve', async () => {
+    slotRegistrado({ changes: troca });
+    saude = { enabled: true };
+    expect((await motor()).rebaseSuccessor('SLOT').ok).toBe(false);
+    expect(escrito()).toBeNull();
+  });
+});
+
+describe('no SUCESSOR, a porta `crown`: só do pai da semente, e só com o worker criado', () => {
+  let gatilhos: string[] = [];
+  const post = async (parent: string, criaGatilho = true) => {
     vi.stubGlobal('GASCLAW_SEED', { bornDisabled: true, parent: 'PAI', agents: [{ name: 'agente-teste', folderId: 'f1' }], at: 1 });
+    gatilhos = [];
+    vi.stubGlobal('ScriptApp', { ...(globalThis as unknown as { ScriptApp: object }).ScriptApp, getProjectTriggers: () => gatilhos.map((h) => ({ getHandlerFunction: () => h })), newTrigger: (h: string) => ({ timeBased: () => ({ everyMinutes: () => ({ create: () => void (criaGatilho && gatilhos.push(h)) }) }) }) });
     const m = await import('../src/main');
     const out = m.doPost({ parameter: { action: 'crown', parent } } as unknown as GoogleAppsScript.Events.DoPost) as unknown as { getContent: () => string };
     return JSON.parse(out.getContent()) as { ok: boolean };
   };
 
-  test('o pai da semente coroa: o sucessor liga', async () => {
+  test('o pai da semente coroa: o sucessor cria o worker e liga', async () => {
     expect((await post('PAI')).ok).toBe(true);
+    expect(gatilhos).toEqual(['drainRuns']);
     expect(env.props['RUNTIME_ENABLED']).toBe('true');
+  });
+
+  test('o worker não nasce: recusa, e o sucessor segue parado (o pai volta a rodar)', async () => {
+    expect((await post('PAI', false)).ok).toBe(false);
+    expect(env.props['RUNTIME_ENABLED']).toBeUndefined();
   });
 
   test('outro "pai" não coroa, e o sucessor segue parado', async () => {

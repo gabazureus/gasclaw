@@ -273,7 +273,7 @@ remote_to() { # $1 URL base (…/exec ou …/dev) · $2 "acao&a=b" (já no forma
   [ -n "$t" ] || t=$(gcloud auth print-access-token 2>/dev/null) || return 1
   # Espelho do MUTATING de src/cli.ts. São duas listas porque o shell não lê o TS; se divergirem, a ação sai por
   # GET e o web app responde 405 — foi o que aconteceu com `tools`. Mexeu lá, mexe aqui.
-  case " eval poc enable disable drain step tools capability battery interval budget succeed automate evaluate succession measure lineage " in
+  case " eval poc enable disable drain step tools capability battery interval budget succeed automate evaluate rebase succession measure lineage " in
     *" $action "*) # M1: ação com efeito → POST; parâmetros no corpo; token e segredo pelo stdin, nunca em argv nem na URL
       # `return 1`, nunca `die`: quem chama guarda com `|| true` e `die` faz `exit`, que `|| true` NAO captura.
       # Com o `2>&1` do chamador engolindo a mensagem, o ./gasclaw up morria mudo aqui e pulava health,
@@ -861,11 +861,22 @@ cmd_succession() { # o AGENTE sucessor (F7, ADR-043): ./gasclaw succession write
     evaluate) # ./gasclaw succession evaluate <scriptId>  — o pai julga o sucessor de fora (ele precisa estar PARADO)
       [ -n "${1:-}" ] || die "usage: ./gasclaw succession evaluate <scriptId>"
       remote "evaluate&child=$1" | swarm_print ;;
+    health) # ./gasclaw succession health <scriptId>  — as 9 checagens da coroa, lidas agora
+      [ -n "${1:-}" ] || die "usage: ./gasclaw succession health <scriptId>"
+      remote "successorhealth&child=$1" | succession_health ;;
+    rebase) # ./gasclaw succession rebase <scriptId>  — o MESMO patch sobre o codigo atual deste motor, sem Opus
+      [ -n "${1:-}" ] || die "usage: ./gasclaw succession rebase <scriptId>"
+      remote "rebase&child=$1" | swarm_print ;;
     pull) # ./gasclaw succession pull [scriptId]  — traz o patch COROADO para succession/, para ser portado ao src
       remote "succession" | succession_pull "${1:-}" ;;
-    *) die "usage: ./gasclaw succession write [\"<goal>\"] | status | evaluate <scriptId> | pull [scriptId]" ;;
+    *) die "usage: ./gasclaw succession write [\"<goal>\"] | status | health <scriptId> | evaluate <scriptId> | rebase <scriptId> | pull [scriptId]" ;;
   esac
 }
+
+succession_health() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);
+if(!r.checks||!r.checks.length){console.log("refused: "+(r.error||r.reason));return}
+for(const c of r.checks)console.log(`${c.ok?"PASS":"FAIL"}  ${c.label} — ${c.detail}`);
+console.log(r.ok?"\nready: crown it in the panel (Projects)":"\nnot ready: the crown stays locked until every check passes")})'; }
 
 succession_print() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);
 if(r.ok===false){console.log("refused: "+(r.error||r.reason));return}
@@ -1084,7 +1095,7 @@ gasclaw — agents that live in your Google Drive, running on Google Apps Script
   ./gasclaw eval <scenario|--all> [--model id]  run evals/*.md on dev (exit != 0 on failure)
   ./gasclaw tools all|none|<a,b,c> [folder]     turn the agent's tools on and off
   ./gasclaw swarm <sub>       the swarm run: battery, interval, budget, run, measure, status
-  ./gasclaw succession <sub>  the successor agent: write, status, evaluate, pull (you crown it in the panel)
+  ./gasclaw succession <sub>  the successor agent: write, status, health, evaluate, rebase, pull (you crown it in the panel)
   ./gasclaw onboard           guided setup menu (the default before anything is published)
 TXT
 }

@@ -465,6 +465,13 @@ improves, and the patched engine is deployed as another Apps Script project — 
   ./gasclaw succession pull ──► the change is ported to src/*.ts with a test — or the next `up` erases it
 ```
 
+**The crown unlocks only when the successor's health passes every check**, read at that moment in
+**Projects → Successor agents → Health**: you authorized it · its seed names this engine as the parent ·
+it is paused · the OpenRouter key is pasted · no scope awaits consent · it reads the agent folder in Drive
+(this is where an unlinked GCP project shows up) · its 1-minute worker exists or can be created · its code
+is this engine's **current** code plus the patch (if this engine changed since, **Rebase** re-applies the
+same patch without calling the model) · it was judged from outside **after** its last write, not worse.
+
 **The crown is your click, in the panel, and nowhere else.** The panel shows every scope checked and
 locked (the successor is this agent, not a different one), the diff change by change, the explanation,
 and the score from the outside evaluation. A successor that scores **worse** than this engine cannot
@@ -479,6 +486,8 @@ never receives new code — you pause it first.
 ./gasclaw succession write "<optional goal>"   # Opus reads the code and deploys the successor (spends Opus)
 ./gasclaw succession evaluate <scriptId>        # this engine judges it from outside (pause it first)
 ./gasclaw succession status                     # change, explanation, score, crown
+./gasclaw succession health <scriptId>          # the 9 checks that unlock the crown
+./gasclaw succession rebase <scriptId>          # the same patch on this engine's current code (no model call)
 ./gasclaw succession pull                       # brings the crowned patch to succession/ to port to src
 ```
 
@@ -510,7 +519,7 @@ Every command accepts `--prod`; without it, the command targets dev.
 | `./gasclaw eval <scenario\|--all> [--model id]` | Runs `evals/*.md` in dev (non-zero exit on failure) |
 | `./gasclaw tools all\|none\|<a,b,c> [folder]` | Turns the agent's tools on and off |
 | `./gasclaw swarm <sub>` | The swarm run: battery, interval, budget, run, measure, status |
-| `./gasclaw succession <sub>` | The successor agent: write, status, evaluate, pull (you crown it in the panel) |
+| `./gasclaw succession <sub>` | The successor agent: write, status, health, evaluate, rebase, pull (you crown it in the panel) |
 | `./gasclaw onboard` | Guided setup menu (the default before anything is published) |
 
 ## Roadmap

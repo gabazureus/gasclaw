@@ -1018,20 +1018,7 @@
           showAgentSettings(folderId, box.parentNode || box);
         }).catch((err) => { ev.disabled = false; $('msg').className = 'err'; $('msg').textContent = err.message; });
       });
-      const cr = button('Crown it', () => {
-        const empate = r.verdict && r.verdict.standing === 'ties';
-        // O PORTÃO HUMANO: o dono confirma lendo o que vai acontecer, e o empate é dito como empate.
-        if (!confirm((empate ? 'The successor TIES this engine on the scenarios \u2014 the score does not show the change it makes. ' : 'The successor beats this engine on the scenarios. ') + 'Crowning pauses this engine and turns the successor on. Crown it?')) return;
-        cr.disabled = true;
-        call('crownSuccessor', r.scriptId).then((x) => {
-          cr.disabled = false;
-          if (!x.ok) { $('msg').className = 'err'; $('msg').textContent = x.reason; return; }
-          $('msg').textContent = 'Crowned. ' + x.next;
-          showAgentSettings(folderId, box.parentNode || box);
-        }).catch((err) => { cr.disabled = false; $('msg').className = 'err'; $('msg').textContent = err.message; });
-      });
-      cr.disabled = !(r.verdict && r.verdict.ok);
-      c.append(ev, ' ', cr);
+      c.append(ev, el('p', { className: 'muted', textContent: 'The crown is in Projects, below: it unlocks only when every health check passes.' }));
     }
     return c;
   }
@@ -1141,12 +1128,89 @@
   // P24 que mediu esse portão. O que a tela faz é mostrar O QUE O FILHO PEDE e levar o dono até lá.
   const CHILD_STATE_CLASS = { authorized: 'badge', 'needs-consent': 'badge gasclaw', 'not-deployed': 'badge', unknown: 'badge' };
 
+  // ----- Os AGENTES sucessores: health, rebase e a COROA (o portão humano da F7) -----
+  //
+  // A coroa só destrava depois de um health que passou em TUDO, lido agora. O clique confirma o que vai
+  // acontecer: este motor para e o sucessor passa a responder. Nada aqui coroa sozinho.
+  function successorTable(heirs) {
+    const box = el('div', {});
+    box.append(el('h2', { textContent: 'Successor agents' }));
+    box.append(el('p', { className: 'muted', textContent: 'The same agent, improved by a patch, in a project of its own. It answers only after you crown it here \u2014 and the crown unlocks only when every health check passes.' }));
+    const t = el('table', { className: 'list' });
+    const head = el('tr', {});
+    ['Successor', 'Status', ''].forEach((h) => head.append(el('th', { textContent: h })));
+    t.append(head);
+    heirs.slice().reverse().forEach((r) => {
+      const tr = el('tr', {});
+      const nome = el('td', {}, el('strong', { textContent: new Date(r.at).toLocaleString() + ' \u00b7 ' + r.scriptId.slice(0, 10) }));
+      nome.append(el('div', { className: 'muted', textContent: r.explanation.slice(0, 160) + (r.explanation.length > 160 ? '\u2026' : '') }));
+      tr.append(nome);
+      const estado = r.crownedAt ? 'crowned' : r.evaluation ? (r.evaluation.at >= r.at ? 'evaluated' : 'evaluate again') : 'not evaluated';
+      tr.append(el('td', {}, el('span', { className: 'badge' + (r.crownedAt ? ' gasclaw' : ''), textContent: estado })));
+      const acts = el('td', { className: 'acts' });
+      const abrir = el('a', { className: 'btn', textContent: 'Open', href: r.url });
+      abrir.target = '_blank'; abrir.rel = 'noopener';
+      const codigo = el('a', { className: 'btn', textContent: 'Code', href: r.editorUrl });
+      codigo.target = '_blank'; codigo.rel = 'noopener';
+      acts.append(abrir, ' ', codigo, ' ');
+      const detalhe = el('tr', {});
+      const celula = el('td', {});
+      celula.colSpan = 3;
+      detalhe.append(celula);
+      if (!r.crownedAt) {
+        const coroa = button('Crown it', () => {
+          if (!confirm('Every health check passed.\n\nCrowning PAUSES this engine and turns the successor on: from now on the successor answers for this agent.\n\nCrown it?')) return;
+          coroa.disabled = true;
+          call('crownSuccessor', r.scriptId).then((x) => {
+            if (!x.ok) { coroa.disabled = false; $('msg').className = 'err'; $('msg').textContent = x.reason; return; }
+            $('msg').className = '';
+            $('msg').textContent = 'Crowned. ' + x.next;
+            quiet('listChildren').then(showChildren).catch(() => {});
+          }).catch((e) => { coroa.disabled = false; $('msg').className = 'err'; $('msg').textContent = e.message; });
+        });
+        coroa.disabled = true; // só o health destrava
+        const rebase = button('Rebase', () => {
+          rebase.disabled = true;
+          $('msg').className = '';
+          $('msg').textContent = 'Rebasing\u2026 the same patch on this engine\u2019s current code, no model call.';
+          call('rebaseSuccessor', r.scriptId).then((x) => {
+            rebase.disabled = false;
+            $('msg').className = x.ok ? '' : 'err';
+            $('msg').textContent = x.ok ? 'Rebased. ' + x.next : x.reason;
+            quiet('listChildren').then(showChildren).catch(() => {});
+          }).catch((e) => { rebase.disabled = false; $('msg').className = 'err'; $('msg').textContent = e.message; });
+        });
+        rebase.hidden = true; // aparece quando a checagem de código diz que este motor mudou
+        const saude = button('Health', () => {
+          saude.disabled = true;
+          celula.replaceChildren(el('p', { className: 'muted', textContent: 'Checking the successor\u2026' }));
+          call('successorHealth', r.scriptId).then((h) => {
+            saude.disabled = false;
+            celula.replaceChildren();
+            (h.checks || []).forEach((c) => celula.append(el('p', { className: c.ok ? 'muted' : 'err', textContent: (c.ok ? '\u2713 ' : '\u2717 ') + c.label + ' \u2014 ' + c.detail })));
+            if (!h.checks || !h.checks.length) celula.append(el('p', { className: 'err', textContent: h.reason || 'no answer' }));
+            celula.append(el('p', { className: h.ok ? '' : 'muted', textContent: h.ok ? 'Ready: you can crown it.' : 'Not ready: the crown stays locked until every check passes.' }));
+            coroa.disabled = !h.ok;
+            const codigoFalhou = (h.checks || []).some((c) => c.id === 'code' && !c.ok);
+            rebase.hidden = !codigoFalhou;
+          }).catch((e) => { saude.disabled = false; celula.replaceChildren(el('p', { className: 'err', textContent: e.message })); });
+        });
+        acts.append(saude, ' ', rebase, ' ', coroa);
+      }
+      tr.append(acts);
+      t.append(tr, detalhe);
+    });
+    box.append(t);
+    return box;
+  }
+
   function showChildren(x) {
     const list = x.children || [];
     const gone = x.archived || [];
+    const heirs = x.successors || [];
     [...document.querySelectorAll('[data-child]')].forEach((n) => n.remove());
     // Nada para mostrar ⇒ nada aparece. Uma seção vazia permanente ensina menos que a ausência dela.
-    if (!list.length && !gone.length) return;
+    if (!list.length && !gone.length && !heirs.length) return;
 
     const sec = el('section', {});
     sec.dataset.child = 'table';
@@ -1161,6 +1225,8 @@
       el('p', { className: 'muted', textContent: '\u201cForget\u201d only removes it from this list. The project stays in your Google account until you delete it there.' }),
     );
     sec.append(ajuda);
+
+    if (heirs.length) sec.append(successorTable(heirs));
 
     // TABELA e nao cartoes: com tres filhos os cartoes ja empurram o resto da tela para baixo, e a
     // comparacao entre eles — que e o que o dono faz aqui — vira rolagem. Numa tabela, o tipo e o
