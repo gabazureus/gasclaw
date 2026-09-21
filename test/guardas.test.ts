@@ -193,3 +193,44 @@ describe('codeOnly: regex literal não abre string falsa', () => {
     expect(definitionsOf(src)).toEqual([{ name: 'guardsOf', from: 0, to: src.indexOf('\n') }]);
   });
 });
+
+// Auditoria 2026-09-21 (mutação): quatro regras do crivo passavam com o conserto removido. Estes testes
+// falham se cada uma sumir.
+describe('crivo: as regras que nenhum teste segurava', () => {
+  const pai = `
+function assertOwner2() {
+  if (!ok) throw new Error("not the owner");
+}
+function a() { assertOwner(); return 1; }
+function planCycle(x) { return x + 1; }
+`;
+  const arquivos = [{ name: '_motor', source: pai }];
+  const toca = (find: string, replace: string) => changesTouchGuards(arquivos, [{ file: '_motor', find, replace }]);
+
+  test('comentário de bloco em várias linhas esconde a chamada: enfraquece', () => {
+    const antes = 'function a() {\n  assertOwner();\n  return 1;\n}';
+    const depois = 'function a() {\n  /*\n  assertOwner();\n  */\n  return 1;\n}';
+    expect(guardsWeakened(antes, depois).join(' ')).toMatch(/assertOwner/);
+  });
+  test('o `find` que cita a guarda recusa, mesmo com o `replace` limpo e fora de qualquer definição', () => {
+    expect(toca('function a() { assertOwner();', 'function a() {').join(' ')).toMatch(/assertOwner/);
+  });
+  test('o nome renomeado pelo esbuild (`assertOwner2`) também é guarda: mexer no corpo recusa', () => {
+    expect(toca('if (!ok) throw new Error("not the owner");', 'console.log("x");').join(' ')).toMatch(/assertOwner/);
+  });
+  test('citar `successorOf2()` no `replace` recusa', () => {
+    expect(toca('function planCycle(x) { return x + 1; }', 'function planCycle(x) { return successorOf2() ? x : x + 1; }').join(' ')).toMatch(/successorOf/);
+  });
+
+  // A lista inteira, por nome: tirar qualquer um deles da lista protegida deixa o corpo dele editável por patch.
+  test.each([
+    'assertOwner', 'mayAct', 'mayWriteProject', 'isRunnable', 'isEnabled', 'enabledWith', 'cliAuthorized', 'validSecret', 'safeEqual',
+    'crownFromParent', 'inheritFromParent', 'evalRunForParent', 'inheritable', 'successorOf',
+    'guardsOf', 'guardsWeakened', 'changesTouchGuards', 'codeOnly', 'abreRegex', 'definitionsOf',
+    'ownerEmail', 'isDev', 'can', 'effectiveCapabilities', 'parseCapabilities', 'capsEnabled', 'parseStatus', 'claimable',
+    'familySpendQuiet', 'budgetNow', 'capAction', 'forgetAgentProps', 'mayAutoApprove', 'onProactiveBlock', 'cleanAutoList',
+  ])('mexer no corpo de %s recusa', (nome) => {
+    const src = `function ${nome}(x) {\n  return x + 1;\n}\nfunction other() { return 0; }`;
+    expect(changesTouchGuards([{ name: '_motor', source: src }], [{ file: '_motor', find: 'return x + 1;', replace: 'return x;' }]).join(' ')).toContain(`guard ${nome}`);
+  });
+});

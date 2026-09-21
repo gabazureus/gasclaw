@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import { createChatMessage, getChatMessage, listChatSpaces, mintChatAppToken, type ChatHttp } from '../src/chatApi';
+import { accountId, createChatMessage, findDirectMessage, getChatMessage, listChatSpaces, mintChatAppToken, type ChatHttp } from '../src/chatApi';
 
 const response = (code: number, body: unknown) => ({ code, body: JSON.stringify(body) });
 
@@ -66,5 +66,23 @@ describe('createChatMessage: messageReplyOption so faz sentido com thread', () =
     const url = http.mock.calls[0][0];
     expect(url).toContain('messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD');
     expect(http.mock.calls[0][1].body).toMatchObject({ thread: { name: 'spaces/AAA/threads/T1' } });
+  });
+});
+
+// Auditoria 2026-09-21 (mutação): as validações da busca da conversa do dono não tinham teste.
+describe('conversa direta do dono: o que a busca aceita e devolve', () => {
+  test('um e-mail no lugar do id numérico nem sai daqui (com a identidade do app a Chat API o recusa)', () => {
+    const http = vi.fn<ChatHttp>(() => response(200, { name: 'spaces/DM1' }));
+    expect(() => findDirectMessage('ya29.app', 'dono@x.com', http)).toThrow('invalid Chat direct-message lookup');
+    expect(http).not.toHaveBeenCalled();
+  });
+  test('uma resposta 200 sem nome de espaço válido vira null, nunca um destino', () => {
+    expect(findDirectMessage('ya29.app', '123', vi.fn<ChatHttp>(() => response(200, { name: 'users/x' })))).toBeNull();
+    expect(findDirectMessage('ya29.app', '123', vi.fn<ChatHttp>(() => response(200, {})))).toBeNull();
+  });
+  test('accountId só aceita o `sub` numérico', () => {
+    expect(accountId('owner', vi.fn<ChatHttp>(() => response(200, { sub: '123' })))).toBe('123');
+    expect(() => accountId('owner', vi.fn<ChatHttp>(() => response(200, { sub: 'abc' })))).toThrow('userinfo: no account id');
+    expect(() => accountId('owner', vi.fn<ChatHttp>(() => response(200, {})))).toThrow('userinfo: no account id');
   });
 });

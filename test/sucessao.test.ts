@@ -389,6 +389,14 @@ describe('crownReadiness no modo coroado, e a 10ª checagem: as permissões do f
     expect(d).toContain("successor's panel is the one that counts");
     expect(d).not.toContain('inherit');
   });
+  // Auditoria 2026-09-21: com só ACCESS diferente, o detalhe não abre os dois lados (nem de CAP, nem os e-mails).
+  test('só ACCESS difere: o detalhe nomeia a chave e não mostra valor nenhum', () => {
+    const r = crownReadiness({ ...base, self: { ...selfCoroado, settings: { ...settings, 'ACCESS:f1': '{"users":["intruso@x.com"],"tools":[]}' } } });
+    const d = r.checks.find((c) => c.id === 'settings')!.detail;
+    expect(d).toContain('ACCESS differ');
+    expect(d).not.toContain('this engine has');
+    expect(d).not.toContain('intruso@x.com');
+  });
   test('coroado não depende de avaliação nova: ela valeu para a coroa', () => {
     expect(falha({})).toEqual([]);
   });

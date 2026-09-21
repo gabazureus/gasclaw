@@ -78,6 +78,28 @@ describe('Reach out entrega a resposta na conversa do dono', () => {
     expect(env.calls.some((c) => c.url.endsWith('findDirectMessage?name=users%2F1234567890'))).toBe(true);
   });
 
+  test('o despertar grava LASTWAKE com o id do run que nasceu', async () => {
+    comAgenda(['initiative']);
+    comDm('spaces/DMDONO');
+    const m = await import('../src/main');
+    m.drainRuns();
+    const id = env.props[`LASTWAKE:${FOLDER}`];
+    expect(id).toMatch(/^wake-/);
+    expect([...env.drive.keys()].some((k) => k.includes(id))).toBe(true);
+  });
+
+  test('sem a identidade do app no build: nem procura a conversa, e o run nasce sem destino', async () => {
+    vi.stubGlobal('__CHAT_SA_EMAIL__', undefined);
+    comAgenda(['initiative']);
+    comDm('spaces/DMDONO');
+    const m = await import('../src/main');
+    m.drainRuns();
+    const rs = rodadas();
+    expect(rs.length).toBeGreaterThan(0);
+    expect(rs[0].delivery).toBeUndefined();
+    expect(env.calls.some((c) => c.url.includes('userinfo') || c.url.includes('findDirectMessage'))).toBe(false);
+  });
+
   test('sem conversa com o dono: o run acontece mesmo assim, sem destino (fica no trace)', async () => {
     comAgenda(['initiative']);
     comDm(null);
@@ -223,5 +245,34 @@ describe('o laço do sonho respeita os mesmos três portões', () => {
   test('com o passo medido maior que a execução inteira, o laço não começa passo nenhum', async () => {
     env.props['DREAMSTEP_MS'] = String(10 * 60_000);
     expect(await naoToca(['dream'])).toBe(true);
+  });
+
+  // Auditoria 2026-09-21 (mutação): o arrendamento e a gravação de DREAMSTEP_MS não tinham teste no laço real.
+  test('outro tique segurando o arrendamento: o laço não toca o ciclo', async () => {
+    env.props['DREAMTICK_LEASE'] = String(Date.now() + 1e9);
+    expect(await naoToca(['dream'])).toBe(true);
+  });
+
+  /** Relógio falso: cada passo de sonho leva `ms`. Devolve o valor de DREAMSTEP_MS depois do tique. */
+  const passoDe = async (ms: number) => {
+    let t = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => t);
+    vi.doMock('../src/dreamRun', async (orig) => ({ ...(await orig<typeof import('../src/dreamRun')>()), runDreamStep: () => ((t += ms), { passed: true }) }));
+    // `SCENARIOS` é `[]` no fonte (o build injeta): sem o cenário, o ciclo falha antes de medir um passo.
+    vi.doMock('../src/judgeSet', async (orig) => ({ ...(await orig<typeof import('../src/judgeSet')>()), scenarioMd: () => '# g1' }));
+    comCiclo(['dream']);
+    const m = await import('../src/main');
+    m.drainRuns();
+    vi.doUnmock('../src/dreamRun');
+    vi.doUnmock('../src/judgeSet');
+    vi.restoreAllMocks();
+    return passosFeitos() > 0 ? env.props['DREAMSTEP_MS'] : 'no step ran';
+  };
+  test('o passo medido maior que a estimativa fica gravado para o próximo tique', async () => {
+    expect(await passoDe(120_000)).toBe('120000');
+  });
+  test('o passo medido menor que a estimativa guardada não a rebaixa', async () => {
+    env.props['DREAMSTEP_MS'] = '200000';
+    expect(await passoDe(120_000)).toBe('200000');
   });
 });

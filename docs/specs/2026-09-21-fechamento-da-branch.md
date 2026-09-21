@@ -60,4 +60,4 @@ Tabela critério → evidência no [PROGRESS](../../PROGRESS.md) (seção F9) e 
 
 - Passaram todos os critérios: **A1, A2, A3 (10/10), A4, D1** (recusa honesta), **R1, S1, C1, X1 e X2**.
 - **A4 foi decidido pelo dono (opção A):** depois da coroa, vale o painel do sucessor. A 10ª verificação
-  só exige que ele devolva as permissões, e informa a diferença para o pai.
+  só exige que ele devolva as permissões, e informa a diferença para o pai ([ADR-046](../adr/046-depois-da-coroa-vale-o-painel-do-sucessor.md)).

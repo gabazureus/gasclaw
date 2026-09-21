@@ -155,6 +155,16 @@ describe('tickDream respeita o prazo da execução', () => {
     expect(r.steps).toBe(2);
   });
 
+  // Auditoria 2026-09-21: o teste acima dá 2 também SEM o conserto (120+90 e 120+120 cabem igual). Este
+  // discrimina: passo de 200 s, prazo de 300 s. Pela estimativa de 90 s o segundo caberia (200+90=290) e
+  // morreria no teto; pela duração MEDIDA (200+200=400) ele nem começa.
+  test('a duração medida no tique barra o passo que a estimativa deixaria começar', async () => {
+    comRun(200_000);
+    const m = await mod();
+    m.startDream('f1', dRelogio());
+    expect(m.tickDream('f1', dRelogio(), relogio + 300_000).steps).toBe(1);
+  });
+
   // REVISÃO FINAL F9: a medida morria com o tique e cada tique novo apostava de novo nos 90 s. Quem chama
   // guarda o maior passo medido e o devolve como estimativa.
   test('a estimativa vinda de fora (o maior passo de tiques anteriores) vale desde o primeiro passo', async () => {
@@ -208,6 +218,14 @@ describe('withDreamLease: um tique de sonho por vez', () => {
     let rodou = false;
     expect(m.withDreamLease(1_000, 400_000, () => void (rodou = true))).toBe(true);
     expect(rodou).toBe(true);
+  });
+
+  // Auditoria 2026-09-21: sem gravar o arrendamento, a checagem acima nunca veria outro tique.
+  test('enquanto roda, o arrendamento está tomado: um tique sobreposto pula', async () => {
+    const m = await mod();
+    let dentro: boolean | null = null;
+    expect(m.withDreamLease(1_000, 400_000, () => void (dentro = m.withDreamLease(2_000, 400_000, () => undefined)))).toBe(true);
+    expect(dentro).toBe(false);
   });
 
   test('exceção dentro: o arrendamento sai mesmo assim', async () => {

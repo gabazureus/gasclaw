@@ -35,3 +35,51 @@ describe('succession health: o resumo do coroado não mente sobre as configuraç
     expect(health({ ok: true, crowned: false, checks: [check('paused', true, 'paused')] })).toContain('ready: crown it in the panel');
   });
 });
+
+// GASCLAW_ENGINE_URL (F9): nenhum teste segurava as travas (auditoria 2026-09-21, mutação). O script inteiro
+// roda num diretório descartável; as travas vêm antes de qualquer rede.
+const FULL = readFileSync('gasclaw', 'utf8');
+function run(args: string[], engineUrl: string): { out: string; code: number } {
+  const dir = mkdtempSync(join(tmpdir(), 'gasclaw-engine-'));
+  dirs.push(dir);
+  writeFileSync(join(dir, 'gasclaw'), FULL);
+  writeFileSync(join(dir, 'gasclaw.env'), '');
+  try {
+    const out = execFileSync('bash', ['./gasclaw', ...args], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...baseEnv(), HOME: dir, GASCLAW_ENGINE_URL: engineUrl } });
+    return { out, code: 0 };
+  } catch (e) {
+    const err = e as { stdout?: string; stderr?: string; status?: number };
+    return { out: `${err.stdout ?? ''}${err.stderr ?? ''}`, code: err.status ?? 1 };
+  }
+}
+function sourced(snippet: string, engineUrl: string): string {
+  const dir = mkdtempSync(join(tmpdir(), 'gasclaw-engine-'));
+  dirs.push(dir);
+  writeFileSync(join(dir, 'gasclaw'), DEFS);
+  writeFileSync(join(dir, 'gasclaw.env'), '');
+  return execFileSync('bash', ['-c', `source ./gasclaw; ${snippet}`], { cwd: dir, encoding: 'utf8', env: { ...baseEnv(), HOME: dir, GASCLAW_ENGINE_URL: engineUrl } });
+}
+const OK_URL = 'https://script.google.com/macros/s/AKfyc_1-x/exec';
+
+describe('GASCLAW_ENGINE_URL: as travas da CLI', () => {
+  test.each(['up', 'down', 'restart', 'ship', 'rollback'])('%s recusa enquanto ela aponta para outro motor', (cmd) => {
+    const r = run([cmd], OK_URL);
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain(`unset GASCLAW_ENGINE_URL first: ${cmd}`);
+  });
+  test('uma URL que não é web app do Apps Script é recusada (o token do Google iria nela)', () => {
+    const r = run(['help'], 'https://evil.example.com/macros/s/x/exec');
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain('must be an Apps Script web app URL');
+  });
+  test('as formas reais passam: /a/macros/<domínio>/ e /dev', () => {
+    expect(run(['help'], 'https://script.google.com/a/macros/example.com/s/AKfyc_1-x/dev').code).toBe(0);
+    expect(run(['help'], OK_URL).code).toBe(0);
+  });
+  test('com ela definida, as chamadas vão para ela', () => {
+    expect(sourced('url', OK_URL)).toBe(OK_URL);
+  });
+  test('poc registra o segredo da CLI no motor apontado antes de chamar', () => {
+    expect(sourced('ensure_cli_secret() { echo SECRET-REGISTERED; exit 0; }; cmd_poc p36 status', OK_URL)).toContain('SECRET-REGISTERED');
+  });
+});
