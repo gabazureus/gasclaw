@@ -180,3 +180,13 @@ O passo `adopt` conserta os já criados.
 Nenhum código gerado pelo Opus foi escrito, implantado ou medido: a corrida parou num **402 do
 OpenRouter** (limite mensal da chave), com **US$ 0 gastos e zero filhos criados**. O que está provado
 é toda a máquina em volta — criar, implantar, autorizar, medir, comparar, e parar.
+
+## A PRIMEIRA MEDIÇÃO DE UM FILHO DO OPUS (dev v145)
+
+| Filho | Quem escreveu | Resultado |
+|---|---|---|
+| sonda P29 | string fixa `p29-ok` | **0/17** — fora do contrato |
+| geração 1 (`1XQ3qlqu…`) | **Opus 5** | **17/17** |
+
+Mesmo juiz, mesma bateria, extremos opostos: o juiz discrimina. A bateria, por outro lado, **não tem
+teto** para o Opus — ver `conductor/tracks/f6-enxame/decisions.md`.

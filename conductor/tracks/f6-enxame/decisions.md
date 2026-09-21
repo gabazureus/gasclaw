@@ -223,3 +223,37 @@ andamento. Antes do D6, a mesma sequência teria chegado ao OpenRouter.
 - **uma recusa pelo crivo CORRIGIDO** — ainda não aconteceu; a única recusa até aqui foi o falso positivo;
 - gerações 2 e 3 — o intervalo de 60 min;
 - devolver os tetos ao fim.
+
+## 2026-09-21 — O PRIMEIRO FILHO DO OPUS ACERTOU 17 DE 17, e isso derruba uma previsão minha
+
+O dono autorizou o filho 1 (`1XQ3qlqu…`). Medido contra a bateria de 17 casos, no dev v145:
+
+```json
+{ "measured": true, "passes": 17, "k": 17, "delta": null, "wins": false,
+  "reason": "nothing to compare against: this is the first measured child of its line" }
+```
+
+**O número é confiável por contraste, não por fé.** O mesmo juiz, na mesma bateria, deu **0/17** para
+os filhos da P29, que não honram o contrato. Ele discrimina. E o filho nunca viu um esperado: só
+recebeu as entradas, pela URL.
+
+### A previsão que caiu
+
+Em `tarefa-proposta.md` eu escrevi: *"Uma solução direta acerta ~11 de 17. Os 6 restantes são a
+escada."* **Errado.** O Opus acertou os 17 na primeira geração — inclusive a colisão do `"0,00"` com
+o delimitador, as aspas dobradas, a quebra de linha dentro do campo e o TOTAL de lista vazia.
+
+**Consequência: esta bateria não tem teto.** As gerações 2 e 3 podem, no máximo, empatar, e empate
+não vence — `beatsIncumbent(17, 17, 17)` dá z = 0. A "escada" que eu prometi mostrar **não pode
+aparecer com esta bateria**, por mais gerações que rodem.
+
+### O que a geração 2 ainda prova, e por isso ela segue
+
+Ela é a primeira a ter um titular MEDIDO. Então exercita, com dado real, o que até aqui só rodou em
+teste: o encadeamento (parte do fonte do filho 1), um `delta` NÃO nulo (1,0 − taxa dela) e a regra de
+que empate não promove. Custa ~US$ 0,11.
+
+### O que mostraria evolução de verdade
+
+Uma bateria mais difícil — casos que o filho 1 **erra**. Essa escolha é do dono (H5 de novo), porque
+é ela que define o que "melhor" quer dizer.
