@@ -257,3 +257,18 @@ que empate não promove. Custa ~US$ 0,11.
 
 Uma bateria mais difícil — casos que o filho 1 **erra**. Essa escolha é do dono (H5 de novo), porque
 é ela que define o que "melhor" quer dizer.
+
+## 2026-09-21 — F6 SUPERADA pela F7: o "sucessor" que ela construía era uma automação
+
+O dono viu o código do filho 1 e corrigiu: *"o sucessor deve ser SEMPRE um agente e nunca uma
+automação"*. A F6 inteira foi construída em cima de um entendimento meu errado de "novo código" — ver
+[ADR-043](../../../docs/adr/043-sucessor-e-um-agente.md).
+
+**O que a F6 entregou continua valendo** — medição por caso, seleção por aptidão, orçamento que
+expira, registro partido, parada que vale para tudo, custo contado em resposta vazia, corte pelo
+`finish_reason`. Nove defeitos achados e consertados (D1–D9). O filho de CSV é uma **automação**
+legítima e acertou 17/17.
+
+**O que ela NÃO entregou, e não vai:** a corrida de 15 sucessores. A geração 2 agendada foi
+cancelada antes de disparar; os tetos voltaram a US$ 3 / US$ 5. A continuação é a
+[F7](../f7-sucessao-por-patch/spec.md).
