@@ -288,7 +288,7 @@ export function doPost(e: GoogleAppsScript.Events.DoPost) {
     // porque a resposta inteira importa (a leitura por GET do pai corta em 1.200 caracteres).
     if (action === 'readiness') return json(readinessSelf());
     // F8 — a HERANÇA chega do pai: as chaves do agente (nunca segredo). Filtrada de novo aqui.
-    if (action === 'inherit') return json(inheritFromParent(p.parent ?? '', p.entries ?? ''));
+    if (action === 'inherit') return json(inheritFromParent(e?.postData?.contents ?? ''));
     // A ROTA `childkey` FOI REMOVIDA (2026-09-20, ADR-040 opção 4). Ela era o único ponto do projeto
     // que devolvia a chave do OpenRouter por HTTP. A P27 mediu que o filho não consegue alcançá-la —
     // o Google recusa o token de outro projeto antes de chegar aqui —, então ela não servia a ninguém
@@ -2695,6 +2695,22 @@ function postChild(url: string, form: Record<string, string>): { code: number; b
   return { code: res.getResponseCode(), body: res.getContentText() };
 }
 
+/**
+ * Como `postChild`, mas com CORPO JSON e a ação na URL. Para cargas grandes: como campo de formulário,
+ * a herança chegava ao doPost do sucessor sem parâmetro nenhum (dev v160, 'got nothing').
+ */
+function postChildJson(url: string, action: string, body: string): { code: number; body: string } {
+  if (!/^https:\/\/script\.google\.com\//i.test(url)) return { code: 0, body: 'refused: a child URL must be on script.google.com' };
+  const res = UrlFetchApp.fetch(`${url}?action=${encodeURIComponent(action)}`, { method: 'post', contentType: 'application/json', payload: body, muteHttpExceptions: true, followRedirects: false, headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` } });
+  const h = res.getHeaders() as Record<string, string>;
+  const alvo = redirectTarget(res.getResponseCode(), h['Location'] ?? h['location'] ?? null);
+  if (alvo) {
+    const segunda = UrlFetchApp.fetch(alvo, { muteHttpExceptions: true, followRedirects: false });
+    return { code: segunda.getResponseCode(), body: segunda.getContentText() };
+  }
+  return { code: res.getResponseCode(), body: res.getContentText() };
+}
+
 function dreamDeps(): DreamDeps {
   const key = store.getApiKey();
   const tz = Session.getScriptTimeZone();
@@ -3668,22 +3684,25 @@ function healthOf(rec: SuccessorRecord) {
  * No SUCESSOR: grava o que o pai mandou — só do pai da semente, e só a lista fechada de `inheritable`
  * (o mesmo filtro do pai, aplicado de novo: um erro de um lado só não entrega segredo).
  */
-function inheritFromParent(parent: string, raw: string) {
+function inheritFromParent(raw: string) {
+  // CORPO JSON, não campo de formulário: como formulário grande o pai chegava vazio ('got nothing').
+  let pedido: { parent?: string; entries?: Record<string, string> };
+  try {
+    pedido = JSON.parse(raw) as { parent?: string; entries?: Record<string, string> };
+  } catch {
+    return { ok: false, status: 400, error: 'the inheritance is not valid JSON' };
+  }
+  const parent = String(pedido?.parent ?? '');
   if (parent !== store.successorOf()) {
     // O diagnóstico diz O QUE chegou (8 caracteres de um id, não segredo): foi assim que se viu, ao vivo,
     // se o problema era o pai errado ou o parâmetro que não chegou.
     const chegou = parent ? parent.slice(0, 8) : 'nothing';
     return { ok: false, status: 403, error: `only the parent named in the seed can hand its agent over (got ${chegou})` };
   }
-  let recebido: Record<string, string>;
-  try {
-    recebido = JSON.parse(raw) as Record<string, string>;
-  } catch {
-    return { ok: false, status: 400, error: 'the inheritance is not valid JSON' };
-  }
   // minimal: grava sempre que o pai da semente manda — o dono já provou quem é pelo token, e só as
   // chaves do agente passam. Rodar de novo depois de dias sobrescreve o que o filho mudou: é ato explícito.
-  const { entries, refused } = inheritable(recebido);
+  // `inheritable` já ignora o que não for objeto de textos: nenhuma checagem a mais aqui.
+  const { entries, refused } = inheritable(pedido.entries ?? {});
   PropertiesService.getScriptProperties().setProperties(entries);
   return { ok: true, written: Object.keys(entries).length, refused };
 }
@@ -3693,7 +3712,7 @@ function handOver(rec: SuccessorRecord): { ok: boolean; written: number; reason:
   const { entries } = inheritable(PropertiesService.getScriptProperties().getProperties());
   const corpo = JSON.stringify(entries);
   try {
-    const j = JSON.parse(postChild(rec.url, { action: 'inherit', parent: ScriptApp.getScriptId(), entries: corpo }).body) as { ok?: boolean; written?: number; error?: string };
+    const j = JSON.parse(postChildJson(rec.url, 'inherit', `{"parent":${JSON.stringify(ScriptApp.getScriptId())},"entries":${corpo}}`).body) as { ok?: boolean; written?: number; error?: string };
     const recusa = `${j.error ?? 'the successor refused the inheritance'} [sent ${Object.keys(entries).length} keys, ${corpo.length} characters]`;
     return j.ok ? { ok: true, written: j.written ?? 0, reason: '' } : { ok: false, written: 0, reason: recusa };
   } catch (e) {
