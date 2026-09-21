@@ -23,14 +23,24 @@ const wire = (m: Message) => (m.tool_calls?.length && !m.content ? { ...m, conte
  * de sonho gerar candidatos DIFERENTES entre si (decisão do usuário: variar temperatura, não
  * modelo, para isolar a variável — o que melhorou foi o prompt, não o motor que o escreveu).
  */
-export function buildRequest(apiKey: string, model: string, messages: Message[], maxTokens: number, tools: ToolDef[] = [], temperature?: number): { url: string; init: Init } {
+/**
+ * O orçamento de RACIOCÍNIO, separado do da resposta (achado na P32).
+ *
+ * Num modelo que raciocina, o pensamento sai do MESMO `max_tokens` que a resposta. O Opus recebeu 142
+ * mil tokens de código e gastou os 5.000 de saída pensando — `finish_reason: length`, conteúdo nulo,
+ * US$ 1,38 pagos por nada. `reasoning.max_tokens` limita o pensamento e reserva o resto para a resposta.
+ * Opcional de propósito: nenhum chamador existente muda de comportamento.
+ */
+export type Reasoning = { max_tokens?: number; effort?: 'low' | 'medium' | 'high'; exclude?: boolean };
+
+export function buildRequest(apiKey: string, model: string, messages: Message[], maxTokens: number, tools: ToolDef[] = [], temperature?: number, reasoning?: Reasoning): { url: string; init: Init } {
   return {
     url: OPENROUTER_URL,
     init: {
       method: 'post',
       contentType: 'application/json',
       headers: { Authorization: `Bearer ${apiKey}`, 'X-Title': 'gasclaw' },
-      payload: JSON.stringify({ model, messages: messages.map(wire), max_tokens: maxTokens, ...(tools.length ? { tools } : {}), ...(Number.isFinite(temperature) ? { temperature } : {}) }),
+      payload: JSON.stringify({ model, messages: messages.map(wire), max_tokens: maxTokens, ...(tools.length ? { tools } : {}), ...(Number.isFinite(temperature) ? { temperature } : {}), ...(reasoning ? { reasoning } : {}) }),
       muteHttpExceptions: true,
     },
   };
@@ -77,8 +87,8 @@ const gasHttp: Http = (url, init) => {
   return { code: res.getResponseCode(), body: res.getContentText() };
 };
 
-export function complete(apiKey: string, model: string, messages: Message[], maxTokens: number, http: Http = gasHttp, tools: ToolDef[] = [], temperature?: number): Completion {
-  const { url, init } = buildRequest(apiKey, model, messages, maxTokens, tools, temperature);
+export function complete(apiKey: string, model: string, messages: Message[], maxTokens: number, http: Http = gasHttp, tools: ToolDef[] = [], temperature?: number, reasoning?: Reasoning): Completion {
+  const { url, init } = buildRequest(apiKey, model, messages, maxTokens, tools, temperature, reasoning);
   const res = http(url, init);
   return parseResponse(res.code, res.body);
 }

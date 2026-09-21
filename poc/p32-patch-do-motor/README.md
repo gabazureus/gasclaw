@@ -1,0 +1,79 @@
+# POC P32 — o Opus devolve um patch válido do motor inteiro, dentro de 6 min?
+
+> **Status: rodada 1 MEDIDA (dev v146) e REPROVADA em C3 — o tempo e o tamanho passaram; a resposta
+> voltou vazia.** Rodada 2 espera o orçamento do dono. Ver [ADR-043](../../docs/adr/043-sucessor-e-um-agente.md).
+
+## A pergunta
+
+A F7 faz o sucessor ser **o próprio agente melhorado**: o motor lê o próprio código, manda ao Opus, e
+recebe um patch com a explicação do que melhorou. Antes de construir isso, uma pergunta decide se o
+desenho é viável: **o motor inteiro cabe numa chamada, e a resposta cabe em 6 minutos?**
+
+## Critérios
+
+| # | Critério | Passa quando |
+|---|---|---|
+| C1 | o modelo aceita o motor como contexto | a chamada volta sem erro com ~140 mil tokens de entrada |
+| C2 | cabe numa execução | tudo em **< 5 min** (margem de 1 min contra o corte de 6) |
+| C3 | o patch aplica | cada trecho casa **exatamente uma vez** no arquivo |
+| C4 | o custo é conhecido | custo medido e gravado |
+| C5 | a explicação existe | o que melhorou, em texto |
+
+## Antes de gastar: o que o OpenRouter publica (2026-09-21)
+
+| Modelo | Contexto | Saída máx. | US$ / milhão (entrada · saída) |
+|---|---|---|---|
+| `anthropic/claude-opus-5` | 1.000.000 | 128.000 | 5 · 25 |
+| `openai/gpt-6-astra` | 1.050.000 | 128.000 | **10 · 50** |
+
+O motor cabe nos dois com folga. O GPT custa o dobro.
+
+## Rodada 1 — dev v146, Opus 5, teto de 5.000 tokens
+
+```
+read:  568.015 caracteres, ~142 mil tokens, lidos em 620 ms
+       _motor 471.989 · settings 81.729 · chat 10.338 · hub 2.290 · appsscript 1.147 · 2 .md da P10
+patch: 78.842 ms no total — a chamada em 77.798 ms
+       finish_reason: "length"   content: null   custo: US$ 1,3845
+```
+
+| # | Resultado |
+|---|---|
+| C1 | ✅ **aceitou** os 568 mil caracteres — nenhum erro de contexto |
+| C2 | ✅ **78,8 s** — o tempo não é o problema |
+| C3 | ❌ **nenhum patch**: a resposta voltou vazia |
+| C4 | ✅ **US$ 1,38**, contados no dia mesmo com a resposta vazia (o D9 funcionou) |
+| C5 | ❌ sem explicação |
+
+### A leitura
+
+`finish_reason: "length"` com conteúdo nulo: o Opus gastou os 5.000 tokens de saída **inteiros antes
+de escrever a primeira palavra visível**. Hipótese: raciocínio sobre 142 mil tokens de código.
+
+**Isso derruba uma premissa do D8.** O teto de tokens foi derivado do tamanho máximo do CÓDIGO (20 mil
+caracteres, ~5.000 tokens), supondo que a saída é só o código visível. Num modelo que raciocina, o
+pensamento sai do mesmo orçamento.
+
+**E a hipótese não está provada**: o caminho da resposta vazia descartava a contagem de tokens. A
+rodada 2 grava `tokensReasoning` nos dois caminhos — o motivo passa a ser medido, não suposto.
+
+O custo real (US$ 1,38) ficou acima da estimativa (US$ 0,83): código tokeniza a ~3 caracteres por
+token, não 4. A rodada 2 estima com 3.
+
+**O portão da spec ("se não couber, o patch passa a ser por módulo") NÃO dispara:** coube — no
+contexto e no tempo. O que falhou foi o orçamento de saída.
+
+## Rodada 2 — o que muda
+
+- `reasoning.max_tokens` limita o pensamento (padrão 8.000) e `max_tokens` sobe para 16.000, deixando
+  espaço para a resposta;
+- a contagem de tokens de raciocínio é gravada também na resposta vazia;
+- o pré-teste de custo usa a estimativa real, e não o US$ 1 por geração que subestima a P32;
+- `--model opus|gpt` compara os dois geradores, por lista fechada.
+
+```bash
+./gasclaw poc p32 read                       # grátis
+./gasclaw poc p32 patch --model opus         # até ~US$ 1,35
+./gasclaw poc p32 patch --model gpt          # até ~US$ 2,69
+./gasclaw poc p32 show                       # o patch guardado, inteiro
+```

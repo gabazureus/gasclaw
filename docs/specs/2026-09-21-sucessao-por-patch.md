@@ -49,6 +49,20 @@
 | C2 | o pai julga | a nota sai do juiz do **pai**, e não de código que o Opus reescreveu |
 | C3 | compara | `beatsIncumbent` decide sucessor × titular com k repetições, como no ciclo de sonho |
 
+## Requisito do dono (2026-09-21): o padrão do painel
+
+O dono colou o texto atual de "Write a successor" e a lista de escopos, e pediu:
+
+> "Com esses marcados, deve ser ele próprio melhorado, e não um diferente dele."
+
+| Hoje (errado) | O que passa a valer |
+|---|---|
+| *"inherits fewer scopes than this engine has — never the same set, and never the ones that let a project write other projects"* | **todos os escopos do pai marcados por padrão**; o sucessor é o próprio agente melhorado |
+| `script.projects` e `script.deployments` somem da lista (proibidos a filhos) | o sucessor os herda (decisão 2 da ADR-043) — é o que o deixa gerar o próprio sucessor |
+| o botão cria uma **automação** | o botão cria o **agente melhorado por patch** |
+
+**Até a Fase 2, o botão "Write a successor" ainda cria a automação antiga** — não deve ser usado.
+
 ## Fase 1 — núcleo puro (depois das POCs)
 
 - `parsePatch(texto)` → `{ explicacao, trocas: [{ arquivo, trecho, substituto }] }` — fail-closed

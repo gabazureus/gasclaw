@@ -109,3 +109,31 @@ describe('resposta vazia: o erro carrega o custo e o motivo', () => {
     expect(() => parseResponse(200, corpo({ role: 'assistant', content: null }))).toThrow(/empty response/);
   });
 });
+
+// O ORÇAMENTO DE RACIOCÍNIO, achado na P32. O Opus recebeu 142 mil tokens de código e devolveu
+// `finish_reason: length` com conteúdo NULO: gastou os 5.000 tokens de saída pensando, antes de
+// escrever a primeira palavra. Num modelo que raciocina, o raciocínio sai do MESMO `max_tokens`. O
+// parâmetro `reasoning` do OpenRouter limita o pensamento e deixa o resto para a resposta.
+describe('reasoning: limitar o pensamento para sobrar orçamento para a resposta', () => {
+  test('sem `reasoning`, o pedido não muda — nenhum chamador existente é afetado', () => {
+    const { init } = buildRequest('k', 'm', [{ role: 'user', content: 'oi' }], 100);
+    expect(JSON.parse(init.payload).reasoning).toBeUndefined();
+  });
+
+  test('com `reasoning`, ele vai no corpo do pedido', () => {
+    const { init } = buildRequest('k', 'm', [{ role: 'user', content: 'oi' }], 16000, [], undefined, { max_tokens: 8000 });
+    expect(JSON.parse(init.payload).reasoning).toEqual({ max_tokens: 8000 });
+  });
+});
+
+// Resposta vazia carrega a contagem de tokens: sem ela, "gastou em raciocínio" é hipótese, não fato.
+test('a resposta vazia leva junto os tokens de raciocínio, para o motivo ser medido e não suposto', () => {
+  const corpo = JSON.stringify({ choices: [{ message: { content: null }, finish_reason: 'length' }], usage: { cost: 1.38, prompt_tokens: 190000, completion_tokens: 5000, completion_tokens_details: { reasoning_tokens: 5000 } } });
+  try {
+    parseResponse(200, corpo);
+    throw new Error('deveria ter lançado');
+  } catch (e) {
+    const u = (e as EmptyCompletionError).usage as { completion_tokens_details?: { reasoning_tokens?: number } };
+    expect(u.completion_tokens_details?.reasoning_tokens).toBe(5000);
+  }
+});

@@ -3171,7 +3171,18 @@ function pocP29(step?: string): unknown {
  * NADA É IMPLANTADO. O patch é validado em memória (`applyPatch`) e guardado para as próximas POCs.
  * O custo entra no gasto do dia, mesmo se a resposta vier vazia (ADR-041 §4, D9).
  */
-function pocP32(step?: string): unknown {
+/**
+ * Geradores que a P32 pode comparar — LISTA FECHADA. A CLI não deixa passar `/` num valor, e mesmo que
+ * deixasse, aceitar qualquer id de modelo vindo da linha de comando é abrir a porta para um nome
+ * digitado errado virar uma cobrança. Preços do OpenRouter em 2026-09-21, por milhão de tokens; servem
+ * só ao PRÉ-teste de custo — o custo gravado é o `usage.cost` que a API devolve.
+ */
+const P32_MODELS: Record<string, { id: string; inUsd: number; outUsd: number }> = {
+  opus: { id: OPUS_MODEL, inUsd: 5, outUsd: 25 },
+  gpt: { id: 'openai/gpt-6-astra', inUsd: 10, outUsd: 50 },
+};
+
+function pocP32(step?: string, params: Record<string, string> = {}): unknown {
   const props = PropertiesService.getScriptProperties();
   const own = ScriptApp.getScriptId();
   const token = ScriptApp.getOAuthToken();
@@ -3190,8 +3201,20 @@ function pocP32(step?: string): unknown {
   if (step === 'patch') {
     const key = store.getApiKey();
     if (!key) return { pass: false, error: 'save the OpenRouter key first' };
-    // O teto vale ANTES de pagar: a estimativa desta chamada é ~US$ 0,83 (140k entrada + 5k saída).
-    if (!withinDailyCap(codegenSpentToday(Date.now()), CODEGEN_BUDGET_USD, budgetNow().codegenUsd)) return { pass: false, error: 'the code generator is at its daily cap' };
+    const gerador = P32_MODELS[params.model || 'opus'];
+    if (!gerador) return { pass: false, error: `unknown model: ${params.model} (use: ${Object.keys(P32_MODELS).join(', ')})` };
+    // O ORÇAMENTO DE RACIOCÍNIO. A primeira rodada deu `finish_reason: length` com conteúdo nulo: 5.000
+    // tokens de saída gastos pensando sobre 142 mil de código, nenhum sobrando para a resposta. O teto
+    // total precisa caber pensamento E resposta; `reasoning.max_tokens` reserva a parte da resposta.
+    const maxTokens = Number(params.tokens) || 16_000;
+    const pensar = Number(params.reasoning) || 8_000;
+    // PRÉ-TESTE COM A ESTIMATIVA REAL. `CODEGEN_BUDGET_USD` supõe US$ 1 por geração e a P32 custou
+    // US$ 1,38: com ele, o teto deixaria passar uma chamada que o estoura. Código tokeniza a ~3
+    // caracteres por token — é o que o custo medido da primeira rodada indica.
+    const estimativa = (bytes / 3) * gerador.inUsd / 1e6 + maxTokens * gerador.outUsd / 1e6;
+    const gasto = codegenSpentToday(Date.now());
+    const teto = budgetNow().codegenUsd;
+    if (gasto + estimativa > teto) return { pass: false, error: `this run could cost up to US$ ${estimativa.toFixed(2)} and US$ ${gasto.toFixed(2)} of US$ ${teto.toFixed(2)} are already spent today`, estimateUsd: estimativa, spentTodayUsd: gasto, capUsd: teto };
     const system =
       'You improve a Google Apps Script agent by returning a SMALL patch, never the whole program. ' +
       'Answer with JSON only: {"explanation": "<what you improved and why, at most 5 sentences>", "changes": [{"file": "<file name>", "find": "<an exact excerpt of that file>", "replace": "<its replacement>"}]}. ' +
@@ -3203,30 +3226,36 @@ function pocP32(step?: string): unknown {
     let texto = '';
     let custo = 0;
     let fim: string | undefined;
-    let tokensIn: number | undefined;
-    let tokensOut: number | undefined;
+    let uso: Record<string, unknown> | undefined;
     let vazio: string | undefined;
     try {
-      const r = complete(key, OPUS_MODEL, [{ role: 'system', content: system }, { role: 'user', content: user }], codeTokens(undefined));
+      const r = complete(key, gerador.id, [{ role: 'system', content: system }, { role: 'user', content: user }], maxTokens, undefined, [], undefined, { max_tokens: pensar });
       texto = r.text;
       custo = Number(r.usage?.cost ?? 0);
       fim = r.finish_reason;
-      tokensIn = (r.usage as { prompt_tokens?: number } | undefined)?.prompt_tokens;
-      tokensOut = (r.usage as { completion_tokens?: number } | undefined)?.completion_tokens;
+      uso = r.usage as Record<string, unknown> | undefined;
     } catch (e) {
       const x = e as EmptyCompletionError;
-      if (!(x && typeof x.contentShape === 'string')) return { pass: false, stage: 'call', error: (e as Error).message.slice(0, 300), readMs, callMs: Date.now() - t1 };
+      if (!(x && typeof x.contentShape === 'string')) return { pass: false, stage: 'call', model: gerador.id, error: (e as Error).message.slice(0, 300), readMs, callMs: Date.now() - t1 };
       custo = Number(x.usage?.cost ?? 0);
       fim = x.finishReason;
       vazio = x.contentShape;
+      // A CONTAGEM VAI JUNTO na resposta vazia. Na primeira rodada ela era descartada, e "gastou tudo
+      // raciocinando" ficou hipótese. Agora é número.
+      uso = x.usage as Record<string, unknown> | undefined;
     }
+    const detalhe = (k: string) => (uso?.[k] as Record<string, number> | undefined) ?? {};
+    const tokensIn = uso?.prompt_tokens as number | undefined;
+    const tokensOut = uso?.completion_tokens as number | undefined;
+    const tokensThink = detalhe('completion_tokens_details').reasoning_tokens;
+    const tokensCached = detalhe('prompt_tokens_details').cached_tokens;
     const callMs = Date.now() - t1;
     // O dinheiro saiu: conta ANTES de qualquer veredito (ADR-041 §4).
     props.setProperty(codegenDayProp(Date.now()), String(codegenSpentToday(Date.now()) + custo));
     const patch = parsePatch(texto);
     const aplicado = patch.ok ? applyPatch(files, patch.changes) : null;
     const totalMs = Date.now() - t0;
-    if (patch.ok && aplicado?.ok) props.setProperty('P32_PATCH', JSON.stringify({ explanation: patch.explanation, changes: patch.changes, at: Date.now() }));
+    if (patch.ok && aplicado?.ok) props.setProperty('P32_PATCH', JSON.stringify({ model: gerador.id, explanation: patch.explanation, changes: patch.changes, at: Date.now() }));
     return {
       pass: patch.ok && !!aplicado?.ok && totalMs < 300_000,
       c1_accepted: vazio === undefined,
@@ -3239,9 +3268,15 @@ function pocP32(step?: string): unknown {
       changes: patch.ok ? patch.changes.map((c) => ({ file: c.file, findChars: c.find.length, replaceChars: c.replace.length })) : [],
       readMs,
       callMs,
+      model: gerador.id,
+      estimateUsd: estimativa,
+      maxTokens,
+      reasoningBudget: pensar,
       finishReason: fim ?? null,
       tokensIn: tokensIn ?? null,
       tokensOut: tokensOut ?? null,
+      tokensReasoning: tokensThink ?? null,
+      tokensCached: tokensCached ?? null,
       ...(vazio ? { emptyResponse: vazio } : {}),
       sentChars: bytes,
     };
@@ -3267,7 +3302,7 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p26: (step) => pocP26(step),
   p28: (step) => pocP28(step),
   p29: (step) => pocP29(step),
-  p32: (step) => pocP32(step),
+  p32: (step, params = {}) => pocP32(step, params),
   p6: (step) => pocP6(step, ownerEmail()),
   p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),
