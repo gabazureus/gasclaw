@@ -190,3 +190,36 @@ v140, SEM o D8: lá o pedido ainda é 8000 tokens, e uma geração bateria no me
 1. o dono roda `gcloud auth login --enable-gdrive-access`;
 2. `./gasclaw up` publica o D8;
 3. `SWARM_TOKENS=1200 ./gasclaw swarm run "..."` — e o resultado, qualquer que seja, é da Fase 5.
+
+## 2026-09-21 — FASE 5 EM ANDAMENTO: a primeira geração real, e o `down` provado durante a corrida
+
+### A geração 1 nasceu — na segunda tentativa, e a primeira foi culpa minha
+
+| Tentativa | Resultado | Custo | Leitura |
+|---|---|---|---|
+| 1 | recusada como "truncada" | US$ 0,108 | **FALSO POSITIVO do D7**: o scanner não tratava regex, e `/"/g` abria uma string que nunca fechava. Reproduzido com um compositor de CSV correto. **Não conta** como "geração recusada pelo crivo" |
+| 2 | **filho criado e implantado** — `1XQ3qlqu…` | US$ 0,109 | escrito pelo Opus, passou pelo crivo corrigido, `automation`, só `userinfo.email` |
+
+O corte passou a ser decidido pelo `finish_reason` da API, não por contagem de chaves. O commit do D7
+tinha errado a direção do risco — dizia "lado seguro"; recusar código bom é o lado caro.
+
+### H4 — `./gasclaw down` DURANTE a corrida (dev v144)
+
+Com o filho 1 vivo, o orçamento de US$ 5 aberto e o intervalo de 60 min correndo:
+
+| Passo | Resposta |
+|---|---|
+| motor ligado, pede geração | `too soon: 59 min left` — o intervalo |
+| `./gasclaw down` | `enabled: false` |
+| motor parado, mesma geração | `everything is paused` — **outra guarda, e antes** |
+| linhagem | o filho 1 segue lá, intacto |
+
+A pausa vence o intervalo: é a ordem que o D6 impôs em `mayAct`, agora medida com a corrida em
+andamento. Antes do D6, a mesma sequência teria chegado ao OpenRouter.
+
+### O que ainda falta na Fase 5
+
+- **medir o filho 1** — depende do clique do dono (H3);
+- **uma recusa pelo crivo CORRIGIDO** — ainda não aconteceu; a única recusa até aqui foi o falso positivo;
+- gerações 2 e 3 — o intervalo de 60 min;
+- devolver os tetos ao fim.
