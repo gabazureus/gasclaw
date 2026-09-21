@@ -1728,6 +1728,14 @@ function mayAct(folderId: string, cap: Capability): { ok: boolean; reason: strin
   const props = PropertiesService.getScriptProperties();
   const id = String(folderId ?? '').trim();
   if (!id) return { ok: false, reason: 'unknown agent' };
+  // D6 — A CHAVE DE PARADA DO DONO, que NÃO ERA LIDA AQUI. Achado rodando: com o motor pausado,
+  // `swarm run` foi até o OpenRouter, e quem recusou foi a fatura. `store.isEnabled()` era lido pela
+  // conversa e pelo ciclo de sonho, e por mais nada — então `./gasclaw down` parava o que FALA e
+  // deixava correr o que PAGA e implanta.
+  //
+  // Vem ANTES de status e de capacidade porque parado é parado: um agente pausado que recusasse por
+  // "succeed is off" mandaria o dono ligar uma capacidade que não é o problema.
+  if (!store.isEnabled()) return { ok: false, reason: 'everything is paused: run `./gasclaw up` (or turn the runtime back on in the panel) before acting' };
   const status = parseStatus(props.getProperty(`STATUS:${id}`));
   if (status !== 'active') return { ok: false, reason: `this agent is ${status}` };
   // EFETIVAS e não aprovadas: o congelamento vence qualquer aprovação individual, e precisa vencer

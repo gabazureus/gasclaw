@@ -1248,5 +1248,31 @@
         "note": "o que NAO da para fazer hoje esta nomeado com motivo; o primeiro passo e um unico item de custo zero"
       }
     }
+  },
+  {
+    "phase": "F6 Fases 1-4 (Implement) \u2014 maquina da corrida pronta, bloqueada por credito externo",
+    "summary": "P29 medida no dev (C1/C2/C4 verdes, C3 confirmou a previsao do 302 com 20 filhos autorizados). D1..D5 achados e consertados, todos com mutacao. Corrida disparada e recusada pelo OpenRouter 402: zero gasto, zero filho criado.",
+    "scores": {
+      "correctness": {
+        "score": 9,
+        "note": "cinco defeitos achados e consertados antes de gastar: D3 registro estourava em 11, D4 intervalo sempre 24h, D5 objetivo cortado em 500 chars. A previsao do 302 foi declarada como previsao e depois CONFIRMADA por medicao"
+      },
+      "design": {
+        "score": 9,
+        "note": "contrato de aptidao corrigido: o pedido deixava o filho dar a propria nota. Teto que expira sozinho em vez de constante editada. Selecao por aptidao separada do encadeamento"
+      },
+      "testing": {
+        "score": 9,
+        "note": "1902 testes, 0 falhas. 34 mutacoes aplicadas, 32 mortas; 1 equivalente declarada e 1 lacuna minha fechada. Quatro lacunas de teste achadas por mutacao e fechadas no nucleo, nao com grep"
+      },
+      "safety": {
+        "score": 9,
+        "note": "nenhum teto alterado sem decisao do dono; o teto volta sozinho; a guarda de capacidade recusou ANTES de gastar; corrigi publicamente uma afirmacao errada minha sobre escopos que teria custado uma reautorizacao inutil"
+      },
+      "clarity": {
+        "score": 8,
+        "note": "cada recusa virou numero gravado com a versao do dev; o bloqueio final esta dito como externo e com o que destrava. Reverti uma recusa minha explicando o erro de enquadramento"
+      }
+    }
   }
 ]

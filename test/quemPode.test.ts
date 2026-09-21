@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 // QUEM pode, não só O QUE acontece.
 //
 // A auditoria por mutação do ciclo 3 achou o maior buraco da suíte: apagar `assertOwner()` de
@@ -76,5 +77,38 @@ describe('quem NÃO é o dono não muda poder nenhum', () => {
     const m = await import('../src/main');
     expect(() => m.setAgentCapability('fa', 'dream', true)).not.toThrow();
     expect(JSON.parse(env.props['CAP:fa'] ?? '[]')).toContain('dream');
+  });
+});
+
+// D6 — `./gasclaw down` NÃO PARAVA O QUE GASTA DINHEIRO.
+//
+// Achado rodando, não lendo: com o motor pausado (`enabled: false`), `swarm run` seguiu até o
+// OpenRouter. Quem recusou foi a fatura, não a nossa guarda — o gerador teria escrito e implantado
+// um projeto com o dono acreditando que tinha parado tudo.
+//
+// `store.isEnabled()` era lido pela CONVERSA e pelo CICLO DE SONHO, e por mais nada. O `mayAct` — o
+// ponto único que governa `dream`, `initiative`, `succeed` e `create` — não o consultava. A chave
+// geral parava o que fala e deixava correr o que paga.
+describe('a chave de parada do dono vale para TUDO que age sozinho', () => {
+  const main = readFileSync('src/main.ts', 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+  const mayAct = main.slice(main.indexOf('function mayAct'), main.indexOf('\n}', main.indexOf('function mayAct')));
+
+  test('`mayAct` consulta a chave geral', () => {
+    expect(mayAct).toContain('store.isEnabled()');
+  });
+
+  // Antes do STATUS e antes da CAPACIDADE: parado é parado, e o motivo tem que ser esse, não outro.
+  // Um agente pausado que recusasse por "succeed is off" mandaria o dono ligar uma capacidade que
+  // não é o problema.
+  test('a chave vem ANTES de status e capacidade, e diz o motivo certo', () => {
+    const iEnabled = mayAct.indexOf('store.isEnabled()');
+    const iStatus = mayAct.indexOf('parseStatus(');
+    const iCaps = mayAct.indexOf('effectiveCapabilities(');
+    expect(iEnabled).toBeGreaterThan(-1);
+    expect(iEnabled).toBeLessThan(iStatus);
+    expect(iEnabled).toBeLessThan(iCaps);
+    expect(mayAct).toMatch(/paused/i);
   });
 });
