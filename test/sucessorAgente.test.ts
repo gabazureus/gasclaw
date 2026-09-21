@@ -408,3 +408,104 @@ describe('o pai coroado não é religado pela CLI', () => {
     expect(env.props['RUNTIME_ENABLED']).toBe('false');
   });
 });
+
+// Decisão A (2026-09-21): o pai segue alvo do build e porta do Chat; o `sync` leva o `src` atual ao
+// sucessor COROADO — o motor que responde. Sem Opus, sem patch: o código do pai inteiro, e uma semente nova.
+describe('syncSuccessor: o build atual do pai vai ao sucessor COROADO', () => {
+  const coroado = (extra: object = {}) => {
+    slotRegistrado({ crownedAt: 9, changes: [{ file: '_motor', find: 'return lastSeen;', replace: 'return lastSeen - 1;' }], ...extra });
+    self = { ...SELF_OK, enabled: true };
+  };
+
+  test('escreve o código ATUAL do pai (sem o patch) e uma semente nova na implantação do sucessor, sem chamar o modelo', async () => {
+    coroado();
+    const r = (await motor()).syncSuccessor('SLOT');
+    expect(r).toMatchObject({ ok: true, scriptId: 'SLOT', version: 7, running: true });
+    const files = escrito()!;
+    expect(files.find((f) => f.name === '_motor')?.source).toBe(MOTOR);
+    expect(files.find((f) => f.name === 'appsscript')?.source).toBe(MANIFESTO);
+    expect(files.filter((f) => f.name === 'successor_seed')).toHaveLength(1);
+    expect(files.find((f) => f.name === 'successor_seed')?.source).toContain('"parent":"script1"');
+    expect(env.calls.some((c) => c.url.endsWith('/projects/SLOT/deployments/WEB') && c.init.method === 'put')).toBe(true);
+    expect(env.fetched('openrouter.ai/api/v1/chat')).toHaveLength(0);
+  });
+
+  test('a semente do próprio pai (quando ele mesmo é sucessor) não vai junto: só a nova', async () => {
+    coroado();
+    const rota = env.route;
+    env.route = (url, init) => (url === 'https://script.googleapis.com/v1/projects/script1/content'
+      ? { code: 200, body: JSON.stringify({ files: [{ name: '_motor', type: 'SERVER_JS', source: MOTOR }, { name: 'successor_seed', type: 'SERVER_JS', source: 'var GASCLAW_SEED = {"parent":"AVO"};' }] }) }
+      : rota!(url, init));
+    expect((await motor()).syncSuccessor('SLOT').ok).toBe(true);
+    const sementes = escrito()!.filter((f) => f.name === 'successor_seed');
+    expect(sementes).toHaveLength(1);
+    expect(sementes[0].source).not.toContain('AVO');
+  });
+
+  test('só um sucessor COROADO: o que ainda espera a coroa recusa e nada é escrito', async () => {
+    slotRegistrado();
+    const r = (await motor()).syncSuccessor('SLOT');
+    expect(r.ok).toBe(false);
+    expect(String(r.reason)).toContain('crowned');
+    expect(escrito()).toBeNull();
+  });
+
+  test('sucessor desconhecido: recusa', async () => {
+    expect((await motor()).syncSuccessor('NINGUEM').ok).toBe(false);
+    expect(escrito()).toBeNull();
+  });
+
+  test('um registro que aponta para o PRÓPRIO pai: recusa e nada é escrito', async () => {
+    const rec = { scriptId: 'script1', url: URL_SLOT, folderId: 'f1', at: 1, model: 'opus', explanation: 'x', changes: [], costUsd: 1, evaluation: null, crownedAt: 9 };
+    env.props['SUCCESSORS'] = JSON.stringify([{ scriptId: 'script1', chunks: 1 }]);
+    env.props['SUCC:script1:0'] = JSON.stringify(rec);
+    self = { ...SELF_OK, enabled: true };
+    expect((await motor()).syncSuccessor('script1').ok).toBe(false);
+    expect(env.calls.some((c) => /\/content$/.test(c.url) && c.init.method === 'put')).toBe(false);
+    // A recusa vem ANTES de qualquer I/O: nem o código do pai é lido, nem o "sucessor" é consultado.
+    expect(env.calls.some((c) => c.url.endsWith('/projects/script1/content'))).toBe(false);
+    expect(env.calls.some((c) => c.url === URL_SLOT)).toBe(false);
+  });
+
+  test('sucessor que não responde ANTES (sem a porta, fora do ar ou sem autorização): recusa e nada é escrito', async () => {
+    coroado();
+    self = null;
+    const r = (await motor()).syncSuccessor('SLOT');
+    expect(r.ok).toBe(false);
+    expect(escrito()).toBeNull();
+  });
+
+  test('não pausa ninguém: o pai segue parado, o registro segue coroado, e nada do sucessor muda além do código', async () => {
+    coroado();
+    env.props['RUNTIME_ENABLED'] = 'false';
+    const m = await motor();
+    expect(m.syncSuccessor('SLOT').ok).toBe(true);
+    expect(env.props['RUNTIME_ENABLED']).toBe('false');
+    const rec = (m.successionState() as unknown as { successors: { crownedAt: number | null }[] }).successors[0];
+    expect(rec.crownedAt).toBe(9);
+    expect(env.calls.some((c) => c.url === URL_SLOT && (c.init.payload as Record<string, string>)?.action === 'crown')).toBe(false);
+  });
+
+  test('depois da escrita o sucessor não responde como LIGADO: o sync diz que falhou', async () => {
+    coroado();
+    const rota = env.route;
+    let lidas = 0;
+    env.route = (url, init) => {
+      if (url === URL_SLOT && (init.payload as Record<string, string>)?.action === 'readiness' && ++lidas > 1) return { code: 200, body: JSON.stringify({ ok: true, self: { ...SELF_OK, enabled: false } }) };
+      return rota!(url, init);
+    };
+    const r = (await motor()).syncSuccessor('SLOT');
+    expect(r).toMatchObject({ ok: false, version: 7 });
+  });
+
+  // A semente nova diz `bornDisabled: true`, mas o sucessor coroado já tem RUNTIME_ENABLED = 'true' (a coroa
+  // o escreveu). Com semente, ligado = RUNTIME_ENABLED === 'true' — então trocar a semente não o pausa.
+  test('no SUCESSOR: semente nova + RUNTIME_ENABLED que a coroa escreveu = continua ligado', async () => {
+    vi.stubGlobal('GASCLAW_SEED', { bornDisabled: true, parent: 'PAI', agents: [{ name: 'agente-teste', folderId: 'f1' }], at: 2 });
+    env.props['RUNTIME_ENABLED'] = 'true';
+    const store = await import('../src/store');
+    expect(store.isEnabled()).toBe(true);
+    delete env.props['RUNTIME_ENABLED'];
+    expect(store.isEnabled()).toBe(false);
+  });
+});

@@ -488,6 +488,7 @@ never receives new code — you pause it first.
 ./gasclaw succession status                     # change, explanation, score, crown
 ./gasclaw succession health <scriptId>          # the 9 checks that unlock the crown
 ./gasclaw succession rebase <scriptId>          # the same patch on this engine's current code (no model call)
+./gasclaw succession sync <scriptId>            # this engine's current build to the CROWNED successor (no model call)
 ./gasclaw succession pull                       # brings the crowned patch to succession/ to port to src
 ```
 
@@ -519,7 +520,7 @@ Every command accepts `--prod`; without it, the command targets dev.
 | `./gasclaw eval <scenario\|--all> [--model id]` | Runs `evals/*.md` in dev (non-zero exit on failure) |
 | `./gasclaw tools all\|none\|<a,b,c> [folder]` | Turns the agent's tools on and off |
 | `./gasclaw swarm <sub>` | The swarm run: battery, interval, budget, run, measure, status |
-| `./gasclaw succession <sub>` | The successor agent: write, status, health, evaluate, rebase, pull (you crown it in the panel) |
+| `./gasclaw succession <sub>` | The successor agent: write, status, health, evaluate, rebase, sync, pull (you crown it in the panel) |
 | `./gasclaw onboard` | Guided setup menu (the default before anything is published) |
 
 ## Roadmap

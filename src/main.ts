@@ -225,6 +225,7 @@ function mutate(action: string, p: Record<string, string>): unknown {
   if (action === 'automate') return writeAutomation(pasta, (p.scopes ?? '').split(',').filter(Boolean), p.goal ?? '', p.tokens ? Number(p.tokens) : undefined);
   if (action === 'evaluate') return evaluateSuccessor(p.child || '');
   if (action === 'rebase') return rebaseSuccessor(p.child || '');
+  if (action === 'sync') return syncSuccessor(p.child || '');
   if (action === 'succession') return successionState();
   if (action === 'measure') return measureChild(p.child || '');
   if (action === 'lineage') return lineage();
@@ -3693,6 +3694,37 @@ export function rebaseSuccessor(scriptId: string) {
   if (!dep.ok) return { ok: false as const, reason: `${dep.stage}: ${dep.reason}` };
   saveSuccessor(props, { ...rec, at: Date.now() });
   return { ok: true as const, scriptId: rec.scriptId, version: dep.version, next: 'the same patch now sits on this engine\'s current code. Evaluate it again before the crown.' };
+}
+
+/**
+ * SYNC (decisão A): o pai segue alvo do build e porta do Chat; o motor que RESPONDE é o sucessor coroado.
+ * Isto leva o código ATUAL deste motor — inteiro, sem patch e sem Opus — à implantação do sucessor, com
+ * uma semente nova. A semente diz `bornDisabled`, mas com semente ligado é `RUNTIME_ENABLED === 'true'`,
+ * e a coroa já o escreveu: trocar o código não pausa o sucessor. As trocas coroadas já estão no `src`
+ * (`succession pull`), então `codeMatches` com o patch do registro deixa de valer depois — esperado.
+ */
+export function syncSuccessor(scriptId: string) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const rec = readSuccessors(props).find((r) => r.scriptId === String(scriptId ?? '').trim());
+  if (!rec) return { ok: false as const, reason: 'unknown successor' };
+  if (rec.crownedAt === null) return { ok: false as const, reason: 'only a crowned successor is synced — one still waiting for the crown gets `rebase`' };
+  const own = ScriptApp.getScriptId();
+  const guarda = mayWriteProject(rec.scriptId, own);
+  if (!guarda.ok) return { ok: false as const, reason: guarda.reason };
+  // Ler ANTES: sem ler o sucessor não se escreve nele — fora do ar, sem autorização ou sem a porta.
+  const antes = successorEnabled(rec.url);
+  if (antes === null) return { ok: false as const, reason: 'could not read the successor before writing into it (offline, not authorized, or without the readiness door)' };
+  const call = scriptCall(ScriptApp.getOAuthToken());
+  const files = [...readOwnFiles(call, own).filter((f) => f.name !== 'successor_seed'), successorSeedFile(own)];
+  const dep = deployAgentProject(call, own, files, '', { scriptId: rec.scriptId, url: rec.url });
+  if (!dep.ok) return { ok: false as const, reason: `${dep.stage}: ${dep.reason}` };
+  const depois = successorEnabled(rec.url);
+  if (depois !== antes) {
+    const leitura = depois === null ? 'could not be read' : depois ? 'is running' : 'is paused';
+    return { ok: false as const, scriptId: rec.scriptId, version: dep.version, reason: `version ${dep.version} was deployed, but the successor ${leitura} now (it was ${antes ? 'running' : 'paused'} before). Check it in its panel.` };
+  }
+  return { ok: true as const, scriptId: rec.scriptId, version: dep.version, running: depois };
 }
 
 /** O que o painel e a CLI leem: os sucessores, com a explicação, as trocas, a nota e a coroa. */
