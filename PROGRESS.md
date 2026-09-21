@@ -172,7 +172,7 @@ a sexta forma de prova falsa desta sessão. As outras cinco estão listadas acim
 
 | # | O que falta | Por que importa | Depende de | Decisão do dono |
 |---|---|---|---|---|
-| **A** | **Para onde vão as próximas publicações** | O motor que RESPONDE agora é o sucessor (`1w3Pju8v…`). O `./gasclaw up` publica no pai, que está pausado — mudanças novas do `src` (inclusive as guardas desta rodada) **não chegam ao motor que responde**. Três saídas: promover o sucessor a alvo do dev; um comando que leva o `src` ao sucessor coroado (o rebase já faz isso para um sucessor parado); ou descoroar e voltar ao pai | **decisão do dono** | Construir `succession sync`: leva o build atual do `src` ao sucessor COROADO; o pai segue alvo do build e porta do Chat |
+| **A** | **Para onde vão as próximas publicações** | O motor que RESPONDE agora é o sucessor (`1w3Pju8v…`). O `./gasclaw up` publica no pai, que está pausado — mudanças novas do `src` (inclusive as guardas desta rodada) **não chegam ao motor que responde**. Três saídas: promover o sucessor a alvo do dev; um comando que leva o `src` ao sucessor coroado (o rebase já faz isso para um sucessor parado); ou descoroar e voltar ao pai | **decisão do dono** | Construir `succession sync`: leva o build atual do `src` ao sucessor COROADO; o pai segue alvo do build e porta do Chat. ✅ **Feito** (c69911b): dev v158 → `succession sync` implantou a **versão 6** do sucessor no mesmo endereço; os 5 arquivos são **idênticos byte a byte** ao `dist/`, semente nova, sucessor segue **LIGADO** (P33 check). 9 testes, 8 mutações mortas |
 | **B** | **O Google Chat aponta para o pai pausado** | O app do Chat foi configurado à mão para o projeto do pai. Com ele pausado, **o Chat não responde**. Não há API para reapontar: é o passo manual no console do Chat, com a URL do sucessor | passo manual do dono (depois de A) | O pai vira o roteador do Chat (depende do resultado da P35); plano B = uma reconfiguração manual no console |
 | C | P33 C2 e C4 com evidência só indireta | O "nasce parado" e a conversa de teste não foram vistos ao vivo, só pela semente e pelos 6 cenários | uma próxima geração | Nada agora; observar na próxima geração |
 | D | **Medir um ciclo de sonho real (26, 27, 29, 30)** | **Destravado agora**: antes desta correção, nenhum ciclo podia concluir. O defeito que o sucessor achou era exatamente o que impedia a P23 de medir | material (falhas reais) | Esperar falhas reais (nada de material inventado, regra D5) |
@@ -183,6 +183,12 @@ a sexta forma de prova falsa desta sessão. As outras cinco estão listadas acim
 | I | Prod ainda na versão antiga | Nada da F6/F7 está em prod; o `ship` é decisão do dono | decisão do dono | Não publicar em prod agora; publicar depois de A, B e G, com checklist |
 | J | Comparar o GPT-6-Astra na P32 | Adiado pelo teto do dia | teto | Fechada |
 | K | Teto de código em US$ 6 | Volta sozinho a US$ 3 às 20:14 UTC de 2026-09-21 | relógio | Automático |
+
+> **Depois do `sync` (2026-09-21).** Com o código do sucessor igual ao do pai, `codeMatches` contra o patch do
+> registro coroado deixa de bater — esperado (as trocas já estão no `src`). Hoje isso não aparece: `succession
+> health` recusa um registro coroado. O `poc p33 check` diz "pass: false" com o sucessor ligado porque mede o
+> "nasce parado" — é a leitura certa para um coroado. Fluxo de publicação agora: `./gasclaw up` (pai, parado)
+> → `./gasclaw succession sync <scriptId>` (o motor que responde).
 
 > **Decisões do dono (2026-09-21).** Ordem de execução: A → levar as Script Properties do pai ao sucessor na coroa (lista permitida, nunca segredos) + nova checagem de saúde "as permissões do sucessor são as do pai" → B (depois da P35) → G → F → I.
 
