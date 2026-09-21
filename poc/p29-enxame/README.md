@@ -145,3 +145,38 @@ sessão.** Para a corrida de 15, é isso que precisava ser verdade.
 
 **20 de 20** para a lixeira do Drive, cada um também tirado do painel por `forgetChild` — que agora
 passa pelo registro partido. A lixeira é reversível: o dono pode restaurar qualquer um.
+
+---
+
+## BÔNUS MEDIDO (dev v140): a medição de aptidão, provada de ponta a ponta por US$ 0
+
+A P29 nasceu para medir a plataforma. Ela acabou provando também o caminho da **aptidão** (P31) —
+sem chamar o Opus nenhuma vez.
+
+Os 20 filhos desta sonda devolvem a string fixa `p29-ok`, que **não honra o contrato**
+(`{ "output": "..." }`). Medidos contra a bateria de 17 casos do dono:
+
+```json
+{ "measured": true, "passes": 0, "k": 17, "delta": null, "wins": false,
+  "reason": "nothing to compare against: this is the first measured child of its line" }
+```
+
+Cada campo é uma regra funcionando **fora do teste de unidade**:
+
+| Campo | O que ele prova no ambiente real |
+|---|---|
+| `measured: true` | o filho foi alcançado e está autorizado — e o 302 é seguido **também** nas chamadas com `?input=` |
+| `k: 17` | os 17 casos foram buscados e julgados, um a um |
+| `passes: 0` | filho ALCANÇÁVEL que responde fora do contrato **falhou** os casos. Se lixo virasse "não medido", um filho quebrado escaparia da comparação |
+| `delta: null` + `reason` | ausência de comparação **não vira zero**, e o motivo vai junto |
+
+**Um defeito de escrituração desta sonda apareceu no caminho:** ela registrava os filhos com
+`parent: null`, e a bateria do dono mora em `BATTERY:<pasta do agente>` — então `measureChild`
+recusava com *"no parent agent"* e o caminho de medição jamais poderia ser exercitado contra eles.
+O passo `adopt` conserta os já criados.
+
+## O que a P29 NÃO provou, e é honesto dizer
+
+Nenhum código gerado pelo Opus foi escrito, implantado ou medido: a corrida parou num **402 do
+OpenRouter** (limite mensal da chave), com **US$ 0 gastos e zero filhos criados**. O que está provado
+é toda a máquina em volta — criar, implantar, autorizar, medir, comparar, e parar.
