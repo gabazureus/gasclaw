@@ -472,7 +472,7 @@ em **Projects → Successor agents → Health**: você o autorizou · a semente 
 ele está parado · a chave do OpenRouter está colada · nenhum escopo espera consentimento · ele lê a pasta
 do agente no Drive (é aqui que um GCP não vinculado aparece) · o worker de 1 minuto existe ou pode ser
 criado · o código dele é o código **atual** deste motor mais o patch (se este motor mudou, **Rebase**
-reaplica o mesmo patch sem chamar o modelo) · ele foi julgado de fora **depois** da última escrita, sem nota pior.
+reaplica o mesmo patch sem chamar o modelo) · ele foi julgado de fora **depois** da última escrita, sem nota pior · ele recebe as permissões e capacidades do pai (depois da coroa, só precisa devolvê-las: vale o painel dele, e a checagem mostra a diferença para este motor).
 
 **A coroa é o seu clique, no painel, e em nenhum outro lugar.** O painel mostra todos os escopos
 marcados e travados (o sucessor é este agente, não um diferente dele), o diff troca por troca, a
@@ -504,7 +504,7 @@ você o pausa antes.
 Depois da coroa, quem responde é o sucessor. O `succession inherit` copia as configurações **deste** motor
 por cima das do sucessor. Depois da coroa, vale o painel do sucessor: a 10ª checagem mostra a diferença
 para este motor, sem reprovar — leia antes de herdar. Para ler ou medir o próprio sucessor coroado, aponte o CLI para ele (só leitura,
-`trace` e `poc`; `up`, `down` e `ship` recusam enquanto ela estiver definida):
+`trace` e `poc`; `up`, `down`, `restart`, `ship` e `rollback` recusam enquanto ela estiver definida, e todo outro comando vai para aquele motor):
 
 ```bash
 export GASCLAW_ENGINE_URL="https://script.google.com/a/macros/<domínio>/s/<Deployment ID do sucessor>/exec"

@@ -198,7 +198,7 @@ a sexta forma de prova falsa desta sessão. As outras cinco estão listadas acim
 |---|---|---|---|
 | ~~F8.1a~~ | ✅ **`inheritable`: o que o filho herda** | lista fechada das chaves do agente; segredo vence a lista, mesmo dentro de uma chave permitida; estado do motor não passa; valor acima de uma Property é recusado com motivo | 6/6 mutações |
 | ~~F8.1b~~ | ✅ **Porta `handover` no sucessor + herança na coroa + `succession inherit`** | o pai filtra, o filho filtra de novo, só o pai da semente grava; a coroa herda ANTES de ligar (falhou → nada muda) | 8/8 + 5 mutações |
-| ~~F8.1c~~ | ✅ **Health em sucessor COROADO + 10ª checagem** | no coroado: ele responde, worker vivo, código de HOJE do pai, e **as permissões são as do pai** (ACCESS:, CAP:, STATUS: pela `readiness`, sem segredo); antes da coroa a 10ª passa, porque é a coroa que entrega | 8/8 mutações |
+| ~~F8.1c~~ | ✅ **Health em sucessor COROADO + 10ª checagem** | no coroado: ele responde, worker vivo, código de HOJE do pai, e **as permissões são as do pai** (ACCESS:, CAP:, STATUS: pela `readiness`, sem segredo); antes da coroa a 10ª passa, porque é a coroa que entrega (F9, opção A: depois da coroa só se exige que ele as devolva) | 8/8 mutações |
 | ~~F8.1-real~~ | ✅ **No real (dev v162, sucessor v10)** | `succession inherit` → **11 chaves gravadas**; `succession health` → **10/10**; pai `enabled:false`, sucessor rodando | saída do comando |
 
 **Dois achados AO VIVO, os dois consertados com teste que prova que pega:**
@@ -218,7 +218,7 @@ a sexta forma de prova falsa desta sessão. As outras cinco estão listadas acim
 5. **Depois do `ship`:** `./gasclaw status --prod` (health), uma conversa no Chat da prod, e `./gasclaw usage --prod`.
 6. **Volta:** `./gasclaw rollback --prod` volta uma versão — a reserva de raciocínio e o resto voltam juntos.
 
-**Publicar agora é:** `./gasclaw up` → `./gasclaw succession sync <id>` → (quando as permissões mudarem no pai) `./gasclaw succession inherit <id>` → `./gasclaw succession health <id>`.
+**Publicar agora é:** `./gasclaw up` → `./gasclaw succession sync <id>` → `./gasclaw succession health <id>`. Depois da coroa as permissões mudam no painel do **sucessor** (opção A da F9); `succession inherit` copia as do pai por cima e apagaria o que o dono ligou lá.
 
 ### F9 — fechamento da branch `evolucao-f5-f8` (2026-09-21)
 
@@ -234,7 +234,7 @@ coroado), pela [P36](poc/p36-capacidades-no-real/README.md). Spec:
 | A4 | o lado certo do CAP vence | ✅ **decisão do dono: opção A** | as 4 capacidades estavam no **sucessor**, e o pai só tinha Succeed. O `inherit` que a verificação sugeria **apagaria 3 das 4**, e não foi rodado. Decisão: depois da coroa vale o painel do sucessor, e a 10ª só exige que ele devolva as permissões, informando a diferença para o pai |
 | D1 | Dream | ✅ recusa honesta | "no real failures to dream about": não há falha agrupada em 30 dias. Consertos: portão com `:`, placar, prazo + arrendamento, estimativa guardada |
 | R1 | Reach out | ✅ | disparou uma vez no tique certo; a resposta chegou ao Chat do dono com recibo (79 s). Antes, morria no trace ([ADR-045](docs/adr/045-reach-out-entrega-ao-dono.md)). Fora da lista: nada age, e a pergunta chega ao dono |
-| S1 | Succeed | ✅ | coroa, rebase e avaliação passam por `mayAct`; um coroado **rodando** por vez; texto do painel = sucessor-agente; health 9/10 |
+| S1 | Succeed | ✅ | coroa, rebase e avaliação passam por `mayAct`; um coroado **rodando** por vez; texto do painel = sucessor-agente; health 9/10 antes da opção A, **10/10** depois (A4) |
 | C1 | Create agents | ✅ | agente de teste nasceu com `caps []`, `tools []`, `users []`; removido |
 | X1 | segurança | ✅ | crivo sem bypass por comentário, corpo ou dependência; `GASCLAW_ENGINE_URL` só para Apps Script; conversa direta **do dono**, nunca a primeira da lista |
 | X2 | docs | ✅ | este bloco, CHANGELOG, READMEs, ADR-045, P36 |
@@ -261,7 +261,7 @@ sonho guarda o prompt inteiro em cada chave; um patch pode montar o nome de uma 
 | **P32** patch do motor | O Opus devolve um patch válido do motor inteiro em < 5 min? | ✅ 43 s, US$ 1,33, 1 troca que achou um defeito real |
 | **P33** agente sucessor | Um agente inteiro sobe como outro projeto, parado? | ✅ C1/C3 · 🟡 C2/C4 indiretos · achado: três atos do dono, não dois |
 | **P34** avaliação de fora | O pai julga o sucessor com o próprio juiz? | ✅ 6 cenários, empate 5×5, nenhum veredito vazou |
-| **P36** capacidades no real | As 4 capacidades fazem o que prometem no motor coroado? | ✅ Reach out entrega (depois da ADR-045), Create nasce vazio, Succeed 9/10, Dream recusa honesta — [poc/p36](poc/p36-capacidades-no-real/README.md) |
+| **P36** capacidades no real | As 4 capacidades fazem o que prometem no motor coroado? | ✅ Reach out entrega (depois da ADR-045), Create nasce vazio, Succeed 10/10 (depois da opção A), Dream recusa honesta — [poc/p36](poc/p36-capacidades-no-real/README.md) |
 
 ### Consertos de instrumento (2026-09-19/20)
 
@@ -376,7 +376,7 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | E0 harness de evals (`./gasclaw eval`) | ✅ | 100 | ✅ Sim | — (6/6 no dev v16: smoke, e1-now, e1-memoria, e1-limite, e1-injecao, e1-fora-da-lista) | commit `9fa87d7` |
 | E1 motor de tools (allowlist, schema, limite de passos, memória só na DM do dono) | ✅ | 100 | ✅ Sim | — (toolkit ligado no Chat real e só com as tools aprovadas no painel; evals `e1-*` verdes na v35) | `9fa87d7`, `c9c11c9` |
 | E5 aprovação + ask | ✅ | 100 | ✅ Sim | — (aprovação de tool: uso único e 24 h no Drive desde P20/v74; `ask`: 10 min no cache; evals e `webchat-*` verdes) | [ADR-028](docs/adr/028-aprovacao-duravel.md); `106f11e`, `7cb6e42`, `69f4ac8` |
-| E6 ferramentas do Workspace por REST (agenda, Gmail, contatos, tarefas, Drive/Docs/Sheets) | ✅ | 100 | ✅ Sim | — no dev: 7 evals `e6-*` verdes na v35 (agenda, freebusy, gmail-rascunho, contato, drive, tarefa, injeção), cada um apagando o que criou; ferramentas do Google só para o dono, com card completo | [ADR-023](docs/adr/023-ferramentas-do-workspace-rest.md) |
+| E6 ferramentas do Workspace por REST (agenda, Gmail, contatos, tarefas, Drive/Docs/Sheets) | ✅ | 100 | ✅ Sim | — no dev: 7 evals `e6-*` verdes na v35 (agenda, freebusy, gmail-rascunho, contato, drive, tarefa, injeção), cada um apagando o que criou; ferramentas do Google só para o dono, com card completo | [ADR-023](docs/adr/023-ferramentas-do-workspace.md) |
 | P17 / ADR-019: tela de chat do gasclaw e voz | 🟢 | 80 | 🟡 Parcial | texto pronto no dev (`?page=chat`, link absoluto, trace completo, `webchat-*` verdes na v35); **voz adiada por decisão do usuário** | [ADR-019](docs/adr/019-tela-de-chat-e-voz.md) |
 | **Acesso e ferramentas aprovados no painel** (M2, ADR-021) | 🟢 | 90 | 🟡 Parcial | no dev: todo agente fica só com o dono e sem tools até o clique em Aprovar; falta **testar o acesso de outra pessoa de verdade na tela** | [ADR-021](docs/adr/021-acesso-aprovado-no-painel.md) |
 | Rodízio de modelos gratuitos (`model: free`) | 🟢 | 90 | 🟡 Parcial | no dev e medido pela POC P11 na v39 (5 de 5): 20 de 20 turnos, troca de modelo em 1,1 s, p95 de 10,9 s. Escreva `free` no `AGENTS` ou na tela. Falta **tirar a consulta de cota do caminho do turno** (ela levou o C7 da P16 a 6 chamadas ao `/key` em 30 min, contra o teto de 3) e repetir a medição: uma execução só, com um turno de 35,8 s contra mediana de 4,1 s | [ADR-025](docs/adr/025-rodizio-de-modelos-gratuitos.md); [poc/p11-free](poc/p11-free/README.md) |
@@ -444,7 +444,7 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | `como-usar.md` e READMEs (EN e pt-BR) | ✅ | 100 | ✅ Sim | — (conferidos com o estado real da F1 pela auditoria em `f7a8fec`; avisos dos ADR-021 e 022 em `c098b41`) | [como-usar](docs/como-usar.md) |
 | Auditoria completa (0 críticos · 12 altos · 25 médios · 18 baixos) | 🟢 | 95 | 🟡 Parcial | concluída sem nenhum crítico; corrigidos A3, A4, A5, M1 (CSRF por segredo, ADR-022), M2 (acesso no painel, ADR-021), M16, M19, B1–B4, redact de mais formatos, lote e limites; pendentes de baixa severidade no Beads: M13, M18, clique de terceiro no ticket, `INTEGRATION.md` do devmode | ADR-020, 021, 022 |
 | Ações com efeito que sobrevivem à resposta perdida (job recuperável) | ✅ | 100 | ✅ Sim | — o Google às vezes perde a resposta do web app (medido: sem relação com duração nem com chamadas simultâneas); cada ação com efeito leva um identificador, o servidor executa uma vez só e a CLI busca o resultado guardado em vez de repetir a chamada | [ADR-020](docs/adr/020-trace-em-lote.md) |
-| Aviso honesto quando a ferramenta falha | ✅ | 100 | ✅ Sim | — com a ferramenta falhando, o agente avisa em vez de dizer que fez; havia o caso oposto (a API do Google desligada e o agente respondendo "Evento criado") | [ADR-023](docs/adr/023-ferramentas-do-workspace-rest.md) |
+| Aviso honesto quando a ferramenta falha | ✅ | 100 | ✅ Sim | — com a ferramenta falhando, o agente avisa em vez de dizer que fez; havia o caso oposto (a API do Google desligada e o agente respondendo "Evento criado") | [ADR-023](docs/adr/023-ferramentas-do-workspace.md) |
 | POCs fora do bundle de prod | ⏳ | 10 | ❌ Não | hoje o código das POCs vai no bundle de prod, só desligado por `__DEV__` (ADR-022); tirar do bundle | ADR-022 |
 | `product.md`, `tech-stack.md`, `UBIQUITOUS_LANGUAGE.md` | ✅ | 100 | ✅ Sim | — | plano#A.4 |
 | Runbooks `setup-inicial` e `devmode-update` | ✅ | 100 | ✅ Sim | — | plano#A.4 |

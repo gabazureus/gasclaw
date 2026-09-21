@@ -5,9 +5,10 @@ Comece por aqui. Tudo que existe no projeto está indexado nesta página.
 | Preciso de… | Vá para |
 |---|---|
 | Usar o gasclaw (publicar, criar agente, conversar no Chat) | [como-usar.md](como-usar.md) |
-| Ver o que o gasclaw faz em cada etapa (F0–F4) | [../CHANGELOG.md](../CHANGELOG.md) |
+| Ver o que o gasclaw faz em cada etapa (F0–F9) | [../CHANGELOG.md](../CHANGELOG.md) |
 | Ver o progresso item a item (%, status, resolvido ou não) | [../PROGRESS.md](../PROGRESS.md) |
 | Entender o que é e como funciona | [specs/2026-09-14-gasclaw-design.md](specs/2026-09-14-gasclaw-design.md) |
+| Specs por tema (chats, sonho, enxame, sucessão, herança, fechamento da branch) | [specs/](specs/) · a mais recente: [specs/2026-09-21-fechamento-da-branch.md](specs/2026-09-21-fechamento-da-branch.md) |
 | Retomar numa nova conversa | [plans/2026-09-18-handoff.md](plans/2026-09-18-handoff.md) (histórico: [17](plans/2026-09-17-handoff.md) · [15](plans/2026-09-15-handoff.md) · [14](plans/2026-09-14-handoff.md)) |
 | Implementar (passo a passo, com código) | [plans/2026-09-14-gasclaw-f0-plano-implementacao.md](plans/2026-09-14-gasclaw-f0-plano-implementacao.md) |
 | Saber por que decidimos algo | [adr/](adr/README.md) |
@@ -20,9 +21,9 @@ Comece por aqui. Tudo que existe no projeto está indexado nesta página.
 | Vocabulário e mapa de módulos | [../UBIQUITOUS_LANGUAGE.md](../UBIQUITOUS_LANGUAGE.md) |
 | Base de conhecimento (pesquisa, conceitos) | [wiki/index.md](wiki/index.md) · fontes brutas em [raw/sources/](raw/sources/) |
 | Como usar o wiki | [wiki-howto.md](wiki-howto.md) · schema em [../KARPATHY.md](../KARPATHY.md) |
-| Apresentação pública do projeto (inglês / pt-BR) | [../README.md](../README.md) · [../README.pt-BR.md](../README.pt-BR.md) |
+| Apresentação pública do projeto (inglês / pt-BR) | [../README.md](../README.md) · [../README_PT_BR.md](../README_PT_BR.md) |
 | Contribuir (setup, regras, PR, DCO, vulnerabilidades) | [../CONTRIBUTING.md](../CONTRIBUTING.md) · [../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) |
-| Licença, contribuições e licenças das dependências | [../LICENSE](../LICENSE) · [../NOTICE](../NOTICE) · [../LICENSING.md](../LICENSING.md) |
+| Licença, contribuições e licenças das dependências | [../LICENSE](../LICENSE) · [../LICENSING.md](../LICENSING.md) |
 
 ## Estrutura
 
@@ -33,6 +34,7 @@ docs/
 ├── plans/           planos de implementação passo a passo
 ├── adr/             decisões numeradas (nunca editar aceitas; substituir)
 ├── runbooks/        procedimentos operacionais
+├── pesquisa/        pesquisas datadas
 ├── wiki/            conhecimento curado pelo LLM (KARPATHY.md)
 ├── raw/             fontes brutas imutáveis (pesquisas, artigos)
 └── wiki-howto.md    guia do wiki

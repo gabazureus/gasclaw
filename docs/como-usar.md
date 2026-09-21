@@ -144,6 +144,11 @@ Todos aceitam `--prod`; sem a flag, valem para dev.
 | `./gasclaw open` | abrir a tela gasclaw |
 | `./gasclaw ship` | publicar em prod na mesma URL (depois de um `up --prod`) |
 
+**Capacidades e sucessão (F5–F9).** Dream, Reach out, Succeed e Create agents se ligam um a um no painel, por
+agente; a resposta do Reach out chega na sua conversa direta com o app no Chat. O sucessor (este agente
+melhorado por patch), a coroa, o `succession health` (10 checagens) e o `GASCLAW_ENGINE_URL` estão explicados
+no [README](../README_PT_BR.md), nas seções **"Capacidades: no que um agente pode se tornar"** e **"Sucessão: o sucessor é ESTE agente, melhorado"**.
+
 ## 7. Problemas comuns
 
 | Sintoma | Solução |

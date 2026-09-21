@@ -260,6 +260,14 @@ describe('capacidade sem mecanismo não liga, e explica por quê', () => {
   // mudou. A guarda INVERSA é mais forte e é a que a auditoria de 20/09 ensinou: uma capacidade que
   // se declara pronta (`missing: null`) precisa ter o MECANISMO no bundle. Assim, apagar o `missing`
   // sem fiar a peça falha aqui — que é exatamente o erro que deixou seis itens com ✅ falso.
+  // ADR-045, consequência 4: sem a identidade do app no build (a prod hoje) ou sem conversa com o dono, a
+  // resposta do Reach out fica só no trace. O texto do painel prometia a entrega sem condição.
+  test('o texto do Reach out diz quando a resposta NÃO chega ao Chat', () => {
+    const cap = main().slice(main().indexOf('const CAP_TEXT'), main().indexOf('const capsProp'));
+    const reach = cap.slice(cap.indexOf('initiative: {'), cap.indexOf('succeed: {'));
+    expect(reach).toMatch(/otherwise[^']*trace/);
+  });
+
   test('toda capacidade declarada PRONTA tem o mecanismo fiado no bundle', () => {
     const cap = main().slice(main().indexOf('const CAP_TEXT'), main().indexOf('const capsProp'));
     for (const nome of ['dream', 'initiative', 'succeed', 'create']) expect(cap).toContain(`${nome}: {`);

@@ -470,7 +470,7 @@ improves, and the patched engine is deployed as another Apps Script project — 
 it is paused · the OpenRouter key is pasted · no scope awaits consent · it reads the agent folder in Drive
 (this is where an unlinked GCP project shows up) · its 1-minute worker exists or can be created · its code
 is this engine's **current** code plus the patch (if this engine changed since, **Rebase** re-applies the
-same patch without calling the model) · it was judged from outside **after** its last write, not worse.
+same patch without calling the model) · it was judged from outside **after** its last write, not worse · it hands over the parent's permissions and capabilities (once crowned, it only has to report them: its own panel counts, and the check shows how they differ from this engine).
 
 **The crown is your click, in the panel, and nowhere else.** The panel shows every scope checked and
 locked (the successor is this agent, not a different one), the diff change by change, the explanation,
@@ -502,7 +502,7 @@ never receives new code — you pause it first.
 After the crown, the engine that answers is the successor. `succession inherit` copies **this** engine's
 settings over the successor's. After the crown, the successor's panel is the one that counts: the 10th health
 check shows how it differs from this engine, without failing, so read it before you inherit. To read or measure the crowned successor itself, point
-the CLI at it (reads, `trace` and `poc` only; `up`, `down` and `ship` refuse while it is set):
+the CLI at it (`up`, `down`, `restart`, `ship` and `rollback` refuse while it is set; every other command goes to that engine, so keep it to reads, `trace` and `poc`):
 
 ```bash
 export GASCLAW_ENGINE_URL="https://script.google.com/a/macros/<domain>/s/<successor Deployment ID>/exec"

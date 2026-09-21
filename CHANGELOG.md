@@ -26,7 +26,7 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 >   funções de que ela depende.
 > - **Agenda:** um job novo não dispara na hora por herdar uma janela velha.
 > - **CLI:** `GASCLAW_ENGINE_URL` fala com o sucessor coroado (só web app do Apps Script) e é recusada
->   por up/down/ship.
+>   por up/down/restart/ship/rollback; qualquer outro comando vai para o motor apontado.
 
 > 🧬 **O sucessor é ESTE agente, melhorado (F7, ADR-043):** o botão **Write a successor** passa a
 > mandar o código do próprio agente ao Opus 5, que devolve um **patch pequeno com a explicação** do que
@@ -46,7 +46,7 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 > 🧬 **O filho herda tudo do pai (F8):** permissões (quem conversa, quais ferramentas), capacidades, agenda,
 > modelo, histórico e gasto passam ao sucessor na coroa — **nunca** a chave nem os segredos. Memórias e
 > conversas já moravam na pasta do Drive, que o filho lê. O health de um sucessor coroado confere as 10
-> checagens, inclusive "as permissões do filho são as do pai". `./gasclaw succession sync` leva o código
+> checagens (na F9, opção A, a 10ª passou a só exigir que o coroado devolva as permissões e a mostrar a diferença para o pai). `./gasclaw succession sync` leva o código
 > novo ao motor que responde; `succession inherit` reentrega as permissões.
 > 🔧 **Respostas vazias com modelos que raciocinam:** o turno agora reserva espaço para a resposta — o
 > cenário de memória, que falhava, passa (a bateria foi de 5/6 para 6/6).

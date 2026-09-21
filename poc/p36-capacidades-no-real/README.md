@@ -1,6 +1,6 @@
 # POC P36 — as quatro capacidades no motor que responde
 
-> **Status:** medida em 2026-09-21 no dev, no sucessor coroado (v14–v18). Serviu para fechar a F9
+> **Status:** medida em 2026-09-21 no dev, no sucessor coroado (v14–v20). Serviu para fechar a F9
 > ([spec](../../docs/specs/2026-09-21-fechamento-da-branch.md)).
 
 ## A pergunta
@@ -34,7 +34,7 @@ unset GASCLAW_ENGINE_URL        # up/down/ship/restart/rollback recusam com ela 
 | **Dream** | `started: false`, "no real failures to dream about"; `material: ""` | Recusa honesta: não há falha real agrupada em 30 dias. Não se fabrica falha para forçar um ciclo. |
 | **Reach out** | o job das 17:57 rodou às 17:58:26, uma vez, sem ferramenta, e respondeu "pong" (5,7 s, US$ 0,00074) | ✅ o despertar funciona |
 | **Reach out** (entrega) | antes do conserto, `delivery: null`: a resposta morria no trace. Depois, `status: sent`, recibo `spaces/g_jQUqAAAAE/messages/…`, 79 s | ✅ com a [ADR-045](../../docs/adr/045-reach-out-entrega-ao-dono.md) |
-| **Reach out** (fora da lista) | o modelo não chamou `docs.create` e perguntou "Aprova?", pergunta que foi entregue ao dono; nada foi criado | ✅ nada age sem o dono. O caminho "a ferramenta fora da lista faz o run falhar" fica provado por teste: o modelo não chamou a ferramenta. |
+| **Reach out** (fora da lista) | o modelo não chamou `docs.create` e perguntou "Aprova?", pergunta que foi entregue ao dono; nada foi criado | ✅ nada age sem o dono. O caminho "a ferramenta fora da lista faz o run falhar" fica provado só por teste; no real o modelo não chamou a ferramenta. |
 | **Create agents** | `f9-probe-mubqfy9c`: `caps: "[]"`, `tools: []`, `users: []`; removido depois | ✅ nasce sem nada |
 | **Succeed** | health do coroado **10/10** (sucessor v20); a 10ª informa os dois lados de CAP | ✅ depois da coroa vale o painel do sucessor (decisão do dono) |
 

@@ -1434,7 +1434,7 @@ const CAP_TEXT: Record<Capability, { label: string; what: string; missing: strin
     // O texto ANTIGO dizia que o desenho tinha sido reprovado e não tinha medição. Era verdade em
     // 17/09 e deixou de ser: a P22 passou 4 de 4, e a F3a foi construída com o buraco real tapado —
     // a agenda saiu da pasta compartilhável e veio para cá.
-    what: 'Wakes up on the schedule YOU set below and acts without being asked, then sends you the answer in your direct conversation with this app in Google Chat. It only uses tools you put on the auto-approve list; anything else makes the run fail and say so there, instead of waiting for a click nobody is there to give.',
+    what: 'Wakes up on the schedule YOU set below and acts without being asked, then sends you the answer in your direct conversation with this app in Google Chat (once this engine has its Chat app identity and you have talked to the app; otherwise the answer stays in the trace). It only uses tools you put on the auto-approve list; anything else makes the run fail and say so there, instead of waiting for a click nobody is there to give.',
     missing: null,
   },
   succeed: {
@@ -3697,7 +3697,7 @@ function readinessSelf() {
   return { ok: true, self: { seedParent: store.successorOf(), enabled: store.isEnabled(), hasKey: !!store.getApiKey(), authRequired: authStatus().required, agentReadable: leitura, trigger: observe.triggerStatus(true), settings } };
 }
 
-/** No PAI: as 9 checagens da coroa, lidas agora — consentimento, o health profundo e o código implantado. */
+/** No PAI: as 10 checagens da coroa, lidas agora — consentimento, o health profundo e o código implantado. */
 function healthOf(rec: SuccessorRecord) {
   const own = ScriptApp.getScriptId();
   let estado = 'unknown';

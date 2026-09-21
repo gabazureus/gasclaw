@@ -869,7 +869,7 @@ cmd_succession() { # o AGENTE sucessor (F7, ADR-043): ./gasclaw succession write
     evaluate) # ./gasclaw succession evaluate <scriptId>  — o pai julga o sucessor de fora (ele precisa estar PARADO)
       [ -n "${1:-}" ] || die "usage: ./gasclaw succession evaluate <scriptId>"
       remote "evaluate&child=$1" | swarm_print ;;
-    health) # ./gasclaw succession health <scriptId>  — as 9 checagens da coroa, lidas agora
+    health) # ./gasclaw succession health <scriptId>  — as 10 checagens da coroa, lidas agora
       [ -n "${1:-}" ] || die "usage: ./gasclaw succession health <scriptId>"
       remote "successorhealth&child=$1" | succession_health ;;
     rebase) # ./gasclaw succession rebase <scriptId>  — o MESMO patch sobre o codigo atual deste motor, sem Opus
@@ -890,7 +890,7 @@ cmd_succession() { # o AGENTE sucessor (F7, ADR-043): ./gasclaw succession write
 succession_health() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);
 if(!r.checks||!r.checks.length){console.log("refused: "+(r.error||r.reason));return}
 for(const c of r.checks)console.log(`${c.ok?"PASS":"FAIL"}  ${c.label} — ${c.detail}`);
-console.log(r.crowned?(r.ok?"\nhealthy: the crowned successor answers for the agent with the code and settings of this engine":"\nattention: the crowned successor needs work (see the failed checks)"):(r.ok?"\nready: crown it in the panel (Projects)":"\nnot ready: the crown stays locked until every check passes"))})'; }
+console.log(r.crowned?(r.ok?"\nhealthy: the crowned successor answers for the agent with the code of this engine; its own panel holds the settings":"\nattention: the crowned successor needs work (see the failed checks)"):(r.ok?"\nready: crown it in the panel (Projects)":"\nnot ready: the crown stays locked until every check passes"))})'; }
 
 succession_print() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);
 if(r.ok===false){console.log("refused: "+(r.error||r.reason));return}
@@ -1111,6 +1111,8 @@ gasclaw — agents that live in your Google Drive, running on Google Apps Script
   ./gasclaw swarm <sub>       the swarm run: battery, interval, budget, run, measure, status
   ./gasclaw succession <sub>  the successor agent: write, status, health, evaluate, rebase, sync, inherit, pull (you crown it in the panel)
   ./gasclaw onboard           guided setup menu (the default before anything is published)
+
+  GASCLAW_ENGINE_URL=<web app URL> ./gasclaw poc|trace ...  talk to your crowned successor instead (up, down, restart, ship and rollback refuse)
 TXT
 }
 

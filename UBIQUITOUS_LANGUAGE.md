@@ -8,7 +8,7 @@
 > Built/maintained with the `ubiquitous-language` skill. Promote new terms here
 > from track `learnings.md` / `patterns.md` (see the knowledge flywheel).
 >
-> Termos marcados **(planejado)** ainda não existem no código; o resto confere com `src/` (auditoria de 2026-09-15).
+> Termos marcados **(planejado)** ainda não existem no código; o resto confere com `src/` (auditoria de 2026-09-15; termos da F5–F9 conferidos em 2026-09-21).
 
 ## Agentes
 
@@ -56,13 +56,13 @@
 | Hora marcada | Instante antes do qual um ponteiro da fila não pode ser reivindicado | `RunPointer.notBefore`, `due` | Reivindicar sem poder avançar **não** conta tentativa; é a primitiva de tempo que a agenda reaproveita |
 | Efeito em voo | Ação externa iniciada cujo resultado ficou incerto porque a execução morreu antes do checkpoint final | `DurableRun.inflight`, `beforeEffect`, `markInflight` | Persiste antes de `tool.run`; a retomada não repete e avisa o usuário (P19) |
 
-## Proatividade e governança **(planejado — esta track)**
+## Proatividade e governança
 
 | Term | Definition | In code as | Notes / invariants |
 |------|------------|-----------|--------------------|
-| Agenda | A tabela de compromissos de um agente, lida de `jobs.md` | — | Avaliada a cada tique; nenhum gatilho novo (ADR-027) |
+| Agenda | A tabela de compromissos de um agente, marcada no **painel** (não mais em `jobs.md` da pasta) | `SCHED:<folderId>`, `parseSchedule`, `dueJobs` | Avaliada a cada tique; nenhum gatilho novo (ADR-027) |
 | Tique | Uma execução do gatilho de 1 min que já existe | `drainRuns` | Passa a também perguntar "venceu algum compromisso?" |
-| Último disparo | Quando um compromisso disparou pela última vez | Script Properties | **Nunca** na pasta do Drive: um editor da pasta não força redisparo (ADR-002) |
+| Último disparo | O último minuto em que o tique olhou a agenda | `SCHEDSEEN:<folderId>` | **Nunca** na pasta do Drive: um editor da pasta não força redisparo (ADR-002) |
 | Run proativo | Run que ninguém pediu (agenda ou heartbeat) | `DurableRun` com proveniência de gatilho | `ownerDm: false` por padrão; teto próprio; **nunca** `paused` — falha honesta e registrada |
 | Teto de proatividade | Limite diário agregado de gasto e de despertares por agente | — | Ajustável no painel, não constante de código |
 | Política de aprovação | Regra declarativa determinística que decide pedir/negar/auto-aprovar uma chamada de tool | — | Avaliada **em código**, nunca pelo modelo; erro de parse = fail-closed; padrão = pedir |
@@ -71,10 +71,10 @@
 | Serialização por espaço | No máximo um run aberto por `<folderId>:<espaço>` | — | **Não confundir com reentrega**: aqui as mensagens são diferentes |
 | Reentrega | O mesmo evento do Chat chegando duas vezes | `runId` estável do nome da mensagem | Já resolvido na pista P2 |
 | Iniciativa | Mensagem que o agente manda **sem turno humano aberto** ("me manda msg") | — | Não é resposta: não há evento para responder. Exige canal que aceite envio fora do ciclo pedido→resposta |
-| Canal de iniciativa | Por onde a iniciativa chega ao dono | — | Chat exige Workspace (ADR-031); e-mail existe nos dois, com cota 1.500/dia (Workspace) × **100/dia** (pessoal), `src/limits.ts:17-18`; painel não notifica |
-| Pergunta não supervisionada | Run proativo que precisa de uma decisão humana ("me chame quando precisar") | — | **Hoje é impossível**: D7 proíbe `waiting`/`paused` em run proativo, e a entrega assíncrona de card novo pelo gatilho está fora de escopo (ADR-028, Consequências) |
+| Canal de iniciativa | Por onde a iniciativa chega ao dono | — | Chat exige Workspace (ADR-031); e-mail existe nos dois, com cota 1.500/dia (Workspace) × **100/dia** (pessoal), `src/limits.ts:17-18`; painel não notifica. **Hoje:** a conversa direta do dono no Chat (ver Entrega do Reach out) |
+| Pergunta não supervisionada | Run proativo que precisa de uma decisão humana ("me chame quando precisar") | — | **Não existe como card**: o run esbarra na aprovação e falha; o motivo (ou a pergunta do modelo) chega ao dono pela Entrega do Reach out. Histórico: D7 proíbe `waiting`/`paused` em run proativo, e a entrega assíncrona de card novo pelo gatilho está fora de escopo (ADR-028, Consequências) |
 
-## Auto-aprimoramento — o sonho **(planejado — track F5)**
+## Auto-aprimoramento — o sonho
 
 | Term | Definition | In code as | Notes / invariants |
 |------|------------|-----------|--------------------|
@@ -86,13 +86,12 @@
 | Promoção | O ato de um candidato virar papel vigente | `promote` | **Só com aprovação do dono**, por card durável com diff do prompt e delta do placar (ADR-028). Nunca automática |
 | Papel vigente × candidato | O que o agente usa hoje × o que o sonho propõe | `resolveRoles` (vigente) | Mesmo precedente de política sugerida × vigente: a pasta propõe, o painel decide |
 | Passo de sonho | A unidade durável: **um par (candidato, cenário)** | passo do `DurableRun` | Um passe completo (174 s estimados) cabe em 6 min, mas 3 candidatos não — por isso a unidade é o par (ADR-026) |
-| Capacidade | Poder opt-in de um agente: `dream`, `replicate`, `initiative`, `create` | Script Properties, aprovadas no painel | Quatro, nunca um interruptor só: blast radius diferente. A pasta **declara**, o painel **aprova**, o painel **mostra a procedência** (ADR-021 + ADR-035) |
-| agente com a capacidade `create` | O único agente do ambiente que pode criar agentes | `CREATOR` (Script Property) = **um** `folderId` | Singleton **por forma do dado**, não por trava: não existe estado com dois agente criadors porque não há dois lugares onde escrever |
+| Capacidade | Poder opt-in de um agente: `dream`, `initiative` (Reach out), `succeed`, `create` | Script Properties, aprovadas no painel | Quatro, nunca um interruptor só: blast radius diferente. A pasta **declara**, o painel **aprova**, o painel **mostra a procedência** (ADR-021 + ADR-035) |
+| agente com a capacidade `create` | O único agente do ambiente que pode criar agentes | `CREATOR` (Script Property) = **um** `folderId` | Singleton **por forma do dado**, não por trava: não existe estado com dois agentes criadores porque não há dois lugares onde escrever |
 | Passar o bastão | Trocar quem é o agente criador | sobrescrever o valor de `CREATOR` | Reversível por construção — voltar é escrever o `folderId` anterior. Quem autoriza é o gate aberto |
 | Linhagem | Geração, pai, diff do prompt, placar, delta e filhos criados | `.gasclaw/lineage/<generation>.json` + planilha | Sem ela "evoluiu" não é verificável, é fé |
 | Squad | Agentes criados pelo agente criador para funções diferentes | pastas normais | Nascem **sem nenhuma capacidade**: executores, não criadores (`effectiveAccess(null)` já fecha) |
 | **Persona** | Nome + papel em `subagents/<nome>.md` + **subconjunto** das tools do pai, rodando como passo do run do pai | `Subagent`, `parseSubagent`, tool `persona` | Declaração, nunca código (ADR-039). **Não tem pasta e NÃO precisa da chave** — era este o sentido ambíguo de "sub-agente" ([ADR-042](docs/adr/042-automation-subagente-persona.md)) |
-| **Automação** | Projeto filho que é **só código**: sem pasta, sem prompt, sem modelo | `ChildKind = 'automation'` | A parte arriscada do desenho (entregar a credencial) **não se aplica**. É o caminho barato de crescer em capacidade |
 | **Automação** | Projeto filho que é **só código**: sem pasta, sem prompt, sem modelo — e por isso **sem chave** | `ChildKind = 'automation'` (membro único) | Era um tipo de dois membros; o `subagent`, que precisava da chave, foi **removido** com a opção 4 da [ADR-040](docs/adr/040-isolamento-e-privilegio.md). A forma que precisa de credencial é estado **não representável**, e um `subagent` já gravado é **rebaixado** na leitura |
 | Interseção (nunca união) | A persona nunca tem mais que o pai, só menos | `subagentTools` | **Não vem de graça:** `allowedTools` filtra contra o REGISTRO, não contra o pai (`registry.ts:115-116`). É também o 4º controle do repasse entre agentes |
 | Span da persona | Quem da squad agiu, dentro do run do pai | `subagentSpan` → `subagent:<nome>` | Sem ele a squad é inauditável; nome inválido não vira span |
@@ -112,6 +111,28 @@
 | Cenário de eval | Markdown com turnos, roteiro opcional e verificações | `parseScenario`, `runEval` | Só dado, nunca código (ADR-017) |
 | Run durável | Tarefa do agente com checkpoint e retomada entre execuções | `DurableRun`, `runAsk`, `runState`, `runDecide` | Estados queued/running/waiting/paused/done/failed (ADR-026) |
 | Checkpoint, Lease, Pump | Estado salvo por passo, reserva de execução e worker do gatilho | `runStore`, `pumpOnce`, `pump`, `drainRuns` | P3, P4 e P19 medidas; ADR-026/027 |
+
+## Sucessão, herança e o fechamento da branch (F7–F9)
+
+| Term | Definition | In code as | Notes / invariants |
+|------|------------|-----------|--------------------|
+| Sucessor | Este mesmo agente, melhorado por um patch que o Opus 5 escreve, implantado como outro projeto Apps Script com os **mesmos** escopos | `writeSuccessor`, `prepareSuccessor`, `SuccessorRecord` | Nasce parado ([ADR-043](docs/adr/043-sucessor-e-um-agente.md)); não é "código mais estreito" (isso é a automação) |
+| Avaliação de fora | O pai julga o sucessor parado com o próprio juiz | `evaluateSuccessor`, `evaluateFromOutside` | Passa por `mayAct(…, 'succeed')` |
+| Health do sucessor | As **10 checagens** lidas na hora que destravam a coroa e mantêm um coroado honesto | `crownReadiness`, `healthOf` | `./gasclaw succession health <id>` |
+| 10ª checagem | Permissões e capacidades (`ACCESS:`, `CAP:`, `STATUS:`) | `crownReadiness` (`settings`), `capsLado` | Antes da coroa passa (a coroa entrega). **Depois da coroa vale o painel do sucessor** ([ADR-046](docs/adr/046-depois-da-coroa-vale-o-painel-do-sucessor.md)): só exige que ele as devolva e mostra a diferença, nunca o valor de `ACCESS:` |
+| Coroa | O clique do dono que pausa o pai e liga o sucessor | `crownSuccessor`, `crownFromParent` | Só no painel; só com o health inteiro; **um coroado rodando por vez** |
+| Coroa pela metade | O sucessor já responde e só falta pausar o pai | `halfCrowned` | Coroar termina os dois motores que já rodam |
+| Rebase | O mesmo patch sobre o código atual do pai, sem chamar o modelo | `rebaseSuccessor` | Passa por `mayAct(…, 'succeed')` |
+| Sync | O build atual do pai levado ao sucessor **coroado**, sem patch | `syncSuccessor`, `./gasclaw succession sync` | É assim que uma mudança de `src` chega ao motor que responde |
+| Handover | A porta do sucessor que recebe a herança do pai da semente | `doPost action=handover`, `inheritFromParent`, `inheritable` | Nunca a chave nem segredos; o filho filtra de novo |
+| Inherit | Copia as permissões do pai **por cima** das do sucessor | `inheritSuccessor`, `./gasclaw succession inherit` | Depois da coroa apaga o que o dono ligou no sucessor: ler a 10ª antes |
+| Crivo de guardas | Recusa o patch que cita uma função protegida (até em comentário) ou cai dentro da definição de uma | `changesTouchGuards`, `codeOnly`, `definitionsOf`, `PROTEGIDAS`, `guardsWeakened` | Conservador: recusar à toa é aceitável. Limite conhecido: nome montado (`"assert"+"Owner"`) |
+| Entrega do Reach out | O run agendado sai com destino na **conversa direta do dono** com o app | `ownerDm`, `ownerDmAsChatApp`, `findDirectMessage`, `accountId`, `newChatDelivery` | Achada pelo id numérico da conta (`sub` do userinfo); **nunca** a primeira DM da lista ([ADR-045](docs/adr/045-reach-out-entrega-ao-dono.md)). Sem identidade do app: fica no trace |
+| `LASTWAKE:<folderId>` | O último run de despertar do agente | Script Property | Leitura da P36; apagado com o agente (`forgetAgentProps`) |
+| `DREAMSTEP_MS` | O maior passo de sonho já medido; estimativa do próximo tique | Script Property, `DREAM_STEP_ESTIMATE_MS` (90 s) | Global; só cresce |
+| Arrendamento do tique de sonho | Um tique de sonho por vez, válido até o teto da execução | `withDreamLease`, `DREAMTICK_LEASE` | O ScriptLock guarda só a troca, sem espera: não trava o "Aprovar" |
+| Prazo do tique de sonho | Passo que não cabe até 330 s da execução nem começa | `tickDream(…, deadline, estimateMs)` | Um passo morto pelo teto de 6 min seria pago e perdido |
+| `GASCLAW_ENGINE_URL` | Faz a CLI falar com outro motor do dono (o coroado) | `url()` no `./gasclaw` | Só URL de web app do Apps Script; `up`/`down`/`restart`/`ship`/`rollback` recusam com ela definida |
 
 ## Module map
 
@@ -135,6 +156,13 @@
 | `usage`, `limits` | Uso por modelo; itens do painel de limites | `fold`, `prune`, `dayTotals`, `chart`, `usageProps`; `buildLimits` | core | no |
 | `eval`, `evalEntry` | Cenários de eval; execução no dev | `parseScenario`, `evaluate`; `runEval`, `evalAction` | core / shell | no |
 | `voice` | Sessão de voz (P17, adiada) | `liveSessionRequest`, `parseLiveSession`, `voiceCost` | core | no |
+| `agentCaps` | Capacidades por agente, congelamento global, limpeza das chaves do agente (a porta `mayAct` mora no `main`) | `can`, `effectiveCapabilities`, `parseCapabilities`, `forgetAgentProps` | core | yes |
+| `schedule`, `autoApprove` | Agenda do painel; lista fechada de auto-aprovação do run proativo | `parseSchedule`, `dueJobs`; `mayAutoApprove`, `NEVER_AUTO` | core | yes (`NEVER_AUTO`) |
+| `chatApi`, `chatApiGas`, `chatDelivery` | Chat API com a identidade do app; entrega assíncrona com recibo e autoridade de destino | `findDirectMessage`, `accountId`, `createChatMessage`; `ownerDmAsChatApp`; `newChatDelivery`, `sendChatDelivery` | core / shell | yes (destino) |
+| `dream`, `dreamCycle`, `dreamTick`, `dreamBoard`, `dreamStore` | Ciclo de sonho: plano, veredito, tique com prazo e arrendamento, placar, estado | `dreamVerdict`, `eliminated`; `tickDream`, `withDreamLease`; `board`; `dreamIO` | core / shell | no |
+| `succession`, `patch`, `guards` | O que decide a sucessão: pedido ao Opus, patch, crivo de guardas, health, herança | `prepareSuccessor`, `crownReadiness`, `codeMatches`, `inheritable`; `applyPatch`; `changesTouchGuards`, `guardsWeakened` | core | yes |
+| `children`, `codegen`, `successor`, `swarm`, `family`, `budget` | Automações (projetos filhos só com código), enxame, gasto da família e orçamento | `generateSuccessor` (automação), `capAction`, `effectiveBudget` | core / shell | yes (orçamento) |
+| `subagent` | Personas: papel declarado que roda no turno do pai | `parseSubagent`, `subagentTools` | core | yes (interseção) |
 
 ---
 
