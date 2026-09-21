@@ -50,6 +50,8 @@ export const isEnabled = (): boolean => enabledWith(props().getProperty('RUNTIME
 export const isSuccessor = (): boolean => seed() !== null;
 /** De quem este motor é sucessor — o scriptId do pai, que a semente carrega. `null` num motor comum. */
 export const successorOf = (): string | null => seed()?.parent ?? null;
+/** O endereço do web app do pai, que a semente carrega — para o hub levar de volta a ele. */
+export const parentUrl = (): string | null => seed()?.parentUrl ?? null;
 export const setEnabled = (on: boolean): void => {
   props().setProperty('RUNTIME_ENABLED', String(on));
 };

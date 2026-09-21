@@ -105,3 +105,14 @@ describe('fiação: o store consulta a semente', () => {
     expect(store).toMatch(/listAgents = \(\): AgentEntry\[\] => agentsWith\(/);
   });
 });
+
+// O SUCESSOR PRECISA DO ENDEREÇO DO PAI para o hub levar de um para o outro. O id não basta: a URL de
+// um web app não se deduz do scriptId. Não é segredo — é uma URL que só abre com o login do dono.
+describe('a semente leva o endereço do pai', () => {
+  test('um endereço do Apps Script atravessa', () => {
+    expect(parseSeed({ ...semente, parentUrl: 'https://script.google.com/a/macros/x/s/P/exec' })?.parentUrl).toBe('https://script.google.com/a/macros/x/s/P/exec');
+  });
+  test('um endereço de fora é descartado, não obedecido', () => {
+    expect(parseSeed({ ...semente, parentUrl: 'https://evil.example/x' })?.parentUrl).toBeUndefined();
+  });
+});

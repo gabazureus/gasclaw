@@ -41,3 +41,32 @@ describe('panelList: os painéis conhecidos, sem ler nada do outro ambiente', ()
     ]);
   });
 });
+
+// Pedido do dono (2026-09-21): "Precisa aparecer em Panels também a lista de todos os agentes,
+// inclusive com sucessores". O hub listava AMBIENTES (dev/prod); com a F7 ele precisa listar também
+// os MOTORES que servem o agente — o titular e os sucessores —, com o caminho de um para o outro.
+import { engineLinks } from '../src/panels';
+describe('engineLinks: os motores que servem este agente, e onde você está', () => {
+  const PAI = 'https://script.google.com/a/macros/x/s/PAI/exec';
+  const FILHO = 'https://script.google.com/a/macros/x/s/FILHO/exec';
+
+  test('no TITULAR: ele primeiro, marcado como atual, e os sucessores depois', () => {
+    const l = engineLinks({ agent: 'gasclaw-assistente', self: '1b93M1aw9_Nu', selfUrl: PAI, parent: null, parentUrl: null, successors: [{ scriptId: '1w3Pju8vyj9y', url: FILHO }] });
+    expect(l.map((e) => [e.role, e.engine, e.current])).toEqual([['incumbent', '1b93M1aw', true], ['successor', '1w3Pju8v', false]]);
+  });
+
+  test('no SUCESSOR: o pai primeiro, com o link dele, e o sucessor marcado como atual', () => {
+    const l = engineLinks({ agent: 'gasclaw-assistente', self: '1w3Pju8vyj9y', selfUrl: FILHO, parent: '1b93M1aw9_Nu', parentUrl: PAI, successors: [] });
+    expect(l.map((e) => [e.role, e.engine, e.current, e.url])).toEqual([['incumbent', '1b93M1aw', false, PAI], ['successor', '1w3Pju8v', true, FILHO]]);
+  });
+
+  // O MESMO INVARIANTE DO HUB DE AMBIENTES: só painel do Apps Script vira link.
+  test('um endereço fora do script.google.com não vira link', () => {
+    const l = engineLinks({ agent: 'a', self: '1w3Pju8v', selfUrl: FILHO, parent: '1b93M1aw', parentUrl: 'https://evil.example/x', successors: [] });
+    expect(l.find((e) => e.role === 'incumbent')?.url).toBeNull();
+  });
+
+  test('sem sucessor e sem pai, só ele mesmo', () => {
+    expect(engineLinks({ agent: 'a', self: '1b93M1aw', selfUrl: PAI, parent: null, parentUrl: null, successors: [] })).toHaveLength(1);
+  });
+});

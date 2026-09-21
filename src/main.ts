@@ -37,7 +37,7 @@ import { cacheTickets, decideChatApproval, decideScreenApproval, durableTickets,
 import { chatTurn, handleChat, type ChatDeps, type ChatEvent, type ChatReply } from './chat';
 import { withChatFormatRules } from './chatFormat';
 import { extendBudget, markInflight, newRun, resumeOf, RUN_BUDGET_USD, view, withDecision, type DurableRun } from './run';
-import { asEnv, panelList } from './panels';
+import { asEnv, engineLinks, panelList } from './panels';
 import { pump, pumpById, type StepDeps } from './runner';
 import { runIO, type RunIO } from './runStore';
 import { flushMemory } from './tools/memoryFlush';
@@ -1112,9 +1112,21 @@ const panelEnv = () => asEnv(envName());
  * Tela do hub (`?page=hub`): só os painéis conhecidos. De propósito NÃO passa por settingsState(),
  * que drena o lote e lê todos os agentes — o hub é uma página de navegação, não um painel.
  */
+/**
+ * Os sucessores que este motor conhece. `// minimal:` hoje é só o da P33 — a Fase 2 da F7 troca esta
+ * fonte pelo registro de sucessores de verdade, e o hub não precisa mudar.
+ */
+function knownSuccessors(): { scriptId: string; url: string }[] {
+  const s = JSON.parse(PropertiesService.getScriptProperties().getProperty('P33_SUCCESSOR') ?? 'null') as { scriptId?: string; url?: string } | null;
+  return s?.scriptId && s.url ? [{ scriptId: s.scriptId, url: s.url }] : [];
+}
+
 export function panelsState() {
   assertOwner();
-  return { env: panelEnv(), panels: panelList(envName(), appUrl(), siblingUrl()) };
+  // OS MOTORES que servem este agente (pedido do dono, 2026-09-21): o titular e os sucessores, com o
+  // caminho de um para o outro. No titular a lista vem do registro dele; no sucessor, o pai vem da semente.
+  const engines = engineLinks({ agent: defaultAgent()?.name ?? 'no agent', self: ScriptApp.getScriptId(), selfUrl: appUrl(), parent: store.successorOf(), parentUrl: store.parentUrl(), successors: store.isSuccessor() ? [] : knownSuccessors() });
+  return { env: panelEnv(), panels: panelList(envName(), appUrl(), siblingUrl()), engines };
 }
 
 /**
@@ -3402,7 +3414,7 @@ function pocP33(step?: string): unknown {
     const files = [
       ...arquivos.map((f) => ({ name: f.name, type: tipo(f.name), source: f.source })),
       // A SEMENTE: nascer parado e saber qual agente servir. Nenhum segredo (ver `seed.ts`).
-      { name: 'successor_seed', type: 'SERVER_JS', source: seedSource({ bornDisabled: true, parent: own, agents: store.listAgents(), at: Date.now() }) },
+      { name: 'successor_seed', type: 'SERVER_JS', source: seedSource({ bornDisabled: true, parent: own, agents: store.listAgents(), at: Date.now(), parentUrl: appUrl() }) },
     ];
 
     const agente = defaultAgent();
@@ -3444,7 +3456,7 @@ function pocP33(step?: string): unknown {
     const lido = call(`${api}/${own}/content`, 'get');
     if (lido.code !== 200) return { pass: false, error: `could not read this project's own code: HTTP ${lido.code}` };
     const originais = ((JSON.parse(lido.full) as { files?: { name: string; type: string; source: string }[] }).files ?? []);
-    const files = [...originais.map((f) => ({ name: f.name, type: f.type, source: f.source })), { name: 'successor_seed', type: 'SERVER_JS', source: seedSource({ bornDisabled: true, parent: own, agents: store.listAgents(), at: Date.now() }) }];
+    const files = [...originais.map((f) => ({ name: f.name, type: f.type, source: f.source })), { name: 'successor_seed', type: 'SERVER_JS', source: seedSource({ bornDisabled: true, parent: own, agents: store.listAgents(), at: Date.now(), parentUrl: appUrl() }) }];
     const escrita = call(`${api}/${s.scriptId}/content`, 'put', { files });
     if (escrita.code !== 200) return { pass: false, stage: 'write', code: escrita.code, body: escrita.full.slice(0, 300) };
     const ver = call(`${api}/${s.scriptId}/versions`, 'post', { description: 'successor agent update' });

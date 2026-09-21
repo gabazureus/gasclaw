@@ -14,7 +14,13 @@
 // é exatamente o que a opção 4 da ADR-040 recusou. O dono cola a chave no painel do sucessor.
 import type { AgentEntry } from './chat';
 
-export type Seed = { bornDisabled: true; parent: string; agents: AgentEntry[]; at: number };
+/**
+ * `parentUrl`: o endereço do web app do pai, para o hub levar de um motor ao outro. O id não basta — a
+ * URL de um web app não se deduz do scriptId. Não é segredo: é uma URL que só abre com o login do dono.
+ */
+export type Seed = { bornDisabled: true; parent: string; agents: AgentEntry[]; at: number; parentUrl?: string };
+
+const isAppsScriptUrl = (u: unknown): u is string => typeof u === 'string' && /^https:\/\/script\.google\.com\//i.test(u);
 
 /**
  * Confere a semente; nunca confia nela. Só `name` e `folderId` de cada agente atravessam — campo a
@@ -31,7 +37,8 @@ export function parseSeed(x: unknown): Seed | null {
     if (!r || typeof r.name !== 'string' || typeof r.folderId !== 'string' || !r.name.trim() || !r.folderId.trim()) return null;
     agents.push({ name: r.name, folderId: r.folderId });
   }
-  return { bornDisabled: true, parent: o.parent, agents, at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0 };
+  // Endereço de fora do Apps Script é DESCARTADO, não obedecido: o hub não pode virar link para qualquer lugar.
+  return { bornDisabled: true, parent: o.parent, agents, at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, ...(isAppsScriptUrl(o.parentUrl) ? { parentUrl: o.parentUrl } : {}) };
 }
 
 /**
