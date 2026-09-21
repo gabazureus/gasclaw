@@ -127,3 +127,32 @@ corrida roda sem mais nenhum portão: `./gasclaw swarm run "$(cat conductor/trac
 | H6 escopos | ✅ decidido NÃO acrescentar — o `drive` já cobre Docs e Sheets pela REST |
 | capacidade `succeed` | ✅ ligada (e só ela) |
 | **crédito do OpenRouter** | ❌ **bloqueia** |
+
+## 2026-09-20 — o que impede a Fase 5, dito com precisão
+
+A Fase 5 (a corrida de 1–3 gerações) **não rodou**, e a causa é **externa e não contornável por mim**:
+o limite mensal da chave do OpenRouter permite 1342 tokens, e o pedido ao Opus usa 8000.
+
+Não está no meu alcance acrescentar crédito nem alterar o limite: é a conta do dono.
+
+### Os dois contornos que existiam, e por que os dois são piores
+
+| Contorno | Por que não |
+|---|---|
+| Baixar `max_tokens` para ~1300 | Um fonte cortado passava no crivo (era assim até agora — ver D7). Mesmo com o D7 consertado, a recusa por truncamento **gastaria a geração** e o crédito restante iria embora sem produzir nada |
+| Trocar o Opus por um modelo barato | Contraria a [ADR-041](../../../docs/adr/041-sucessor-como-codigo.md), que fixa o gerador **porque** um modelo fraco produz algo "plausível e quebrado" — e o resultado não é uma resposta ruim na tela, é um projeto implantado rodando como o dono |
+
+Os dois trocariam um bloqueio honesto por um resultado falso.
+
+### O que foi feito em vez de contornar
+
+- **D7**: o crivo passou a recusar fonte cortado no meio. Nasceu da justificativa acima e vale por si:
+  protege a primeira geração paga, venha o corte de onde vier.
+- **D6**: `./gasclaw down` passou a parar `succeed` de verdade — achado testando a alavanca com a
+  máquina em movimento, não lendo o código.
+- A **medição** foi provada de ponta a ponta contra os filhos da sonda, por US$ 0 (0/17, `delta: null`).
+
+### O que falta, exatamente
+
+**Uma chamada ao Opus que volte com código.** Todo o resto — criar, escrever, implantar, autorizar,
+medir, comparar, selecionar, parar e devolver os tetos — está provado no ambiente real.
