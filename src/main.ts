@@ -637,6 +637,9 @@ export function onMessage(e: ChatEvent) {
     startP2Event(e.space.name, undefined, runIO()); // sem thread: tudo no fluxo do espaco
     return {}; // `pensando...` ja foi criado como o app e confirmado por message.name na POC
   }
+  // P35 (só no dev, só LÊ): com que identidade este onMessage roda, e se ela alcança o sucessor coroado.
+  // É a pergunta que decide se o Chat pode seguir o motor coroado sem passo manual no console.
+  if (isDev() && e.type === 'MESSAGE') p35Record(e);
   const d = chatDeps();
   if (e.type === 'MESSAGE') {
     // Sem a identidade do app no Chat não existe entrega posterior: o caminho assíncrono deixaria o usuário
@@ -3990,6 +3993,58 @@ function pocP34(step?: string, params: Record<string, string> = {}): unknown {
   };
 }
 
+/**
+ * P35 — o Chat pode seguir o motor coroado? A mensagem do Chat chega ao PAI (é o Deployment ID que o
+ * console conhece). Para repassá-la ao sucessor, a identidade com que este onMessage roda precisa ser
+ * aceita pelo web app do sucessor, que só abre para o dono. Esta sonda mede, sem mudar nada: quem roda,
+ * se o sucessor responde a essa identidade, e em quanto tempo. Nunca derruba a resposta ao Chat.
+ */
+function p35Record(e: ChatEvent) {
+  try {
+    const coroado = readSuccessors(PropertiesService.getScriptProperties()).find((r) => r.crownedAt !== null);
+    const t0 = Date.now();
+    let codigo = 0;
+    let aceito = false;
+    let erro = '';
+    if (coroado) {
+      try {
+        const r = postChild(coroado.url, { action: 'readiness' });
+        codigo = r.code;
+        aceito = (JSON.parse(r.body) as { ok?: boolean }).ok === true;
+      } catch (x) {
+        erro = String((x as Error)?.message ?? x).slice(0, 200);
+      }
+    }
+    const leitura = {
+      at: Date.now(),
+      sender: e.user?.email ?? '',
+      effectiveUser: Session.getEffectiveUser().getEmail(),
+      activeUser: Session.getActiveUser().getEmail(),
+      successor: coroado?.scriptId ?? null,
+      code: codigo,
+      accepted: aceito,
+      ms: Date.now() - t0,
+      ...(erro ? { error: erro } : {}),
+    };
+    PropertiesService.getScriptProperties().setProperty('P35_LAST', JSON.stringify(leitura));
+  } catch {
+    // a sonda nunca pode custar a resposta ao dono
+  }
+}
+
+function pocP35(step?: string): unknown {
+  if (step !== 'read') return { pass: false, error: 'steps: read (send a Chat message to the agent first)' };
+  const l = JSON.parse(PropertiesService.getScriptProperties().getProperty('P35_LAST') ?? 'null') as { accepted: boolean; ms: number; effectiveUser: string; sender: string } | null;
+  if (!l) return { pass: false, reading: 'no Chat message has reached this engine since the probe was deployed: send one, then read again' };
+  return {
+    pass: l.accepted && l.ms < 10_000,
+    c1_identityAccepted: l.accepted,
+    c2_roundTripMs: l.ms,
+    runsAs: l.effectiveUser === l.sender ? 'the sender' : l.effectiveUser === ownerEmail() ? 'the owner' : 'someone else',
+    ...l,
+  };
+}
+
 const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {
   p1: () => pocUrlFetchTimeout(),
   p2: (step, params = {}) => pocP2(step, params, runIO()),
@@ -4005,6 +4060,7 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p32: (step, params = {}) => pocP32(step, params),
   p33: (step) => pocP33(step),
   p34: (step, params = {}) => pocP34(step, params),
+  p35: (step) => pocP35(step),
   p6: (step) => pocP6(step, ownerEmail()),
   p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),
