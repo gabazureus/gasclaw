@@ -51,7 +51,7 @@ import { bootstrapIO } from './tools/bootstrapStore';
 import { skillsIO } from './tools/skillsStore';
 import { isFree } from './freeModels';
 import { runFree } from './freeRun';
-import { complete, type Completion, type Message, type ToolDef } from './llm';
+import { complete, type Completion, type EmptyCompletionError, type Message, type ToolDef } from './llm';
 import { gasGoogle, zone } from './tools/googleHttp';
 import { offsetMinutes } from './agenda';
 import { folderModel, getOverride, listModels as openRouterModels, type ModelInfo, setOverride, validateChoice } from './models';
@@ -202,11 +202,15 @@ function mutate(action: string, p: Record<string, string>): unknown {
   // `capability` entra aqui pelo MESMO argumento que `tools` (ADR-021/022): o segredo prova o dono, e
   // é o dono que decide. A guarda continua inteira — `setAgentCapability` mantém `assertOwner`, o
   // nome válido, o `missing`, o lock e o trace. O que muda é a porta, não quem pode abrir.
-  if (action === 'capability') return setAgentCapability(p.folder || '', p.cap ?? '', p.on === '1');
-  if (action === 'battery') return setAgentBattery(p.folder || '', p.set ?? '');
-  if (action === 'interval') return setAgentInterval(p.folder || '', Number(p.ms));
+  // SEM PASTA DECLARADA, O AGENTE PADRÃO. A CLI lia `SWARM_FOLDER` e os comandos do README não a
+  // mencionavam: quem copiou o comando recebeu "unknown agent". Eu testei a CLI só do jeito que eu a
+  // uso — com a variável exportada. Com um agente só, que é o caso comum, pedir o id era pedir o óbvio.
+  const pasta = p.folder || defaultAgent()?.folderId || '';
+  if (action === 'capability') return setAgentCapability(pasta, p.cap ?? '', p.on === '1');
+  if (action === 'battery') return setAgentBattery(pasta, p.set ?? '');
+  if (action === 'interval') return setAgentInterval(pasta, Number(p.ms));
   if (action === 'budget') return p.end === '1' ? endRunBudget() : setRunBudget(Number(p.codegen), Number(p.family), Number(p.hours));
-  if (action === 'succeed') return writeSuccessor(p.folder || '', (p.scopes ?? '').split(',').filter(Boolean), p.goal ?? '', p.tokens ? Number(p.tokens) : undefined);
+  if (action === 'succeed') return writeSuccessor(pasta, (p.scopes ?? '').split(',').filter(Boolean), p.goal ?? '', p.tokens ? Number(p.tokens) : undefined);
   if (action === 'measure') return measureChild(p.child || '');
   if (action === 'lineage') return lineage();
   return { ok: false, status: 400, error: `unknown action: ${action}` };
@@ -2227,8 +2231,17 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
     complete: (messages, model) => {
       // D8: era `8000` cravado — mais do que o crivo pode aceitar. Agora deriva do teto do crivo, e
       // o dono pode baixar (nunca subir) para caber no crédito ou no tamanho esperado do filho.
-      const r = complete(key, model, messages, codeTokens(maxTokens));
-      return { text: r.text, costUsd: Number(r.usage?.cost ?? 0) };
+      try {
+        const r = complete(key, model, messages, codeTokens(maxTokens));
+        return { text: r.text, costUsd: Number(r.usage?.cost ?? 0) };
+      } catch (e) {
+        // D9: resposta VAZIA que pode ter custado. Deixar o erro subir pulava `addSpent` — o dinheiro
+        // saía e sumia, o oposto da ADR-041 §4. Aqui ela vira texto vazio COM o custo e o motivo, e
+        // `generateSuccessor` conta o gasto e recusa dizendo por quê. Qualquer outro erro sobe.
+        const x = e as EmptyCompletionError;
+        if (x && typeof x.contentShape === 'string') return { text: '', costUsd: Number(x.usage?.cost ?? 0), why: `finish_reason: ${x.finishReason ?? '?'}, content: ${x.contentShape}` };
+        throw e;
+      }
     },
     parentScopes: () => engineScopes(token, own),
     own: () => own,

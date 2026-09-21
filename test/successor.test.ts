@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 // A fiação da sucessão por CÓDIGO: do pedido ao Opus até o filho implantado.
 //
 // O que se testa aqui não é se o Opus escreve bem — isso não é testável com mock. É a ORDEM das
@@ -169,5 +170,49 @@ describe('a API falhando é recusa com o código, nunca sucesso presumido', () =
       deps({ api: vi.fn((url: string, _m?: string, _p?: unknown) => (falha(url) ? { code: 403, full: 'nope' } : { code: 200, full: '{"scriptId":"child-1","versionNumber":7,"deploymentId":"d1","entryPoints":[{"webApp":{"url":"https://x/exec"}}]}' })) }),
     );
     expect(porque(r2)).toMatch(/403/);
+  });
+});
+
+// D9 no sucessor: resposta vazia SOMA no gasto, e a recusa diz por que veio vazia.
+describe('resposta vazia do gerador: o dinheiro é contado, e o motivo aparece', () => {
+  test('texto vazio com custo: o custo entra no dia, e a recusa traz o motivo', () => {
+    const addSpent = vi.fn();
+    const r = generateSuccessor(pedido, deps({ complete: () => ({ text: '', costUsd: 0.42, why: 'finish_reason: length, content: null' }), addSpent }));
+    expect(addSpent).toHaveBeenCalledWith(0.42);
+    expect(porque(r)).toMatch(/no code/);
+    expect(porque(r)).toMatch(/finish_reason: length/);
+  });
+
+  // Sem `why`, a recusa de sempre — o motivo só aparece quando existe.
+  test('texto vazio sem motivo declarado: a recusa de sempre', () => {
+    const r = generateSuccessor(pedido, deps({ complete: () => ({ text: '', costUsd: 0 }) }));
+    expect(porque(r)).toBe('the generator returned no code');
+  });
+});
+
+describe('fiação do D9: a casca converte a resposta vazia em custo contado', () => {
+  const main = readFileSync('src/main.ts', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  test('`deps.complete` captura a resposta vazia e devolve o custo dela, em vez de deixar o erro subir', () => {
+    const i = main.indexOf('const deps: SuccessorDeps');
+    const bloco = main.slice(i, i + 1500);
+    expect(bloco).toMatch(/catch/);
+    expect(bloco).toMatch(/usage\?\.cost/);
+    expect(bloco).toMatch(/why:/);
+  });
+});
+
+// A CLI SEM `SWARM_FOLDER`. O dono copiou o comando do README e recebeu "unknown agent": a CLI exigia
+// uma variável que nenhum texto mencionava. Eu tinha testado a CLI só do jeito que eu a uso.
+describe('fiação: sem pasta declarada, as ações do enxame usam o agente padrão', () => {
+  const main = readFileSync('src/main.ts', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  test('a pasta cai no agente padrão quando a CLI não diz qual', () => {
+    expect(main).toContain("const pasta = p.folder || defaultAgent()?.folderId || ''");
+  });
+  test('as ações do enxame usam essa pasta, não `p.folder` cru', () => {
+    for (const a of ['capability', 'battery', 'interval', 'succeed']) {
+      const linha = main.split('\n').find((l) => l.includes(`action === '${a}'`)) ?? '';
+      expect(linha).toContain('pasta');
+      expect(linha).not.toContain("p.folder || ''");
+    }
   });
 });

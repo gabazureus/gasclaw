@@ -60,7 +60,7 @@ describe('classify: que erro justifica trocar de modelo', () => {
       expect(classify(e)).toBe('troca');
   });
   test('erro do pedido (sem chave, prompt inválido) não troca: trocar não resolveria', () => {
-    for (const e of ['OpenRouter 401: no auth', 'OpenRouter 402: insufficient credits', 'OpenRouter: resposta sem conteúdo']) expect(classify(e)).toBe('para');
+    for (const e of ['OpenRouter 401: no auth', 'OpenRouter 402: insufficient credits', 'OpenRouter: empty response (finish_reason: length, content: null)']) expect(classify(e)).toBe('para');
   });
   test('403 de modelo restrito a certos usos troca: outro gratuito responde (medido na P11, v37)', () => {
     // o OpenRouter recusa alguns :free fora de "agentic harnesses"; o rodízio parava no 1º candidato e perdia os 20 turnos

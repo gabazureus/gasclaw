@@ -19,8 +19,14 @@ const API = 'https://script.googleapis.com/v1/projects';
 export type ApiCall = (url: string, method: 'get' | 'post' | 'put', payload?: unknown) => { code: number; full: string };
 
 export type SuccessorDeps = {
-  /** Chamada ao gerador. O custo vem junto porque é ele que alimenta o teto — não é telemetria. */
-  complete: (messages: ReturnType<typeof successorMessages>, model: string) => { text: string; costUsd: number };
+  /**
+   * Chamada ao gerador. O custo vem junto porque é ele que alimenta o teto — não é telemetria.
+   *
+   * `why` explica um texto VAZIO (D9): resposta que voltou sem conteúdo mas custou. Sem ele a recusa
+   * diria só "sem código", e o dono não saberia se o gerador gastou o orçamento raciocinando ou se o
+   * conteúdo veio num formato que ninguém leu.
+   */
+  complete: (messages: ReturnType<typeof successorMessages>, model: string) => { text: string; costUsd: number; why?: string };
   /** Os escopos que o MOTOR tem hoje: o teto do que o filho pode herdar. */
   parentScopes: () => string[];
   /** O scriptId de quem está executando. Sem ele não se escreve em projeto nenhum. */
@@ -96,7 +102,7 @@ export function generateSuccessor(req: SuccessorRequest, d: SuccessorDeps): Succ
   d.addSpent(custo); // antes de qualquer recusa: o gasto não depende do veredito
 
   const fonte = extractSource(gen.text);
-  if (!fonte) return fail('the generator returned no code', custo);
+  if (!fonte) return fail(gen.why ? `the generator returned no code (${gen.why})` : 'the generator returned no code', custo);
   const crivo = checkSuccessorSource(fonte);
   if (!crivo.ok) return fail(crivo.reason, custo);
 

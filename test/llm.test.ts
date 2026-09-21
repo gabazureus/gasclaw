@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { buildRequest, complete, OPENROUTER_URL, parseResponse, type Http } from '../src/llm';
+import { buildRequest, complete, OPENROUTER_URL, parseResponse, type EmptyCompletionError, type Http } from '../src/llm';
 
 const msgs = [{ role: 'user' as const, content: 'oi' }];
 
@@ -26,8 +26,8 @@ describe('parseResponse', () => {
   test('erro HTTP vira exceção legível sem vazar a chave', () => {
     expect(() => parseResponse(401, '{"error":{"message":"No auth"}}')).toThrow('OpenRouter 401: {"error":{"message":"No auth"}}');
   });
-  test('resposta sem conteúdo vira exceção', () => {
-    expect(() => parseResponse(200, '{"choices":[]}')).toThrow('OpenRouter: resposta sem conteúdo');
+  test('resposta vazia vira exceção', () => {
+    expect(() => parseResponse(200, '{"choices":[]}')).toThrow('OpenRouter: empty response');
   });
 });
 
@@ -65,5 +65,47 @@ describe('complete', () => {
     };
     expect(complete('k', 'm', msgs, 100, http).text).toBe('ok');
     expect(seen).toBe(OPENROUTER_URL);
+  });
+});
+
+// D9 — RESPOSTA VAZIA JOGAVA O CUSTO FORA.
+//
+// `parseResponse` lançava "resposta sem conteúdo" ANTES de devolver o `usage`. Quem chama
+// (`generateSuccessor`) conta o gasto DEPOIS que `complete` volta — então com a resposta vazia a
+// conta nunca acontecia. A ADR-041 §4 diz: "o custo é contado mesmo quando o resultado é descartado.
+// O dinheiro saiu." Aqui ele saía e sumia.
+//
+// E o erro não dizia POR QUE veio vazio. Achado na primeira geração real da F6: não dá para distinguir
+// "o modelo gastou o orçamento raciocinando" (`finish_reason: length`) de "o conteúdo veio como lista
+// de blocos, e não como string". Consertar sem saber seria chutar. O erro agora carrega os fatos.
+describe('resposta vazia: o erro carrega o custo e o motivo', () => {
+  const corpo = (msg: unknown, extra: Record<string, unknown> = {}) =>
+    JSON.stringify({ id: 'x', model: 'm', choices: [{ message: msg, finish_reason: 'length' }], usage: { cost: 0.42, completion_tokens: 1200 }, ...extra });
+
+  test('conteúdo nulo: o erro traz o custo, o finish_reason e o que veio no lugar', () => {
+    try {
+      parseResponse(200, corpo({ role: 'assistant', content: null }));
+      throw new Error('deveria ter lançado');
+    } catch (e) {
+      const x = e as EmptyCompletionError;
+      expect(x.usage?.cost).toBe(0.42);
+      expect(x.finishReason).toBe('length');
+      expect(x.contentShape).toBe('null');
+    }
+  });
+
+  // A OUTRA CAUSA POSSÍVEL: blocos de conteúdo no lugar de uma string. O erro tem que dizer isso,
+  // senão o próximo conserto mira no raciocínio quando o problema é o formato.
+  test('conteúdo como lista de blocos é distinguido de conteúdo nulo', () => {
+    try {
+      parseResponse(200, corpo({ role: 'assistant', content: [{ type: 'text', text: 'oi' }] }));
+      throw new Error('deveria ter lançado');
+    } catch (e) {
+      expect((e as EmptyCompletionError).contentShape).toBe('array');
+    }
+  });
+
+  test('a mensagem humana continua dizendo que veio vazio', () => {
+    expect(() => parseResponse(200, corpo({ role: 'assistant', content: null }))).toThrow(/empty response/);
   });
 });

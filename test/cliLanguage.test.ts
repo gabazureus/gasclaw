@@ -255,7 +255,7 @@ const DIVIDA: Record<string, number> = {
   'src/freeModels.ts': 5,
   'src/freeRun.ts': 1,
   'src/limits.ts': 1,
-  'src/llm.ts': 1,
+  'src/llm.ts': 0,
   'src/models.ts': 2,
   'src/observe.ts': 6,
   'src/run.ts': 5,
