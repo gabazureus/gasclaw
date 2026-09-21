@@ -849,6 +849,44 @@ for(const e of cg){const rate=Number.isInteger(e.passes)&&e.k?(e.passes/e.k):nul
 console.log(`${String(e.generation).padEnd(4)} ${e.child.slice(0,20).padEnd(21)} ${rate===null?"not measured":String(e.passes)+"/"+e.k} ${rate===null?"      ":("   "+(rate*100).toFixed(0)+"%").padStart(7)} ${e.delta===null||e.delta===undefined?"     -":(e.delta>=0?"+":"")+e.delta.toFixed(3)}  US$ ${(e.costUsd||0).toFixed(2)}`)}
 const t=cg.reduce((a,e)=>a+(e.costUsd||0),0);console.log(`\ntotal spent: US$ ${t.toFixed(2)}`)})'; }
 
+cmd_succession() { # o AGENTE sucessor (F7, ADR-043): ./gasclaw succession write|status|evaluate|pull
+  # A COROA NAO ESTA AQUI, de proposito: e o portao humano, e o dono coroa no painel, lendo o diff, a
+  # explicacao e a nota. A CLI escreve, avalia e traz o patch de volta — nunca troca o motor sozinha.
+  local sub="${1:-}"; shift || true
+  local folder="${SWARM_FOLDER:-}"
+  case "$sub" in
+    write) # ./gasclaw succession write ["<objetivo>"]  — GASTA OPUS: le o proprio codigo e implanta o sucessor parado
+      remote "succeed&goal=$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]||""))' "${1:-}")${folder:+&folder=$folder}" | swarm_print ;;
+    status) remote "succession" | succession_print ;;
+    evaluate) # ./gasclaw succession evaluate <scriptId>  — o pai julga o sucessor de fora (ele precisa estar PARADO)
+      [ -n "${1:-}" ] || die "usage: ./gasclaw succession evaluate <scriptId>"
+      remote "evaluate&child=$1" | swarm_print ;;
+    pull) # ./gasclaw succession pull [scriptId]  — traz o patch COROADO para succession/, para ser portado ao src
+      remote "succession" | succession_pull "${1:-}" ;;
+    *) die "usage: ./gasclaw succession write [\"<goal>\"] | status | evaluate <scriptId> | pull [scriptId]" ;;
+  esac
+}
+
+succession_print() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);
+if(r.ok===false){console.log("refused: "+(r.error||r.reason));return}
+const l=r.successors||[];if(!l.length){console.log("no successor written yet");return}
+for(const x of l){const e=x.evaluation;
+console.log(`${x.scriptId}  ${new Date(x.at).toISOString().slice(0,16)}  ${x.changes.length} change(s)  US$ ${x.costUsd.toFixed(2)}  ${x.crownedAt?"CROWNED":e?`successor ${e.successorPasses}/${e.k} vs ${e.incumbentPasses}/${e.k}`:"not evaluated"}`);
+console.log("  "+x.explanation);if(!x.crownedAt&&x.verdict)console.log("  crown: "+(x.verdict.ok?`allowed (${x.verdict.standing}) — crown it in the panel`:x.verdict.reason));console.log("  "+x.url)}})'; }
+
+# O PATCH VOLTA PARA O REPOSITORIO (decisao 3 da ADR-043). O Opus fez patch no BUNDLE; sem portar para
+# src/*.ts, o proximo `up` apagaria a melhoria. O arquivo em succession/ e o registro do que foi coroado
+# e o roteiro do porte — que e feito com teste e mutacao, pelo fluxo normal, nunca aplicando o patch as cegas.
+succession_pull() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);const fs=require("fs");
+if(r.ok===false){console.log("refused: "+(r.error||r.reason));return}
+const want=process.argv[1];const l=(r.successors||[]).filter((x)=>want?x.scriptId===want:x.crownedAt);
+if(!l.length){console.log(want?"no successor with that id":"no crowned successor yet: crown one in the panel first");return}
+const x=l.sort((a,b)=>b.at-a.at)[0];fs.mkdirSync("succession",{recursive:true});
+const f=`succession/${new Date(x.at).toISOString().slice(0,10)}-${x.scriptId.slice(0,12)}.json`;
+fs.writeFileSync(f,JSON.stringify({scriptId:x.scriptId,url:x.url,model:x.model,at:new Date(x.at).toISOString(),crownedAt:x.crownedAt?new Date(x.crownedAt).toISOString():null,costUsd:x.costUsd,explanation:x.explanation,evaluation:x.evaluation,changes:x.changes},null,2)+"\n");
+console.log(`wrote ${f}`);console.log(x.explanation);for(const c of x.changes){console.log(`\n--- ${c.file}\n- ${c.find.split("\n").join("\n- ")}\n+ ${c.replace.split("\n").join("\n+ ")}`)}
+console.log("\nnext: port each change to src/*.ts with a failing test first — the bundle is generated, and the next up would erase it")})' "$1"; }
+
 cmd_rollback() {
   lock_dev # B4
   local d cur
@@ -1046,12 +1084,13 @@ gasclaw — agents that live in your Google Drive, running on Google Apps Script
   ./gasclaw eval <scenario|--all> [--model id]  run evals/*.md on dev (exit != 0 on failure)
   ./gasclaw tools all|none|<a,b,c> [folder]     turn the agent's tools on and off
   ./gasclaw swarm <sub>       the swarm run: battery, interval, budget, run, measure, status
+  ./gasclaw succession <sub>  the successor agent: write, status, evaluate, pull (you crown it in the panel)
   ./gasclaw onboard           guided setup menu (the default before anything is published)
 TXT
 }
 
 case "$CMD" in
-  up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs|eval|limits|usage|tools|swarm|onboard) "cmd_$CMD" "$@" ;;
+  up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs|eval|limits|usage|tools|swarm|succession|onboard) "cmd_$CMD" "$@" ;;
   # Sem argumento: quem ainda nao publicou nao quer uma lista de 15 comandos, quer saber por onde comecar.
   # Quem ja publicou ja sabe, e a lista e mais util. O `help` explicito sempre mostra a lista.
   '') if [ -n "$(var "DEPLOY_ID_$UP")" ]; then cmd_help; else cmd_onboard; fi ;;
