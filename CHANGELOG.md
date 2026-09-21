@@ -25,6 +25,13 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 > ciclo conseguia concluir), health 9/9, coroado, e a correção de volta ao `src`. A coroa agora decide
 > pelo estado do sucessor (uma resposta perdida não deixa dois motores ligados), e o `up` não religa o
 > motor que entregou o agente.
+> 🧬 **O filho herda tudo do pai (F8):** permissões (quem conversa, quais ferramentas), capacidades, agenda,
+> modelo, histórico e gasto passam ao sucessor na coroa — **nunca** a chave nem os segredos. Memórias e
+> conversas já moravam na pasta do Drive, que o filho lê. O health de um sucessor coroado confere as 10
+> checagens, inclusive "as permissões do filho são as do pai". `./gasclaw succession sync` leva o código
+> novo ao motor que responde; `succession inherit` reentrega as permissões.
+> 🔧 **Respostas vazias com modelos que raciocinam:** o turno agora reserva espaço para a resposta — o
+> cenário de memória, que falhava, passa (a bateria foi de 5/6 para 6/6).
 
 > 🧬 **Capacidades por agente (F5):** quatro poderes que você liga UM A UM no painel, e nenhum liga
 > outro — **Sonho** (reescreve o próprio prompt e se mede contra o conjunto-juiz), **Procurar**

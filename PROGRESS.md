@@ -1,7 +1,7 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, e se já foi resolvido.
-> **Atualizado em:** 2026-09-21 · **2164 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
+> **Atualizado em:** 2026-09-21 · **2157 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
 > · **Auditoria:** seis ✅ eram falsos. Critério: *algum módulo importa isto, e o símbolo aparece em `dist/_motor.js`?*
 > · **P22 aprovada 4/4** · P24 **aprovada por inteiro** · P25 **reprovada** (sem combustível)
 > · **P27 medida e REPROVADA** (o filho executa, o motor recusa o token dele: 401 da plataforma)
@@ -204,6 +204,19 @@ a sexta forma de prova falsa desta sessão. As outras cinco estão listadas acim
 **Dois achados AO VIVO, os dois consertados com teste que prova que pega:**
 - **O formulário grande chegava vazio.** Com todas as chaves do agente num campo de formulário, o `doPost` do sucessor recebia `parent` vazio ("got nothing"). A herança passou a ir como **corpo JSON** com a ação na URL (`postChildJson`, host fixo em `script.google.com` — com teste de que nunca sai do Apps Script).
 - **A porta interceptava a CLI no próprio pai.** A porta do sucessor tinha o MESMO nome da ação `inherit` da CLI e vem antes do segredo no `doPost`: o pedido do dono caía na porta do pai. Renomeada para `handover`; teste novo pelo caminho REAL da CLI (4 testes caem com o nome antigo). Os testes antigos chamavam a função direto e não viam.
+
+| ~~F8.G~~ | ✅ **`e1-memoria` — causa-raiz e conserto** | rodado no dev: as duas respostas voltavam VAZIAS (`finish_reason: length, content: null`). O agente usa `deepseek-v4-flash`, que raciocina, e o turno mandava `max_tokens 1000` sem reserva — o pensamento gastava tudo. Agora os cinco pontos de turno passam `reasoning.max_tokens 600` (`TURN_REASONING`), com trava no fonte. **Real (v164): `e1-memoria` ✓ ✓, e a bateria da coroa passou de 5/6 para 6/6** (smoke, e1-now, e1-limite, e1-fora-da-lista, e1-injecao seguem ✓). Levado ao sucessor pelo `sync` (v12) | eval no dev |
+| ~~F8.F~~ | ✅ **Fila de sessões órfã apagada** | `src/sessionQueue.ts` + `src/sessionQueueStore.ts` + teste (143 linhas, zero consumidores). `voice.ts` fica (ADR-019). Dívida de idioma 148 → **145** | suíte verde |
+| F8.B | ⏳ **O Chat segue o motor coroado** | **portão humano**: a sonda P35 está no ar desde a v157 e nenhuma mensagem do Chat chegou. O dono manda UMA mensagem; depois `./gasclaw poc p35 read` decide entre o roteamento automático e o caminho manual | 1 mensagem no Chat |
+
+### F8.I — checklist de ida para prod (NÃO executado: o `ship` é decisão do dono)
+
+1. **O que muda para quem usa a prod:** F6 (escada de automações, orçamento que expira), F7 (sucessor como AGENTE por patch, avaliado de fora, coroa com health), F8 (herança, `sync`, health de coroado) e a reserva de raciocínio em todo turno (muda o comportamento com modelos que raciocinam — conferir o modelo da prod com `./gasclaw usage --prod` antes).
+2. **NÃO coroar em prod antes do B.** Sem o roteamento, a coroa em prod desliga o Chat da prod — o app do Chat aponta para o Deployment ID do pai.
+3. **Um sucessor em prod custa ao dono três atos** (vincular o GCP de prod, autorizar, colar a chave) — a P33 mediu; não há API para o vínculo.
+4. **Antes do `ship`:** `tsc` limpo, suíte verde, `./gasclaw eval --all` no dev verde, e a dívida de idioma sem subir.
+5. **Depois do `ship`:** `./gasclaw status --prod` (health), uma conversa no Chat da prod, e `./gasclaw usage --prod`.
+6. **Volta:** `./gasclaw rollback --prod` volta uma versão — a reserva de raciocínio e o resto voltam juntos.
 
 **Publicar agora é:** `./gasclaw up` → `./gasclaw succession sync <id>` → (quando as permissões mudarem no pai) `./gasclaw succession inherit <id>` → `./gasclaw succession health <id>`.
 

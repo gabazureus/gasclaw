@@ -490,6 +490,7 @@ você o pausa antes.
 ./gasclaw succession status                        # troca, explicação, nota, coroa
 ./gasclaw succession health <scriptId>             # as 9 checagens que destravam a coroa
 ./gasclaw succession rebase <scriptId>             # o mesmo patch sobre o código atual deste motor (sem modelo)
+./gasclaw succession inherit <scriptId>            # entrega as configurações do agente (nunca a chave nem segredo)
 ./gasclaw succession sync <scriptId>               # o build atual deste motor no sucessor COROADO (sem modelo)
 ./gasclaw succession pull                          # traz o patch coroado para succession/ para portar ao src
 ```
@@ -521,7 +522,7 @@ Todos os comandos aceitam `--prod`; sem a flag, valem para dev.
 | `./gasclaw eval <cenário\|--all> [--model id]` | Roda `evals/*.md` no dev (sai com erro se falhar) |
 | `./gasclaw tools all\|none\|<a,b,c> [pasta]` | Liga e desliga as ferramentas do agente |
 | `./gasclaw swarm <sub>` | A corrida do enxame: battery, interval, budget, run, measure, status |
-| `./gasclaw succession <sub>` | O agente sucessor: write, status, health, evaluate, rebase, sync, pull (a coroa é no painel) |
+| `./gasclaw succession <sub>` | O agente sucessor: write, status, health, evaluate, rebase, sync, inherit, pull (a coroa é no painel) |
 | `./gasclaw onboard` | Menu guiado de setup (o padrão antes de qualquer publicação) |
 
 ## Roadmap
