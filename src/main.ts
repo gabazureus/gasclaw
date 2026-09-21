@@ -3047,7 +3047,7 @@ function pocP29(step?: string): unknown {
     // O instante da IMPLANTAÇÃO é o marco zero da espera do C3: é daqui que o dono passa a poder clicar.
     salvar(withCreated(estado(), scriptId, Date.now()));
     const lista = readChildren(props);
-    writeChildren(props, withChild(lista, { scriptId, kind: 'automation', title: `p29 #${n}`, url, scopes: ['https://www.googleapis.com/auth/calendar.events'], folderId: null, parent: null, reason: 'POC P29: platform ceiling, no model involved', at: Date.now() }));
+    writeChildren(props, withChild(lista, { scriptId, kind: 'automation', title: `p29 #${n}`, url, scopes: ['https://www.googleapis.com/auth/calendar.events'], folderId: null, parent: defaultAgent()?.folderId ?? null, reason: 'POC P29: platform ceiling, no model involved', at: Date.now() }));
     return { scriptId, code: 200, ms };
   };
 
@@ -3103,6 +3103,20 @@ function pocP29(step?: string): unknown {
     return consentReading(linhas, Date.now());
   }
 
+  if (step === 'adopt') {
+    // DEFEITO DE ESCRITURAÇÃO DESTA SONDA: ela registrava os filhos com `parent: null`. Um filho é
+    // criado pelo ambiente EM NOME de um agente, e sem esse vínculo a bateria do dono não o alcança —
+    // `measureChild` recusa com "no parent agent". Os 20 já criados ficam adotados aqui, para a
+    // medição poder ser provada no ambiente real sem gastar Opus nenhum.
+    const dono = defaultAgent()?.folderId ?? null;
+    if (!dono) return { pass: false, error: 'no active agent to adopt these children' };
+    const lista = readChildren(props);
+    const meus = estado().ids;
+    writeChildren(props, lista.map((c) => (meus.includes(c.scriptId) && !c.parent ? { ...c, parent: dono } : c)));
+    const n = readChildren(props).filter((c) => meus.includes(c.scriptId) && c.parent === dono).length;
+    return { pass: n === meus.length, adopted: n, of: meus.length, parent: dono, reading: `${n} of ${meus.length} probe children now name the agent that owns the battery` };
+  }
+
   if (step === 'cleanup') {
     // C4: tirar do painel NÃO basta. `forgetChild` só apaga a linha da tela, e o projeto continua na
     // conta do dono — vinte projetos de sonda viram vinte exclusões manuais. Aqui eles vão para a
@@ -3127,7 +3141,7 @@ function pocP29(step?: string): unknown {
   // mais caro do que a frase vale.
   if (step === 'state') return { pass: true, ...estado() };
 
-  return { pass: false, error: 'steps: burst, quota, consent, cleanup, state' };
+  return { pass: false, error: 'steps: burst, quota, consent, adopt, cleanup, state' };
 }
 
 const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {
