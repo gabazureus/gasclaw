@@ -156,3 +156,37 @@ Os dois trocariam um bloqueio honesto por um resultado falso.
 
 **Uma chamada ao Opus que volte com código.** Todo o resto — criar, escrever, implantar, autorizar,
 medir, comparar, selecionar, parar e devolver os tetos — está provado no ambiente real.
+
+## 2026-09-21 — o crédito talvez NÃO seja mais o bloqueio, e agora há outro
+
+**A objeção que eu vinha repetindo caiu.** Eu recusava pedir menos tokens porque "um fonte cortado
+passa no crivo". O D7 tornou isso falso: um corte agora é RECUSADO com motivo. E o D8 revelou que o
+pedido de 8000 tokens já era incoerente com o crivo (que aceita ~5000). Com um teto que cabe nos 1342
+tokens restantes, só há dois desfechos, e os dois são critérios da Fase 5:
+
+| Desfecho | O que ele entrega |
+|---|---|
+| o Opus cabe em ~1200 tokens | um filho de verdade, implantado, medível |
+| o Opus é cortado | **o crivo recusa com motivo visível** — "pelo menos UMA geração recusada pelo crivo" |
+
+`SWARM_TOKENS=1200 ./gasclaw swarm run "..."` faz exatamente isso. **Pode ser que o dono NÃO precise
+acrescentar crédito** para a primeira geração.
+
+### O bloqueio novo: a credencial do Google Cloud expirou
+
+O deploy do D8 parou em:
+
+```
+the Google Cloud credential for gabriel@fluencerai.com expired.
+Run: gcloud auth login --enable-gdrive-access
+```
+
+É login interativo no navegador, com a conta do dono. Não é meu para fazer. E sem ela nada remoto
+funciona — o deploy e também `swarm run`, porque os dois tiram o token pelo `gcloud`. O dev segue na
+v140, SEM o D8: lá o pedido ainda é 8000 tokens, e uma geração bateria no mesmo 402.
+
+### A ordem para destravar
+
+1. o dono roda `gcloud auth login --enable-gdrive-access`;
+2. `./gasclaw up` publica o D8;
+3. `SWARM_TOKENS=1200 ./gasclaw swarm run "..."` — e o resultado, qualquer que seja, é da Fase 5.
