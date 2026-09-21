@@ -1300,5 +1300,31 @@
         "note": "README/CHANGELOG/PROGRESS com os numeros e a versao do dev; o que NAO foi provado esta dito no README da POC; duas reversoes minhas registradas com o erro de enquadramento"
       }
     }
+  },
+  {
+    "phase": "F7 item A \u2014 succession sync (Implement)",
+    "summary": "sync do build atual ao sucessor coroado: test-first, dev v158, sync real v6 byte-identico ao dist, sucessor segue ligado",
+    "scores": {
+      "correctness": {
+        "score": 9,
+        "note": "2121/2121 verdes, tsc limpo; sync real: 5 arquivos identicos ao dist via clasp clone, deployment @6 no mesmo URL, p33 check RUNNING"
+      },
+      "design": {
+        "score": 8,
+        "note": "reusa deployAgentProject/readOwnFiles/successorEnabled; nenhuma decisao pura nova (nao havia); health segue recusando coroado \u2014 lacuna de observacao"
+      },
+      "testing": {
+        "score": 9,
+        "note": "9 testes; 8/8 mutacoes mortas; mayWriteProject sobrevivia (guarda dupla) ate o teste exigir recusa antes de qualquer I/O"
+      },
+      "safety": {
+        "score": 9,
+        "note": "assertOwner + so coroado + mayWriteProject antes de I/O + leitura antes/depois; semente sem segredos; nada de prod"
+      },
+      "clarity": {
+        "score": 8,
+        "note": "README/README_PT_BR, PROGRESS com evidencia; codeMatches pos-sync registrado como esperado"
+      }
+    }
   }
 ]
