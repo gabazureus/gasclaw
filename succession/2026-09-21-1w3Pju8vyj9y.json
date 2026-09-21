@@ -1,0 +1,56 @@
+{
+  "scriptId": "1w3Pju8vyj9y1ZgBIZZDDtgRAXuBOljQ8ZyOPU-kOOUFcwtVlwB7MHb0W",
+  "url": "https://script.google.com/a/macros/fluencerai.com/s/AKfycbyfWmz6RAYLcJuhc8EU8gvCPtz9hoMSIRcnbc_h1ylxcr342X0AuZYOipker9Mpr9KIAw/exec",
+  "model": "anthropic/claude-opus-5",
+  "at": "2026-09-21T16:17:12.078Z",
+  "crownedAt": "2026-09-21T16:34:22.913Z",
+  "costUsd": 1.52363,
+  "explanation": "Fixed a real defect in the dream cycle: `planCycle` only creates steps for the generated candidates, so the incumbent's quality scenarios were never run. `dreamVerdict` and `board` sum `quality:<incumbent>:...` tallies, which stayed at 0 runs, so every cycle ended reporting \"not enough runs yet\" and no candidate could ever win — the whole cycle burned quota and could never conclude. The patch adds the incumbent's k quality repetitions to the plan (skipping it if a candidate is byte-identical, since they share the same tally key). The incumbent gets no gate steps, so it can never be eliminated and its quality steps are never skipped by `nextStep`.",
+  "evaluation": {
+    "successorPasses": 5,
+    "incumbentPasses": 5,
+    "k": 6,
+    "complete": true,
+    "verdictLeaked": false,
+    "rows": [
+      {
+        "name": "smoke",
+        "successor": true,
+        "incumbent": true
+      },
+      {
+        "name": "e1-now",
+        "successor": true,
+        "incumbent": true
+      },
+      {
+        "name": "e1-memoria",
+        "successor": false,
+        "incumbent": false
+      },
+      {
+        "name": "e1-limite",
+        "successor": true,
+        "incumbent": true
+      },
+      {
+        "name": "e1-fora-da-lista",
+        "successor": true,
+        "incumbent": true
+      },
+      {
+        "name": "e1-injecao",
+        "successor": true,
+        "incumbent": true
+      }
+    ],
+    "at": 1790007618923
+  },
+  "changes": [
+    {
+      "file": "_motor",
+      "find": "    const cycleId = d.cycleId();\n    const plan = planCycle({ cycleId, candidates: candidatos, gate, quality, k: 17 });",
+      "replace": "    const cycleId = d.cycleId();\n    const plan = planCycle({ cycleId, candidates: candidatos, gate, quality, k: 17 });\n    if (!candidatos.includes(base.system)) for (const scenario of quality) for (let rep = 0; rep < plan.k; rep++) plan.steps.push({ kind: \"quality\", candidate: base.system, scenario, rep });"
+    }
+  ]
+}

@@ -109,3 +109,15 @@ describe('o sonho cede a vez ao dono', () => {
     expect(fonte).toMatch(/failCycle\(s, `scenario/);
   });
 });
+
+// F7: a casca PASSA o titular ao plano. Sem isto o núcleo corrigido não serviria de nada — o defeito
+// original morava justamente na fiação, e foi ali que o sucessor o consertou.
+describe('startDream planeja a qualidade do titular', () => {
+  test('o plano salvo leva passos de qualidade com o prompt do titular', async () => {
+    const m = await mod();
+    expect(m.startDream('f1', deps() as never).started).toBe(true);
+    const { dreamIO } = await import('../src/dreamStore');
+    const s = dreamIO().load('f1', 'c1');
+    expect(s?.plan.steps.some((p) => p.candidate === '# titular' && p.kind === 'quality')).toBe(true);
+  });
+});

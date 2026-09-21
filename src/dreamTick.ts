@@ -54,7 +54,7 @@ export function startDream(folderId: string, d: DreamDeps): { started: boolean; 
   if (candidatos.length === 0) return { started: false, cycleId: null, reason: 'no candidate was generated' };
 
   const cycleId = d.cycleId();
-  const plan = planCycle({ cycleId, candidates: candidatos, gate, quality, k: 17 });
+  const plan = planCycle({ cycleId, candidates: candidatos, gate, quality, k: 17, incumbent: base.system });
   io.save(newCycle({ cycleId, folderId, incumbent: base.system, plan, now: d.now() }));
   io.setActive(folderId, cycleId);
   return { started: true, cycleId, reason: '' };

@@ -235,3 +235,40 @@ describe('conversão da nota para o bit da estatística', () => {
     expect(stepPassed('quality', { pass: true, grade: null })).toBe(false);
   });
 });
+
+// F7 — O PRIMEIRO DEFEITO ACHADO POR UM SUCESSOR COROADO (Opus 5, dev v153; ver succession/).
+// O plano criava passos só para os candidatos, mas `dreamVerdict` compara cada candidato com a qualidade
+// do TITULAR — que nunca era planejada. Resultado: todo ciclo terminava em "not enough runs yet", e
+// nenhum candidato podia vencer, por melhor que fosse. O ciclo inteiro gastava cota para nunca concluir.
+describe('o titular também roda a qualidade — sem isso nenhum candidato pode vencer', () => {
+  const comTitular = (candidates: string[]) => planCycle({ cycleId: 'c', candidates, gate: ['g1'], quality: ['q1', 'q2'], k: 3, incumbent: 'titular' });
+
+  test('o plano leva k repetições de cada cenário de qualidade para o TITULAR', () => {
+    const p = comTitular(['a', 'b']);
+    expect(p.steps.filter((s) => s.candidate === 'titular' && s.kind === 'quality')).toHaveLength(2 * 3);
+  });
+
+  test('o titular não passa pelo portão: ele não compete, é a régua', () => {
+    expect(comTitular(['a']).steps.some((s) => s.candidate === 'titular' && s.kind === 'gate')).toBe(false);
+  });
+
+  test('o titular não vira candidato: o placar continua listando só os candidatos', () => {
+    expect(comTitular(['a', 'b']).candidates).toEqual(['a', 'b']);
+  });
+
+  test('candidato idêntico ao titular não duplica passos: a contagem é a mesma chave', () => {
+    const p = comTitular(['titular', 'b']);
+    expect(new Set(p.steps.map(stepKey)).size).toBe(p.steps.length);
+    expect(p.steps.filter((s) => s.candidate === 'titular' && s.kind === 'quality')).toHaveLength(2 * 3);
+  });
+
+  test('o ciclo inteiro rodado CONCLUI: o veredito compara, em vez de pedir mais execuções para sempre', () => {
+    const p = comTitular(['a']);
+    let t = {};
+    for (const s of p.steps) t = recordResult(t, s, s.candidate === 'a');
+    const v = dreamVerdict('a', 'titular', t, ['q1', 'q2'], p.k);
+    expect(v.reason).not.toMatch(/not enough runs/);
+    expect(v.incumbentPasses).toBe(0);
+    expect(v.candidatePasses).toBe(2 * 3);
+  });
+});

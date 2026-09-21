@@ -32,7 +32,12 @@ export const DREAM_STEPS_PER_TICK = 5;
 /** Chave única do passo. É ela que torna o checkpoint seguro: passo feito nunca repete. */
 export const stepKey = (s: DreamStep): string => `${s.kind}:${s.candidate}:${s.scenario}:${s.rep}`;
 
-export type PlanInput = { cycleId: string; candidates: string[]; gate: string[]; quality: string[]; k: number };
+/**
+ * `incumbent`: o prompt do TITULAR. Ele roda a qualidade (não o portão: não compete, é a régua) — sem isso
+ * `dreamVerdict` compararia cada candidato com zero execuções do titular, e nenhum ciclo concluiria.
+ * Defeito achado pelo primeiro sucessor coroado (F7, Opus 5, dev v153).
+ */
+export type PlanInput = { cycleId: string; candidates: string[]; gate: string[]; quality: string[]; k: number; incumbent?: string };
 
 /**
  * Monta o plano inteiro, na ordem em que será executado: **todo o portão primeiro**, depois a
@@ -44,6 +49,10 @@ export function planCycle(i: PlanInput): DreamPlan {
   const steps: DreamStep[] = [];
   for (const candidate of i.candidates) for (const scenario of i.gate) steps.push({ kind: 'gate', candidate, scenario, rep: 0 });
   for (const candidate of i.candidates) for (const scenario of i.quality) for (let rep = 0; rep < k; rep++) steps.push({ kind: 'quality', candidate, scenario, rep });
+  // Candidato idêntico ao titular já planejou esses passos: a contagem usa a mesma chave, e repetir dobraria o titular.
+  if (i.incumbent !== undefined && !i.candidates.includes(i.incumbent)) {
+    for (const scenario of i.quality) for (let rep = 0; rep < k; rep++) steps.push({ kind: 'quality', candidate: i.incumbent, scenario, rep });
+  }
   return { cycleId: i.cycleId, candidates: [...i.candidates], k, steps };
 }
 
