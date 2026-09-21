@@ -693,9 +693,17 @@ describe('successorHealth num sucessor coroado', () => {
     expect(h.ok).toBe(true);
   });
 
-  test('permissões diferentes das do pai: só a 10ª reprova', async () => {
+  // Opção A do dono (F9): depois da coroa vale o painel do sucessor — a diferença é informada, não reprova.
+  test('permissões diferentes das do pai: 10/10, e a 10ª diz a diferença', async () => {
     coroado();
     self = { ...self!, settings: { 'ACCESS:f1': '{"users":[],"tools":[]}', 'CAP:f1': '[]', 'STATUS:f1': 'active' } };
+    const h = (await motor()).successorHealth('SLOT') as unknown as H & { checks: { detail: string }[] };
+    expect(h.ok).toBe(true);
+    expect(h.checks.find((c) => c.id === 'settings')?.detail).toContain('differ from this engine');
+  });
+  test('coroado que não devolve as permissões: a 10ª reprova', async () => {
+    coroado();
+    self = { ...self!, settings: undefined };
     const h = (await motor()).successorHealth('SLOT') as unknown as H;
     expect(h.checks.filter((c) => !c.ok).map((c) => c.id)).toEqual(['settings']);
   });

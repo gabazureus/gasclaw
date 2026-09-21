@@ -214,7 +214,6 @@ export function crownReadiness(i: ReadinessInput): { ok: boolean; checks: Readin
   const v = crownVerdict(i.record.evaluation);
   const fresca = !!i.record.evaluation && i.record.evaluation.at >= i.record.at;
   const coroado = i.crowned === true;
-  // A 10ª: depois da coroa, o filho tem de ter as permissões do pai; antes, é a coroa que as entrega.
   const pai = i.parentSettings ?? {};
   const diferem = Object.keys(pai).filter((k) => !s?.settings || (s.settings as Record<string, string | null>)[k] !== pai[k]);
   const iguais = !!s?.settings && diferem.length === 0;
@@ -235,7 +234,9 @@ export function crownReadiness(i: ReadinessInput): { ok: boolean; checks: Readin
     coroado
       ? c('evaluation', 'Crowned after an outside evaluation', true, 'the evaluation counted for the crown')
       : c('evaluation', 'Judged from outside after the last write, not worse', v.ok && fresca, !v.ok ? v.reason : fresca ? `${v.standing === 'wins' ? 'wins' : 'ties'}: ${i.record.evaluation!.successorPasses}/${i.record.evaluation!.k} vs ${i.record.evaluation!.incumbentPasses}/${i.record.evaluation!.k}` : 'the successor was written again after this evaluation: evaluate it again'),
-    c('settings', 'It has the parent’s permissions and capabilities', !coroado || iguais, !coroado ? 'handed over by the crown' : !s?.settings ? 'no health answer' : iguais ? 'same as this engine' : `${diferem.map((k) => k.split(':')[0]).join(', ')} differ from this engine${capsLado(diferem, pai, s?.settings)}: succession inherit copies this engine's over the successor's`),
+    // Opção A do dono (F9): depois da coroa vale o painel do sucessor — a 10ª só exige que ele RESPONDA as
+    // permissões, e informa a diferença para o pai. Antes da coroa, é a coroa que as entrega.
+    c('settings', coroado ? 'Its permissions and capabilities are readable' : 'It has the parent’s permissions and capabilities', !coroado || !!s?.settings, !coroado ? 'handed over by the crown' : !s?.settings ? 'no health answer' : iguais ? 'same as this engine' : `${diferem.map((k) => k.split(':')[0]).join(', ')} differ from this engine${capsLado(diferem, pai, s?.settings)}: after the crown, the successor's panel is the one that counts`),
   ];
   return { ok: checks.every((x) => x.ok), checks };
 }

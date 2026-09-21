@@ -365,8 +365,13 @@ describe('crownReadiness no modo coroado, e a 10ª checagem: as permissões do f
   test('coroado com worker só "criável" reprova: ele já devia estar vivo', () => {
     expect(falha({ self: { ...selfCoroado, trigger: 'inactive' } })).toEqual(['worker']);
   });
-  test('coroado sem as permissões do pai reprova a 10ª', () => {
-    expect(falha({ self: { ...selfCoroado, settings: { ...settings, 'CAP:f1': '[]' } } })).toEqual(['settings']);
+  // DECISÃO DO DONO (F9, opção A): depois da coroa, o painel do SUCESSOR é o que vale — é nele que o dono
+  // mexe, e o pai está parado. A 10ª não exige mais igualdade: só informa a diferença. Exigir mandava rodar
+  // o `inherit`, que apagaria o que o dono ligou no sucessor (medido: 3 das 4 capacidades).
+  test('coroado com permissões diferentes das do pai PASSA a 10ª — e diz a diferença', () => {
+    expect(falha({ self: { ...selfCoroado, settings: { ...settings, 'CAP:f1': '[]' } } })).toEqual([]);
+  });
+  test('coroado sem resposta das permissões reprova a 10ª: não dá para saber o que ele tem', () => {
     expect(falha({ self: { ...selfCoroado, settings: undefined } })).toEqual(['settings']);
   });
   test('sem resposta do health, a 10ª diz isso — não "tudo difere", que mandaria rodar o inherit à toa', () => {
@@ -379,8 +384,10 @@ describe('crownReadiness no modo coroado, e a 10ª checagem: as permissões do f
     expect(d).toContain('CAP, STATUS');
     expect(d).not.toContain('ACCESS');
     expect(d).not.toContain('f1');
-    // CAP é só nomes de capacidade: mostrar os dois lados diz ao dono PARA ONDE copiar. ACCESS (e-mails) não.
+    // CAP é só nomes de capacidade: mostrar os dois lados diz ao dono o que mudou. ACCESS (e-mails) não.
     expect(d).toContain('this engine has dream; the successor has none');
+    expect(d).toContain("successor's panel is the one that counts");
+    expect(d).not.toContain('inherit');
   });
   test('coroado não depende de avaliação nova: ela valeu para a coroa', () => {
     expect(falha({})).toEqual([]);

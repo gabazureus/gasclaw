@@ -1326,5 +1326,31 @@
         "note": "README/README_PT_BR, PROGRESS com evidencia; codeMatches pos-sync registrado como esperado"
       }
     }
+  },
+  {
+    "phase": "F9 \u2014 fechamento da branch evolucao-f5-f8 (Verify)",
+    "summary": "4 capacidades medidas no motor coroado (P36); 2 rodadas de auditoria zeradas com teste; Reach out passou a entregar no Chat do dono; A4 (lado do CAP) espera o dono",
+    "scores": {
+      "correctness": {
+        "score": 9,
+        "note": "2206/2206, tsc limpo; real: pong entregue com recibo em 79 s, agente de teste nasce vazio, health 9/10; a 10\u00aa espera decis\u00e3o do dono"
+      },
+      "design": {
+        "score": 8,
+        "note": "entrega do Reach out reusa o caminho de entrega do Chat e a autoridade de destino; conversa do dono por id da conta; crivo ganhou um n\u00edvel de depend\u00eancias \u2014 n\u00e3o o grafo inteiro"
+      },
+      "testing": {
+        "score": 9,
+        "note": "todo conserto com teste vermelho antes e 12 muta\u00e7\u00f5es pegas; o caminho real do port\u00e3o de ferramenta no despertar n\u00e3o foi exercitado no dev (o modelo pergunta em vez de chamar), fica provado por teste"
+      },
+      "process": {
+        "score": 8,
+        "note": "medi\u00e7\u00e3o no real revelou 3 defeitos que a su\u00edte n\u00e3o via (entrega, 403 do e-mail, primeira DM); errei a regex da URL do sucessor e corrigi no ato; inherit N\u00c3O rodado quando teria apagado 3 capacidades"
+      },
+      "communication": {
+        "score": 8,
+        "note": "tabela crit\u00e9rio\u2192evid\u00eancia em PROGRESS e P36; decis\u00e3o do dono isolada com recomenda\u00e7\u00e3o"
+      }
+    }
   }
 ]
