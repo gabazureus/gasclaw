@@ -49,16 +49,25 @@ export function listChatSpaces(token: string, http: ChatHttp): { name: string; t
 }
 
 /**
- * A conversa direta entre ESTA pessoa e o app — `spaces:findDirectMessage`, que aceita a identidade do app.
- * `null` quando ela ainda não existe (404). É a única forma de achar a conversa do DONO: a lista de espaços
- * traz as conversas diretas do app com qualquer pessoa do domínio que já falou com ele.
+ * A conversa direta entre ESTA pessoa e o app — `spaces:findDirectMessage`, com a identidade do app.
+ * `userId` é o id NUMÉRICO da conta (o `sub` do userinfo): com a identidade do app, a Chat API não aceita o
+ * e-mail como apelido — medido no dev, devolve 403. `null` quando a conversa ainda não existe (404). É a
+ * única forma de achar a conversa do DONO: a lista de espaços traz as conversas diretas do app com qualquer
+ * pessoa do domínio que já falou com ele.
  */
-export function findDirectMessage(token: string, email: string, http: ChatHttp): string | null {
-  if (!token || !/^[^\s@/]+@[^\s@/]+$/.test(email)) throw new Error('invalid Chat direct-message lookup');
-  const r = http(`https://chat.googleapis.com/v1/spaces:findDirectMessage?name=${encodeURIComponent(`users/${email}`)}`, { method: 'get', headers: { Authorization: `Bearer ${token}` } });
+export function findDirectMessage(token: string, userId: string, http: ChatHttp): string | null {
+  if (!token || !/^[0-9]+$/.test(userId)) throw new Error('invalid Chat direct-message lookup');
+  const r = http(`https://chat.googleapis.com/v1/spaces:findDirectMessage?name=users%2F${userId}`, { method: 'get', headers: { Authorization: `Bearer ${token}` } });
   if (r.code === 404) return null;
   const out = parse(r, 'Google Chat');
   return typeof out.name === 'string' && SPACE.test(out.name) ? out.name : null;
+}
+
+/** O id numérico da conta dona do token (`sub`), pelo userinfo — basta o escopo `userinfo.email`. */
+export function accountId(ownerToken: string, http: ChatHttp): string {
+  const out = parse(http('https://openidconnect.googleapis.com/v1/userinfo', { method: 'get', headers: { Authorization: `Bearer ${ownerToken}` } }), 'userinfo');
+  if (typeof out.sub !== 'string' || !/^[0-9]+$/.test(out.sub)) throw new Error('userinfo: no account id');
+  return out.sub;
 }
 
 export function getChatMessage(token: string, name: string, http: ChatHttp): { name: string; text: string; cardsV2: unknown[] } {

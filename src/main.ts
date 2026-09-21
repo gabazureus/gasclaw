@@ -1993,7 +1993,7 @@ function tickProactive(): void {
 function ownerDm(): string | null {
   if (!chatAppAvailable()) return null;
   try {
-    return ownerDmAsChatApp(ownerEmail());
+    return ownerDmAsChatApp();
   } catch (err) {
     console.warn(`ownerDm: ${redactMsg(err)}`);
     return null;
@@ -4171,7 +4171,7 @@ export function chatLink() {
   assertOwner();
   if (!chatAppAvailable()) return { ok: false as const, reason: 'this engine has no Google Chat app identity' };
   // A conversa do DONO, não a primeira conversa direta da lista: o app tem uma com cada pessoa que falou com ele.
-  const dm = ownerDmAsChatApp(ownerEmail());
+  const dm = ownerDmAsChatApp();
   if (!dm) return { ok: false as const, reason: 'no direct conversation with this app yet: in Google Chat, start one with the gasclaw app of this project' };
   const id = dm.replace('spaces/', '');
   return { ok: true as const, url: `https://chat.google.com/dm/${id}`, space: dm };
@@ -4277,7 +4277,7 @@ function pocP36(step?: string, params: Record<string, string> = {}): unknown {
   if (step === 'dm') {
     if (!chatAppAvailable()) return { pass: false, reading: 'this build has no Chat app identity' };
     try {
-      const dm = ownerDmAsChatApp(ownerEmail());
+      const dm = ownerDmAsChatApp();
       return { pass: !!dm, owner: ownerEmail(), dm };
     } catch (e) {
       return { pass: false, owner: ownerEmail(), error: String((e as Error)?.message ?? e).slice(0, 300) };

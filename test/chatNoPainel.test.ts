@@ -14,7 +14,9 @@ beforeEach(() => {
   dmDono = 'spaces/DMDONO';
   env = stubGas();
   env.route = (url) => {
-    if (url.startsWith('https://chat.googleapis.com/v1/spaces:findDirectMessage?')) return dmDono ? { code: 200, body: JSON.stringify({ name: dmDono, spaceType: 'DIRECT_MESSAGE' }) } : { code: 404, body: '{"error":{"code":404}}' };
+    // O id numérico da conta do dono: com a identidade do app, a Chat API não aceita o e-mail (403 no dev).
+    if (url === 'https://openidconnect.googleapis.com/v1/userinfo') return { code: 200, body: JSON.stringify({ sub: '1234567890', email: 'dono@x.com' }) };
+    if (url === 'https://chat.googleapis.com/v1/spaces:findDirectMessage?name=users%2F1234567890') return dmDono ? { code: 200, body: JSON.stringify({ name: dmDono, spaceType: 'DIRECT_MESSAGE' }) } : { code: 404, body: '{"error":{"code":404}}' };
     return url.startsWith('https://chat.googleapis.com/v1/spaces?') ? { code: 200, body: JSON.stringify({ spaces: espacos }) } : null;
   };
 });
@@ -29,7 +31,7 @@ describe('chatLink: a conversa com ESTE app do Chat', () => {
     expect(r).toMatchObject({ ok: true });
     expect(r.url).toContain('DMDONO');
     expect(r.url).not.toContain('DM1');
-    expect(env.calls.some((c) => c.url.includes(`name=users%2F${encodeURIComponent('dono@x.com')}`) || c.url.includes('name=users/dono%40x.com'))).toBe(true);
+    expect(env.calls.some((c) => c.url.endsWith('findDirectMessage?name=users%2F1234567890'))).toBe(true);
   });
 
   test('sem conversa direta com o dono ainda: diz o que fazer, sem inventar link', async () => {
