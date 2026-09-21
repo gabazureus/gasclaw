@@ -1,0 +1,19 @@
+[
+  { "input": "3 de março de 2026",     "expected": "2026-03-03" },
+  { "input": "03/03/2026",             "expected": "2026-03-03" },
+  { "input": "25 de dezembro de 2025", "expected": "2025-12-25" },
+  { "input": "1º de janeiro de 2027",  "expected": "2027-01-01" },
+  { "input": "31/12/1999",             "expected": "1999-12-31" },
+  { "input": "7 de setembro de 1822",  "expected": "1822-09-07" },
+  { "input": "15-08-2024",             "expected": "2024-08-15" },
+  { "input": "29/02/2024",             "expected": "2024-02-29" },
+  { "input": "5/6/2023",               "expected": "2023-06-05" },
+  { "input": "  12 de junho de 2025  ","expected": "2025-06-12" },
+  { "input": "20 DE ABRIL DE 2026",    "expected": "2026-04-20" },
+  { "input": "2 de fevereiro de 2024", "expected": "2024-02-02" },
+  { "input": "4 de julho de 2026",     "expected": "2026-07-04" },
+  { "input": "30 de maio de 2020",     "expected": "2020-05-30" },
+  { "input": "8 de agosto de 2008",    "expected": "2008-08-08" },
+  { "input": "31/02/2024",             "expected": "invalid" },
+  { "input": "29/02/2023",             "expected": "invalid" }
+]

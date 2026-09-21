@@ -23,7 +23,7 @@ mediu é o que decide se "15 filhos em 24 h" cabe:
 |---|---|---|---|
 | C1 | `burst` | 5 filhos criados+implantados em sequência, com o ms de cada um registrado e o **primeiro HTTP 429** (se houver) nomeado | ✅ **v132** — 5 de 5, **nenhum 429**; 4 tempos capturados, 8.083–10.910 ms por filho (criar+escrever+versionar+implantar) |
 | C2 | `quota` | o número de `projects.create` que o dia aceita antes de recusar, **declarado**. Recusar é um resultado, não uma falha | ✅ **v133** — 20 de 20 sem recusa; somando as duas rodadas do dia, **40 projetos, zero recusas**. `fitsFifteen: true` |
-| C3 | `consent` | tempo de parede entre a implantação e `authState === 'authorized'` depois do clique do dono | ⏸️ **aguarda o dono** — a sonda leu 0 de 20 autorizados e devolveu mediana **`null`**, não 0 |
+| C3 | `consent` | tempo de parede entre a implantação e `authState === 'authorized'` depois do clique do dono | ✅ **v135** — **20 de 20 autorizados**. Mediana 2.844.904 ms, mas é **limite superior** (ver ressalva) |
 | C4 | `cleanup` | os filhos vão para a lixeira do Drive (reversível) e somem do painel | ✅ **v133** — **20 de 20** na lixeira, exercitando o registro corrigido 20 vezes |
 
 **Leitura de C2:** se o dia recusar abaixo de 15, a corrida da [F6](../../conductor/tracks/f6-enxame/plan.md)
@@ -110,18 +110,36 @@ recusa**. O teto absoluto **não foi alcançado** — a sonda para em 20 de prop
 teto custaria ao dono apagar projetos um por um. O que está provado é que ele está **acima de 40**,
 e 15 cabem com folga. **O portão da F6 abre: a corrida continua sendo "até 15".**
 
-### C3 — o custo do clique: esperando o dono
+### C3 — o clique do dono, e a confirmação de uma previsão que valia a corrida inteira (v135)
 
-A sonda leu os 20 filhos e devolveu:
+Antes do clique, a sonda devolveu `authorized: 0` e mediana **`null`, não 0** — a regra funcionando
+no ambiente real. Depois que o dono autorizou os 20:
 
 ```json
-{ "authorized": 0, "total": 20, "medianMs": null,
-  "reading": "no one has authorized any child yet: the click is the owner's..." }
+{ "authorized": 20, "total": 20, "medianMs": 2844904 }
 ```
 
-A mediana é **`null`, não 0** — é a regra da P29 funcionando no ambiente real: zero diria que o
-clique é instantâneo. Para medir, o dono abre o painel, clica em *Authorize it* em um ou mais filhos,
-e roda `./gasclaw poc p29 consent`.
+**O achado que importa aqui não é o tempo — é o `authorized`.** Estes são os PRIMEIROS filhos
+autorizados jamais observados neste projeto, e eles confirmam a previsão do 302:
+
+| | sem o conserto | com o conserto (medido) |
+|---|---|---|
+| o que `fetchChild` lê | o **302**, não a resposta do filho | a resposta do filho, code 200 |
+| o que `authState` diz | `unknown` para os 20 | **`authorized` para os 20** |
+| o que a aptidão faria | julgaria **falho todo filho correto** | julga a saída de verdade |
+
+Confirma também que **a segunda perna não precisa do token**: ele não foi enviado, e a resposta veio.
+A credencial de 16 escopos não atravessa o segundo salto.
+
+#### Ressalva do número: ele é LIMITE SUPERIOR, e mede outra coisa
+
+A mediana de **2.844.904 ms (~47 min)** é o tempo entre a **implantação** e o **instante em que a
+sonda conferiu** — não entre a implantação e o clique. A sonda lê estado; ela não observa o momento
+do clique, e não há como observá-lo sem consultar de minuto em minuto. Então o número mede sobretudo
+**quando o dono chegou até a tela**, e não o custo do clique em si.
+
+O que C3 estabelece com firmeza: **o clique funciona, é um por filho, e 20 deles couberam numa
+sessão.** Para a corrida de 15, é isso que precisava ser verdade.
 
 ### C4 — a limpeza (v133)
 
