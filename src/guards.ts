@@ -31,13 +31,59 @@ const CHAMADAS: Record<string, string> = {
 
 const conta = (src: string, s: string) => src.split(s).length - 1;
 
+/** Uma `/` abre regex (e não divide) quando vem depois de operador, abertura ou palavra como `return`. */
+function abreRegex(out: string[], i: number): boolean {
+  let k = i - 1;
+  while (k >= 0 && /\s/.test(out[k])) k--;
+  if (k < 0 || '(,=:[!&|?{};+-*%<>~^'.includes(out[k])) return true;
+  let w = '';
+  while (k >= 0 && /[\w$]/.test(out[k])) w = out[k--] + w;
+  return /^(return|typeof|case|in|of|void|delete|throw|new|else|do)$/.test(w);
+}
+
+/**
+ * Troca comentários, literais de string ('', "", ``) e regex literais por espaços, MANTENDO o comprimento
+ * e as quebras de linha — os índices continuam valendo no fonte original. Sem isto, `// assertOwner();`
+ * ou `"assertOwner();"` contavam como guarda. O regex é reconhecido por heurística (`abreRegex`); se ela
+ * errar, erra igual nos dois lados, e a regra de `changesTouchGuards` cobre o que escapar daqui.
+ */
+export function codeOnly(source: string): string {
+  const s = String(source ?? '');
+  const out = s.split('');
+  const apaga = (de: number, ate: number) => { for (let k = de; k < ate && k < s.length; k++) if (s[k] !== '\n') out[k] = ' '; };
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '/' && s[i + 1] === '/') { const f = s.indexOf('\n', i); const fim = f < 0 ? s.length : f; apaga(i, fim); i = fim; }
+    else if (c === '/' && s[i + 1] === '*') { const f = s.indexOf('*/', i + 2); const fim = f < 0 ? s.length : f + 2; apaga(i, fim); i = fim - 1; }
+    else if (c === '/' && abreRegex(out, i)) {
+      // Regex literal: vai até a `/` que fecha, fora de `[...]`. Sem fechar na mesma linha, era divisão.
+      let j = i + 1;
+      let classe = false;
+      for (; j < s.length && s[j] !== '\n'; j++) {
+        if (s[j] === '\\') j++;
+        else if (s[j] === '[') classe = true;
+        else if (s[j] === ']') classe = false;
+        else if (s[j] === '/' && !classe) break;
+      }
+      if (s[j] === '/') { apaga(i, j + 1); i = j; }
+    }
+    else if (c === '"' || c === "'" || c === '`') {
+      let j = i + 1;
+      while (j < s.length && s[j] !== c && !(c !== '`' && s[j] === '\n')) j += s[j] === '\\' ? 2 : 1;
+      apaga(i, j + 1); i = j;
+    }
+  }
+  return out.join('');
+}
+
 /** Tira comentários de linha — o bundle tem comentários DENTRO da lista `NEVER_AUTO`, com aspas. */
 const semComentarios = (src: string) => src.replace(/\/\/[^\n]*/g, '');
 
 export function guardsOf(source: string): Guards {
   const src = String(source ?? '');
   const counts: Record<string, number> = {};
-  for (const [k, s] of Object.entries(CHAMADAS)) counts[k] = conta(src, s);
+  const codigo = codeOnly(src);
+  for (const [k, s] of Object.entries(CHAMADAS)) counts[k] = conta(codigo, s);
 
   // `NEVER_AUTO = [ ... ]` — `null` quando a lista SUMIU, que é diferente de lista vazia.
   let neverAuto: string[] | null = null;
@@ -76,5 +122,61 @@ export function guardsWeakened(before: string, after: string): string[] {
     else if (FORCA[nivel] < FORCA[antes]) motivos.push(`${t} approval went from "${antes}" to "${nivel}"`);
   }
   for (const t of Object.keys(a.tools)) if (!(t in d.tools)) motivos.push(`tool ${t} disappeared from the registry`);
+  return motivos;
+}
+
+/**
+ * As funções que SÃO a segurança do motor, e o próprio crivo. Contar chamadas não basta: um patch que
+ * troca o `throw` de `assertOwner` por `console.log` não mexe em chamada nenhuma, e `cliAuthorized`,
+ * `inheritable` e o `parent !== successorOf()` nem eram contados. `enabledWith` entra porque `isEnabled`
+ * só delega a ele.
+ */
+const PROTEGIDAS = [
+  'assertOwner', 'mayAct', 'mayWriteProject', 'isRunnable', 'isEnabled', 'enabledWith', 'cliAuthorized', 'validSecret', 'safeEqual',
+  'crownFromParent', 'inheritFromParent', 'evalRunForParent', 'inheritable', 'successorOf',
+  'guardsOf', 'guardsWeakened', 'changesTouchGuards', 'codeOnly', 'abreRegex', 'definitionsOf', 'PROTEGIDAS', 'CHAMADAS',
+];
+// `\d*`: o esbuild renomeia nomes que colidem (`successorOf2` existe no bundle).
+const nomeProtegido = (txt: string) => PROTEGIDAS.find((n) => new RegExp(`\\b${n}\\d*\\b`).test(txt));
+
+/** Onde cada função protegida é DEFINIDA no fonte: `function X(...) {...}` ou `var|let|const X = ...;`. */
+export function definitionsOf(source: string): { name: string; from: number; to: number }[] {
+  const c = codeOnly(source);
+  const defs: { name: string; from: number; to: number }[] = [];
+  for (const n of PROTEGIDAS) {
+    for (const m of c.matchAll(new RegExp(`\\b(function\\s+|(?:var|let|const)\\s+)${n}\\d*\\s*[(=]`, 'g'))) {
+      const funcao = m[1].startsWith('function');
+      let prof = 0;
+      let k = m.index as number;
+      for (; k < c.length; k++) {
+        const ch = c[k];
+        if (ch === '(' || ch === '[' || ch === '{') prof++;
+        else if (ch === ')' || ch === ']' || ch === '}') { prof--; if (funcao && ch === '}' && prof === 0) break; }
+        else if (!funcao && ch === ';' && prof === 0) break;
+      }
+      defs.push({ name: n, from: m.index as number, to: k + 1 });
+    }
+  }
+  return defs;
+}
+
+/**
+ * A troca TOCA uma guarda? Regra simples e conservadora — recusar à toa é aceitável, deixar passar não:
+ * 1. o `find` OU o `replace` cita o nome de uma função protegida (em qualquer lugar, até em comentário
+ *    ou string) — pega `if (false) assertOwner();`, a chamada comentada, e a redefinição por sombra;
+ * 2. o trecho do `find` cai (ainda que em parte) DENTRO da definição de uma protegida no fonte do pai —
+ *    pega a troca no corpo que não cita nome nenhum.
+ * Um patch que precisa mexer numa guarda não é um patch pontual: é o dono quem muda isso, pelo `up`.
+ */
+export function changesTouchGuards(files: readonly { name: string; source: string }[], changes: readonly { file: string; find: string; replace: string }[]): string[] {
+  const motivos: string[] = [];
+  for (const ch of changes) {
+    const nome = nomeProtegido(ch.find) ?? nomeProtegido(ch.replace);
+    if (nome) { motivos.push(`a change in ${ch.file} touches the guard ${nome}`); continue; }
+    const src = files.find((f) => f.name === ch.file)?.source ?? '';
+    const at = src.indexOf(ch.find);
+    const def = at < 0 ? undefined : definitionsOf(src).find((d) => at < d.to && d.from < at + ch.find.length);
+    if (def) motivos.push(`a change in ${ch.file} edits inside the guard ${def.name}`);
+  }
   return motivos;
 }

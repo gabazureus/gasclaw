@@ -99,6 +99,17 @@ describe('o carimbo anda mesmo com o portão FECHADO', () => {
     // Um minuto de folga: o tique pode cair na virada entre a leitura do motor e a do teste.
     expect(Math.abs(visto - minutoAtual)).toBeLessThanOrEqual(1);
   });
+  // AUDITORIA 2026-09-21: com a agenda VAZIA o laço pulava o agente antes do carimbo. Limpar a agenda às
+  // 08:00 e pôr um job das 12:00 às 15:00 disparava o job na hora — a janela vinha das 08:00.
+  test('com a agenda vazia, o relógio do agente também anda', async () => {
+    comAgenda(['initiative']);
+    env.props[`SCHED:${FOLDER}`] = '[]';
+    const m = await import('../src/main');
+    m.drainRuns();
+    const agora = new Date();
+    const minutoAtual = agora.getUTCHours() * 60 + agora.getUTCMinutes();
+    expect(Math.abs(Number(env.props[`SCHEDSEEN:${FOLDER}`]) - minutoAtual)).toBeLessThanOrEqual(1);
+  });
 });
 
 // OS TRÊS TESTES ANTERIORES DESTE BLOCO ERAM VACUAMENTE VERDES, e o revisor provou: apagar a guarda

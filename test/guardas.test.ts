@@ -8,7 +8,7 @@
 // e as que a F6 acrescentou ao caminho do que age sozinho: `mayAct`, `isRunnable`, e a chave de parada
 // `isEnabled()` (o D6 provou que ela sumir deixa `down` sem efeito no que gasta).
 import { describe, expect, test } from 'vitest';
-import { guardsOf, guardsWeakened } from '../src/guards';
+import { changesTouchGuards, codeOnly, definitionsOf, guardsOf, guardsWeakened } from '../src/guards';
 
 const motor = `
 function a() { assertOwner(); return 1; }
@@ -98,5 +98,83 @@ describe('guardsWeakened: o patch enfraquece alguma guarda?', () => {
 
   test('SUBIR a aprovação de uma tool não é enfraquecer', () => {
     expect(guardsWeakened(motor, troca('approval: "never"', 'approval: "always"'))).toEqual([]);
+  });
+});
+
+// Revisão de segurança (alta): o crivo contava chamadas no fonte CRU. Três famílias de bypass mantinham
+// a contagem igual: (a) a chamada vira texto morto; (b) o CORPO da guarda muda e as chamadas não; (c) a
+// guarda nem era contada (cliAuthorized, `parent !== successorOf()`, inheritable).
+describe('crivo endurecido: comentário, string, corpo da guarda e guardas não contadas', () => {
+  const troca = (de: string, para: string) => motor.replace(de, para);
+
+  test('(a) comentar a chamada com // enfraquece', () => {
+    expect(guardsWeakened(motor, troca('function a() { assertOwner();', 'function a() { // assertOwner();\n')).join(' ')).toMatch(/assertOwner/);
+  });
+  test('(a) comentar a chamada com /* */ enfraquece', () => {
+    expect(guardsWeakened(motor, troca('function a() { assertOwner();', 'function a() { /* assertOwner(); */')).join(' ')).toMatch(/assertOwner/);
+  });
+  test('(a) mover a chamada para dentro de uma string enfraquece', () => {
+    expect(guardsWeakened(motor, troca('function a() { assertOwner();', 'function a() { var s = "assertOwner();";')).join(' ')).toMatch(/assertOwner/);
+  });
+
+  const pai = `
+function assertOwner() {
+  var me = Session.getEffectiveUser().getEmail();
+  if (me !== owner()) throw new Error("not the owner");
+  return me;
+}
+function a() { assertOwner(); return lastSeen; }
+var cliAuthorized = (stored, given) => !!stored && !!given && safeEqual(stored, given);
+function crownFromParent(parent) {
+  if (parent !== successorOf()) {
+    return { ok: false };
+  }
+  return doCrown();
+}
+function inheritable(props8) {
+  var entries = {};
+  for (var k in props8) if (k.indexOf("SECRET") < 0) entries[k] = props8[k];
+  return entries;
+}
+function planCycle(x) { return x + 1; }
+`;
+  const arquivos = [{ name: '_motor', source: pai }];
+  const toca = (find: string, replace: string) => changesTouchGuards(arquivos, [{ file: '_motor', find, replace }]);
+
+  test('(a) `if (false) assertOwner();` — a troca cita a guarda, e isso basta para recusar', () => {
+    expect(toca('function a() { assertOwner();', 'function a() { if (false) assertOwner();').join(' ')).toMatch(/assertOwner/);
+  });
+  test('(b) mexer no CORPO de assertOwner (throw vira console.log) recusa, sem citar o nome', () => {
+    expect(toca('throw new Error("not the owner")', 'console.log("not the owner")').join(' ')).toMatch(/assertOwner/);
+  });
+  test('(c) mexer em cliAuthorized recusa', () => {
+    expect(toca('!!stored && !!given && ', '').join(' ')).toMatch(/cliAuthorized/);
+  });
+  test('(c) tirar o `parent !== successorOf()` de crownFromParent recusa', () => {
+    expect(toca('  if (parent !== successorOf()) {\n    return { ok: false };\n  }\n', '').join(' ')).toMatch(/crownFromParent|successorOf/);
+  });
+  test('(c) mexer no filtro de inheritable recusa, sem citar o nome', () => {
+    expect(toca('if (k.indexOf("SECRET") < 0) ', '').join(' ')).toMatch(/inheritable/);
+  });
+  test('um patch benigno, fora de qualquer guarda, passa', () => {
+    expect(toca('function planCycle(x) { return x + 1; }', 'function planCycle(x) { return x + 2; }')).toEqual([]);
+    expect(toca('return lastSeen;', 'return lastSeen - 1;')).toEqual([]);
+  });
+});
+
+// Achado no bundle real: `/["']x["']/g` dentro de guardsOf abria uma "string" falsa que engolia 177 mil
+// caracteres — a definição de guardsOf cobria um terço do motor, e todo patch ali seria recusado.
+describe('codeOnly: regex literal não abre string falsa', () => {
+  test('a aspa dentro de um regex não engole o código seguinte', () => {
+    const src = 'var r = /["\']x["\']/g; assertOwner(); var d = a / b; mayAct(1); var s = "q";';
+    const c = codeOnly(src);
+    expect(c).toHaveLength(src.length);
+    expect(c).toContain('assertOwner();');
+    expect(c).toContain('mayAct(1);');
+    expect(c).not.toContain('"q"');
+  });
+  test('a definição de uma protegida com regex dentro termina onde ela termina', () => {
+    const src = 'function guardsOf(s) { return /["\']a["\']/.test(s); }\nfunction planCycle() { return 1; }';
+    expect(definitionsOf(src)).toEqual([{ name: 'guardsOf', from: 0, to: src.indexOf('\n') }]);
   });
 });

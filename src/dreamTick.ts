@@ -69,7 +69,13 @@ export type TickResult = { cycleId: string | null; steps: number; status: string
  * um passo feito que não foi gravado seria refeito — com 306 passos por ciclo, refazer custa caro e,
  * pior, contamina o placar com repetição.
  */
-export function tickDream(folderId: string, d: DreamDeps): TickResult {
+/**
+ * Estimativa CONSERVADORA de um passo (agente + juiz), usada até haver um passo medido neste tique.
+ * minimal: ponto de partida declarado, não calibrado — o maior passo medido no tique a substitui se for maior.
+ */
+export const DREAM_STEP_ESTIMATE_MS = 90_000;
+
+export function tickDream(folderId: string, d: DreamDeps, deadline = Infinity): TickResult {
   const io = dreamIO();
   const cycleId = io.active(folderId);
   if (!cycleId) return { cycleId: null, steps: 0, status: 'idle' };
@@ -85,7 +91,11 @@ export function tickDream(folderId: string, d: DreamDeps): TickResult {
   const env = d.env(folderId);
   const base = d.spec(folderId);
   let feitos = 0;
+  let maiorPasso = DREAM_STEP_ESTIMATE_MS;
   for (let i = 0; i < DREAM_STEPS_PER_TICK; i++) {
+    // Passo que não cabe até o prazo nem começa: morto pelo teto de 6 min, seria pago e perdido.
+    const t0 = d.now();
+    if (t0 + maiorPasso > deadline) break;
     const step = nextStep(s.plan, new Set(s.done), s.tally);
     if (!step) break;
     const md = scenarioMd(step.scenario);
@@ -100,6 +110,7 @@ export function tickDream(folderId: string, d: DreamDeps): TickResult {
       s = afterStep(s, step, r.passed, d.now());
       io.save(s); // depois de CADA passo
       feitos++;
+      maiorPasso = Math.max(maiorPasso, d.now() - t0);
     } catch (err) {
       s = failCycle(s, `step ${stepKey(step)} threw: ${String((err as Error)?.message ?? err)}`, d.now());
       io.save(s);
@@ -125,4 +136,34 @@ function summarize(s: DreamState): string {
       return `${v.reason} (${v.sees})`;
     })
     .join(' · ');
+}
+
+/** Arrendamento do tique de sonho nas Script Properties: o valor é até quando ele vale (ms). */
+export const DREAM_LEASE_KEY = 'DREAMTICK_LEASE';
+
+/**
+ * Um tique de sonho por vez. Gatilhos de 1 min se sobrepõem quando um tique passa de 60 s, e dois tiques
+ * no mesmo ciclo pagariam o mesmo passo duas vezes — e o último `save` apagaria o passo do outro.
+ *
+ * O ScriptLock é GLOBAL (o mesmo da aprovação, ver `observe.ts`): segurá-lo durante minutos de passos
+ * travaria o "Aprovar" do dono. Então ele guarda só a TROCA do arrendamento, sem espera (`tryLock(0)`), e
+ * o arrendamento vale até `until` — o teto da execução —, de modo que uma execução morta não o deixa preso.
+ * Devolve `false` quando pulou.
+ */
+export function withDreamLease(now: number, until: number, f: () => void): boolean {
+  const props = PropertiesService.getScriptProperties();
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(0)) return false;
+  try {
+    if (Number(props.getProperty(DREAM_LEASE_KEY)) > now) return false;
+    props.setProperty(DREAM_LEASE_KEY, String(until));
+  } finally {
+    lock.releaseLock();
+  }
+  try {
+    f();
+  } finally {
+    props.deleteProperty(DREAM_LEASE_KEY);
+  }
+  return true;
 }

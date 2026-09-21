@@ -121,3 +121,90 @@ describe('startDream planeja a qualidade do titular', () => {
     expect(s?.plan.steps.some((p) => p.candidate === '# titular' && p.kind === 'quality')).toBe(true);
   });
 });
+
+// Revisão 2026-09-21: o tique do sonho vinha DEPOIS de um pump de até 240 s e rodava até 5 execuções sem
+// prazo. O Apps Script mata em 6 min — o passo morto no meio é pago e perdido. Agora ele recebe o prazo.
+describe('tickDream respeita o prazo da execução', () => {
+  let relogio = 0;
+  let chamadas = 0;
+  const comRun = (ms: number) =>
+    vi.doMock('../src/dreamRun', async (orig) => ({
+      ...(await orig<typeof import('../src/dreamRun')>()),
+      runDreamStep: () => ((chamadas++, (relogio += ms)), { passed: true }),
+    }));
+  beforeEach(() => ((relogio = 0), (chamadas = 0)));
+  afterEach(() => vi.doUnmock('../src/dreamRun'));
+  const dRelogio = () => deps({ now: () => relogio }) as never;
+
+  test('prazo que não cabe um passo: não começa nenhum', async () => {
+    comRun(1_000);
+    const m = await mod();
+    m.startDream('f1', dRelogio());
+    const r = m.tickDream('f1', dRelogio(), relogio + 1_000);
+    expect(r.steps).toBe(0);
+    expect(chamadas).toBe(0);
+    expect(r.status).toBe('running');
+  });
+
+  test('para antes do passo que estouraria o prazo, usando a duração MEDIDA quando ela é maior', async () => {
+    comRun(120_000); // passo mais lento que a estimativa
+    const m = await mod();
+    m.startDream('f1', dRelogio());
+    const r = m.tickDream('f1', dRelogio(), relogio + 250_000);
+    // t=0: 0+est<=250 roda → t=120; t=120: 120+120=240<=250 roda → t=240; 240+120>250 para.
+    expect(r.steps).toBe(2);
+  });
+
+  test('sem prazo, continua tomando até DREAM_STEPS_PER_TICK', async () => {
+    comRun(1_000);
+    const m = await mod();
+    m.startDream('f1', dRelogio());
+    const { DREAM_STEPS_PER_TICK } = await import('../src/dreamCycle');
+    expect(m.tickDream('f1', dRelogio()).steps).toBe(DREAM_STEPS_PER_TICK);
+  });
+});
+
+// Gatilhos de 1 min se sobrepõem quando um tique passa de 60 s. Dois tiques no mesmo ciclo pagariam o
+// mesmo passo duas vezes, e o último `save` apagaria o passo do outro. O segundo tique PULA o sonho.
+describe('withDreamLease: um tique de sonho por vez', () => {
+  const props = () => (globalThis as never as { PropertiesService: { getScriptProperties: () => { setProperty: (k: string, v: string) => void; getProperty: (k: string) => string | null } } }).PropertiesService.getScriptProperties();
+
+  test('livre: roda, e solta o arrendamento no fim', async () => {
+    const m = await mod();
+    let rodou = false;
+    expect(m.withDreamLease(1_000, 400_000, () => void (rodou = true))).toBe(true);
+    expect(rodou).toBe(true);
+    expect(props().getProperty(m.DREAM_LEASE_KEY)).toBeNull();
+  });
+
+  test('outro tique segurando (arrendamento no futuro): pula sem rodar', async () => {
+    const m = await mod();
+    props().setProperty(m.DREAM_LEASE_KEY, '5000');
+    let rodou = false;
+    expect(m.withDreamLease(1_000, 400_000, () => void (rodou = true))).toBe(false);
+    expect(rodou).toBe(false);
+    expect(props().getProperty(m.DREAM_LEASE_KEY)).toBe('5000');
+  });
+
+  test('arrendamento vencido (execução morta pelo teto): o próximo tique assume', async () => {
+    const m = await mod();
+    props().setProperty(m.DREAM_LEASE_KEY, '500');
+    let rodou = false;
+    expect(m.withDreamLease(1_000, 400_000, () => void (rodou = true))).toBe(true);
+    expect(rodou).toBe(true);
+  });
+
+  test('exceção dentro: o arrendamento sai mesmo assim', async () => {
+    const m = await mod();
+    expect(() => m.withDreamLease(1_000, 400_000, () => { throw new Error('x'); })).toThrow('x');
+    expect(props().getProperty(m.DREAM_LEASE_KEY)).toBeNull();
+  });
+
+  test('ScriptLock ocupado: não espera, pula', async () => {
+    vi.stubGlobal('LockService', { getScriptLock: () => ({ tryLock: () => false, releaseLock: () => undefined }) });
+    const m = await mod();
+    let rodou = false;
+    expect(m.withDreamLease(1_000, 400_000, () => void (rodou = true))).toBe(false);
+    expect(rodou).toBe(false);
+  });
+});

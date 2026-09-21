@@ -5,7 +5,8 @@
 // Mostrar 12/17 contra 9/17 sem dizer que k=17 só detecta melhora de 50% para 90% convidaria o dono a
 // ler vantagem aritmética como vantagem real. É o mesmo erro que o desenho antigo do ciclo cometia
 // somando notas de uma execução cada.
-import { beatsIncumbent, kSees } from './dream';
+import { kSees } from './dream';
+import { dreamVerdict } from './dreamCycle';
 import type { DreamState } from './dreamStore';
 
 export type Row = {
@@ -58,6 +59,9 @@ export function board(s: DreamState | null): Board | null {
       .reduce((acc, [, v]) => ({ passes: acc.passes + v.passes, runs: acc.runs + v.runs }), { passes: 0, runs: 0 });
   };
   const tit = contagem(s.incumbent);
+  // `wins` é o MESMO veredito do fim do ciclo: amostra = cenários de qualidade × k, e nada antes das
+  // execuções completas. Com k como amostra, o placar mostrava vitória no meio do ciclo e NaN depois.
+  const quality = [...new Set(s.plan.steps.filter((st) => st.kind === 'quality').map((st) => st.scenario))];
   return {
     cycleId: s.cycleId,
     status: s.status,
@@ -76,7 +80,7 @@ export function board(s: DreamState | null): Board | null {
         runs: n.runs,
         rate: n.runs > 0 ? n.passes / n.runs : null,
         incumbentPasses: tit.passes,
-        wins: beatsIncumbent(n.passes, tit.passes, k),
+        wins: dreamVerdict(c, s.incumbent, s.tally, quality, k).wins,
         added: d.added.slice(0, MAX_DIFF),
         removed: d.removed.slice(0, MAX_DIFF),
       };

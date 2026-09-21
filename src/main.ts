@@ -1,13 +1,13 @@
 import { namesOf, scenarioMd, SCENARIOS } from './judgeSet';
 import { parseScenario } from './eval';
-import { startDream, tickDream, type DreamDeps } from './dreamTick';
+import { startDream, tickDream, withDreamLease, type DreamDeps } from './dreamTick';
 import { dreamIO } from './dreamStore';
 import { failProp, failuresFrom, parseFailures, serializeFailures, withFailure } from './failureLog';
 import { mergeAcrossGenerations, originLabel, parseSchema, validateValues, type ConfigField } from './agentConfig';
 import { capAction, childrenSpendUpperBound, FAMILY_NOTE } from './family';
 import { BUDGET_CEILING_USD, effectiveBudget, parseBudgetOverride } from './budget';
 import { burstReading, consentReading, P29_MAX_CREATES, parseP29State, quotaReading, withCreated, withRefusal, type BurstRow, type ConsentRow, type P29State } from './swarm';
-import { cluster, hasMaterial, type Failure } from './dreamCycle';
+import { cluster, eliminated, hasMaterial, type Failure } from './dreamCycle';
 import { AUTO_NOTE, cleanAutoList, mayAutoApprove, NEVER_AUTO, noReplySpan, onProactiveBlock } from './autoApprove';
 import { dueJobs, JOB_MAX, jobText, parseSchedule, serializeSchedule } from './schedule';
 import { board } from './dreamBoard';
@@ -1746,6 +1746,7 @@ export function runDetail(id: string) {
 
 /** Alvo do gatilho de 1 min (sem assertOwner: o gatilho roda como o dono). */
 export function drainRuns() {
+  const inicio = Date.now(); // o teto de 6 min conta daqui; o sonho, último, usa o que sobrar
   if (runP3WorkerProbe()) return { n: 0, ms: 0, oldest: null };
   if (runP3IdleProbe()) return { n: 0, ms: 0, oldest: null };
   if (runP22TickProbe()) return { n: 0, ms: 0, oldest: null };
@@ -1768,7 +1769,8 @@ export function drainRuns() {
   // Proatividade: o MESMO worker, nenhum gatilho novo (item 28). Isolado como os outros — um defeito
   // no despertar não pode cancelar o trabalho que o dono pediu.
   isolado('wake', () => tickProactive());
-  isolado('dream', () => {
+  // Prazo: 330 s dos 360 s, sobrando para gravar. Arrendamento até o teto: tique sobreposto pula o sonho.
+  isolado('dream', () => void withDreamLease(Date.now(), inicio + 360_000, () => {
     const d = dreamDeps();
     const props = PropertiesService.getScriptProperties();
     const congelamento = props.getProperty('CAPS_ENABLED');
@@ -1777,9 +1779,9 @@ export function drainRuns() {
       // sonhando e gastando cota — o oposto do que arquivar significa — e a chave de emergência não
       // pararia justamente o que roda sozinho, que é o que ela existe para parar.
       if (!mayAct(a.folderId, 'dream').ok) continue;
-      tickDream(a.folderId, d);
+      tickDream(a.folderId, d, inicio + 330_000);
     }
-  });
+  }));
   return drained ?? { n: 0, ms: 0, oldest: null };
 }
 
@@ -1927,7 +1929,6 @@ function tickProactive(): void {
   const congelamento = props.getProperty('CAPS_ENABLED');
   for (const a of store.listAgents()) {
     const { jobs } = parseSchedule(props.getProperty(schedProp(a.folderId)));
-    if (jobs.length === 0) continue;
 
     // O CARIMBO ANDA ANTES DO PORTÃO, e esta ordem é o conserto de um defeito que a revisão pegou.
     //
@@ -1942,8 +1943,11 @@ function tickProactive(): void {
     // então `lastSeen` já era `minutos`, a janela nascia vazia e NADA vencia nunca. O controle
     // positivo do teste foi quem pegou: os seis testes de portão continuavam verdes, porque um motor
     // que não desperta nunca também não desperta quando não deve.
+    // E ANDA ANTES DA AGENDA VAZIA (auditoria 2026-09-21): pular o agente sem jobs congelava o carimbo, e o
+    // primeiro job posto depois herdava a janela velha — disparava na hora.
     const visto = props.getProperty(seenProp(a.folderId));
     props.setProperty(seenProp(a.folderId), String(minutos));
+    if (jobs.length === 0) continue;
 
     const v = mayAct(a.folderId, 'initiative');
     if (!v.ok) continue;
@@ -3562,6 +3566,9 @@ export function evaluateSuccessor(scriptId: string) {
   const rec = readSuccessors(props).find((r) => r.scriptId === String(scriptId ?? '').trim());
   if (!rec) return { ok: false as const, reason: 'unknown successor' };
   if (rec.crownedAt !== null) return { ok: false as const, reason: 'this successor was already crowned' };
+  // Gasta OpenRouter dos dois lados: `./gasclaw down`, succeed desligado e o congelamento param isto também.
+  const pode = mayAct(rec.folderId, 'succeed');
+  if (!pode.ok) return { ok: false as const, reason: pode.reason };
   const key = store.getApiKey();
   if (!key) return { ok: false as const, reason: 'save the OpenRouter key first' };
   const { ms, ...ev } = evaluateFromOutside(rec.url, rec.folderId, key);
@@ -3582,6 +3589,10 @@ export function crownSuccessor(scriptId: string) {
   const rec = readSuccessors(props).find((r) => r.scriptId === String(scriptId ?? '').trim());
   if (!rec) return { ok: false as const, reason: 'unknown successor' };
   if (rec.crownedAt !== null) return { ok: false as const, reason: 'this successor was already crowned' };
+  // UM coroado por vez: o slot é um por pasta, então dois agentes podiam ter um sucessor avaliado cada, e
+  // coroar o segundo o ligava com o primeiro rodando — dois motores, as duas agendas (auditoria 2026-09-21).
+  const outro = readSuccessors(props).find((r) => r.crownedAt !== null);
+  if (outro) return { ok: false as const, reason: `another successor is already crowned (${outro.scriptId}): take the agent back from it first` };
   // O HEALTH INTEIRO, não só a nota: a coroa pausa o motor que hoje funciona, e só vale se o sucessor
   // consegue de fato servir o agente — todas as checagens, lidas AGORA.
   const saude = healthOf(rec);
@@ -3589,6 +3600,12 @@ export function crownSuccessor(scriptId: string) {
   // termina os dois que já existem. Qualquer outra checagem reprovada continua travando.
   const metade = halfCrowned(saude.checks);
   if (!saude.ok && !metade) return { ok: false as const, reason: `the successor is not ready: ${saude.checks.filter((c) => !c.ok).map((c) => `${c.label} — ${c.detail}`).join('; ')}`, checks: saude.checks };
+  // Fora da metade, a coroa passa pela porta de `succeed` — com o motor parado ela recusa, porque ligar o
+  // filho ali não troca motor nenhum. A metade não: ali ela TERMINA os dois que já rodam.
+  if (!metade) {
+    const pode = mayAct(rec.folderId, 'succeed');
+    if (!pode.ok) return { ok: false as const, reason: pode.reason };
+  }
   const veredito = crownVerdict(rec.evaluation);
   if (!veredito.ok) return { ok: false as const, reason: veredito.reason };
   // A HERANÇA vem ANTES de ligar: um sucessor que assume sem as permissões do pai responderia ao dono
@@ -3609,7 +3626,8 @@ export function crownSuccessor(scriptId: string) {
     if (!crownLanded(resposta, successorEnabled(rec.url))) {
       store.setEnabled(antes);
       const motivo = resposta?.error ? ` (${resposta.error})` : '';
-      return { ok: false as const, reason: `the successor did not take the crown${motivo}. It is still paused, and this engine is running again.` };
+      const estado = antes ? 'this engine is running again' : 'this engine stays paused, as it was';
+      return { ok: false as const, reason: `the successor did not take the crown${motivo}. It is still paused, and ${estado}.` };
     }
   }
   saveSuccessor(props, { ...rec, crownedAt: Date.now() });
@@ -3770,6 +3788,9 @@ export function rebaseSuccessor(scriptId: string) {
   const rec = readSuccessors(props).find((r) => r.scriptId === String(scriptId ?? '').trim());
   if (!rec) return { ok: false as const, reason: 'unknown successor' };
   if (rec.crownedAt !== null) return { ok: false as const, reason: 'this successor was already crowned' };
+  // Implanta código: a mesma porta de quem escreve (auditoria 2026-09-21 — o rebase passava por fora dela).
+  const pode = mayAct(rec.folderId, 'succeed');
+  if (!pode.ok) return { ok: false as const, reason: pode.reason };
   const own = ScriptApp.getScriptId();
   const guarda = mayWriteProject(rec.scriptId, own);
   if (!guarda.ok) return { ok: false as const, reason: guarda.reason };
@@ -4192,6 +4213,67 @@ function pocP35(step?: string): unknown {
   };
 }
 
+/**
+ * P36 (F9) — as quatro capacidades medidas NO MOTOR QUE RESPONDE (o coroado), pelo caminho real de cada
+ * uma. Só o dono (a CLI com o segredo). Cada passo que muda algo tem o seu passo de desfazer.
+ */
+function pocP36(step?: string): unknown {
+  const ag = defaultAgent();
+  if (!ag) return { pass: false, error: 'there is no agent' };
+  const props = PropertiesService.getScriptProperties();
+  const id = ag.folderId;
+  const tz = Session.getScriptTimeZone();
+  const agora = new Date();
+  const minutos = Number(Utilities.formatDate(agora, tz, 'HH')) * 60 + Number(Utilities.formatDate(agora, tz, 'mm'));
+  if (step === 'status') {
+    return { pass: true, enabled: store.isEnabled(), agent: ag.name, capsApproved: parseCapabilities(props.getProperty(`CAP:${id}`)), capsEffective: effectiveCapabilities(parseCapabilities(props.getProperty(`CAP:${id}`)), props.getProperty('CAPS_ENABLED')), creator: creatorOf(props.getProperty('CREATOR'), store.listAgents()), schedule: parseSchedule(props.getProperty(schedProp(id))).jobs, seen: props.getProperty(seenProp(id)), nowMinute: minutos, dream: dreamIO().active(id), mayAct: { dream: mayAct(id, 'dream'), initiative: mayAct(id, 'initiative'), succeed: mayAct(id, 'succeed'), create: mayAct(id, 'create') } };
+  }
+  // D1 — o ciclo começa pelo MESMO botão do dono; o worker de 1 min é quem o avança.
+  if (step === 'dream') return { pass: true, ...startAgentDream(id) };
+  if (step === 'dreamstate') {
+    const d = agentDream(id);
+    const s = d.state;
+    return { pass: !!s, cycleId: d.cycleId, status: s?.status ?? null, stepsDone: s?.done.length ?? 0, stepsTotal: s?.plan.steps.length ?? 0, eliminated: s ? eliminated(s.tally).length : 0, candidates: s ? s.plan.candidates.length : 0, error: s?.error ?? null, board: d.board ? d.board.rows.map((r) => ({ wins: r.wins, passes: r.passes, runs: r.runs })) : null, material: d.material };
+  }
+  // R1 — um job daqui a 2 min na agenda REAL; o worker dispara pelo caminho de sempre. A agenda anterior fica guardada.
+  if (step === 'wake') {
+    const antes = props.getProperty(schedProp(id));
+    if (props.getProperty('P36_SCHED_BACKUP') === null) props.setProperty('P36_SCHED_BACKUP', antes ?? '');
+    const at = (minutos + 2) % 1440;
+    const jobs = [...parseSchedule(antes).jobs, { at, prompt: 'F9 probe (Reach out): reply with exactly the word pong. Do not use any tool.', days: [] }];
+    setAgentSchedule(id, jobs);
+    return { pass: true, armedAtMinute: minutos, fireAtMinute: at, reading: 'wait ~3 min, then read the most recent run with ./gasclaw trace' };
+  }
+  if (step === 'wakeclear') {
+    const b = props.getProperty('P36_SCHED_BACKUP');
+    if (b === null) return { pass: true, reading: 'nothing to restore' };
+    if (b === '') props.deleteProperty(schedProp(id));
+    else props.setProperty(schedProp(id), b);
+    props.deleteProperty('P36_SCHED_BACKUP');
+    return { pass: true, schedule: parseSchedule(props.getProperty(schedProp(id))).jobs };
+  }
+  // C1 — o efeito da tool `agent.create` (o que roda depois do card): o agente nasce sem nada.
+  if (step === 'create') {
+    const nome = `f9-probe-${Date.now().toString(36)}`;
+    const msg = bornAgent(loadAgent(id), nome, 'Probe agent for the F9 check. Remove me.');
+    const novo = store.listAgents().find((a) => a.name === nome);
+    if (!novo) return { pass: false, msg };
+    const caps = props.getProperty(`CAP:${novo.folderId}`);
+    const acesso = approvedOf(novo.folderId); // null = nada aprovado, que é o que se quer
+    const vazio = caps === '[]' && (acesso === null || (acesso.tools.length === 0 && acesso.users.length === 0));
+    props.setProperty('P36_CREATED', novo.folderId);
+    return { pass: vazio, name: nome, msg, caps, tools: acesso?.tools ?? [], users: acesso?.users ?? [] };
+  }
+  if (step === 'createclean') {
+    const f = props.getProperty('P36_CREATED');
+    if (!f) return { pass: true, reading: 'nothing to remove' };
+    removeAgent(f); // tira do painel e apaga as chaves; a pasta fica no Drive (nunca se apaga dado)
+    props.deleteProperty('P36_CREATED');
+    return { pass: !store.listAgents().some((a) => a.folderId === f), removed: f };
+  }
+  return { pass: false, error: 'steps: status, dream, dreamstate, wake, wakeclear, create, createclean' };
+}
+
 const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {
   p1: () => pocUrlFetchTimeout(),
   p2: (step, params = {}) => pocP2(step, params, runIO()),
@@ -4208,6 +4290,7 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p33: (step) => pocP33(step),
   p34: (step, params = {}) => pocP34(step, params),
   p35: (step) => pocP35(step),
+  p36: (step) => pocP36(step),
   p6: (step) => pocP6(step, ownerEmail()),
   p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),

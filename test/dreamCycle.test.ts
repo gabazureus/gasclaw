@@ -272,3 +272,33 @@ describe('o titular também roda a qualidade — sem isso nenhum candidato pode 
     expect(v.candidatePasses).toBe(2 * 3);
   });
 });
+
+// Revisão 2026-09-21: candidatos são PROMPTS inteiros e têm ':' ("Regra: ..."). `eliminated` cortava a
+// chave no primeiro ':' e nunca achava o candidato — o portão não eliminava ninguém.
+describe('portão com candidatos que contêm ":"', () => {
+  const cands = ['# A\nRegra: seja breve', '# B\nNota: 1:2'];
+  const p = () => planCycle({ cycleId: 'c1', candidates: cands, gate: ['g1'], quality: ['q1'], k: 2, incumbent: '# T\nTom: neutro' });
+
+  test('quem falhou no portão é eliminado e nextStep não gasta qualidade nele', () => {
+    const t = recordResult({}, { kind: 'gate', candidate: cands[0], scenario: 'g1', rep: 0 }, false);
+    expect(eliminated(t)).toEqual([cands[0]]);
+    const done = new Set([stepKey({ kind: 'gate', candidate: cands[0], scenario: 'g1', rep: 0 })]);
+    const s = nextStep(p(), done, t)!;
+    expect(s.candidate).not.toBe(cands[0]);
+    let feito = new Set(done);
+    let tt = t;
+    for (let s2 = nextStep(p(), feito, tt); s2; s2 = nextStep(p(), feito, tt)) {
+      expect(s2.candidate).not.toBe(cands[0]);
+      tt = recordResult(tt, s2, true);
+      feito = new Set([...feito, stepKey(s2)]);
+    }
+  });
+
+  test('dreamVerdict nunca coroa quem falhou no portão, mesmo com qualidade perfeita', () => {
+    let t = {};
+    for (const s of p().steps) t = recordResult(t, s, s.kind === 'quality' ? s.candidate === cands[0] : s.candidate !== cands[0]);
+    const v = dreamVerdict(cands[0], '# T\nTom: neutro', t, ['q1'], 2);
+    expect(v.wins).toBe(false);
+    expect(v.reason).toMatch(/failed a gate/);
+  });
+});

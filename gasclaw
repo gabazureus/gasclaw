@@ -189,7 +189,9 @@ script_url() { # $1 id da implantacao · $2 exec|dev
 }
 exec_url() { script_url "$1" exec; }
 dev_url()  { script_url "$1" dev; }
-url() { exec_url "$(var "DEPLOY_ID_$UP")"; }
+# GASCLAW_ENGINE_URL: fala com OUTRO motor do dono (o sucessor coroado, que é quem responde depois da
+# coroa). Só leitura, poc e trace fazem sentido ali; o segredo da CLI é registrado nele na primeira vez.
+url() { if [ -n "${GASCLAW_ENGINE_URL:-}" ]; then printf '%s' "$GASCLAW_ENGINE_URL"; else exec_url "$(var "DEPLOY_ID_$UP")"; fi; }
 # A tela de conversa servida pelo proprio Apps Script (`?page=chat`). Quem nao tem Google Workspace nao
 # fica sem conversar com o agente: o Chat do Google e um canal a mais, nao o unico.
 chat_url() { printf '%s?page=chat' "$(url)"; }
@@ -719,6 +721,7 @@ cmd_poc() { # POCs automáticas, só no dev: cria fixtures, mede e sai ≠ 0 se 
       *) die "unexpected argument: $1" ;;
     esac
   done
+  [ -z "${GASCLAW_ENGINE_URL:-}" ] || ensure_cli_secret
   say "POC $id on dev (may take a few minutes)"
   case "$id" in p3|p22) trace="&trace=0" ;; esac # a própria POC não pode contaminar a medição do gatilho ocioso
   r=$(remote "poc&id=$id${step:+&step=$step}$trace$extra") || die "the web app call failed (run ./gasclaw doctor)"

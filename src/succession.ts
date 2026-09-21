@@ -3,8 +3,9 @@
 // A casca (`writeSuccessor` no main) lê o próprio código pela API, manda ao Opus, e implanta o que sair
 // daqui. Tudo o que DECIDE mora neste arquivo: o que vai no pedido, se o patch vira código, e se o dono
 // pode coroar. A casca só faz I/O.
+import { parseCapabilities } from './agentCaps';
 import { beatsIncumbent } from './dream';
-import { guardsWeakened } from './guards';
+import { changesTouchGuards, guardsWeakened } from './guards';
 import { applyPatch, parsePatch, type Change, type PatchFile } from './patch';
 
 /**
@@ -53,7 +54,8 @@ export function prepareSuccessor(files: readonly PatchFile[], raw: string): Prep
   }
   const a = applyPatch(files, p.changes);
   if (!a.ok) return a;
-  const motivos: string[] = [];
+  // Contar guardas não vê a troca no CORPO de uma delas, nem as que não são contadas: por troca, também.
+  const motivos: string[] = changesTouchGuards(files, p.changes);
   for (const nome of new Set(p.changes.map((c) => c.file))) {
     const antes = files.find((f) => f.name === nome)?.source ?? '';
     const depois = a.files.find((f) => f.name === nome)?.source ?? '';
@@ -196,6 +198,14 @@ export type ReadinessInput = {
 
 export type ReadinessCheck = { id: string; label: string; ok: boolean; detail: string };
 
+/** Os dois lados de CAP, só com nomes de capacidade — nunca o valor de ACCESS (e-mails) ou de outra chave. */
+function capsLado(diferem: string[], pai: Record<string, string | null>, filho: Record<string, string | null> | undefined): string {
+  const k = diferem.find((x) => x.startsWith('CAP:'));
+  if (!k) return '';
+  const nomes = (v: string | null | undefined) => parseCapabilities(v ?? null).join(', ') || 'none';
+  return ` (this engine has ${nomes(pai[k])}; the successor has ${nomes(filho?.[k])})`;
+}
+
 export function crownReadiness(i: ReadinessInput): { ok: boolean; checks: ReadinessCheck[] } {
   const s = i.self;
   const c = (id: string, label: string, ok: boolean, detail: string): ReadinessCheck => ({ id, label, ok, detail });
@@ -223,7 +233,7 @@ export function crownReadiness(i: ReadinessInput): { ok: boolean; checks: Readin
     coroado
       ? c('evaluation', 'Crowned after an outside evaluation', true, 'the evaluation counted for the crown')
       : c('evaluation', 'Judged from outside after the last write, not worse', v.ok && fresca, !v.ok ? v.reason : fresca ? `${v.standing === 'wins' ? 'wins' : 'ties'}: ${i.record.evaluation!.successorPasses}/${i.record.evaluation!.k} vs ${i.record.evaluation!.incumbentPasses}/${i.record.evaluation!.k}` : 'the successor was written again after this evaluation: evaluate it again'),
-    c('settings', 'It has the parent’s permissions and capabilities', !coroado || iguais, !coroado ? 'handed over by the crown' : iguais ? 'same as this engine' : `${diferem.map((k) => k.split(':')[0]).join(', ')} differ from this engine: succession inherit copies this engine's over the successor's`),
+    c('settings', 'It has the parent’s permissions and capabilities', !coroado || iguais, !coroado ? 'handed over by the crown' : iguais ? 'same as this engine' : `${diferem.map((k) => k.split(':')[0]).join(', ')} differ from this engine${capsLado(diferem, pai, s?.settings)}: succession inherit copies this engine's over the successor's`),
   ];
   return { ok: checks.every((x) => x.ok), checks };
 }
@@ -246,6 +256,8 @@ export function codeMatches(parent: readonly PatchFile[], successor: readonly Pa
   const extra = real.find((x) => !esperado.files.some((f) => f.name === x.name));
   if (extra) return { ok: false, reason: `the successor has a file this engine does not: ${extra.name}` };
   if (!successor.some((f) => f.name === 'successor_seed')) return { ok: false, reason: 'the successor has no seed' };
+  const tocadas = changesTouchGuards(parent, changes);
+  if (tocadas.length) return { ok: false, reason: tocadas.join('; ') };
   // O crivo de novo, no que está IMPLANTADO: o patch passou por ele ao ser escrito, e a igualdade acima
   // já implica isso — mas a coroa não se apoia numa implicação quando pode medir.
   for (const f of real) {

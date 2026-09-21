@@ -6,11 +6,12 @@
 import { describe, expect, test } from 'vitest';
 import { board, diffLines } from '../src/dreamBoard';
 import type { DreamState } from '../src/dreamStore';
+import { dreamVerdict, planCycle, recordResult, type Tally } from '../src/dreamCycle';
 
 const estado = (tally: Record<string, { passes: number; runs: number }>, cands = ['CAND']): DreamState =>
   ({
     cycleId: 'c1', folderId: 'f1', incumbent: 'linha A\nlinha B', status: 'running',
-    plan: { cycleId: 'c1', candidates: cands, k: 17, steps: new Array(10).fill({ kind: 'gate', candidate: 'CAND', scenario: 'g1', rep: 0 }) },
+    plan: { cycleId: 'c1', candidates: cands, k: 17, steps: [...new Array(9).fill({ kind: 'gate', candidate: 'CAND', scenario: 'g1', rep: 0 }), { kind: 'quality', candidate: 'CAND', scenario: 'q1', rep: 0 }] },
     tally, done: [], startedAt: 0, updatedAt: 0,
   }) as unknown as DreamState;
 
@@ -70,5 +71,25 @@ describe('board: o número vem com o que ele enxerga', () => {
   test('o erro do ciclo aparece no placar em vez de sumir', () => {
     const s = { ...estado({}), status: 'failed', error: 'scenario "q9" is not in this build' } as DreamState;
     expect(board(s)!.error).toMatch(/not in this build/);
+  });
+});
+
+// Revisão 2026-09-21: `wins` usava k como tamanho da amostra, mas os acertos somam TODOS os cenários
+// de qualidade. Mostrava vitória no meio do ciclo (titular com 0 execuções) e NaN depois.
+describe('board: wins é o mesmo veredito de dreamVerdict', () => {
+  const plano = () => planCycle({ cycleId: 'c1', candidates: ['CAND'], gate: ['g1'], quality: ['q1', 'q2'], k: 3, incumbent: 'TIT' });
+  const st = (tally: Tally) => ({ cycleId: 'c1', folderId: 'f1', incumbent: 'TIT', status: 'running', plan: plano(), tally, done: [], startedAt: 0, updatedAt: 0 }) as unknown as DreamState;
+
+  test('no meio do ciclo, com o titular sem execuções, não declara vitória', () => {
+    const b = board(st({ 'gate:CAND:g1': { passes: 1, runs: 1 }, 'quality:CAND:q1': { passes: 3, runs: 3 } }))!;
+    expect(b.rows[0].wins).toBe(false);
+  });
+
+  test('ciclo completo: wins bate com dreamVerdict sobre 2 cenários × k', () => {
+    let t: Tally = {};
+    for (const s of plano().steps) t = recordResult(t, s, s.candidate === 'CAND');
+    const b = board(st(t))!;
+    expect(b.rows[0].wins).toBe(dreamVerdict('CAND', 'TIT', t, ['q1', 'q2'], 3).wins);
+    expect(b.rows[0].wins).toBe(true);
   });
 });

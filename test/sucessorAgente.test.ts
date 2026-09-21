@@ -303,6 +303,40 @@ describe('crownSuccessor: a coroa — só com o health inteiro; o titular para A
     expect(env.props['RUNTIME_ENABLED']).toBeUndefined();
   });
 
+  // AUDITORIA 2026-09-21: o slot é um por pasta, então dois agentes podiam ter um sucessor avaliado cada.
+  // Coroar o segundo ligava o segundo com o primeiro ainda rodando — dois motores, as duas agendas.
+  test('OUTRO sucessor já coroado: recusa, sem tocar no titular nem chamar a coroa', async () => {
+    slotRegistrado(avaliado(5, 5));
+    env.props['SUCCESSORS'] = JSON.stringify([{ scriptId: 'OUTRO', chunks: 1 }, { scriptId: 'SLOT', chunks: 1 }]);
+    env.props['SUCC:OUTRO:0'] = JSON.stringify({ scriptId: 'OUTRO', url: URL_NOVO, folderId: 'f2', at: 1, model: 'opus', explanation: 'x', changes: [], costUsd: 1, evaluation: null, crownedAt: 5 });
+    const r = (await motor()).crownSuccessor('SLOT');
+    expect(r.ok).toBe(false);
+    expect(String(r.reason)).toContain('already crowned');
+    expect(env.props['RUNTIME_ENABLED']).toBeUndefined();
+    expect(coroou()).toBe(false);
+  });
+
+  test('titular já PARADO e não é coroa pela metade: recusa — parado é parado', async () => {
+    slotRegistrado(avaliado(5, 5));
+    env.props['RUNTIME_ENABLED'] = 'false';
+    expect((await motor()).crownSuccessor('SLOT').ok).toBe(false);
+    expect(coroou()).toBe(false);
+  });
+
+  test('succeed desligado: recusa a coroa (a mesma porta de mayAct que escrever usa)', async () => {
+    slotRegistrado(avaliado(5, 5));
+    env.props['CAP:f1'] = '[]';
+    expect((await motor()).crownSuccessor('SLOT').ok).toBe(false);
+    expect(coroou()).toBe(false);
+  });
+
+  test('coroa pela metade com o titular JÁ parado: conclui mesmo assim (é o que termina os dois motores)', async () => {
+    slotRegistrado(avaliado(5, 5));
+    env.props['RUNTIME_ENABLED'] = 'false';
+    self = { ...SELF_OK, enabled: true, trigger: 'active' };
+    expect((await motor()).crownSuccessor('SLOT')).toMatchObject({ ok: true });
+  });
+
   test('o sucessor recusa a coroa: o titular VOLTA a rodar', async () => {
     slotRegistrado(avaliado(5, 5));
     coroa = { ok: false, error: 'only the parent named in the seed crowns this successor' };
@@ -334,6 +368,21 @@ describe('rebaseSuccessor: o mesmo patch sobre o código ATUAL, sem o Opus', () 
     saude = { enabled: true };
     expect((await motor()).rebaseSuccessor('SLOT').ok).toBe(false);
     expect(escrito()).toBeNull();
+  });
+  // AUDITORIA 2026-09-21: rebase implanta e avaliar gasta OpenRouter — e nenhum dos dois passava por mayAct,
+  // então `./gasclaw down`, succeed desligado e o congelamento não os paravam.
+  test.each([
+    ['motor parado', () => void (env.props['RUNTIME_ENABLED'] = 'false')],
+    ['succeed desligado', () => void (env.props['CAP:f1'] = '[]')],
+    ['congelamento de emergência', () => void (env.props['CAPS_ENABLED'] = 'false')],
+  ])('rebase e avaliação recusam com %s, sem implantar nem gastar', async (_n, preparar) => {
+    slotRegistrado({ changes: troca });
+    preparar();
+    const m = await motor();
+    expect(m.rebaseSuccessor('SLOT').ok).toBe(false);
+    expect(escrito()).toBeNull();
+    expect(m.evaluateSuccessor('SLOT').ok).toBe(false);
+    expect(env.fetched('openrouter.ai/api/v1/chat')).toHaveLength(0);
   });
 });
 

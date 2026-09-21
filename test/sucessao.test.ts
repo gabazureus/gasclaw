@@ -47,6 +47,13 @@ describe('prepareSuccessor: o patch vira o código do sucessor, ou é recusado c
     expect(r.reason).toContain('assertOwner()');
   });
 
+  // Revisão de segurança: a troca no CORPO de uma guarda não muda contagem nenhuma — e mesmo assim recusa.
+  test('um patch que mexe DENTRO de uma guarda é recusado, mesmo sem mudar chamada nenhuma', () => {
+    const comGuarda = [{ name: '_motor', source: motor + 'function mayAct(id) { if (!ok(id)) return no(); return yes(); }\n' }, ...arquivos.slice(1)];
+    const r = prepareSuccessor(comGuarda, patch([{ file: '_motor', find: 'if (!ok(id)) return no(); ', replace: '' }]));
+    expect(r).toEqual({ ok: false, reason: expect.stringContaining('mayAct') });
+  });
+
   test('uma troca que não muda nada é recusada: não melhora coisa alguma', () => {
     const r = prepareSuccessor(arquivos, patch([{ file: '_motor', find: 'return lastSeen;', replace: 'return lastSeen;' }]));
     expect(r).toEqual({ ok: false, reason: expect.stringContaining('changes nothing') });
@@ -213,6 +220,13 @@ describe('codeMatches: o sucessor é o código ATUAL do pai mais o patch', () =>
   test('idêntico ao pai + patch: confere', () => {
     expect(codeMatches(pai, filho, troca).ok).toBe(true);
   });
+  // Um registro escrito ANTES do crivo por troca não coroa se o patch mexe dentro de uma guarda.
+  test('patch que mexe DENTRO de uma guarda não coroa, mesmo idêntico ao pai + patch', () => {
+    const paiG = [{ name: '_motor', source: 'function assertOwner() { if (x) throw new Error("no"); }' }, pai[1]];
+    const trocaG = [{ file: '_motor', find: 'throw new Error("no")', replace: 'console.log("no")' }];
+    const filhoG = [{ name: '_motor', source: 'function assertOwner() { if (x) console.log("no"); }' }, pai[1], filho[2]];
+    expect(codeMatches(paiG, filhoG, trocaG)).toEqual({ ok: false, reason: expect.stringContaining('assertOwner') });
+  });
   test('o pai mudou depois da geração: não confere — coroar desfaria a mudança', () => {
     const paiNovo = [{ name: '_motor', source: 'function a() { assertOwner(); return 9; }' }, pai[1]];
     expect(codeMatches(paiNovo, filho, troca)).toEqual({ ok: false, reason: expect.stringContaining('changed since') });
@@ -361,6 +375,8 @@ describe('crownReadiness no modo coroado, e a 10ª checagem: as permissões do f
     expect(d).toContain('CAP, STATUS');
     expect(d).not.toContain('ACCESS');
     expect(d).not.toContain('f1');
+    // CAP é só nomes de capacidade: mostrar os dois lados diz ao dono PARA ONDE copiar. ACCESS (e-mails) não.
+    expect(d).toContain('this engine has dream; the successor has none');
   });
   test('coroado não depende de avaliação nova: ela valeu para a coroa', () => {
     expect(falha({})).toEqual([]);
