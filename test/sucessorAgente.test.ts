@@ -253,12 +253,12 @@ describe('crownSuccessor: a coroa — só com o health inteiro; o titular para A
     expect(coroou()).toBe(false);
   });
 
-  test('successorHealth devolve as 9 checagens com o motivo de cada uma', async () => {
+  test('successorHealth devolve as 10 checagens com o motivo de cada uma', async () => {
     slotRegistrado(avaliado(5, 5));
     self = { ...SELF_OK, hasKey: false };
     const h = (await motor()).successorHealth('SLOT') as unknown as { ok: boolean; checks: { id: string; ok: boolean }[] };
     expect(h.ok).toBe(false);
-    expect(h.checks).toHaveLength(9);
+    expect(h.checks).toHaveLength(10);
     expect(h.checks.filter((c) => !c.ok).map((c) => c.id)).toEqual(['key']);
   });
 
@@ -591,5 +591,55 @@ describe('no SUCESSOR, a porta `inherit`: só do pai da semente, e só a lista f
     const m = await import('../src/main');
     const out = m.doPost({ parameter: { action: 'inherit', parent: 'PAI', entries: '{lixo' } } as unknown as GoogleAppsScript.Events.DoPost) as unknown as { getContent: () => string };
     expect(JSON.parse(out.getContent()).ok).toBe(false);
+  });
+});
+
+// F8 — o health funciona num sucessor COROADO (antes recusava), com a 10ª checagem.
+describe('successorHealth num sucessor coroado', () => {
+  const coroado = () => {
+    // O registro guarda o patch que o coroou; ele JÁ está no src (Fase 3), então não entra na conta.
+    slotRegistrado({ crownedAt: 9, changes: [{ file: '_motor', find: 'return lastSeen;', replace: 'return lastSeen - 1;' }] });
+    codigoFilho = MOTOR; // coroado e sincronizado: o código dele é o de HOJE do pai
+    self = { ...SELF_OK, enabled: true, trigger: 'active', settings: { 'ACCESS:f1': env.props['ACCESS:f1'], 'CAP:f1': env.props['CAP:f1'], 'STATUS:f1': env.props['STATUS:f1'] } };
+  };
+  type H = { ok: boolean; checks: { id: string; ok: boolean }[] };
+
+  test('respondendo, com o código de hoje e as permissões do pai: 10/10', async () => {
+    coroado();
+    const h = (await motor()).successorHealth('SLOT') as unknown as H;
+    expect(h.checks).toHaveLength(10);
+    expect(h.checks.filter((c) => !c.ok).map((c) => c.id)).toEqual([]);
+    expect(h.ok).toBe(true);
+  });
+
+  test('permissões diferentes das do pai: só a 10ª reprova', async () => {
+    coroado();
+    self = { ...self!, settings: { 'ACCESS:f1': '{"users":[],"tools":[]}', 'CAP:f1': '[]', 'STATUS:f1': 'active' } };
+    const h = (await motor()).successorHealth('SLOT') as unknown as H;
+    expect(h.checks.filter((c) => !c.ok).map((c) => c.id)).toEqual(['settings']);
+  });
+
+  test('código de ontem num coroado: a checagem de código reprova (rode succession sync)', async () => {
+    coroado();
+    codigoFilho = MOTOR.replace('return lastSeen;', 'return 0;');
+    const h = (await motor()).successorHealth('SLOT') as unknown as H;
+    expect(h.checks.filter((c) => !c.ok).map((c) => c.id)).toEqual(['code']);
+  });
+});
+
+
+// A porta readiness REAL do sucessor (os testes acima a simulam): ela precisa devolver as permissões do
+// agente para a 10ª checagem, e nada secreto.
+describe('no SUCESSOR, readiness devolve as permissões do agente — e nenhum segredo', () => {
+  test('settings traz ACCESS, CAP e STATUS do agente da semente; a chave não aparece', async () => {
+    vi.stubGlobal('GASCLAW_SEED', { bornDisabled: true, parent: 'PAI', agents: [{ name: 'agente-teste', folderId: 'f1' }], at: 1 });
+    env.props['AGENTS'] = JSON.stringify([{ name: 'agente-teste', folderId: 'f1' }]);
+    const m = await import('../src/main');
+    const out = m.doPost({ parameter: { action: 'readiness' } } as unknown as GoogleAppsScript.Events.DoPost) as unknown as { getContent: () => string };
+    const texto = out.getContent();
+    const j = JSON.parse(texto) as { ok: boolean; self: { settings: Record<string, string | null> } };
+    expect(j.ok).toBe(true);
+    expect(j.self.settings).toEqual({ 'ACCESS:f1': env.props['ACCESS:f1'], 'CAP:f1': env.props['CAP:f1'], 'STATUS:f1': 'active' });
+    expect(texto).not.toContain('sk-or');
   });
 });

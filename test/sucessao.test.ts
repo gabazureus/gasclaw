@@ -177,10 +177,10 @@ describe('crownReadiness: o health que libera a coroa — TODAS as checagens', (
   const base = { parentId: 'PAI', authState: 'authorized', self: selfOk, code: { ok: true, reason: 'identical' }, record: { at: 10, evaluation: ev } };
   const falha = (over: object) => crownReadiness({ ...base, ...over }).checks.filter((c) => !c.ok).map((c) => c.id);
 
-  test('tudo certo: libera, com as 9 checagens', () => {
+  test('tudo certo: libera, com as 10 checagens', () => {
     const r = crownReadiness(base);
     expect(r.ok).toBe(true);
-    expect(r.checks.map((c) => c.id)).toEqual(['authorized', 'seed', 'paused', 'key', 'scopes', 'drive', 'worker', 'code', 'evaluation']);
+    expect(r.checks.map((c) => c.id)).toEqual(['authorized', 'seed', 'paused', 'key', 'scopes', 'drive', 'worker', 'code', 'evaluation', 'settings']);
   });
   test('cada falha derruba só a sua checagem, e o todo', () => {
     expect(falha({ authState: 'needs-consent' })).toEqual(['authorized']);
@@ -328,5 +328,39 @@ describe('inheritable: o que o filho herda do pai — lista FECHADA, segredo nun
 
   test('nada que não seja texto passa', () => {
     expect(inheritable({ 'CAP:f1': null as unknown as string }).entries).toEqual({});
+  });
+});
+
+
+// F8 — o health de um sucessor COROADO. As perguntas mudam: ele tem de estar RESPONDENDO (não parado),
+// com o worker VIVO (não "criável"), com o código de HOJE do pai, e com as permissões do pai.
+describe('crownReadiness no modo coroado, e a 10ª checagem: as permissões do filho são as do pai', () => {
+  const settings = { 'ACCESS:f1': '{"users":["a@x.com"]}', 'CAP:f1': '["dream"]', 'STATUS:f1': 'active' };
+  const selfCoroado = { seedParent: 'PAI', enabled: true, hasKey: true, authRequired: false, agentReadable: { ok: true, detail: 'read' }, trigger: 'active' as const, settings: { ...settings } };
+  const base = { parentId: 'PAI', authState: 'authorized', self: selfCoroado, code: { ok: true, reason: 'identical' }, record: { at: 10, evaluation: null }, crowned: true, parentSettings: settings };
+  const falha = (over: object) => crownReadiness({ ...base, ...over }).checks.filter((c) => !c.ok).map((c) => c.id);
+
+  test('coroado, respondendo, com as permissões do pai: 10/10', () => {
+    const r = crownReadiness(base);
+    expect(r.ok).toBe(true);
+    expect(r.checks).toHaveLength(10);
+  });
+  test('coroado PARADO reprova: ninguém responde pelo agente', () => {
+    expect(falha({ self: { ...selfCoroado, enabled: false } })).toEqual(['paused']);
+  });
+  test('coroado com worker só "criável" reprova: ele já devia estar vivo', () => {
+    expect(falha({ self: { ...selfCoroado, trigger: 'inactive' } })).toEqual(['worker']);
+  });
+  test('coroado sem as permissões do pai reprova a 10ª', () => {
+    expect(falha({ self: { ...selfCoroado, settings: { ...settings, 'CAP:f1': '[]' } } })).toEqual(['settings']);
+    expect(falha({ self: { ...selfCoroado, settings: undefined } })).toEqual(['settings']);
+  });
+  test('coroado não depende de avaliação nova: ela valeu para a coroa', () => {
+    expect(falha({})).toEqual([]);
+  });
+  test('ANTES da coroa a 10ª passa: é a coroa que entrega as permissões', () => {
+    const antes = crownReadiness({ ...base, crowned: false, self: { ...selfCoroado, enabled: false, trigger: 'inactive', settings: {} }, record: { at: 1, evaluation: { successorPasses: 5, incumbentPasses: 5, k: 6, complete: true, verdictLeaked: false, at: 2, rows: [] } } });
+    expect(antes.checks.find((c) => c.id === 'settings')?.ok).toBe(true);
+    expect(antes.ok).toBe(true);
   });
 });

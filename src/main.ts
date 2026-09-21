@@ -3606,6 +3606,9 @@ function crownFromParent(parent: string) {
   return { ok: true };
 }
 
+/** As permissões que a 10ª checagem compara: quem conversa e com que tools, capacidades, e o estado. */
+const SETTINGS_KEYS = ['ACCESS:', 'CAP:', 'STATUS:'];
+
 /** No SUCESSOR: o que ele diz de si mesmo para o pai decidir a coroa. Nada secreto: só estados. */
 function readinessSelf() {
   const ag = defaultAgent();
@@ -3619,7 +3622,9 @@ function readinessSelf() {
       leitura = { ok: false, detail: (e as Error).message.slice(0, 200) };
     }
   }
-  return { ok: true, self: { seedParent: store.successorOf(), enabled: store.isEnabled(), hasKey: !!store.getApiKey(), authRequired: authStatus().required, agentReadable: leitura, trigger: observe.triggerStatus(true) } };
+  const props = PropertiesService.getScriptProperties();
+  const settings = ag ? Object.fromEntries(SETTINGS_KEYS.map((k) => [`${k}${ag.folderId}`, props.getProperty(`${k}${ag.folderId}`)])) : {};
+  return { ok: true, self: { seedParent: store.successorOf(), enabled: store.isEnabled(), hasKey: !!store.getApiKey(), authRequired: authStatus().required, agentReadable: leitura, trigger: observe.triggerStatus(true), settings } };
 }
 
 /** No PAI: as 9 checagens da coroa, lidas agora — consentimento, o health profundo e o código implantado. */
@@ -3647,12 +3652,16 @@ function healthOf(rec: SuccessorRecord) {
     const lido = call(`${SCRIPT_API}/${rec.scriptId}/content`, 'get');
     if (lido.code === 200) {
       const filho = ((JSON.parse(lido.full) as { files?: ProjectFile[] }).files ?? []).map((f) => ({ name: f.name, source: f.source }));
-      code = codeMatches(readOwnFiles(call, own).map((f) => ({ name: f.name, source: f.source })), filho, rec.changes);
+      // Coroado: o patch dele já está no src do pai (Fase 3) e o sync leva o build de hoje — então o código
+      // certo é o do pai SEM patch nenhum. Antes da coroa, é o do pai MAIS o patch do registro.
+      code = codeMatches(readOwnFiles(call, own).map((f) => ({ name: f.name, source: f.source })), filho, rec.crownedAt !== null ? [] : rec.changes);
     }
   } catch {
     code = null;
   }
-  return crownReadiness({ parentId: own, authState: estado, self, code, record: rec });
+  const props = PropertiesService.getScriptProperties();
+  const parentSettings = Object.fromEntries(SETTINGS_KEYS.map((k) => [`${k}${rec.folderId}`, props.getProperty(`${k}${rec.folderId}`)]));
+  return crownReadiness({ parentId: own, authState: estado, self, code, record: rec, crowned: rec.crownedAt !== null, parentSettings });
 }
 
 /**
@@ -3709,7 +3718,6 @@ export function successorHealth(scriptId: string) {
   assertOwner();
   const rec = readSuccessors(PropertiesService.getScriptProperties()).find((r) => r.scriptId === String(scriptId ?? '').trim());
   if (!rec) return { ok: false as const, reason: 'unknown successor', checks: [] as ReadinessCheck[] };
-  if (rec.crownedAt !== null) return { ok: false as const, reason: 'this successor was already crowned', checks: [] as ReadinessCheck[] };
   const h = healthOf(rec);
   return { scriptId: rec.scriptId, ...h, halfCrowned: halfCrowned(h.checks) };
 }

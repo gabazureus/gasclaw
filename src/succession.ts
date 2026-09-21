@@ -176,6 +176,8 @@ export type SuccessorSelf = {
   authRequired: boolean;
   agentReadable: { ok: boolean; detail: string };
   trigger: 'active' | 'inactive' | 'awaiting authorization';
+  /** F8: as permissões do agente como o FILHO as tem (ACCESS:, CAP:, STATUS:) — nunca segredo. */
+  settings?: Record<string, string | null>;
 };
 
 export type ReadinessInput = {
@@ -186,6 +188,10 @@ export type ReadinessInput = {
   /** O código do sucessor confere com o do pai + o patch? `null` quando nem deu para ler. */
   code: { ok: boolean; reason: string } | null;
   record: Pick<SuccessorRecord, 'at' | 'evaluation'>;
+  /** F8: o sucessor já foi coroado? As perguntas mudam — ele tem de estar RESPONDENDO. */
+  crowned?: boolean;
+  /** F8: as mesmas chaves, como o PAI as tem. A 10ª checagem compara. */
+  parentSettings?: Record<string, string | null>;
 };
 
 export type ReadinessCheck = { id: string; label: string; ok: boolean; detail: string };
@@ -195,17 +201,28 @@ export function crownReadiness(i: ReadinessInput): { ok: boolean; checks: Readin
   const c = (id: string, label: string, ok: boolean, detail: string): ReadinessCheck => ({ id, label, ok, detail });
   const v = crownVerdict(i.record.evaluation);
   const fresca = !!i.record.evaluation && i.record.evaluation.at >= i.record.at;
+  const coroado = i.crowned === true;
+  // A 10ª: depois da coroa, o filho tem de ter as permissões do pai; antes, é a coroa que as entrega.
+  const pai = i.parentSettings ?? {};
+  const iguais = !!s?.settings && Object.keys(pai).every((k) => (s.settings as Record<string, string | null>)[k] === pai[k]);
   const checks = [
     c('authorized', 'You authorized the successor project', i.authState === 'authorized', i.authState === 'authorized' ? 'authorized' : i.authState === 'needs-consent' ? 'open it once and authorize it' : `could not read it (${i.authState})`),
     c('seed', 'Its seed names this engine as the parent', !!s && s.seedParent === i.parentId, !s ? 'no health answer' : s.seedParent === i.parentId ? 'same parent' : `its parent is ${s.seedParent ?? 'nobody'}`),
-    c('paused', 'It is paused until the crown', !!s && s.enabled === false, !s ? 'no health answer' : s.enabled ? 'it is RUNNING already: two engines would answer the same agent' : 'paused'),
+    coroado
+      ? c('paused', 'It answers for the agent (crowned)', !!s && s.enabled === true, !s ? 'no health answer' : s.enabled ? 'running' : 'it is PAUSED: nobody answers for the agent')
+      : c('paused', 'It is paused until the crown', !!s && s.enabled === false, !s ? 'no health answer' : s.enabled ? 'it is RUNNING already: two engines would answer the same agent' : 'paused'),
     c('key', 'The OpenRouter key is pasted in its panel', !!s && s.hasKey, !s ? 'no health answer' : s.hasKey ? 'key present' : 'paste the key in its panel'),
     c('scopes', 'No scope is waiting for your consent', !!s && !s.authRequired, !s ? 'no health answer' : s.authRequired ? 'a scope is missing: open its panel and authorize' : 'all scopes granted'),
     c('drive', 'It reads the agent folder in Drive', !!s && s.agentReadable.ok, !s ? 'no health answer' : s.agentReadable.detail),
     // `inactive` passa: a coroa cria o gatilho. `awaiting authorization` não: sem o escopo, ele nunca nasce.
-    c('worker', 'Its 1-minute worker exists or can be created', !!s && s.trigger !== 'awaiting authorization', !s ? 'no health answer' : s.trigger === 'active' ? 'active' : s.trigger === 'inactive' ? 'created by the crown' : 'the trigger scope is not authorized'),
+    coroado
+      ? c('worker', 'Its 1-minute worker is running', !!s && s.trigger === 'active', !s ? 'no health answer' : s.trigger)
+      : c('worker', 'Its 1-minute worker exists or can be created', !!s && s.trigger !== 'awaiting authorization', !s ? 'no health answer' : s.trigger === 'active' ? 'active' : s.trigger === 'inactive' ? 'created by the crown' : 'the trigger scope is not authorized'),
     c('code', 'Its code is this engine’s CURRENT code plus the patch', !!i.code && i.code.ok, !i.code ? 'could not read its code' : i.code.reason),
-    c('evaluation', 'Judged from outside after the last write, not worse', v.ok && fresca, !v.ok ? v.reason : fresca ? `${v.standing === 'wins' ? 'wins' : 'ties'}: ${i.record.evaluation!.successorPasses}/${i.record.evaluation!.k} vs ${i.record.evaluation!.incumbentPasses}/${i.record.evaluation!.k}` : 'the successor was written again after this evaluation: evaluate it again'),
+    coroado
+      ? c('evaluation', 'Crowned after an outside evaluation', true, 'the evaluation counted for the crown')
+      : c('evaluation', 'Judged from outside after the last write, not worse', v.ok && fresca, !v.ok ? v.reason : fresca ? `${v.standing === 'wins' ? 'wins' : 'ties'}: ${i.record.evaluation!.successorPasses}/${i.record.evaluation!.k} vs ${i.record.evaluation!.incumbentPasses}/${i.record.evaluation!.k}` : 'the successor was written again after this evaluation: evaluate it again'),
+    c('settings', 'It has the parent’s permissions and capabilities', !coroado || iguais, !coroado ? 'handed over by the crown' : iguais ? 'same as this engine' : 'differs from this engine: run succession inherit'),
   ];
   return { ok: checks.every((x) => x.ok), checks };
 }
