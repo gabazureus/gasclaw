@@ -18,7 +18,10 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 > seguinte **reusa** o sucessor parado: você vincula o GCP, autoriza e cola a chave **uma vez**.
 > O que o botão fazia antes (um projeto pequeno de código novo) continua existindo com o nome certo:
 > **Write an automation**. CLI: `./gasclaw succession write | status | evaluate | pull`.
-> ✅ no dev (v152) · a primeira geração real espera o teto de gasto do dia.
+> A coroa fica em **Projects → Successor agents** e só destrava quando o **health** do sucessor passa
+> nas 9 checagens (autorizado, parado, chave, escopos, Drive, worker, código = este motor + o patch,
+> avaliação recente). **Rebase** reaplica o mesmo patch quando este motor mudou, sem chamar o modelo.
+> ✅ no dev (v153) · primeira geração real: US$ 1,52, um defeito real no ciclo de sonho, health 9/9.
 
 > 🧬 **Capacidades por agente (F5):** quatro poderes que você liga UM A UM no painel, e nenhum liga
 > outro — **Sonho** (reescreve o próprio prompt e se mede contra o conjunto-juiz), **Procurar**
