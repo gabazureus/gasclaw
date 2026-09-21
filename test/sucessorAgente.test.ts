@@ -697,7 +697,7 @@ describe('successorHealth num sucessor coroado', () => {
   test('permissões diferentes das do pai: 10/10, e a 10ª diz a diferença', async () => {
     coroado();
     self = { ...self!, settings: { 'ACCESS:f1': '{"users":[],"tools":[]}', 'CAP:f1': '[]', 'STATUS:f1': 'active' } };
-    const h = (await motor()).successorHealth('SLOT') as unknown as H & { checks: { detail: string }[] };
+    const h = (await motor()).successorHealth('SLOT') as unknown as { ok: boolean; checks: { id: string; ok: boolean; detail: string }[] };
     expect(h.ok).toBe(true);
     expect(h.checks.find((c) => c.id === 'settings')?.detail).toContain('differ from this engine');
   });
