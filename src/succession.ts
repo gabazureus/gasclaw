@@ -161,3 +161,79 @@ export function slotFor(list: readonly SuccessorRecord[], folderId: string): Suc
   const livres = list.filter((r) => r.folderId === folderId && r.crownedAt === null);
   return livres.length ? livres.reduce((a, b) => (b.at > a.at ? b : a)) : null;
 }
+
+// ---------- O HEALTH da coroa: o sucessor pode assumir? ----------
+//
+// A nota da avaliação não basta. Ela diz que o sucessor responde os cenários na caixa de areia; não diz
+// que ele consegue SERVIR o agente depois da coroa. Cada checagem abaixo é uma forma real de a troca
+// falhar — e todas precisam passar, porque a coroa pausa o motor que hoje funciona.
+
+/** O que o sucessor diz de si mesmo pelo `health` profundo (lido com o token do dono). */
+export type SuccessorSelf = {
+  seedParent: string | null;
+  enabled: boolean;
+  hasKey: boolean;
+  authRequired: boolean;
+  agentReadable: { ok: boolean; detail: string };
+  trigger: 'active' | 'inactive' | 'awaiting authorization';
+};
+
+export type ReadinessInput = {
+  parentId: string;
+  /** `authorized`, `needs-consent`, `unknown`… — o estado de consentimento lido de fora. */
+  authState: string;
+  self: SuccessorSelf | null;
+  /** O código do sucessor confere com o do pai + o patch? `null` quando nem deu para ler. */
+  code: { ok: boolean; reason: string } | null;
+  record: Pick<SuccessorRecord, 'at' | 'evaluation'>;
+};
+
+export type ReadinessCheck = { id: string; label: string; ok: boolean; detail: string };
+
+export function crownReadiness(i: ReadinessInput): { ok: boolean; checks: ReadinessCheck[] } {
+  const s = i.self;
+  const c = (id: string, label: string, ok: boolean, detail: string): ReadinessCheck => ({ id, label, ok, detail });
+  const v = crownVerdict(i.record.evaluation);
+  const fresca = !!i.record.evaluation && i.record.evaluation.at >= i.record.at;
+  const checks = [
+    c('authorized', 'You authorized the successor project', i.authState === 'authorized', i.authState === 'authorized' ? 'authorized' : i.authState === 'needs-consent' ? 'open it once and authorize it' : `could not read it (${i.authState})`),
+    c('seed', 'Its seed names this engine as the parent', !!s && s.seedParent === i.parentId, !s ? 'no health answer' : s.seedParent === i.parentId ? 'same parent' : `its parent is ${s.seedParent ?? 'nobody'}`),
+    c('paused', 'It is paused until the crown', !!s && s.enabled === false, !s ? 'no health answer' : s.enabled ? 'it is RUNNING already: two engines would answer the same agent' : 'paused'),
+    c('key', 'The OpenRouter key is pasted in its panel', !!s && s.hasKey, !s ? 'no health answer' : s.hasKey ? 'key present' : 'paste the key in its panel'),
+    c('scopes', 'No scope is waiting for your consent', !!s && !s.authRequired, !s ? 'no health answer' : s.authRequired ? 'a scope is missing: open its panel and authorize' : 'all scopes granted'),
+    c('drive', 'It reads the agent folder in Drive', !!s && s.agentReadable.ok, !s ? 'no health answer' : s.agentReadable.detail),
+    // `inactive` passa: a coroa cria o gatilho. `awaiting authorization` não: sem o escopo, ele nunca nasce.
+    c('worker', 'Its 1-minute worker exists or can be created', !!s && s.trigger !== 'awaiting authorization', !s ? 'no health answer' : s.trigger === 'active' ? 'active' : s.trigger === 'inactive' ? 'created by the crown' : 'the trigger scope is not authorized'),
+    c('code', 'Its code is this engine’s CURRENT code plus the patch', !!i.code && i.code.ok, !i.code ? 'could not read its code' : i.code.reason),
+    c('evaluation', 'Judged from outside after the last write, not worse', v.ok && fresca, !v.ok ? v.reason : fresca ? `${v.standing === 'wins' ? 'wins' : 'ties'}: ${i.record.evaluation!.successorPasses}/${i.record.evaluation!.k} vs ${i.record.evaluation!.incumbentPasses}/${i.record.evaluation!.k}` : 'the successor was written again after this evaluation: evaluate it again'),
+  ];
+  return { ok: checks.every((x) => x.ok), checks };
+}
+
+/**
+ * O código do sucessor é o código ATUAL do pai mais o patch? Se o pai mudou depois da geração (um `up`
+ * novo), coroar o sucessor DESFARIA essas mudanças — ele foi feito de um pai que não existe mais.
+ * Confere também o manifesto (os mesmos escopos) e o crivo de guardas, de novo, no que está implantado.
+ */
+export function codeMatches(parent: readonly PatchFile[], successor: readonly PatchFile[], changes: readonly Change[]): { ok: boolean; reason: string } {
+  const semSemente = (fs: readonly PatchFile[]) => fs.filter((f) => f.name !== 'successor_seed');
+  const esperado = applyPatch(semSemente(parent), changes);
+  if (!esperado.ok) return { ok: false, reason: `this engine changed since the successor was written (${esperado.reason}): write it again` };
+  const real = semSemente(successor);
+  for (const f of esperado.files) {
+    const r = real.find((x) => x.name === f.name);
+    if (!r) return { ok: false, reason: `the successor is missing ${f.name}` };
+    if (r.source !== f.source) return { ok: false, reason: f.name === 'appsscript' ? 'its manifest differs from this engine’s' : `${f.name} differs from this engine’s code plus the patch` };
+  }
+  const extra = real.find((x) => !esperado.files.some((f) => f.name === x.name));
+  if (extra) return { ok: false, reason: `the successor has a file this engine does not: ${extra.name}` };
+  if (!successor.some((f) => f.name === 'successor_seed')) return { ok: false, reason: 'the successor has no seed' };
+  // O crivo de novo, no que está IMPLANTADO: o patch passou por ele ao ser escrito, e a igualdade acima
+  // já implica isso — mas a coroa não se apoia numa implicação quando pode medir.
+  for (const f of real) {
+    const antes = parent.find((x) => x.name === f.name)?.source ?? '';
+    const fraco = guardsWeakened(antes, f.source);
+    if (fraco.length) return { ok: false, reason: `${f.name}: ${fraco.join('; ')}` };
+  }
+  return { ok: true, reason: 'identical to this engine plus the patch, no guard weakened' };
+}

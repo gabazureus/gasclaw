@@ -8,7 +8,7 @@
 // - `patchMessages` leva o código INTEIRO e as guardas proibidas ao Opus — o que ele não recebe, ele
 //   não pode respeitar.
 import { describe, expect, test } from 'vitest';
-import { crownVerdict, patchMessages, prepareSuccessor, readSuccessorsFrom, slotFor, successorWrites, type SuccessorRecord } from '../src/succession';
+import { codeMatches, crownReadiness, crownVerdict, patchMessages, prepareSuccessor, readSuccessorsFrom, slotFor, successorWrites, type SuccessorRecord } from '../src/succession';
 
 const motor = `function a() { assertOwner(); return lastSeen; }\nfunction b() { mayWriteProject(x, y); }\n`;
 const arquivos = [
@@ -168,5 +168,69 @@ describe('o registro dos sucessores: em pedaços, sem sobras que ressuscitam', (
     expect(slotFor(lista, 'F')?.scriptId).toBe('B');
     expect(slotFor([rec('C', { crownedAt: 2 })], 'F')).toBeNull();
     expect(slotFor(lista, 'Z')).toBeNull();
+  });
+});
+
+describe('crownReadiness: o health que libera a coroa — TODAS as checagens', () => {
+  const selfOk = { seedParent: 'PAI', enabled: false, hasKey: true, authRequired: false, agentReadable: { ok: true, detail: 'read 4 files' }, trigger: 'inactive' as const };
+  const ev = { successorPasses: 5, incumbentPasses: 5, k: 6, complete: true, verdictLeaked: false, at: 20, rows: [] };
+  const base = { parentId: 'PAI', authState: 'authorized', self: selfOk, code: { ok: true, reason: 'identical' }, record: { at: 10, evaluation: ev } };
+  const falha = (over: object) => crownReadiness({ ...base, ...over }).checks.filter((c) => !c.ok).map((c) => c.id);
+
+  test('tudo certo: libera, com as 9 checagens', () => {
+    const r = crownReadiness(base);
+    expect(r.ok).toBe(true);
+    expect(r.checks.map((c) => c.id)).toEqual(['authorized', 'seed', 'paused', 'key', 'scopes', 'drive', 'worker', 'code', 'evaluation']);
+  });
+  test('cada falha derruba só a sua checagem, e o todo', () => {
+    expect(falha({ authState: 'needs-consent' })).toEqual(['authorized']);
+    expect(falha({ self: { ...selfOk, seedParent: 'OUTRO' } })).toEqual(['seed']);
+    expect(falha({ self: { ...selfOk, enabled: true } })).toEqual(['paused']);
+    expect(falha({ self: { ...selfOk, hasKey: false } })).toEqual(['key']);
+    expect(falha({ self: { ...selfOk, authRequired: true } })).toEqual(['scopes']);
+    expect(falha({ self: { ...selfOk, agentReadable: { ok: false, detail: '403 Drive API disabled' } } })).toEqual(['drive']);
+    expect(falha({ self: { ...selfOk, trigger: 'awaiting authorization' } })).toEqual(['worker']);
+    expect(falha({ code: { ok: false, reason: 'changed' } })).toEqual(['code']);
+    expect(falha({ code: null })).toEqual(['code']);
+    expect(falha({ record: { at: 10, evaluation: { ...ev, successorPasses: 4 } } })).toEqual(['evaluation']);
+    expect(crownReadiness({ ...base, authState: 'needs-consent' }).ok).toBe(false);
+  });
+  test('gatilho ativo passa; inativo passa (a coroa o cria)', () => {
+    expect(falha({ self: { ...selfOk, trigger: 'active' } })).toEqual([]);
+  });
+  test('avaliação ANTERIOR à última escrita não vale: o código avaliado não é o que está lá', () => {
+    expect(falha({ record: { at: 30, evaluation: ev } })).toEqual(['evaluation']);
+  });
+  test('sem resposta do health, todas as checagens do sucessor falham', () => {
+    expect(falha({ self: null })).toEqual(['seed', 'paused', 'key', 'scopes', 'drive', 'worker']);
+  });
+});
+
+describe('codeMatches: o sucessor é o código ATUAL do pai mais o patch', () => {
+  const pai = [{ name: '_motor', source: 'function a() { assertOwner(); return 1; }' }, { name: 'appsscript', source: '{"s":1}' }];
+  const troca = [{ file: '_motor', find: 'return 1;', replace: 'return 2;' }];
+  const filho = [{ name: '_motor', source: 'function a() { assertOwner(); return 2; }' }, { name: 'appsscript', source: '{"s":1}' }, { name: 'successor_seed', source: 'var GASCLAW_SEED = {};' }];
+  test('idêntico ao pai + patch: confere', () => {
+    expect(codeMatches(pai, filho, troca).ok).toBe(true);
+  });
+  test('o pai mudou depois da geração: não confere — coroar desfaria a mudança', () => {
+    const paiNovo = [{ name: '_motor', source: 'function a() { assertOwner(); return 9; }' }, pai[1]];
+    expect(codeMatches(paiNovo, filho, troca)).toEqual({ ok: false, reason: expect.stringContaining('changed since') });
+  });
+  test('manifesto diferente: não confere', () => {
+    expect(codeMatches(pai, [filho[0], { name: 'appsscript', source: '{"s":2}' }, filho[2]], troca)).toEqual({ ok: false, reason: expect.stringContaining('manifest') });
+  });
+  test('motor adulterado depois da escrita: não confere', () => {
+    expect(codeMatches(pai, [{ name: '_motor', source: 'function a() { return 2; }' }, filho[1], filho[2]], troca).ok).toBe(false);
+  });
+  test('arquivo FALTANDO no sucessor (o manifesto, por exemplo): não confere', () => {
+    expect(codeMatches(pai, [filho[0], filho[2]], troca)).toEqual({ ok: false, reason: expect.stringContaining('missing appsscript') });
+  });
+  test('arquivo a mais, ou sem semente: não confere', () => {
+    expect(codeMatches(pai, [...filho, { name: 'extra', source: 'x' }], troca).ok).toBe(false);
+    expect(codeMatches(pai, filho.slice(0, 2), troca).ok).toBe(false);
+  });
+  test('a semente do PAI (quando ele mesmo é sucessor) não entra na conta', () => {
+    expect(codeMatches([...pai, { name: 'successor_seed', source: 'var GASCLAW_SEED = {"p":1};' }], filho, troca).ok).toBe(true);
   });
 });
