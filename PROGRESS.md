@@ -220,6 +220,34 @@ a sexta forma de prova falsa desta sessão. As outras cinco estão listadas acim
 
 **Publicar agora é:** `./gasclaw up` → `./gasclaw succession sync <id>` → (quando as permissões mudarem no pai) `./gasclaw succession inherit <id>` → `./gasclaw succession health <id>`.
 
+### F9 — fechamento da branch `evolucao-f5-f8` (2026-09-21)
+
+As quatro capacidades estão ligadas no painel e foram medidas **no motor que responde** (o sucessor
+coroado), pela [P36](poc/p36-capacidades-no-real/README.md). Spec:
+[fechamento da branch](docs/specs/2026-09-21-fechamento-da-branch.md).
+
+| # | Critério | Estado | Evidência |
+|---|---|---|---|
+| A1 | tsc limpo, suíte verde | ✅ | **2206/2206**, tsc sem erro |
+| A2 | cada conserto com teste que falha sem ele | ✅ | 12 mutações nos consertos desta rodada, todas pegas; os agentes de conserto registraram o vermelho antes do verde |
+| A3 | health do coroado 10/10 | 🟡 **9/10** | só falta a 10ª, que espera a decisão do dono (A4) |
+| A4 | o lado certo do CAP vence | ⏸ **decisão do dono** | as 4 capacidades estão no **sucessor**; o pai só tem Succeed. O `inherit` que a verificação sugeria **apagaria 3 das 4**, e não foi rodado |
+| D1 | Dream | ✅ recusa honesta | "no real failures to dream about": não há falha agrupada em 30 dias. Consertos: portão com `:`, placar, prazo + arrendamento, estimativa guardada |
+| R1 | Reach out | ✅ | disparou uma vez no tique certo; a resposta chegou ao Chat do dono com recibo (79 s). Antes, morria no trace ([ADR-045](docs/adr/045-reach-out-entrega-ao-dono.md)). Fora da lista: nada age, e a pergunta chega ao dono |
+| S1 | Succeed | ✅ | coroa, rebase e avaliação passam por `mayAct`; um coroado **rodando** por vez; texto do painel = sucessor-agente; health 9/10 |
+| C1 | Create agents | ✅ | agente de teste nasceu com `caps []`, `tools []`, `users []`; removido |
+| X1 | segurança | ✅ | crivo sem bypass por comentário, corpo ou dependência; `GASCLAW_ENGINE_URL` só para Apps Script; conversa direta **do dono**, nunca a primeira da lista |
+| X2 | docs | ✅ | este bloco, CHANGELOG, READMEs, ADR-045, P36 |
+
+**Auditorias:** duas rodadas de security-scanner + code-reviewer. A primeira achou 6 defeitos sérios (portão
+do Dream, placar, tique sem prazo, segunda coroa, `mayAct` ausente, bypass do crivo) e 3 menores. A
+segunda, sobre os consertos, achou a coroa que nunca soltava, o token que ia para qualquer URL e as
+dependências das guardas desprotegidas. Todos foram consertados, com teste.
+
+**Limites conhecidos (registrados, não abertos):** a herança não apaga chave que o pai removeu; o estado do
+sonho guarda o prompt inteiro em cada chave; um patch pode montar o nome de uma guarda sem escrevê-lo
+(`"assert"+"Owner"`); com a identidade do app, `findDirectMessage` só aceita o id numérico da conta.
+
 ### POCs
 
 | POC | Pergunta | Status |
@@ -231,6 +259,7 @@ a sexta forma de prova falsa desta sessão. As outras cinco estão listadas acim
 | **P32** patch do motor | O Opus devolve um patch válido do motor inteiro em < 5 min? | ✅ 43 s, US$ 1,33, 1 troca que achou um defeito real |
 | **P33** agente sucessor | Um agente inteiro sobe como outro projeto, parado? | ✅ C1/C3 · 🟡 C2/C4 indiretos · achado: três atos do dono, não dois |
 | **P34** avaliação de fora | O pai julga o sucessor com o próprio juiz? | ✅ 6 cenários, empate 5×5, nenhum veredito vazou |
+| **P36** capacidades no real | As 4 capacidades fazem o que prometem no motor coroado? | ✅ Reach out entrega (depois da ADR-045), Create nasce vazio, Succeed 9/10, Dream recusa honesta — [poc/p36](poc/p36-capacidades-no-real/README.md) |
 
 ### Consertos de instrumento (2026-09-19/20)
 

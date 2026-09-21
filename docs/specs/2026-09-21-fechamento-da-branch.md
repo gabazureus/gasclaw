@@ -53,3 +53,11 @@
 3. Medir D1, R1, S1 e C1 no dev, com números. O que reprovar vira conserto com teste e volta ao passo 2.
 4. Revisão final (security-scanner + code-reviewer no diff desde `03b52b6`); zerar os achados sérios.
 5. Docs (X2), commit, `git push origin evolucao-f5-f8`. Relatório ao dono: tabela critério → evidência.
+
+## Resultado (2026-09-21)
+
+Tabela critério → evidência no [PROGRESS](../../PROGRESS.md) (seção F9) e na [P36](../../poc/p36-capacidades-no-real/README.md).
+
+- Passaram **A1, A2, D1** (recusa honesta), **R1, S1, C1, X1 e X2**.
+- **A3 está em 9/10.** A 10ª verificação espera **A4**, que é decisão do dono: as 4 capacidades estão no
+  sucessor, e o `inherit` as apagaria.

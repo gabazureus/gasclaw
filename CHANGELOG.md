@@ -10,6 +10,22 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 
 ## [Não publicado]
 
+> 📬 **O Reach out passa a te procurar de verdade (F9, ADR-045):** a resposta de um job agendado chega
+> na **sua conversa direta com o app no Google Chat**. Antes ela ficava só no trace, e nada te avisava.
+> Um job que falha também manda o motivo. O botão **Open in Google Chat** abre a SUA conversa, nunca a
+> de outra pessoa do domínio.
+>
+> 🔒 **Fechamento da branch (F9), consertos das auditorias:**
+> - **Dream:** um candidato reprovado no portão não vence mais; o placar não mostra vitória no meio do
+>   ciclo; o tique tem prazo, e dois tiques nunca pagam o mesmo passo.
+> - **Sucessão:** coroa, rebase e avaliação obedecem ao `./gasclaw down`, ao Succeed desligado e ao
+>   congelamento; só um sucessor coroado roda por vez; o health diz QUAIS permissões diferem, e de que lado.
+> - **Crivo de guardas:** um patch não desarma uma guarda por comentário, pelo corpo dela, nem pelas
+>   funções de que ela depende.
+> - **Agenda:** um job novo não dispara na hora por herdar uma janela velha.
+> - **CLI:** `GASCLAW_ENGINE_URL` fala com o sucessor coroado (só web app do Apps Script) e é recusada
+>   por up/down/ship.
+
 > 🧬 **O sucessor é ESTE agente, melhorado (F7, ADR-043):** o botão **Write a successor** passa a
 > mandar o código do próprio agente ao Opus 5, que devolve um **patch pequeno com a explicação** do que
 > melhora. O agente melhorado sobe como outro projeto, com os **mesmos escopos**, **parado**. O agente

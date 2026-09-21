@@ -258,13 +258,13 @@ panel — turning one on never turns another on, and each says what it costs bef
  ┌───▼────┐   ┌─────▼──────┐     ┌──────▼──────┐     ┌──────▼───────┐          │
  │ Dream  │   │ Reach out  │     │   Succeed   │     │Create agents │          │
  ├────────┤   ├────────────┤     ├─────────────┤     ├──────────────┤          │
- │rewrites│   │wakes up on │     │writes its   │     │creates NEW   │          │
- │its own │   │a schedule  │     │successor's  │     │agents, each  │          │
- │prompt, │   │YOU set     │     │CODE with    │     │with its own  │          │
- │scores  │   │here — not  │     │Opus 5, as   │     │Drive folder  │          │
- │against │   │in the      │     │its own      │     │and NOTHING   │          │
- │a judge │   │folder      │     │Apps Script  │     │else          │          │
- │set     │   │            │     │project      │     │              │          │
+ │rewrites│   │wakes up on │     │patches THIS │     │creates NEW   │          │
+ │its own │   │a schedule  │     │agent with   │     │agents, each  │          │
+ │prompt, │   │YOU set and │     │Opus 5; you  │     │with its own  │          │
+ │scores  │   │answers in  │     │crown it     │     │Drive folder  │          │
+ │against │   │your Chat DM│     │once it is   │     │and NOTHING   │          │
+ │a judge │   │            │     │judged from  │     │else          │          │
+ │set     │   │            │     │outside      │     │              │          │
  └────────┘   └────────────┘     └─────────────┘     └──────┬───────┘          │
                                                             │                  │
                                             only ONE agent in the environment  │
@@ -492,11 +492,22 @@ never receives new code — you pause it first.
 ./gasclaw succession write "<optional goal>"   # Opus reads the code and deploys the successor (spends Opus)
 ./gasclaw succession evaluate <scriptId>        # this engine judges it from outside (pause it first)
 ./gasclaw succession status                     # change, explanation, score, crown
-./gasclaw succession health <scriptId>          # the 9 checks that unlock the crown
+./gasclaw succession health <scriptId>          # the 10 checks that unlock the crown (and keep a crowned one honest)
 ./gasclaw succession rebase <scriptId>          # the same patch on this engine's current code (no model call)
 ./gasclaw succession inherit <scriptId>         # hand the agent's settings over (never the key or secrets)
 ./gasclaw succession sync <scriptId>            # this engine's current build to the CROWNED successor (no model call)
 ./gasclaw succession pull                       # brings the crowned patch to succession/ to port to src
+```
+
+After the crown, the engine that answers is the successor. `succession inherit` copies **this** engine's
+settings over the successor's: if you turned something on in the successor's panel, the 10th health check
+shows both sides, so read it before you inherit. To read or measure the crowned successor itself, point
+the CLI at it (reads, `trace` and `poc` only; `up`, `down` and `ship` refuse while it is set):
+
+```bash
+export GASCLAW_ENGINE_URL="https://script.google.com/a/macros/<domain>/s/<successor Deployment ID>/exec"
+./gasclaw poc p36 status && ./gasclaw trace
+unset GASCLAW_ENGINE_URL
 ```
 
 The panel also shows the **lineage** (generation, parent, child, delta, cost) and, while a dream cycle is

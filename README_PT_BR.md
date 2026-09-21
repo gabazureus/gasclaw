@@ -259,13 +259,13 @@ painel — ligar uma nunca liga outra, e cada uma diz o que custa antes do cliqu
  ┌───▼────┐   ┌─────▼──────┐     ┌──────▼──────┐     ┌──────▼───────┐          │
  │ Sonho  │   │  Procurar  │     │   Suceder   │     │ Criar agentes│          │
  ├────────┤   ├────────────┤     ├─────────────┤     ├──────────────┤          │
- │reescre-│   │acorda numa │     │escreve o    │     │cria agentes  │          │
- │ve o    │   │agenda que  │     │CÓDIGO do    │     │NOVOS, cada   │          │
- │próprio │   │VOCÊ marca  │     │sucessor com │     │um com pasta  │          │
- │prompt e│   │aqui — não  │     │Opus 5, como │     │própria e     │          │
- │se mede │   │na pasta    │     │projeto Apps │     │NADA além     │          │
- │contra o│   │            │     │Script dele  │     │disso         │          │
- │juiz    │   │            │     │             │     │              │          │
+ │reescre-│   │acorda numa │     │melhora ESTE │     │cria agentes  │          │
+ │ve o    │   │agenda que  │     │agente com o │     │NOVOS, cada   │          │
+ │próprio │   │VOCÊ marca e│     │Opus 5; você │     │um com pasta  │          │
+ │prompt e│   │responde na │     │o coroa      │     │própria e     │          │
+ │se mede │   │sua conversa│     │depois de    │     │NADA além     │          │
+ │contra o│   │direta do   │     │julgado de   │     │disso         │          │
+ │juiz    │   │Chat        │     │fora         │     │              │          │
  └────────┘   └────────────┘     └─────────────┘     └──────┬───────┘          │
                                                             │                  │
                                              só UM agente do ambiente pode ter │
@@ -494,11 +494,22 @@ você o pausa antes.
 ./gasclaw succession write "<objetivo opcional>"  # o Opus lê o código e implanta o sucessor (gasta Opus)
 ./gasclaw succession evaluate <scriptId>           # este motor o julga de fora (pause-o antes)
 ./gasclaw succession status                        # troca, explicação, nota, coroa
-./gasclaw succession health <scriptId>             # as 9 checagens que destravam a coroa
+./gasclaw succession health <scriptId>             # as 10 checagens que destravam a coroa (e mantêm o coroado honesto)
 ./gasclaw succession rebase <scriptId>             # o mesmo patch sobre o código atual deste motor (sem modelo)
 ./gasclaw succession inherit <scriptId>            # entrega as configurações do agente (nunca a chave nem segredo)
 ./gasclaw succession sync <scriptId>               # o build atual deste motor no sucessor COROADO (sem modelo)
 ./gasclaw succession pull                          # traz o patch coroado para succession/ para portar ao src
+```
+
+Depois da coroa, quem responde é o sucessor. O `succession inherit` copia as configurações **deste** motor
+por cima das do sucessor: se você ligou algo no painel do sucessor, a 10ª checagem mostra os dois lados —
+leia antes de herdar. Para ler ou medir o próprio sucessor coroado, aponte o CLI para ele (só leitura,
+`trace` e `poc`; `up`, `down` e `ship` recusam enquanto ela estiver definida):
+
+```bash
+export GASCLAW_ENGINE_URL="https://script.google.com/a/macros/<domínio>/s/<Deployment ID do sucessor>/exec"
+./gasclaw poc p36 status && ./gasclaw trace
+unset GASCLAW_ENGINE_URL
 ```
 
 O painel mostra também a **linhagem** (geração, pai, filho, delta, custo) e, enquanto um ciclo de sonho

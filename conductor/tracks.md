@@ -42,3 +42,5 @@
 
 Ressalvas da F0 ainda abertas: verificar o haicai no `SOUL.md` sem deploy, o histórico no Chat e a
 conversa de outra pessoa do domínio (Task 9); salvar a chave e o agente na tela de prod.
+
+| F9 — fechar a branch `evolucao-f5-f8` com as 4 capacidades medidas no real | `[~]` tudo medido; **A4 (lado do CAP) espera o dono** | [spec](../docs/specs/2026-09-21-fechamento-da-branch.md) · [plano](tracks/f9-fechamento-da-branch/plan.md) · [P36](../poc/p36-capacidades-no-real/README.md) | — |

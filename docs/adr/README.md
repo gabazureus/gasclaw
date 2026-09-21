@@ -48,3 +48,4 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [042](042-automation-subagente-persona.md) | Três coisas diferentes chamadas "sub-agente": persona, automation e sub-agente | Aceito |
 | [043](043-sucessor-e-um-agente.md) | O sucessor é um AGENTE, e o Opus melhora o código dele por patch | aceita (desenho) |
 | [044](044-chat-segue-o-coroado.md) | Depois da coroa, o Chat é reapontado à mão (a P35 reprovou o repasse: 17,4 s > 10 s) | aceita |
+| [045](045-reach-out-entrega-ao-dono.md) | O Reach out entrega a resposta na conversa direta DO DONO (a P36 mediu que ela morria no trace) | aceita |
