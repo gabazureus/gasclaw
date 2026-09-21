@@ -1,7 +1,7 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, e se já foi resolvido.
-> **Atualizado em:** 2026-09-21 · **2111 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
+> **Atualizado em:** 2026-09-21 · **2164 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
 > · **Auditoria:** seis ✅ eram falsos. Critério: *algum módulo importa isto, e o símbolo aparece em `dist/_motor.js`?*
 > · **P22 aprovada 4/4** · P24 **aprovada por inteiro** · P25 **reprovada** (sem combustível)
 > · **P27 medida e REPROVADA** (o filho executa, o motor recusa o token dele: 401 da plataforma)
@@ -191,6 +191,21 @@ a sexta forma de prova falsa desta sessão. As outras cinco estão listadas acim
 > → `./gasclaw succession sync <scriptId>` (o motor que responde).
 
 > **Decisões do dono (2026-09-21).** Ordem de execução: A → levar as Script Properties do pai ao sucessor na coroa (lista permitida, nunca segredos) + nova checagem de saúde "as permissões do sucessor são as do pai" → B (depois da P35) → G → F → I.
+
+### F8 — herança e roteamento (2026-09-21)
+
+| # | Item | Estado | Evidência |
+|---|---|---|---|
+| ~~F8.1a~~ | ✅ **`inheritable`: o que o filho herda** | lista fechada das chaves do agente; segredo vence a lista, mesmo dentro de uma chave permitida; estado do motor não passa; valor acima de uma Property é recusado com motivo | 6/6 mutações |
+| ~~F8.1b~~ | ✅ **Porta `handover` no sucessor + herança na coroa + `succession inherit`** | o pai filtra, o filho filtra de novo, só o pai da semente grava; a coroa herda ANTES de ligar (falhou → nada muda) | 8/8 + 5 mutações |
+| ~~F8.1c~~ | ✅ **Health em sucessor COROADO + 10ª checagem** | no coroado: ele responde, worker vivo, código de HOJE do pai, e **as permissões são as do pai** (ACCESS:, CAP:, STATUS: pela `readiness`, sem segredo); antes da coroa a 10ª passa, porque é a coroa que entrega | 8/8 mutações |
+| ~~F8.1-real~~ | ✅ **No real (dev v162, sucessor v10)** | `succession inherit` → **11 chaves gravadas**; `succession health` → **10/10**; pai `enabled:false`, sucessor rodando | saída do comando |
+
+**Dois achados AO VIVO, os dois consertados com teste que prova que pega:**
+- **O formulário grande chegava vazio.** Com todas as chaves do agente num campo de formulário, o `doPost` do sucessor recebia `parent` vazio ("got nothing"). A herança passou a ir como **corpo JSON** com a ação na URL (`postChildJson`, host fixo em `script.google.com` — com teste de que nunca sai do Apps Script).
+- **A porta interceptava a CLI no próprio pai.** A porta do sucessor tinha o MESMO nome da ação `inherit` da CLI e vem antes do segredo no `doPost`: o pedido do dono caía na porta do pai. Renomeada para `handover`; teste novo pelo caminho REAL da CLI (4 testes caem com o nome antigo). Os testes antigos chamavam a função direto e não viam.
+
+**Publicar agora é:** `./gasclaw up` → `./gasclaw succession sync <id>` → (quando as permissões mudarem no pai) `./gasclaw succession inherit <id>` → `./gasclaw succession health <id>`.
 
 ### POCs
 
