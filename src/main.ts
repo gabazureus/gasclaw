@@ -64,7 +64,7 @@ import {
 } from './agentCaps';
 import { beatsIncumbent, CODEGEN_BUDGET_USD, mayWriteProject, withinDailyCap } from './dream';
 import { generateSuccessor, sourceOfChild, type SuccessorDeps } from './successor';
-import { codeMatches, crownLanded, crownReadiness, crownVerdict, halfCrowned, patchMessages, prepareSuccessor, readSuccessorsFrom, slotFor, successorWrites, type EvalRow, type Evaluation, type ReadinessCheck, type SuccessorRecord, type SuccessorSelf } from './succession';
+import { codeMatches, crownLanded, crownReadiness, crownVerdict, halfCrowned, inheritable, patchMessages, prepareSuccessor, readSuccessorsFrom, slotFor, successorWrites, type EvalRow, type Evaluation, type ReadinessCheck, type SuccessorRecord, type SuccessorSelf } from './succession';
 import { codeDelta, judgeCase, parseBattery, previousScore, scoreRun, withMeasurement } from './fitness';
 import { applyPatch, parsePatch, type Change, type PatchFile } from './patch';
 import { seedSource } from './seed';
@@ -225,6 +225,7 @@ function mutate(action: string, p: Record<string, string>): unknown {
   if (action === 'automate') return writeAutomation(pasta, (p.scopes ?? '').split(',').filter(Boolean), p.goal ?? '', p.tokens ? Number(p.tokens) : undefined);
   if (action === 'evaluate') return evaluateSuccessor(p.child || '');
   if (action === 'rebase') return rebaseSuccessor(p.child || '');
+  if (action === 'inherit') return inheritSuccessor(p.child || '');
   if (action === 'sync') return syncSuccessor(p.child || '');
   if (action === 'succession') return successionState();
   if (action === 'measure') return measureChild(p.child || '');
@@ -286,6 +287,8 @@ export function doPost(e: GoogleAppsScript.Events.DoPost) {
     // O HEALTH PROFUNDO do sucessor, para o pai decidir se a coroa é possível. Só leitura, e pelo POST
     // porque a resposta inteira importa (a leitura por GET do pai corta em 1.200 caracteres).
     if (action === 'readiness') return json(readinessSelf());
+    // F8 — a HERANÇA chega do pai: as chaves do agente (nunca segredo). Filtrada de novo aqui.
+    if (action === 'inherit') return json(inheritFromParent(p.parent ?? '', p.entries ?? ''));
     // A ROTA `childkey` FOI REMOVIDA (2026-09-20, ADR-040 opção 4). Ela era o único ponto do projeto
     // que devolvia a chave do OpenRouter por HTTP. A P27 mediu que o filho não consegue alcançá-la —
     // o Google recusa o token de outro projeto antes de chegar aqui —, então ela não servia a ninguém
@@ -3562,6 +3565,10 @@ export function crownSuccessor(scriptId: string) {
   if (!saude.ok && !metade) return { ok: false as const, reason: `the successor is not ready: ${saude.checks.filter((c) => !c.ok).map((c) => `${c.label} — ${c.detail}`).join('; ')}`, checks: saude.checks };
   const veredito = crownVerdict(rec.evaluation);
   if (!veredito.ok) return { ok: false as const, reason: veredito.reason };
+  // A HERANÇA vem ANTES de ligar: um sucessor que assume sem as permissões do pai responderia ao dono
+  // sem as ferramentas que ele aprovou. Falhou → nada muda, nem aqui nem lá.
+  const herdou = handOver(rec);
+  if (!herdou.ok) return { ok: false as const, reason: `the successor did not take the agent's settings: ${herdou.reason}` };
   const antes = store.isEnabled();
   store.setEnabled(false);
   if (!metade) {
@@ -3646,6 +3653,45 @@ function healthOf(rec: SuccessorRecord) {
     code = null;
   }
   return crownReadiness({ parentId: own, authState: estado, self, code, record: rec });
+}
+
+/**
+ * No SUCESSOR: grava o que o pai mandou — só do pai da semente, e só a lista fechada de `inheritable`
+ * (o mesmo filtro do pai, aplicado de novo: um erro de um lado só não entrega segredo).
+ */
+function inheritFromParent(parent: string, raw: string) {
+  if (parent !== store.successorOf()) return { ok: false, status: 403, error: 'only the parent named in the seed can hand its agent over' };
+  let recebido: Record<string, string>;
+  try {
+    recebido = JSON.parse(raw) as Record<string, string>;
+  } catch {
+    return { ok: false, status: 400, error: 'the inheritance is not valid JSON' };
+  }
+  // minimal: grava sempre que o pai da semente manda — o dono já provou quem é pelo token, e só as
+  // chaves do agente passam. Rodar de novo depois de dias sobrescreve o que o filho mudou: é ato explícito.
+  const { entries, refused } = inheritable(recebido);
+  PropertiesService.getScriptProperties().setProperties(entries);
+  return { ok: true, written: Object.keys(entries).length, refused };
+}
+
+/** No PAI: manda ao sucessor as chaves do agente. Devolve se ele aceitou. */
+function handOver(rec: SuccessorRecord): { ok: boolean; written: number; reason: string } {
+  const { entries } = inheritable(PropertiesService.getScriptProperties().getProperties());
+  try {
+    const j = JSON.parse(postChild(rec.url, { action: 'inherit', parent: ScriptApp.getScriptId(), entries: JSON.stringify(entries) }).body) as { ok?: boolean; written?: number; error?: string };
+    return j.ok ? { ok: true, written: j.written ?? 0, reason: '' } : { ok: false, written: 0, reason: j.error ?? 'the successor refused the inheritance' };
+  } catch (e) {
+    return { ok: false, written: 0, reason: `could not reach the successor: ${String((e as Error)?.message ?? e).slice(0, 200)}` };
+  }
+}
+
+/** O dono entrega ao sucessor as permissões, capacidades, agenda e histórico do pai — nunca segredo. */
+export function inheritSuccessor(scriptId: string) {
+  assertOwner();
+  const rec = readSuccessors(PropertiesService.getScriptProperties()).find((r) => r.scriptId === String(scriptId ?? '').trim());
+  if (!rec) return { ok: false as const, reason: 'unknown successor' };
+  const h = handOver(rec);
+  return h.ok ? { ok: true as const, written: h.written } : { ok: false as const, reason: h.reason };
 }
 
 /** O sucessor está ligado? Lido pela porta de readiness; nulo quando não deu para ler, e aí ninguém presume. */

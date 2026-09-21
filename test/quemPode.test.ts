@@ -37,6 +37,7 @@ const acoes: [string, (m: Motor) => unknown][] = [
   ['crownSuccessor', (m) => m.crownSuccessor('x')],
   ['successorHealth', (m) => m.successorHealth('x')],
   ['rebaseSuccessor', (m) => m.rebaseSuccessor('x')],
+  ['inheritSuccessor', (m) => m.inheritSuccessor('x')],
   ['syncSuccessor', (m) => m.syncSuccessor('x')],
   ['successionState', (m) => m.successionState()],
   ['writeAutomation', (m) => m.writeAutomation('fa', [])],

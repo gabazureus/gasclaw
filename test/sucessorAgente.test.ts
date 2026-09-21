@@ -21,6 +21,8 @@ let self: Record<string, unknown> | null = { ...SELF_OK };
 let codigoFilho: string = MOTOR.replace('return lastSeen;', 'return lastSeen - 1;');
 // Como a resposta da coroa chega ao pai: `null` = o JSON normal; texto = corpo ilegível; 'throw' = erro de rede.
 let corpoDaCoroa: string | null | 'throw' = null;
+// O que o sucessor responde à herança.
+let heranca: { ok: boolean; error?: string } = { ok: true };
 
 const bom = JSON.stringify({ explanation: 'the midnight job never fired', changes: [{ file: '_motor', find: 'return lastSeen;', replace: 'return lastSeen - 1;' }] });
 
@@ -31,6 +33,7 @@ beforeEach(() => {
   self = { ...SELF_OK };
   codigoFilho = MOTOR.replace('return lastSeen;', 'return lastSeen - 1;');
   corpoDaCoroa = null;
+  heranca = { ok: true };
   env = stubGas();
   env.props['STATUS:f1'] = 'active';
   env.props['CAP:f1'] = JSON.stringify(['succeed']);
@@ -50,6 +53,7 @@ beforeEach(() => {
     if (url.endsWith('?action=health')) return saude === 'consent' ? { code: 200, body: 'Authorization needed' } : { code: 200, body: JSON.stringify(saude) };
     if ((url === URL_SLOT || url === URL_NOVO) && init.method === 'post') {
       const acao = (init.payload as Record<string, string>).action;
+      if (acao === 'inherit') return { code: 200, body: JSON.stringify(heranca) };
       if (acao === 'readiness') return self ? { code: 200, body: JSON.stringify({ ok: true, self }) } : { code: 200, body: JSON.stringify({ ok: false, error: 'unknown action: readiness' }) };
       // O sucessor AGE antes de responder: ligou é ligou, chegue a resposta ou não.
       if (coroa.ok && self) self = { ...self, enabled: true };
@@ -507,5 +511,85 @@ describe('syncSuccessor: o build atual do pai vai ao sucessor COROADO', () => {
     expect(store.isEnabled()).toBe(true);
     delete env.props['RUNTIME_ENABLED'];
     expect(store.isEnabled()).toBe(false);
+  });
+});
+
+
+// F8 — a HERANÇA: o filho recebe as permissões, capacidades, agenda e histórico do pai; nunca segredo.
+describe('herança: o pai manda, o filho aceita só a lista fechada', () => {
+  const avaliado = { changes: [{ file: '_motor', find: 'return lastSeen;', replace: 'return lastSeen - 1;' }], evaluation: { successorPasses: 5, incumbentPasses: 5, k: 6, complete: true, verdictLeaked: false, at: 2, rows: [] } };
+  const enviado = () => env.calls.find((c) => c.url === URL_SLOT && (c.init.payload as Record<string, string>)?.action === 'inherit');
+  const ordem = () => env.calls.filter((c) => c.url === URL_SLOT).map((c) => (c.init.payload as Record<string, string>)?.action);
+
+  test('inheritSuccessor manda as chaves do agente e NENHUM segredo', async () => {
+    slotRegistrado({ crownedAt: 9 });
+    env.props['CAP:f1'] = '["dream"]';
+    env.props['CLI_SECRET'] = 'b'.repeat(64);
+    expect((await motor()).inheritSuccessor('SLOT')).toMatchObject({ ok: true });
+    const corpo = JSON.parse((enviado()!.init.payload as Record<string, string>).entries) as Record<string, string>;
+    expect(corpo['CAP:f1']).toBe('["dream"]');
+    expect(corpo['ACCESS:f1']).toBeDefined();
+    expect(corpo['OPENROUTER_API_KEY']).toBeUndefined();
+    expect(corpo['CLI_SECRET']).toBeUndefined();
+    expect(JSON.stringify(corpo)).not.toContain('sk-or');
+  });
+
+  test('o sucessor recusou a herança: inheritSuccessor diz que não', async () => {
+    slotRegistrado({ crownedAt: 9 });
+    heranca = { ok: false, error: 'only the parent named in the seed' };
+    expect((await motor()).inheritSuccessor('SLOT').ok).toBe(false);
+  });
+
+  test('a coroa HERDA antes de ligar o sucessor', async () => {
+    slotRegistrado(avaliado);
+    expect((await motor()).crownSuccessor('SLOT')).toMatchObject({ ok: true });
+    const o = ordem();
+    expect(o.indexOf('inherit')).toBeGreaterThanOrEqual(0);
+    expect(o.indexOf('inherit')).toBeLessThan(o.indexOf('crown'));
+  });
+
+  test('herança falhou: coroa recusada, sucessor não é chamado, pai não é tocado', async () => {
+    slotRegistrado(avaliado);
+    heranca = { ok: false, error: 'x' };
+    const r = (await motor()).crownSuccessor('SLOT');
+    expect(r.ok).toBe(false);
+    expect(ordem()).not.toContain('crown');
+    expect(env.props['RUNTIME_ENABLED']).toBeUndefined();
+  });
+});
+
+describe('no SUCESSOR, a porta `inherit`: só do pai da semente, e só a lista fechada', () => {
+  const post = async (parent: string, entries: Record<string, string>) => {
+    vi.stubGlobal('GASCLAW_SEED', { bornDisabled: true, parent: 'PAI', agents: [{ name: 'agente-teste', folderId: 'f1' }], at: 1 });
+    const m = await import('../src/main');
+    const out = m.doPost({ parameter: { action: 'inherit', parent, entries: JSON.stringify(entries) } } as unknown as GoogleAppsScript.Events.DoPost) as unknown as { getContent: () => string };
+    return JSON.parse(out.getContent()) as { ok: boolean; written?: number };
+  };
+
+  test('o pai da semente grava as chaves do agente', async () => {
+    const r = await post('PAI', { 'CAP:f1': '["dream"]', 'ACCESS:f1': '{"users":["a@x.com"],"tools":[]}' });
+    expect(r).toMatchObject({ ok: true, written: 2 });
+    expect(env.props['CAP:f1']).toBe('["dream"]');
+  });
+
+  test('segredo e estado do motor que chegarem são IGNORADOS pelo filho (filtro dos dois lados)', async () => {
+    const chaveAntes = env.props['OPENROUTER_API_KEY'];
+    const r = await post('PAI', { OPENROUTER_API_KEY: 'sk-or-v1-trocada', RUNTIME_ENABLED: 'true', CLI_SECRET: 'c'.repeat(64), 'CAP:f1': '[]' });
+    expect(r).toMatchObject({ ok: true, written: 1 });
+    expect(env.props['OPENROUTER_API_KEY']).toBe(chaveAntes);
+    expect(env.props['RUNTIME_ENABLED']).toBeUndefined();
+    expect(env.props['CLI_SECRET']).toBeUndefined();
+  });
+
+  test('outro "pai" não grava nada', async () => {
+    expect((await post('OUTRO', { 'CAP:f1': '["dream"]' })).ok).toBe(false);
+    expect(env.props['CAP:f1']).toBe(JSON.stringify(['succeed']));
+  });
+
+  test('corpo ilegível é recusado sem gravar', async () => {
+    vi.stubGlobal('GASCLAW_SEED', { bornDisabled: true, parent: 'PAI', agents: [{ name: 'agente-teste', folderId: 'f1' }], at: 1 });
+    const m = await import('../src/main');
+    const out = m.doPost({ parameter: { action: 'inherit', parent: 'PAI', entries: '{lixo' } } as unknown as GoogleAppsScript.Events.DoPost) as unknown as { getContent: () => string };
+    expect(JSON.parse(out.getContent()).ok).toBe(false);
   });
 });
