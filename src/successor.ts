@@ -11,7 +11,7 @@
 // 2. O CUSTO É CONTADO MESMO QUANDO O RESULTADO É JOGADO FORA. O dinheiro saiu. Não contabilizar uma
 //    geração reprovada furaria o teto diário exatamente pelo caminho mais provável: o das tentativas.
 import { checkSuccessorSource, extractSource, narrowScopes, OPUS_MODEL, successorManifest, successorMessages } from './codegen';
-import { CODEGEN_DAILY_CAP_USD, CODEGEN_BUDGET_USD, mayWriteProject, withinDailyCap } from './dream';
+import { CODEGEN_BUDGET_USD, mayWriteProject, withinDailyCap } from './dream';
 import type { Child } from './children';
 
 const API = 'https://script.googleapis.com/v1/projects';
@@ -28,6 +28,11 @@ export type SuccessorDeps = {
   api: ApiCall;
   spentToday: () => number;
   addSpent: (usd: number) => void;
+  /**
+   * O teto diário que vale AGORA — o de sempre, ou o da corrida que o dono aprovou (H1). Vem da casca
+   * porque é estado: com a constante cravada aqui, a corrida de US$ 15 pararia na 3ª geração.
+   */
+  dailyCap: () => number;
   now: () => number;
 };
 
@@ -78,8 +83,9 @@ export function generateSuccessor(req: SuccessorRequest, d: SuccessorDeps): Succ
   // ---- 1. o que se sabe sem gastar nada ----
   const own = d.own();
   if (!own) return fail('cannot tell which project is running: refusing to write anywhere');
-  if (!withinDailyCap(d.spentToday(), CODEGEN_BUDGET_USD)) {
-    return fail(`the code generator is at its daily cap: US$ ${d.spentToday().toFixed(2)} spent today, cap is US$ ${CODEGEN_DAILY_CAP_USD.toFixed(2)} across every agent`);
+  const teto = d.dailyCap();
+  if (!withinDailyCap(d.spentToday(), CODEGEN_BUDGET_USD, teto)) {
+    return fail(`the code generator is at its daily cap: US$ ${d.spentToday().toFixed(2)} spent today, cap is US$ ${teto.toFixed(2)} across every agent`);
   }
   const escopos = narrowScopes(req.requestedScopes, d.parentScopes());
   if (!escopos.ok) return fail(escopos.reason);

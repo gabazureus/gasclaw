@@ -3,7 +3,8 @@ import { startDream, tickDream, type DreamDeps } from './dreamTick';
 import { dreamIO } from './dreamStore';
 import { failProp, failuresFrom, parseFailures, serializeFailures, withFailure } from './failureLog';
 import { mergeAcrossGenerations, originLabel, parseSchema, validateValues, type ConfigField } from './agentConfig';
-import { capAction, childrenSpendUpperBound, FAMILY_CAP_USD, FAMILY_NOTE } from './family';
+import { capAction, childrenSpendUpperBound, FAMILY_NOTE } from './family';
+import { BUDGET_CEILING_USD, effectiveBudget, parseBudgetOverride } from './budget';
 import { burstReading, consentReading, P29_MAX_CREATES, parseP29State, quotaReading, withCreated, withRefusal, type BurstRow, type ConsentRow, type P29State } from './swarm';
 import { cluster, hasMaterial, type Failure } from './dreamCycle';
 import { AUTO_NOTE, cleanAutoList, mayAutoApprove, NEVER_AUTO, noReplySpan, onProactiveBlock } from './autoApprove';
@@ -60,7 +61,7 @@ import {
   CAPABILITIES, can, canSucceed, capsAfterSuccession, creatorOf, DEFAULT_INTERVAL_MS, forgetAgentProps, heirOf, intervalOf, mayGenerate,
   accessAfterArchive, capsAfterCreatorMoved, capsEnabled, clearCreator, effectiveCapabilities, isRunnable, nextGeneration, parseCapabilities, parseStatus, setCreator, type Capability, type LineageEntry,
 } from './agentCaps';
-import { CODEGEN_BUDGET_USD, CODEGEN_DAILY_CAP_USD, mayWriteProject } from './dream';
+import { CODEGEN_BUDGET_USD, mayWriteProject } from './dream';
 import { generateSuccessor, sourceOfChild, type SuccessorDeps } from './successor';
 import { codeDelta, judgeCase, parseBattery, previousScore, scoreRun, withMeasurement } from './fitness';
 import { CHILD_FORBIDDEN_SCOPES, narrowScopes, OPUS_MODEL } from './codegen';
@@ -414,7 +415,7 @@ function bornAgent(parent: AgentSpec, name: string, role: string): string {
   if (store.listAgents().some((a) => a.name.toLowerCase() === nome)) throw new Error(`there is already an agent named "${nome}"`);
   // O teto familiar vale aqui também, e é onde ele morde primeiro: `stop-creating` existe exatamente
   // para parar de criar ANTES de congelar.
-  const acao = capAction(familySpendQuiet());
+  const acao = capAction(familySpendQuiet(), budgetNow().familyUsd);
   if (acao !== 'ok') throw new Error(`the family spend cap says ${acao}: not creating another agent`);
 
   // PASTA EXISTENTE NÃO É REUSADA, e este era o pior defeito desta rodada — perda silenciosa de texto
@@ -1727,8 +1728,9 @@ function mayAct(folderId: string, cap: Capability): { ok: boolean; reason: strin
   // capacidade errada: sonhar não cria ninguém.
   if (cap === 'create' || cap === 'succeed') {
     const gasto = familySpendQuiet();
-    const acao = capAction(gasto);
-    if (acao !== 'ok') return { ok: false, reason: `the family spend cap says ${acao}: children have used up to US$ ${(gasto ?? 0).toFixed(2)} of US$ ${FAMILY_CAP_USD.toFixed(2)}` };
+    const tetoFamilia = budgetNow().familyUsd;
+    const acao = capAction(gasto, tetoFamilia);
+    if (acao !== 'ok') return { ok: false, reason: `the family spend cap says ${acao}: children have used up to US$ ${(gasto ?? 0).toFixed(2)} of US$ ${tetoFamilia.toFixed(2)}` };
   }
   return { ok: true, reason: '' };
 }
@@ -2059,12 +2061,45 @@ const codegenDayProp = (now: number) => `CODEGEN:${new Date(now).toISOString().s
  * Por agente não seria teto: `succeed` pode estar ligada em vários, e N agentes custariam N vezes o
  * orçamento sem ninguém ter decidido isso. A chave é por DIA (UTC) e some sozinha — nada a podar.
  */
+/** A corrida aprovada pelo dono (H1). Vive numa Property com instante de fim: o painel decide (ADR-021). */
+const BUDGET_PROP = 'BUDGET_OVERRIDE';
+
+/**
+ * Os tetos que valem AGORA. Toda leitura de teto passa por aqui — uma constante lida direto
+ * ignoraria a corrida aprovada, e a corrida de US$ 15 pararia na 3ª geração sem motivo visível.
+ */
+const budgetNow = () => effectiveBudget(parseBudgetOverride(PropertiesService.getScriptProperties().getProperty(BUDGET_PROP)), Date.now());
+
+/**
+ * O DONO aprova o orçamento de uma corrida (gate H1 da F6).
+ *
+ * **O teto expira sozinho** em `hours`: "devolva os tetos ao fim" não é um passo que alguém precisa
+ * lembrar — é o relógio. Valores absurdos são RECUSADOS inteiros, nunca cortados em silêncio: o dono
+ * que digitou 150 precisa saber que não foi 150, e não descobrir na fatura que foi 50.
+ */
+export function setRunBudget(codegenUsd: number, familyUsd: number, hours: number) {
+  assertOwner();
+  const h = Number(hours);
+  if (!Number.isFinite(h) || h < 1 || h > 48) throw new Error('a run budget lasts between 1 and 48 hours');
+  const pedido = { codegenUsd: Number(codegenUsd), familyUsd: Number(familyUsd), until: Date.now() + h * 3_600_000 };
+  if (!parseBudgetOverride(JSON.stringify(pedido))) throw new Error(`both caps must be above zero and at most US$ ${BUDGET_CEILING_USD}`);
+  PropertiesService.getScriptProperties().setProperty(BUDGET_PROP, JSON.stringify(pedido));
+  return { ...budgetNow(), untilIso: new Date(pedido.until).toISOString() };
+}
+
+/** Encerra a corrida ANTES do fim. Sem isto, o único jeito de voltar ao teto de sempre seria esperar. */
+export function endRunBudget() {
+  assertOwner();
+  PropertiesService.getScriptProperties().deleteProperty(BUDGET_PROP);
+  return budgetNow();
+}
+
 function codegenSpentToday(now: number): number {
   const raw = PropertiesService.getScriptProperties().getProperty(codegenDayProp(now));
   const n = raw === null ? 0 : Number(raw);
   // Valor ilegível conta como TETO ATINGIDO, não como zero: na dúvida sobre quanto já se gastou, a
   // recusa custa uma geração adiada; o zero otimista custa dinheiro real.
-  return Number.isFinite(n) && n >= 0 ? n : CODEGEN_DAILY_CAP_USD;
+  return Number.isFinite(n) && n >= 0 ? n : budgetNow().codegenUsd;
 }
 
 /** Os escopos do MOTOR, lidos do próprio manifesto pela API: é o teto do que um filho pode herdar. */
@@ -2123,7 +2158,7 @@ export function successorOptions(folderId: string) {
     scopesError: erro,
     material: agentMaterial(id),
     generator: OPUS_MODEL,
-    budget: { spentToday: gasto, cap: CODEGEN_DAILY_CAP_USD, perRun: CODEGEN_BUDGET_USD },
+    budget: { spentToday: gasto, cap: budgetNow().codegenUsd, perRun: CODEGEN_BUDGET_USD },
     note: `The successor is new CODE, written by ${OPUS_MODEL}, deployed as its own Apps Script project. It inherits fewer scopes than this engine has — never the same set, and never the ones that let a project write other projects. Google will not run it until you authorize it.`,
   };
 }
@@ -2179,6 +2214,7 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
     },
     spentToday: () => codegenSpentToday(Date.now()),
     addSpent: (usd) => props.setProperty(codegenDayProp(Date.now()), String(codegenSpentToday(Date.now()) + usd)),
+    dailyCap: () => budgetNow().codegenUsd,
     now: () => Date.now(),
   };
 
@@ -2233,7 +2269,7 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
   // NÃO VOLTA SEGREDO NENHUM. Voltava, para quem cria embutir no fonte do filho e o filho pedir a
   // chave — o caminho que a P27 reprovou e a opção 4 da ADR-040 encerrou. Um campo `secret` que
   // ninguém mais usa seria a promessa sobrevivendo ao mecanismo.
-  return { ok: true as const, child: r.child, costUsd: r.costUsd, needsConsent: true, budget: { spentToday: codegenSpentToday(Date.now()), cap: CODEGEN_DAILY_CAP_USD, perRun: CODEGEN_BUDGET_USD } };
+  return { ok: true as const, child: r.child, costUsd: r.costUsd, needsConsent: true, budget: { spentToday: codegenSpentToday(Date.now()), cap: budgetNow().codegenUsd, perRun: CODEGEN_BUDGET_USD } };
 }
 
 // ---------- Aptidão do filho de código (P31, D2) ----------
@@ -2350,7 +2386,8 @@ export function familySpend() {
   // gravou (o pai), `informed` é o que o OpenRouter reporta para a CHAVE (a família).
   const c = observe.usageView(store.getApiKey()).check;
   const filhos = c.informed === null ? null : childrenSpendUpperBound(c.informed, c.measured);
-  return { family: c.informed, parent: c.measured, children: filhos, cap: FAMILY_CAP_USD, action: capAction(filhos), note: FAMILY_NOTE };
+  const tetoFamilia = budgetNow().familyUsd;
+  return { family: c.informed, parent: c.measured, children: filhos, cap: tetoFamilia, action: capAction(filhos, tetoFamilia), note: FAMILY_NOTE };
 }
 
 // ---------- Campos declarados pelo agente (item 20): a mutação aparece no painel ----------
@@ -2832,7 +2869,7 @@ function pocP26(step?: string): unknown {
   }
   if (step === 'budget') {
     const hoje = codegenSpentToday(Date.now());
-    return { pass: Number.isFinite(hoje) && hoje >= 0, spentTodayUsd: hoje, capUsd: CODEGEN_DAILY_CAP_USD, perRunUsd: CODEGEN_BUDGET_USD, generator: OPUS_MODEL };
+    return { pass: Number.isFinite(hoje) && hoje >= 0, spentTodayUsd: hoje, capUsd: budgetNow().codegenUsd, perRunUsd: CODEGEN_BUDGET_USD, generator: OPUS_MODEL };
   }
   return { pass: false, error: 'steps: scopes, budget' };
 }

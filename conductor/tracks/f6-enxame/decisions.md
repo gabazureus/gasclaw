@@ -64,15 +64,32 @@ A bateria define o que é "melhor", e por isso é do dono. Três razões que se 
 pasta (ADR-002 — quem editasse a pasta escreveria a prova), não pode vir do gerador (auto-avaliação),
 e é o objetivo — decisão de quem manda. Sem ela, `measureChild` devolve "não medido (gate H5)".
 
-## PENDENTE — H1: o orçamento da corrida
+## 2026-09-20 — H1 DECIDIDO: US$ 15 para a corrida, e o teto volta SOZINHO
 
-`CODEGEN_DAILY_CAP_USD = 3,00` hoje; a corrida pede **US$ 15,00**. O teto **não reprovou em medição
-nenhuma** — foi escolhido como orçamento, e o dono pode escolher outro. O que fica registrado aqui
-quando ele escolher: o valor, a data, e **o valor de volta** ao fim da corrida.
+O dono aprovou **US$ 15** (opção recomendada: 15 filhos).
 
 | Campo | Valor |
 |---|---|
-| `CODEGEN_DAILY_CAP_USD` durante a corrida | *(a decidir)* |
-| `FAMILY_CAP_USD` durante a corrida | *(a decidir)* |
-| Valores de volta ao fim | US$ 3,00 e US$ 5,00 |
-| Data da decisão | *(a preencher)* |
+| `codegenUsd` durante a corrida | **US$ 15,00** (era US$ 3,00) |
+| `familyUsd` durante a corrida | **US$ 18,00** (era US$ 5,00) |
+| **Valores de volta ao fim** | **US$ 3,00 e US$ 5,00** — as constantes de `dream.ts` e `family.ts`, que **não foram editadas** |
+| Duração | até 48 h, declarada no `setRunBudget(15, 18, horas)` |
+| Data da decisão | 2026-09-20 |
+
+**Por que não editei a constante.** O `/goal` manda devolver os tetos ao fim. Editar a constante e
+depois editá-la de volta dependeria de alguém lembrar — e um teto 5× maior esquecido no código é a
+falha que ninguém vê até a fatura. O teto da corrida mora em `BUDGET_OVERRIDE` com um instante de
+fim: passado ele, `effectiveBudget` devolve os de sempre **sem passo nenhum**. `endRunBudget()`
+encerra antes, se o dono quiser.
+
+**Fail-closed na direção certa:** override ilegível, zero, negativo ou acima de US$ 50 (o teto dos
+tetos) volta `null`, e `null` quer dizer o teto BAIXO. Um dígito a mais digitado é recusado inteiro.
+
+**Achado no caminho, e anterior a esta mudança:** a regra "gasto ilegível conta como teto atingido"
+de `codegenSpentToday` nunca tinha teste. Um zero otimista ali deixaria o Opus gastar além do teto
+justamente quando ninguém sabe quanto já foi gasto. Agora tem.
+
+## 2026-09-20 — H5 DECIDIDO em princípio: função de texto, bateria aprovada pelo dono antes de valer
+
+O dono escolheu **função de texto** (recomendada): normalizar datas em pt-BR para ISO. Eu proponho a
+bateria; **ela só vale depois que o dono aprovar** — `setAgentBattery` não é chamado antes disso.

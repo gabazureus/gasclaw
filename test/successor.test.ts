@@ -40,6 +40,7 @@ const deps = (o: Partial<SuccessorDeps> = {}): SuccessorDeps => ({
   api: apiOk(),
   spentToday: () => 0,
   addSpent: () => {},
+  dailyCap: () => 3.0,
   now: () => 1_700_000_000_000,
   ...o,
 });
@@ -50,6 +51,19 @@ describe('as recusas baratas vêm ANTES de pagar o Opus', () => {
     const r = generateSuccessor(pedido, deps({ complete, spentToday: () => 3.0 }));
     expect(porque(r)).toMatch(/daily cap/);
     expect(complete).not.toHaveBeenCalled();
+  });
+
+  // H1: o teto que vale é o que a CASCA passa — a corrida aprovada, ou o de sempre. Com a constante
+  // cravada aqui, a corrida de US$ 15 pararia na 3ª geração mesmo depois do dono aprovar.
+  test('o teto da corrida aprovada vale: US$ 3 gastos com teto de US$ 15 ainda gera', () => {
+    const complete = vi.fn(() => ({ text: BOM, costUsd: 0.2 }));
+    generateSuccessor(pedido, deps({ complete, spentToday: () => 3.0, dailyCap: () => 15 }));
+    expect(complete).toHaveBeenCalled();
+  });
+
+  test('a recusa diz o teto que ESTÁ valendo, não a constante', () => {
+    const r = generateSuccessor(pedido, deps({ spentToday: () => 15, dailyCap: () => 15 }));
+    expect(porque(r)).toMatch(/cap is US\$ 15\.00/);
   });
 
   test('escopo que o pai não tem para o pedido antes da chamada', () => {
