@@ -288,7 +288,9 @@ export function doPost(e: GoogleAppsScript.Events.DoPost) {
     // porque a resposta inteira importa (a leitura por GET do pai corta em 1.200 caracteres).
     if (action === 'readiness') return json(readinessSelf());
     // F8 — a HERANÇA chega do pai: as chaves do agente (nunca segredo). Filtrada de novo aqui.
-    if (action === 'inherit') return json(inheritFromParent(e?.postData?.contents ?? ''));
+    // Nome DIFERENTE da ação `inherit` da CLI: com o mesmo nome esta porta interceptava, no próprio pai,
+    // o pedido da CLI — antes do segredo — e o recusava (achado ao vivo, dev v161).
+    if (action === 'handover') return json(inheritFromParent(e?.postData?.contents ?? ''));
     // A ROTA `childkey` FOI REMOVIDA (2026-09-20, ADR-040 opção 4). Ela era o único ponto do projeto
     // que devolvia a chave do OpenRouter por HTTP. A P27 mediu que o filho não consegue alcançá-la —
     // o Google recusa o token de outro projeto antes de chegar aqui —, então ela não servia a ninguém
@@ -3712,7 +3714,7 @@ function handOver(rec: SuccessorRecord): { ok: boolean; written: number; reason:
   const { entries } = inheritable(PropertiesService.getScriptProperties().getProperties());
   const corpo = JSON.stringify(entries);
   try {
-    const j = JSON.parse(postChildJson(rec.url, 'inherit', `{"parent":${JSON.stringify(ScriptApp.getScriptId())},"entries":${corpo}}`).body) as { ok?: boolean; written?: number; error?: string };
+    const j = JSON.parse(postChildJson(rec.url, 'handover', `{"parent":${JSON.stringify(ScriptApp.getScriptId())},"entries":${corpo}}`).body) as { ok?: boolean; written?: number; error?: string };
     const recusa = `${j.error ?? 'the successor refused the inheritance'} [sent ${Object.keys(entries).length} keys, ${corpo.length} characters]`;
     return j.ok ? { ok: true, written: j.written ?? 0, reason: '' } : { ok: false, written: 0, reason: recusa };
   } catch (e) {

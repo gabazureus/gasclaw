@@ -50,7 +50,7 @@ beforeEach(() => {
     if (url.endsWith('/projects/NOVO/deployments') && init.method === 'post') return { code: 200, body: JSON.stringify({ entryPoints: [{ webApp: { url: URL_NOVO } }] }) };
     if (url.endsWith('/projects/SLOT/deployments') && (init.method ?? 'get') === 'get') return { code: 200, body: JSON.stringify({ deployments: [{ deploymentId: 'HEAD' }, { deploymentId: 'WEB', deploymentConfig: { versionNumber: 3 } }] }) };
     if (url.endsWith('/projects/SLOT/deployments/WEB')) return { code: 200, body: '{}' };
-    if (url === `${URL_SLOT}?action=inherit` && init.method === 'post') return { code: 200, body: JSON.stringify(heranca) };
+    if (url === `${URL_SLOT}?action=handover` && init.method === 'post') return { code: 200, body: JSON.stringify(heranca) };
     if (url.endsWith('?action=health')) return saude === 'consent' ? { code: 200, body: 'Authorization needed' } : { code: 200, body: JSON.stringify(saude) };
     if ((url === URL_SLOT || url === URL_NOVO) && init.method === 'post') {
       const acao = (init.payload as Record<string, string>).action;
@@ -520,7 +520,7 @@ describe('herança: o pai manda, o filho aceita só a lista fechada', () => {
   const avaliado = { changes: [{ file: '_motor', find: 'return lastSeen;', replace: 'return lastSeen - 1;' }], evaluation: { successorPasses: 5, incumbentPasses: 5, k: 6, complete: true, verdictLeaked: false, at: 2, rows: [] } };
   // A herança vai como CORPO JSON, com a ação na URL: como campo de formulário grande ela não chegava
   // ao doPost do sucessor (achado ao vivo, dev v160: 'got nothing').
-  const enviado = () => env.calls.find((c) => c.url === `${URL_SLOT}?action=inherit`);
+  const enviado = () => env.calls.find((c) => c.url === `${URL_SLOT}?action=handover`);
   const ordem = () => env.calls.filter((c) => c.url.startsWith(URL_SLOT)).map((c) => (c.url.includes('?action=') ? c.url.split('?action=')[1] : (c.init.payload as Record<string, string>)?.action));
 
   test('inheritSuccessor manda as chaves do agente e NENHUM segredo', async () => {
@@ -554,8 +554,8 @@ describe('herança: o pai manda, o filho aceita só a lista fechada', () => {
     slotRegistrado(avaliado);
     expect((await motor()).crownSuccessor('SLOT')).toMatchObject({ ok: true });
     const o = ordem();
-    expect(o.indexOf('inherit')).toBeGreaterThanOrEqual(0);
-    expect(o.indexOf('inherit')).toBeLessThan(o.indexOf('crown'));
+    expect(o.indexOf('handover')).toBeGreaterThanOrEqual(0);
+    expect(o.indexOf('handover')).toBeLessThan(o.indexOf('crown'));
   });
 
   test('herança falhou: coroa recusada, sucessor não é chamado, pai não é tocado', async () => {
@@ -572,7 +572,7 @@ describe('no SUCESSOR, a porta `inherit`: só do pai da semente, e só a lista f
   const post = async (parent: string, entries: Record<string, string>) => {
     vi.stubGlobal('GASCLAW_SEED', { bornDisabled: true, parent: 'PAI', agents: [{ name: 'agente-teste', folderId: 'f1' }], at: 1 });
     const m = await import('../src/main');
-    const out = m.doPost({ parameter: { action: 'inherit' }, postData: { contents: JSON.stringify({ parent, entries }), type: 'application/json' } } as unknown as GoogleAppsScript.Events.DoPost) as unknown as { getContent: () => string };
+    const out = m.doPost({ parameter: { action: 'handover' }, postData: { contents: JSON.stringify({ parent, entries }), type: 'application/json' } } as unknown as GoogleAppsScript.Events.DoPost) as unknown as { getContent: () => string };
     return JSON.parse(out.getContent()) as { ok: boolean; written?: number };
   };
 
@@ -599,7 +599,7 @@ describe('no SUCESSOR, a porta `inherit`: só do pai da semente, e só a lista f
   test('corpo ilegível é recusado sem gravar', async () => {
     vi.stubGlobal('GASCLAW_SEED', { bornDisabled: true, parent: 'PAI', agents: [{ name: 'agente-teste', folderId: 'f1' }], at: 1 });
     const m = await import('../src/main');
-    const out = m.doPost({ parameter: { action: 'inherit' }, postData: { contents: '{lixo', type: 'application/json' } } as unknown as GoogleAppsScript.Events.DoPost) as unknown as { getContent: () => string };
+    const out = m.doPost({ parameter: { action: 'handover' }, postData: { contents: '{lixo', type: 'application/json' } } as unknown as GoogleAppsScript.Events.DoPost) as unknown as { getContent: () => string };
     expect(JSON.parse(out.getContent())).toMatchObject({ ok: false, error: expect.stringContaining('JSON') });
   });
 });
@@ -651,5 +651,20 @@ describe('no SUCESSOR, readiness devolve as permissões do agente — e nenhum s
     expect(j.ok).toBe(true);
     expect(j.self.settings).toEqual({ 'ACCESS:f1': env.props['ACCESS:f1'], 'CAP:f1': env.props['CAP:f1'], 'STATUS:f1': 'active' });
     expect(texto).not.toContain('sk-or');
+  });
+});
+
+
+// O TESTE QUE FALTOU: a ação `inherit` pelo caminho REAL da CLI (doPost com o segredo). Com a porta do
+// sucessor de mesmo nome, ela era interceptada no pai antes do segredo e nunca chegava ao sucessor.
+describe('succession inherit pela CLI chega à herança, não à porta', () => {
+  test('doPost inherit com o segredo manda a herança ao sucessor', async () => {
+    slotRegistrado({ crownedAt: 9 });
+    const SEGREDO = 'a'.repeat(64);
+    env.props['CLI_SECRET'] = SEGREDO;
+    const m = await import('../src/main');
+    const out = m.doPost({ parameter: { action: 'inherit', secret: SEGREDO, child: 'SLOT' } } as unknown as GoogleAppsScript.Events.DoPost) as unknown as { getContent: () => string };
+    expect(JSON.parse(out.getContent())).toMatchObject({ ok: true });
+    expect(env.calls.some((c) => c.url === `${URL_SLOT}?action=handover`)).toBe(true);
   });
 });
