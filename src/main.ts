@@ -24,9 +24,9 @@ import { pocP20 } from '../poc/p20-approval/harness';
 import { pocP22, TICK_REQ as P22_TICK_REQ, TICK_RESULT as P22_TICK_RESULT, WAKE_REQ as P22_WAKE_REQ, WAKE_RESULT as P22_WAKE_RESULT } from '../poc/p22-proatividade/harness';
 import { dueAgenda, evaluateAgenda, syntheticAgenda } from '../poc/p22-proatividade/probe';
 import { deliverP2Probe, pocP2, startP2Event } from '../poc/p2-chat-async/harness';
-import { chatAppAvailable, createAsChatApp, spacesAsChatApp } from './chatApiGas';
+import { chatAppAvailable, createAsChatApp, ownerDmAsChatApp, spacesAsChatApp } from './chatApiGas';
 import { acceptChatMessage } from './chatAsync';
-import { deliveryDue, sendChatDelivery } from './chatDelivery';
+import { deliveryDue, newChatDelivery, sendChatDelivery } from './chatDelivery';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
 import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, reply, runTurn } from './agent';
 import { foreignMessage, parseSubagent, personaTools, subagentGrants, subagentSpan, subagentTools } from './subagent';
@@ -1434,7 +1434,7 @@ const CAP_TEXT: Record<Capability, { label: string; what: string; missing: strin
     // O texto ANTIGO dizia que o desenho tinha sido reprovado e não tinha medição. Era verdade em
     // 17/09 e deixou de ser: a P22 passou 4 de 4, e a F3a foi construída com o buraco real tapado —
     // a agenda saiu da pasta compartilhável e veio para cá.
-    what: 'Wakes up on the schedule YOU set below and acts without being asked. It only uses tools you put on the auto-approve list; anything else makes the run fail and say so, instead of waiting for a click nobody is there to give.',
+    what: 'Wakes up on the schedule YOU set below and acts without being asked, then sends you the answer in your direct conversation with this app in Google Chat. It only uses tools you put on the auto-approve list; anything else makes the run fail and say so there, instead of waiting for a click nobody is there to give.',
     missing: null,
   },
   succeed: {
@@ -1958,9 +1958,13 @@ function tickProactive(): void {
       continue;
     }
     const io = runIO();
+    // F9: a resposta vai para a conversa direta DO DONO — sem isto ela morria no trace, e "Reach out" não
+    // alcançava ninguém. Sem conversa (ou sem a identidade do app), o run acontece do mesmo jeito.
+    const dm = ownerDm();
     for (const j of devidos) {
       const now = Date.now();
       const r = newRun({
+        ...(dm ? { delivery: newChatDelivery(dm, undefined, Utilities.getUuid(), now, 0) } : {}),
         runId: `wake-${now}-${Utilities.getUuid().slice(0, 8)}`,
         session: `${a.folderId}:schedule`,
         folderId: a.folderId,
@@ -1971,7 +1975,19 @@ function tickProactive(): void {
         proactive: true,
       });
       io.enqueue(r, now);
+      props.setProperty(`LASTWAKE:${a.folderId}`, r.runId); // o último despertar, para ler o que ele fez
     }
+  }
+}
+
+/** A conversa direta do dono com o app, ou `null`. Nunca lança: achar o destino não pode impedir o run. */
+function ownerDm(): string | null {
+  if (!chatAppAvailable()) return null;
+  try {
+    return ownerDmAsChatApp(ownerEmail());
+  } catch (err) {
+    console.warn(`ownerDm: ${redactMsg(err)}`);
+    return null;
   }
 }
 
@@ -4144,10 +4160,11 @@ function pocP34(step?: string, params: Record<string, string> = {}): unknown {
 export function chatLink() {
   assertOwner();
   if (!chatAppAvailable()) return { ok: false as const, reason: 'this engine has no Google Chat app identity' };
-  const dm = spacesAsChatApp().find((sp) => sp.type === 'DIRECT_MESSAGE');
+  // A conversa do DONO, não a primeira conversa direta da lista: o app tem uma com cada pessoa que falou com ele.
+  const dm = ownerDmAsChatApp(ownerEmail());
   if (!dm) return { ok: false as const, reason: 'no direct conversation with this app yet: in Google Chat, start one with the gasclaw app of this project' };
-  const id = dm.name.replace('spaces/', '');
-  return { ok: true as const, url: `https://chat.google.com/dm/${id}`, space: dm.name };
+  const id = dm.replace('spaces/', '');
+  return { ok: true as const, url: `https://chat.google.com/dm/${id}`, space: dm };
 }
 
 /**
@@ -4226,7 +4243,7 @@ function pocP36(step?: string, params: Record<string, string> = {}): unknown {
   const agora = new Date();
   const minutos = Number(Utilities.formatDate(agora, tz, 'HH')) * 60 + Number(Utilities.formatDate(agora, tz, 'mm'));
   if (step === 'status') {
-    return { pass: true, enabled: store.isEnabled(), agent: ag.name, capsApproved: parseCapabilities(props.getProperty(`CAP:${id}`)), capsEffective: effectiveCapabilities(parseCapabilities(props.getProperty(`CAP:${id}`)), props.getProperty('CAPS_ENABLED')), creator: creatorOf(props.getProperty('CREATOR'), store.listAgents()), schedule: parseSchedule(props.getProperty(schedProp(id))).jobs, seen: props.getProperty(seenProp(id)), nowMinute: minutos, dream: dreamIO().active(id), mayAct: { dream: mayAct(id, 'dream'), initiative: mayAct(id, 'initiative'), succeed: mayAct(id, 'succeed'), create: mayAct(id, 'create') } };
+    return { pass: true, enabled: store.isEnabled(), agent: ag.name, capsApproved: parseCapabilities(props.getProperty(`CAP:${id}`)), capsEffective: effectiveCapabilities(parseCapabilities(props.getProperty(`CAP:${id}`)), props.getProperty('CAPS_ENABLED')), creator: creatorOf(props.getProperty('CREATOR'), store.listAgents()), tools: approvedOf(id)?.tools ?? [], autoApprove: agentSchedule(id).autoApprove, schedule: parseSchedule(props.getProperty(schedProp(id))).jobs, seen: props.getProperty(seenProp(id)), nowMinute: minutos, dream: dreamIO().active(id), mayAct: { dream: mayAct(id, 'dream'), initiative: mayAct(id, 'initiative'), succeed: mayAct(id, 'succeed'), create: mayAct(id, 'create') } };
   }
   // D1 — o ciclo começa pelo MESMO botão do dono; o worker de 1 min é quem o avança.
   if (step === 'dream') return { pass: true, ...startAgentDream(id) };
@@ -4245,6 +4262,12 @@ function pocP36(step?: string, params: Record<string, string> = {}): unknown {
     const jobs = [...parseSchedule(antes).jobs, { at, prompt, days: [] }];
     setAgentSchedule(id, jobs);
     return { pass: true, armedAtMinute: minutos, fireAtMinute: at, reading: 'wait ~3 min, then read the most recent run with ./gasclaw trace' };
+  }
+  if (step === 'wakeread') {
+    const runId = props.getProperty(`LASTWAKE:${id}`);
+    const r = runId ? runIO().load(id, runId) : null;
+    if (!r) return { pass: false, reading: 'no wake run yet' };
+    return { pass: r.status === 'done' || r.status === 'failed', runId, status: r.status, answer: (r.answer ?? '').slice(0, 300), error: r.error ?? null, delivery: r.delivery ? { status: r.delivery.status, space: r.delivery.space, sentAt: r.delivery.sentAt ?? null, messageName: r.delivery.messageName ?? null } : null };
   }
   if (step === 'wakeclear') {
     const b = props.getProperty('P36_SCHED_BACKUP');
@@ -4273,7 +4296,7 @@ function pocP36(step?: string, params: Record<string, string> = {}): unknown {
     props.deleteProperty('P36_CREATED');
     return { pass: !store.listAgents().some((a) => a.folderId === f), removed: f };
   }
-  return { pass: false, error: 'steps: status, dream, dreamstate, wake, wakeclear, create, createclean' };
+  return { pass: false, error: 'steps: status, dream, dreamstate, wake [--variant deny], wakeread, wakeclear, create, createclean' };
 }
 
 const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {

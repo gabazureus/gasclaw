@@ -48,6 +48,19 @@ export function listChatSpaces(token: string, http: ChatHttp): { name: string; t
   });
 }
 
+/**
+ * A conversa direta entre ESTA pessoa e o app — `spaces:findDirectMessage`, que aceita a identidade do app.
+ * `null` quando ela ainda não existe (404). É a única forma de achar a conversa do DONO: a lista de espaços
+ * traz as conversas diretas do app com qualquer pessoa do domínio que já falou com ele.
+ */
+export function findDirectMessage(token: string, email: string, http: ChatHttp): string | null {
+  if (!token || !/^[^\s@/]+@[^\s@/]+$/.test(email)) throw new Error('invalid Chat direct-message lookup');
+  const r = http(`https://chat.googleapis.com/v1/spaces:findDirectMessage?name=${encodeURIComponent(`users/${email}`)}`, { method: 'get', headers: { Authorization: `Bearer ${token}` } });
+  if (r.code === 404) return null;
+  const out = parse(r, 'Google Chat');
+  return typeof out.name === 'string' && SPACE.test(out.name) ? out.name : null;
+}
+
 export function getChatMessage(token: string, name: string, http: ChatHttp): { name: string; text: string; cardsV2: unknown[] } {
   if (!token || !MESSAGE.test(name)) throw new Error('mensagem do Chat invalida');
   const out = parse(http(`https://chat.googleapis.com/v1/${name}`, { method: 'get', headers: { Authorization: `Bearer ${token}` } }), 'Google Chat');

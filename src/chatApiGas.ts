@@ -1,4 +1,4 @@
-import { createChatMessage, getChatMessage, listChatSpaces, mintChatAppToken, validServiceAccount, type ChatHttp, type ChatMessage } from './chatApi';
+import { createChatMessage, findDirectMessage, getChatMessage, listChatSpaces, mintChatAppToken, validServiceAccount, type ChatHttp, type ChatMessage } from './chatApi';
 
 declare const __CHAT_SA_EMAIL__: string;
 
@@ -45,3 +45,4 @@ const token = (): string => {
 export const createAsChatApp = (input: { space: string; thread?: string; requestId: string; message: ChatMessage }) => createChatMessage(token(), input, gasHttp);
 export const getAsChatApp = (name: string) => getChatMessage(token(), name, gasHttp);
 export const spacesAsChatApp = () => listChatSpaces(token(), gasHttp);
+export const ownerDmAsChatApp = (email: string) => findDirectMessage(token(), email, gasHttp);

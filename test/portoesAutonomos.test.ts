@@ -54,6 +54,37 @@ describe('controle positivo: com tudo ligado, o job vencido VIRA run', () => {
   });
 });
 
+// AUDITORIA F9, medida no dev: o job disparou, o agente respondeu — e a resposta morreu no trace. Não há
+// tool de mensagem ao dono e `gmail.send` nunca se auto-aprova: "Reach out" não alcançava ninguém.
+// O run agendado passa a sair com o destino da conversa DIRETA DO DONO, pelo mesmo caminho de entrega do Chat.
+describe('Reach out entrega a resposta na conversa do dono', () => {
+  const rodadas = () => [...env.drive.values()].filter((v) => v.includes('"proactive":true')).map((v) => JSON.parse(v) as { delivery?: { space: string; status: string } });
+  const comDm = (dm: string | null) => {
+    env.route = (url) => (url.startsWith('https://chat.googleapis.com/v1/spaces:findDirectMessage?') ? (dm ? { code: 200, body: JSON.stringify({ name: dm }) } : { code: 404, body: '{}' }) : null);
+  };
+
+  test('com conversa direta do dono: o run leva esse destino', async () => {
+    comAgenda(['initiative']);
+    comDm('spaces/DMDONO');
+    const m = await import('../src/main');
+    m.drainRuns();
+    const rs = rodadas();
+    expect(rs.length).toBeGreaterThan(0);
+    expect(rs[0].delivery?.space).toBe('spaces/DMDONO');
+    expect(env.calls.some((c) => c.url.includes('findDirectMessage') && c.url.includes(encodeURIComponent('users/dono@x.com')))).toBe(true);
+  });
+
+  test('sem conversa com o dono: o run acontece mesmo assim, sem destino (fica no trace)', async () => {
+    comAgenda(['initiative']);
+    comDm(null);
+    const m = await import('../src/main');
+    m.drainRuns();
+    const rs = rodadas();
+    expect(rs.length).toBeGreaterThan(0);
+    expect(rs[0].delivery).toBeUndefined();
+  });
+});
+
 describe('o despertar só acontece com a capacidade LIGADA', () => {
   test('sem `initiative`, um job vencido NÃO vira run', async () => {
     comAgenda([]); // agenda gravada, capacidade desligada
