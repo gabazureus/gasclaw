@@ -196,6 +196,15 @@ function mutate(action: string, p: Record<string, string>): unknown {
   }
   if (action === 'drain') return { ok: true, trigger: observe.ensureTrigger(), ...observe.drain() };
   if (action === 'tools') return setTools(p.folder || '', p.set ?? '');
+  // A CORRIDA DO ENXAME PELA CLI (F6). Mesma autoridade do painel — o dono, provado pelo segredo —
+  // por outra porta, como já vale para `tools` (ADR-021/022). Sem isto, conduzir uma corrida de 24 h
+  // exigiria o dono clicando em cada geração, e o pedido era acompanhar, não operar.
+  if (action === 'battery') return setAgentBattery(p.folder || '', p.set ?? '');
+  if (action === 'interval') return setAgentInterval(p.folder || '', Number(p.ms));
+  if (action === 'budget') return p.end === '1' ? endRunBudget() : setRunBudget(Number(p.codegen), Number(p.family), Number(p.hours));
+  if (action === 'succeed') return writeSuccessor(p.folder || '', (p.scopes ?? '').split(',').filter(Boolean), p.goal ?? '');
+  if (action === 'measure') return measureChild(p.child || '');
+  if (action === 'lineage') return lineage();
   return { ok: false, status: 400, error: `unknown action: ${action}` };
 }
 
@@ -2275,6 +2284,23 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
   return { ok: true as const, child: r.child, costUsd: r.costUsd, needsConsent: true, budget: { spentToday: codegenSpentToday(Date.now()), cap: budgetNow().codegenUsd, perRun: CODEGEN_BUDGET_USD } };
 }
 
+/** Intervalo declarado entre gerações, por agente. O piso de 1 h é de `intervalOf`, não daqui. */
+const genIntervalProp = (folderId: string) => `GENINT:${folderId}`;
+
+/**
+ * O DONO declara o intervalo mínimo entre gerações deste agente (gate H2 da F6).
+ *
+ * Ele não escolhe o piso: `intervalOf` prende em 1 h, e um valor absurdo cai no padrão de 24 h.
+ * Quem escreve a Property não decide o mínimo — essa regra é do núcleo, e continua sendo.
+ */
+export function setAgentInterval(folderId: string, ms: number) {
+  assertOwner();
+  const id = String(folderId ?? '').trim();
+  if (!id) throw new Error('unknown agent');
+  PropertiesService.getScriptProperties().setProperty(genIntervalProp(id), String(Number(ms)));
+  return { folderId: id, intervalMs: intervalOf(Number(ms)) };
+}
+
 // ---------- Aptidão do filho de código (P31, D2) ----------
 
 /** Onde mora a bateria de um agente. Script Property: o PAINEL decide (ADR-021), nunca a pasta. */
@@ -2354,7 +2380,15 @@ export function mayGenerateNow(folderId: string) {
   assertOwner();
   const props = PropertiesService.getScriptProperties();
   const carimbo = props.getProperty(genStamp(folderId));
-  const v = mayGenerate(carimbo ? Number(carimbo) : null, intervalOf(undefined), Date.now());
+  // D4: ISTO ERA `intervalOf(undefined)`, e por isso o intervalo era SEMPRE 24 h. O piso de 1 h e o
+  // parâmetro `declaredMs` existiam desde a ADR-038 — e nada declarava. O portão H2 do plano da F6
+  // ("baixar o intervalo ao piso no painel") não tinha propriedade, painel, nem caminho nenhum: uma
+  // corrida de 3 gerações numa sessão era impossível, porque a segunda esperaria um dia.
+  //
+  // O piso continua sendo do NÚCLEO: a casca entrega o valor bruto, e `intervalOf` decide. Assim um
+  // `0` declarado vira o padrão de 24 h, nunca "sem intervalo".
+  const declarado = Number(props.getProperty(genIntervalProp(folderId)));
+  const v = mayGenerate(carimbo ? Number(carimbo) : null, intervalOf(Number.isFinite(declarado) ? declarado : undefined), Date.now());
   return { folderId, ok: v.ok, reason: v.reason };
 }
 

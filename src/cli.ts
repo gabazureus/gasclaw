@@ -4,7 +4,10 @@
 // `step` = uma volta do pump do run durável (ADR-026). Tem efeito (executa ferramentas), então entra aqui.
 // `tools` = liga/desliga ferramentas do agente pela CLI. O painel continua sendo a autoridade (ADR-021); isto é
 // a mesma autoridade por outra porta — o dono, provado pelo segredo — para que o dev não dependa de 23 cliques.
-export const MUTATING: ReadonlySet<string> = new Set(['eval', 'poc', 'enable', 'disable', 'drain', 'step', 'tools']);
+// `battery`, `interval`, `budget`, `succeed` e `measure` conduzem a corrida do enxame (F6). Todas
+// têm efeito — `succeed` gasta Opus e implanta um projeto —, então entram aqui. `lineage` é leitura,
+// mas fica junto para o comando único do enxame não precisar de duas portas.
+export const MUTATING: ReadonlySet<string> = new Set(['eval', 'poc', 'enable', 'disable', 'drain', 'step', 'tools', 'battery', 'interval', 'budget', 'succeed', 'measure', 'lineage']);
 
 /** Comparação em tempo constante para strings do mesmo tamanho (não revela o prefixo certo pelo tempo). */
 export function safeEqual(a: string, b: string): boolean {

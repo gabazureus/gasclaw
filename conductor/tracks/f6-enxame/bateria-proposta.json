@@ -1,19 +1,70 @@
 [
-  { "input": "3 de março de 2026",     "expected": "2026-03-03" },
-  { "input": "03/03/2026",             "expected": "2026-03-03" },
-  { "input": "25 de dezembro de 2025", "expected": "2025-12-25" },
-  { "input": "1º de janeiro de 2027",  "expected": "2027-01-01" },
-  { "input": "31/12/1999",             "expected": "1999-12-31" },
-  { "input": "7 de setembro de 1822",  "expected": "1822-09-07" },
-  { "input": "15-08-2024",             "expected": "2024-08-15" },
-  { "input": "29/02/2024",             "expected": "2024-02-29" },
-  { "input": "5/6/2023",               "expected": "2023-06-05" },
-  { "input": "  12 de junho de 2025  ","expected": "2025-06-12" },
-  { "input": "20 DE ABRIL DE 2026",    "expected": "2026-04-20" },
-  { "input": "2 de fevereiro de 2024", "expected": "2024-02-02" },
-  { "input": "4 de julho de 2026",     "expected": "2026-07-04" },
-  { "input": "30 de maio de 2020",     "expected": "2020-05-30" },
-  { "input": "8 de agosto de 2008",    "expected": "2008-08-08" },
-  { "input": "31/02/2024",             "expected": "invalid" },
-  { "input": "29/02/2023",             "expected": "invalid" }
+ {
+  "input": "{\"columns\":[\"item\",\"qtd\"],\"rows\":[{\"item\":\"Caneta\",\"qtd\":3},{\"item\":\"Papel\",\"qtd\":10}]}",
+  "expected": "item,qtd\nCaneta,3\nPapel,10"
+ },
+ {
+  "input": "{\"columns\":[\"item\",\"qtd\"],\"rows\":[]}",
+  "expected": "item,qtd"
+ },
+ {
+  "input": "{\"columns\":[\"item\",\"obs\"],\"rows\":[{\"item\":\"Caneta\",\"obs\":\"azul, fina\"}]}",
+  "expected": "item,obs\nCaneta,\"azul, fina\""
+ },
+ {
+  "input": "{\"columns\":[\"item\",\"obs\"],\"rows\":[{\"item\":\"Papel\",\"obs\":\"tipo \\\"A4\\\"\"}]}",
+  "expected": "item,obs\nPapel,\"tipo \"\"A4\"\"\""
+ },
+ {
+  "input": "{\"columns\":[\"item\",\"obs\"],\"rows\":[{\"item\":\"Nota\",\"obs\":\"linha1\\nlinha2\"}]}",
+  "expected": "item,obs\nNota,\"linha1\nlinha2\""
+ },
+ {
+  "input": "{\"columns\":[\"item\",\"qtd\"],\"rows\":[{\"item\":\"Caneta\"}]}",
+  "expected": "item,qtd\nCaneta,"
+ },
+ {
+  "input": "{\"columns\":[\"item\",\"valor\"],\"rows\":[{\"item\":\"Servico\",\"valor\":1234.5}],\"currency\":\"BRL\"}",
+  "expected": "item,valor\nServico,\"1.234,50\""
+ },
+ {
+  "input": "{\"columns\":[\"item\",\"valor\"],\"rows\":[{\"item\":\"Servico\",\"valor\":1000000}],\"currency\":\"BRL\"}",
+  "expected": "item,valor\nServico,\"1.000.000,00\""
+ },
+ {
+  "input": "{\"columns\":[\"item\",\"valor\"],\"rows\":[{\"item\":\"A\",\"valor\":10.1},{\"item\":\"B\",\"valor\":20.9}],\"currency\":\"BRL\",\"total\":\"valor\"}",
+  "expected": "item,valor\nA,\"10,10\"\nB,\"20,90\"\nTOTAL,\"31,00\""
+ },
+ {
+  "input": "{\"columns\":[\"item\",\"qtd\"],\"rows\":[{\"item\":\"Caneta\",\"qtd\":3}],\"delimiter\":\";\"}",
+  "expected": "item;qtd\nCaneta;3"
+ },
+ {
+  "input": "{\"columns\":[\"item\",\"obs\"],\"rows\":[{\"item\":\"X\",\"obs\":\"a;b\"}],\"delimiter\":\";\"}",
+  "expected": "item;obs\nX;\"a;b\""
+ },
+ {
+  "input": "{\"columns\":[\"item\",\"obs\"],\"rows\":[{\"item\":\"X\",\"obs\":\"a,b\"}],\"delimiter\":\";\"}",
+  "expected": "item;obs\nX;a,b"
+ },
+ {
+  "input": "{\"columns\":[\"mes\",\"receita\"],\"rows\":[{\"mes\":\"Marco\",\"receita\":0}],\"currency\":\"BRL\"}",
+  "expected": "mes,receita\nMarco,\"0,00\""
+ },
+ {
+  "input": "{\"columns\":[\"item\",\"valor\"],\"rows\":[],\"total\":\"valor\"}",
+  "expected": "item,valor\nTOTAL,0"
+ },
+ {
+  "input": "{\"columns\":[\"desc\"],\"rows\":[{\"desc\":\"Acentuacao: ção, ü, ñ\"}]}",
+  "expected": "desc\n\"Acentuacao: ção, ü, ñ\""
+ },
+ {
+  "input": "{\"columns\":[\"item\",\"valor\"],\"rows\":[{\"item\":\"A\",\"valor\":0.005}],\"currency\":\"BRL\"}",
+  "expected": "item,valor\nA,\"0,01\""
+ },
+ {
+  "input": "{\"columns\":[\"a\",\"b\",\"c\"],\"rows\":[{\"a\":\"1\",\"c\":\"3\"}]}",
+  "expected": "a,b,c\n1,,3"
+ }
 ]

@@ -149,3 +149,34 @@ describe('bestHeirOf: herda do melhor medido, e do mais recente enquanto não h�
     expect(bestHeirOf([], 'pai')).toBeNull();
   });
 });
+
+// D4 — O INTERVALO ENTRE GERAÇÕES NUNCA FOI LIGADO.
+//
+// `intervalOf(declaredMs)` existe com piso de 1 h desde a ADR-038, e `mayGenerateNow` passava
+// `undefined`: o intervalo era SEMPRE 24 h e ninguém conseguia declarar outro. O portão H2 do plano
+// — "baixar o intervalo ao piso de 1 h no painel" — não tinha painel nem propriedade nem caminho.
+//
+// Consequência concreta, achada na hora de rodar: uma corrida de 3 gerações numa sessão é
+// IMPOSSÍVEL, porque a geração 2 seria recusada por 24 horas. É a sétima peça pronta e desligada
+// que esta auditoria encontra.
+describe('fiação do intervalo: o dono consegue declarar um, e o piso continua valendo', () => {
+  const main = readFileSync('src/main.ts', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  test('`mayGenerateNow` não passa mais `undefined`: ele LÊ o intervalo declarado', () => {
+    expect(main).not.toContain('intervalOf(undefined)');
+    expect(main).toMatch(/intervalOf\(\s*\w/);
+  });
+
+  test('declarar o intervalo é ato do dono', () => {
+    const i = main.indexOf('export function setAgentInterval');
+    expect(i).toBeGreaterThan(-1);
+    expect(main.slice(i, i + 500)).toContain('assertOwner()');
+  });
+
+  // O piso de 1 h é do núcleo e não pode ser contornado pela casca: quem escreve a Property não
+  // decide o mínimo. Um `0` declarado tem que virar o padrão, não "sem intervalo".
+  test('o piso continua sendo do núcleo: a casca entrega o valor bruto a `intervalOf`', () => {
+    const i = main.indexOf('export function setAgentInterval');
+    expect(main.slice(i, i + 500)).not.toMatch(/3_600_000|3600000/); // a casca não repete o piso
+  });
+});

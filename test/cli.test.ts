@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { cliAuthorized, MUTATING, safeEqual, validSecret } from '../src/cli';
 
@@ -23,6 +24,14 @@ describe('segredo da CLI (M1: CSRF)', () => {
   });
   // Lista fixa de propósito: criar uma ação com efeito tem de quebrar este teste, para ninguém deixá-la acessível por GET.
   test('ações com efeito saem do GET', () => {
-    expect([...MUTATING].sort()).toEqual(['disable', 'drain', 'enable', 'eval', 'poc', 'step', 'tools']);
+    expect([...MUTATING].sort()).toEqual(['battery', 'budget', 'disable', 'drain', 'enable', 'eval', 'interval', 'lineage', 'measure', 'poc', 'step', 'succeed', 'tools']);
+  });
+
+  // O ESPELHO NO SHELL, que NUNCA teve teste. São duas listas porque o shell não lê TypeScript, e o
+  // comentário no `gasclaw` já registra o estrago de divergirem: a ação sai por GET e o web app
+  // responde 405 — foi o que aconteceu com `tools`. Um comentário pedindo atenção não é uma trava.
+  test('a lista do shell é a MESMA do TypeScript', () => {
+    const sh = readFileSync('gasclaw', 'utf8').match(/case " ([a-z ]+) " in/)?.[1] ?? '';
+    expect(sh.trim().split(/\s+/).sort()).toEqual([...MUTATING].sort());
   });
 });

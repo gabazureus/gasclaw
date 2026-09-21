@@ -273,7 +273,7 @@ remote_to() { # $1 URL base (…/exec ou …/dev) · $2 "acao&a=b" (já no forma
   [ -n "$t" ] || t=$(gcloud auth print-access-token 2>/dev/null) || return 1
   # Espelho do MUTATING de src/cli.ts. São duas listas porque o shell não lê o TS; se divergirem, a ação sai por
   # GET e o web app responde 405 — foi o que aconteceu com `tools`. Mexeu lá, mexe aqui.
-  case " eval poc enable disable drain step tools " in
+  case " eval poc enable disable drain step tools battery interval budget succeed measure lineage " in
     *" $action "*) # M1: ação com efeito → POST; parâmetros no corpo; token e segredo pelo stdin, nunca em argv nem na URL
       # `return 1`, nunca `die`: quem chama guarda com `|| true` e `die` faz `exit`, que `|| true` NAO captura.
       # Com o `2>&1` do chamador engolindo a mensagem, o ./gasclaw up morria mudo aqui e pulava health,
