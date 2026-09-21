@@ -3669,7 +3669,12 @@ function healthOf(rec: SuccessorRecord) {
  * (o mesmo filtro do pai, aplicado de novo: um erro de um lado só não entrega segredo).
  */
 function inheritFromParent(parent: string, raw: string) {
-  if (parent !== store.successorOf()) return { ok: false, status: 403, error: 'only the parent named in the seed can hand its agent over' };
+  if (parent !== store.successorOf()) {
+    // O diagnóstico diz O QUE chegou (8 caracteres de um id, não segredo): foi assim que se viu, ao vivo,
+    // se o problema era o pai errado ou o parâmetro que não chegou.
+    const chegou = parent ? parent.slice(0, 8) : 'nothing';
+    return { ok: false, status: 403, error: `only the parent named in the seed can hand its agent over (got ${chegou})` };
+  }
   let recebido: Record<string, string>;
   try {
     recebido = JSON.parse(raw) as Record<string, string>;
@@ -3686,9 +3691,11 @@ function inheritFromParent(parent: string, raw: string) {
 /** No PAI: manda ao sucessor as chaves do agente. Devolve se ele aceitou. */
 function handOver(rec: SuccessorRecord): { ok: boolean; written: number; reason: string } {
   const { entries } = inheritable(PropertiesService.getScriptProperties().getProperties());
+  const corpo = JSON.stringify(entries);
   try {
-    const j = JSON.parse(postChild(rec.url, { action: 'inherit', parent: ScriptApp.getScriptId(), entries: JSON.stringify(entries) }).body) as { ok?: boolean; written?: number; error?: string };
-    return j.ok ? { ok: true, written: j.written ?? 0, reason: '' } : { ok: false, written: 0, reason: j.error ?? 'the successor refused the inheritance' };
+    const j = JSON.parse(postChild(rec.url, { action: 'inherit', parent: ScriptApp.getScriptId(), entries: corpo }).body) as { ok?: boolean; written?: number; error?: string };
+    const recusa = `${j.error ?? 'the successor refused the inheritance'} [sent ${Object.keys(entries).length} keys, ${corpo.length} characters]`;
+    return j.ok ? { ok: true, written: j.written ?? 0, reason: '' } : { ok: false, written: 0, reason: recusa };
   } catch (e) {
     return { ok: false, written: 0, reason: `could not reach the successor: ${String((e as Error)?.message ?? e).slice(0, 200)}` };
   }
