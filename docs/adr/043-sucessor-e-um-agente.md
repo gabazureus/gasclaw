@@ -1,7 +1,7 @@
 # ADR-043 — O sucessor é um AGENTE, e o Opus melhora o código dele por patch
 
 - **Data:** 2026-09-21
-- **Status:** aceita (desenho) · **nada implementado** — três POCs antes de qualquer fiação
+- **Status:** aceita · **Fases 0, 1 e 2 implementadas** (dev v152) — P32, P33 e P34 passaram antes da fiação; a primeira geração real espera o teto do dia
 - **Supera em parte:** [ADR-041](041-sucessor-como-codigo.md) (o que o sucessor é)
 - **Reabre:** [ADR-040](040-isolamento-e-privilegio.md), "profundidade 1"
 - **Relaciona:** [ADR-002](002-agente-pasta-sem-codigo.md), [ADR-021](021-acesso-aprovado-no-painel.md)
@@ -112,3 +112,14 @@ já estão ligadas.
 **Cada agente sucessor custa ao dono três atos, não dois:** vincular o projeto GCP, autorizar, colar a
 chave. É um custo real do desenho "o sucessor é outro projeto" — e ele não some com automação, porque
 a plataforma não oferece o caminho.
+
+## Decisões tomadas na implementação (2026-09-21), com o número que as sustenta
+
+| Decisão | Por quê | Número |
+|---|---|---|
+| **Empate libera a coroa; nota PIOR não** | a P34 empatou 5×5 com dois motores idênticos: a bateria não exercita o defeito que um patch de código conserta (o da meia-noite não tem cenário). Exigir vitória prenderia todo sucessor por patch. O empate é **dito** como empate, e a decisão é do dono (decisão 2) | P34, dev v151 |
+| **O manifesto e a semente são intocáveis pelo patch** | um patch no manifesto seria poder novo por baixo da porta (os escopos são os do pai); na semente, desfaria o "nasce parado" | `prepareSuccessor` |
+| **A próxima geração reusa o sucessor parado (slot)** | o vínculo do GCP, a autorização e a chave são do PROJETO; recriar cobraria os três atos do dono a cada geração. Um sucessor **ligado** nunca recebe código — trocaria o motor que responde sem coroa | `slotFor`, `slotWritable` |
+| **A coroa pausa o titular ANTES** e o devolve se o sucessor recusar | a ordem contrária deixaria dois motores respondendo pelo mesmo agente | `crownSuccessor` |
+| **A coroa não existe na CLI** | é o portão humano: o dono lê o diff, a explicação e a nota no painel. A CLI escreve, avalia e traz o patch de volta | `cmd_succession` |
+| **`passBaton` continua sendo o bastão entre PASTAS** (ciclo de sonho); a troca de MOTOR é `crownSuccessor` | são duas trocas diferentes — de prompt e de código —, e um nome só esconderia qual está acontecendo | — |

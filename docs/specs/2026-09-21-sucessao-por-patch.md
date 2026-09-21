@@ -1,6 +1,6 @@
 # Spec — F7: sucessão por patch (o sucessor é um agente)
 
-- **Data:** 2026-09-21 · **Status:** desenho aceito, **nada implementado**
+- **Data:** 2026-09-21 · **Status:** Fases 0–2 **implementadas e publicadas no dev (v152)**; Fase 3 com a CLI pronta e sem patch coroado ainda
 - **Decisão:** [ADR-043](../adr/043-sucessor-e-um-agente.md)
 - **Pedido do dono (verbatim):** *"o sucessor deve ser SEMPRE um agente e nunca uma automação. Ao
   criar o sucessor, o Opus 5 deve receber o código do Agente antigo (que está em _motor.gs e os
@@ -61,7 +61,7 @@ O dono colou o texto atual de "Write a successor" e a lista de escopos, e pediu:
 | `script.projects` e `script.deployments` somem da lista (proibidos a filhos) | o sucessor os herda (decisão 2 da ADR-043) — é o que o deixa gerar o próprio sucessor |
 | o botão cria uma **automação** | o botão cria o **agente melhorado por patch** |
 
-**Até a Fase 2, o botão "Write a successor" ainda cria a automação antiga** — não deve ser usado.
+**Feito na Fase 2 (dev v152):** o botão cria o agente melhorado por patch, com os escopos todos marcados e travados; a automação antiga virou **Write an automation**.
 
 ## Fase 1 — núcleo puro (depois das POCs)
 

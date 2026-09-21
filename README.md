@@ -316,10 +316,10 @@ A persona gets the **intersection** of what it declares, what the tool registry 
 approved for the parent — and then only the tools that need no approval, because from inside a tool
 there is no path to an approval card. It never reaches your Gmail, Drive or Calendar.
 
-## The swarm: children that write their own successor
+## The swarm: automations that climb a ladder
 
-An agent with the `succeed` capability asks Opus 5 to write the **code** of a child project, deploys
-it, and then measures it. Each generation starts from the best measured child, not from the prompt —
+An agent with the `succeed` capability can also ask Opus 5 to write the **code** of an **automation** — a
+small project of its own, a tool, not a successor — deploy it, and then measure it. Each generation starts from the best measured child, not from the prompt —
 that is what makes it a ladder instead of fifteen coin flips.
 
 ```
@@ -426,19 +426,63 @@ run nobody is supervising.
                                                                      nobody is there to give
 ```
 
-## Succession: a successor is new CODE
+## Succession: the successor is THIS agent, improved
 
-`Succeed` does not write a better prompt. It writes the successor's **code**, generated with Opus 5,
-deployed as its own Apps Script project with **narrower** permissions than this engine has
-([ADR-041](docs/adr/041-sucessor-como-codigo.md)). Writing is not crowning — the successor does not
-run until you authorize it, and passing the baton stays your click.
+The successor is always an **agent**, never an automation ([ADR-043](docs/adr/043-sucessor-e-um-agente.md)).
+Opus 5 receives this engine's own code, returns a **small patch** with an explanation of what it
+improves, and the patched engine is deployed as another Apps Script project — same scopes, born paused.
 
-The generated code goes through a closed screen before it is ever deployed: no `eval`, no
-`new Function`, no asking for the OAuth token, no calling the Apps Script API, no API key in the
-source, and it must have an entry point. And its scopes are checked to be **strictly fewer** than the
-engine's — asking for everything the parent has is refused, because succession narrows.
+```
+  THIS AGENT (the parent)                                THE SUCCESSOR AGENT
+  ───────────────────────                                ───────────────────
+  reads its own code  ── GET projects/{self}/content
+  (+ your goal, if you give one)
+          │
+          ▼
+  Opus 5 → { what it improves and why,
+             [ { file, exact excerpt, replacement } ] }       ← a patch, never a rewrite
+          │
+          ▼
+  every excerpt must match EXACTLY ONCE · the manifest
+  and the seed are untouchable · GUARD SCREEN: does the
+  patch weaken assertOwner, NEVER_AUTO, mayWriteProject,
+  mayAct, isEnabled or the tool registry?  ── yes ──►  refused, nothing deployed
+          │ no                                           (the cost is still counted)
+          ▼
+  deploys it, BORN PAUSED  ────────────────────────────►  same 17 scopes, no key inside
+                                                          you: link GCP, authorize, paste the key
+                                                          (once — the next generations reuse it)
+          │
+          ▼
+  EVALUATES IT FROM OUTSIDE: sends each scenario  ◄────  it only answers; it never grades itself
+  and judges both answers with ITS OWN judge
+          │
+          ▼
+  you read: the change + the explanation + the score ──► CROWN (panel) ──► this engine pauses,
+                                                                           the successor answers
+          │
+          ▼
+  ./gasclaw succession pull ──► the change is ported to src/*.ts with a test — or the next `up` erases it
+```
 
-The panel shows the **lineage** (generation, parent, child, delta, cost) and, while a dream cycle is
+**The crown is your click, in the panel, and nowhere else.** The panel shows every scope checked and
+locked (the successor is this agent, not a different one), the diff change by change, the explanation,
+and the score from the outside evaluation. A successor that scores **worse** than this engine cannot
+be crowned; a tie can, and the panel says it is a tie — the scenarios do not exercise every defect a
+code patch fixes, and the decision is yours.
+
+**The next generation reuses the paused successor**, same project and address: the GCP link, the
+authorization and the key belong to the project, not to the code. A successor that is **running**
+never receives new code — you pause it first.
+
+```bash
+./gasclaw succession write "<optional goal>"   # Opus reads the code and deploys the successor (spends Opus)
+./gasclaw succession evaluate <scriptId>        # this engine judges it from outside (pause it first)
+./gasclaw succession status                     # change, explanation, score, crown
+./gasclaw succession pull                       # brings the crowned patch to succession/ to port to src
+```
+
+The panel also shows the **lineage** (generation, parent, child, delta, cost) and, while a dream cycle is
 running, a **DreamBoard** with the line-by-line diff of what each candidate changed and a scoreboard
 that states *what the number can actually see* — a candidate only wins with a statistical advantage,
 never an arithmetic one.
@@ -465,6 +509,8 @@ Every command accepts `--prod`; without it, the command targets dev.
 | `./gasclaw usage [YYYY-MM-DD]` | Cost per model: last 7 days, or the 24 hours of one day |
 | `./gasclaw eval <scenario\|--all> [--model id]` | Runs `evals/*.md` in dev (non-zero exit on failure) |
 | `./gasclaw tools all\|none\|<a,b,c> [folder]` | Turns the agent's tools on and off |
+| `./gasclaw swarm <sub>` | The swarm run: battery, interval, budget, run, measure, status |
+| `./gasclaw succession <sub>` | The successor agent: write, status, evaluate, pull (you crown it in the panel) |
 | `./gasclaw onboard` | Guided setup menu (the default before anything is published) |
 
 ## Roadmap

@@ -10,6 +10,16 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 
 ## [Não publicado]
 
+> 🧬 **O sucessor é ESTE agente, melhorado (F7, ADR-043):** o botão **Write a successor** passa a
+> mandar o código do próprio agente ao Opus 5, que devolve um **patch pequeno com a explicação** do que
+> melhora. O agente melhorado sobe como outro projeto, com os **mesmos escopos**, **parado**. O agente
+> atual o **avalia de fora**, com o juiz dele; você lê a troca, a explicação e a nota, e **coroa** — só
+> no painel. Nota pior não coroa; empate coroa se você quiser, e o painel diz que é empate. A geração
+> seguinte **reusa** o sucessor parado: você vincula o GCP, autoriza e cola a chave **uma vez**.
+> O que o botão fazia antes (um projeto pequeno de código novo) continua existindo com o nome certo:
+> **Write an automation**. CLI: `./gasclaw succession write | status | evaluate | pull`.
+> ✅ no dev (v152) · a primeira geração real espera o teto de gasto do dia.
+
 > 🧬 **Capacidades por agente (F5):** quatro poderes que você liga UM A UM no painel, e nenhum liga
 > outro — **Sonho** (reescreve o próprio prompt e se mede contra o conjunto-juiz), **Procurar**
 > (acorda numa agenda que você marca no painel), **Suceder** (escreve o CÓDIGO do sucessor com

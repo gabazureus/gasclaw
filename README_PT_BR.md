@@ -318,10 +318,10 @@ A persona recebe a **interseção** do que declara, do que o registro de ferrame
 você aprovou para o pai — e, dentro disso, só as ferramentas que não pedem aprovação, porque de
 dentro de uma ferramenta não existe caminho até o card. Ela nunca alcança seu Gmail, Drive ou Agenda.
 
-## O enxame: filhos que escrevem o próprio sucessor
+## O enxame: automações que sobem uma escada
 
-Um agente com a capacidade `succeed` pede ao Opus 5 o **código** de um projeto filho, implanta e
-depois mede. Cada geração parte do melhor filho medido, não do prompt — é isso que faz disto uma
+Um agente com a capacidade `succeed` também pode pedir ao Opus 5 o **código** de uma **automação** — um
+projeto pequeno e próprio, uma ferramenta, não um sucessor —, implantá-la e depois medi-la. Cada geração parte do melhor filho medido, não do prompt — é isso que faz disto uma
 escada em vez de quinze sorteios.
 
 ```
@@ -428,21 +428,65 @@ está supervisionando.
                                                                      ninguém está lá para dar
 ```
 
-## Sucessão: um sucessor é CÓDIGO novo
+## Sucessão: o sucessor é ESTE agente, melhorado
 
-`Suceder` não escreve um prompt melhor. Escreve o **código** do sucessor, gerado com Opus 5,
-implantado como projeto Apps Script próprio com permissões **mais estreitas** que as deste motor
-([ADR-041](docs/adr/041-sucessor-como-codigo.md)). Escrever não é coroar — o sucessor não roda até
-você autorizar, e passar o bastão continua sendo o seu clique.
+O sucessor é sempre um **agente**, nunca uma automação ([ADR-043](docs/adr/043-sucessor-e-um-agente.md)).
+O Opus 5 recebe o código deste motor, devolve um **patch pequeno** com a explicação do que melhora, e
+o motor com o patch é implantado como outro projeto Apps Script — mesmos escopos, nascendo parado.
 
-O código gerado passa por um crivo fechado antes de ser implantado: sem `eval`, sem `new Function`,
-sem pedir o token OAuth, sem chamar a API do Apps Script, sem chave de API no fonte, e precisa ter um
-ponto de entrada. E os escopos dele são conferidos como **estritamente menores** que os do motor —
-pedir tudo que o pai tem é recusado, porque sucessão estreita.
+```
+  ESTE AGENTE (o pai)                                    O AGENTE SUCESSOR
+  ───────────────────                                    ─────────────────
+  lê o próprio código  ── GET projects/{eu}/content
+  (+ o seu objetivo, se você der um)
+          │
+          ▼
+  Opus 5 → { o que melhora e por quê,
+             [ { arquivo, trecho exato, substituto } ] }      ← patch, nunca reescrita
+          │
+          ▼
+  cada trecho casa EXATAMENTE UMA vez · o manifesto e a
+  semente são intocáveis · CRIVO DE GUARDAS: o patch
+  enfraquece assertOwner, NEVER_AUTO, mayWriteProject,
+  mayAct, isEnabled ou o registro de tools?  ── sim ──►  recusa, nada é implantado
+          │ não                                          (o custo conta mesmo assim)
+          ▼
+  implanta, NASCENDO PARADO  ──────────────────────────►  os mesmos 17 escopos, nenhuma chave dentro
+                                                          você: vincula o GCP, autoriza, cola a chave
+                                                          (uma vez — as próximas gerações reusam)
+          │
+          ▼
+  AVALIA DE FORA: manda cada cenário  ◄────────────────  ele só responde; nunca se julga
+  e julga as duas respostas com o juiz DELE
+          │
+          ▼
+  você lê: a troca + a explicação + a nota ──► COROA (painel) ──► este motor para,
+                                                                  o sucessor responde
+          │
+          ▼
+  ./gasclaw succession pull ──► a mudança é portada para src/*.ts com teste — senão o próximo `up` a apaga
+```
 
-O painel mostra a **linhagem** (geração, pai, filho, delta, custo) e, enquanto um ciclo de sonho roda,
-um **DreamBoard** com o diff linha a linha do que cada candidato mudou e um placar que declara *o que
-o número consegue enxergar* — um candidato só vence com vantagem estatística, nunca aritmética.
+**A coroa é o seu clique, no painel, e em nenhum outro lugar.** O painel mostra todos os escopos
+marcados e travados (o sucessor é este agente, não um diferente dele), o diff troca por troca, a
+explicação e a nota da avaliação de fora. Um sucessor com nota **pior** que a deste motor não pode ser
+coroado; um empate pode, e o painel diz que é empate — os cenários não exercitam todo defeito que um
+patch de código conserta, e a decisão é sua.
+
+**A próxima geração reusa o sucessor parado**, mesmo projeto e endereço: o vínculo do GCP, a
+autorização e a chave são do projeto, não do código. Um sucessor **ligado** nunca recebe código novo —
+você o pausa antes.
+
+```bash
+./gasclaw succession write "<objetivo opcional>"  # o Opus lê o código e implanta o sucessor (gasta Opus)
+./gasclaw succession evaluate <scriptId>           # este motor o julga de fora (pause-o antes)
+./gasclaw succession status                        # troca, explicação, nota, coroa
+./gasclaw succession pull                          # traz o patch coroado para succession/ para portar ao src
+```
+
+O painel mostra também a **linhagem** (geração, pai, filho, delta, custo) e, enquanto um ciclo de sonho
+roda, um **DreamBoard** com o diff linha a linha do que cada candidato mudou e um placar que declara *o
+que o número consegue enxergar* — um candidato só vence com vantagem estatística, nunca aritmética.
 
 ## Referência do CLI
 
@@ -466,6 +510,8 @@ Todos os comandos aceitam `--prod`; sem a flag, valem para dev.
 | `./gasclaw usage [AAAA-MM-DD]` | Custo por modelo: últimos 7 dias, ou as 24 horas de um dia |
 | `./gasclaw eval <cenário\|--all> [--model id]` | Roda `evals/*.md` no dev (sai com erro se falhar) |
 | `./gasclaw tools all\|none\|<a,b,c> [pasta]` | Liga e desliga as ferramentas do agente |
+| `./gasclaw swarm <sub>` | A corrida do enxame: battery, interval, budget, run, measure, status |
+| `./gasclaw succession <sub>` | O agente sucessor: write, status, evaluate, pull (a coroa é no painel) |
 | `./gasclaw onboard` | Menu guiado de setup (o padrão antes de qualquer publicação) |
 
 ## Roadmap

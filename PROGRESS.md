@@ -1,7 +1,7 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, e se já foi resolvido.
-> **Atualizado em:** 2026-09-20 · **1781 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
+> **Atualizado em:** 2026-09-21 · **2066 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
 > · **Auditoria:** seis ✅ eram falsos. Critério: *algum módulo importa isto, e o símbolo aparece em `dist/_motor.js`?*
 > · **P22 aprovada 4/4** · P24 **aprovada por inteiro** · P25 **reprovada** (sem combustível)
 > · **P27 medida e REPROVADA** (o filho executa, o motor recusa o token dele: 401 da plataforma)
@@ -138,6 +138,13 @@ a sexta forma de prova falsa desta sessão. As outras cinco estão listadas acim
 | ~~52~~ | ✅ **Seleção por aptidão** | `bestHeirOf`: a próxima geração parte do MELHOR medido, por TAXA e não por contagem. Sem isso, encadear é deriva — variação sem seleção | — |
 | ~~53~~ | ✅ **Orçamento que volta sozinho** | O teto da corrida expira: "devolva os tetos ao fim" deixou de ser passo e virou relógio. Fail-closed na direção certa — corrompido vira o teto BAIXO | `budget.ts` |
 | 54 | Corrida de 3 gerações | 🔄 **EM ANDAMENTO** (dev v145). Crédito e credencial resolvidos pelo dono. **Geração 1 nasceu** (`1XQ3qlqu…`, US$ 0,109) — escrita pelo Opus, passou pelo crivo, implantada; a primeira tentativa (US$ 0,108) foi recusada por um **falso positivo MEU** (D7 e a regex) e **não conta**. **H4 provado com a corrida viva**: `too soon` → `down` → `everything is paused`. Falta: medir o filho 1 (clique do dono), gerações 2 e 3, uma recusa pelo crivo corrigido, devolver os tetos | clique do dono + relógio |
+| ~~55~~ | ✅ **F7 · P32: o Opus devolve um patch do motor inteiro** | dev v147: 252.504 tokens de entrada, 43 s, 1 troca, US$ 1,33 — e a troca achou um **defeito real** (o job de 00:00 nunca disparava), portado para `src/schedule.ts` com teste | ADR-043 |
+| ~~56~~ | ✅ **F7 · P33: um agente inteiro sobe como outro projeto** | C1 e C3 medidos; C2 (nasce parado) e C4 (conversa) com evidência **indireta** — o dono ativou antes da leitura. Achado: cada sucessor custa **três** atos ao dono (vincular o GCP, autorizar, colar a chave), não dois. Auditoria: código idêntico ao do pai, nenhuma guarda enfraquecida, semente sem segredo | [poc/p33](poc/p33-agente-sucessor/README.md) |
+| ~~57~~ | ✅ **F7 · P34: o pai avalia o sucessor de fora** | dev v151, 6 cenários: o pai conduz, o juiz é o DELE, nenhum veredito vazou. **Empate 5×5** — e o empate é o resultado certo (motores idênticos). Consequência: a bateria não toca o que um patch de código conserta | [poc/p34](poc/p34-avaliacao-de-fora/README.md) |
+| ~~58~~ | ✅ **F7 · Fase 1: núcleo puro** | `parsePatch` (fail-closed), `applyPatch` (casa UMA vez, tudo ou nada), `guardsWeakened` (o crivo de GUARDAS) — com mutação em cada guarda | — |
+| ~~59~~ | ✅ **F7 · Fase 2: a casca** | dev v152. `writeSuccessor` pede o PATCH do próprio código e implanta o sucessor parado; o que fazia antes virou `writeAutomation`. **Slot**: a próxima geração reusa o sucessor parado — o dono não refaz os três atos; um sucessor ligado nunca recebe código. `evaluateSuccessor` (o caminho da P34), `crownSuccessor` (o titular para ANTES e volta se falhar), porta `crown` só do pai da semente. Painel com escopos todos marcados, diff, explicação, nota. **47 testes novos, 34 mutações** (1 equivalente removida). Suíte 2066/2066 | 55–58 |
+| 60 | F7 · a primeira geração real | 🔒 **Recusada pelo teto do dia, antes de gastar**: US$ 2,93 de US$ 3,00 já gastos e a geração pode custar até US$ 1,77. Espera o dono subir o teto (`./gasclaw swarm budget …`, que expira) ou o dia virar (00:00 UTC) | decisão do dono |
+| 61 | F7 · Fase 3: um patch coroado de volta ao `src` | `./gasclaw succession pull` pronto (grava `succession/<data>-<id>.json` com a explicação e as trocas). Falta um patch COROADO para portar com teste e mutação | 60 + a coroa |
 | ~~33~~ | ✅ **Entrega da chave ao filho: REMOVIDA** | ❌ **MEDIDO E REPROVADO (P27, dev v126)**: o filho executa (`code 200`) mas o motor recusa o token dele (`401`, página de login) — barrado pela PLATAFORMA antes do nosso código. **O dono escolheu a opção 4 (2026-09-20)**: filhos são só `automation`, que nunca falam com modelo. A rota `childkey`, `deliverKeyToChild`, `rearmChildKey`, o segredo por filho, a janela armada, a metade da entrega em `family.ts` e a sonda da P27 foram **removidos, não desligados**; `ChildKind` perdeu o membro `subagent`. Três defeitos achados na auditoria da remoção: `successor.ts` produzia `subagent` **sempre** (a guarda fail-closed nunca mordia), o crivo não proibia o filho de chamar provedor de modelo, e `parseChild` não rebaixava um `subagent` já gravado. **Custo declarado:** um filho não pode ter escopos OAuth próprios E um modelo — e é só isso. Prova: 1784 testes, 5 mutações, 5 testes mortos; `KEYSEC:` no bundle só dentro de `deleteProperty`. [ADR-040](docs/adr/040-isolamento-e-privilegio.md) | decisão do dono, tomada |
 | ~~34~~ | ✅ **Teto familiar com efeito** |
 | ~~40~~ | ✅ **`agent.create` no registro fechado** | Cria agente com pasta própria e **nada mais**: sem ferramenta, sem acesso, sem capacidade. `approval: 'always'` porque criar é o ato que multiplica |
@@ -161,6 +168,9 @@ a sexta forma de prova falsa desta sessão. As outras cinco estão listadas acim
 | **P23** sonho | Quanto custa um ciclo? | ⚠️ C1 e C6 medidos; **C2–C5 esperam o ciclo real** |
 | **P24** código | Criar filho sem clasp? | ✅ **Aprovada por inteiro**, inclusive o "falhar é passar" |
 | **P25** aglomerado | O trace tem material? | ❌ **Reprovou** — e isso inverteu a ordem do organismo |
+| **P32** patch do motor | O Opus devolve um patch válido do motor inteiro em < 5 min? | ✅ 43 s, US$ 1,33, 1 troca que achou um defeito real |
+| **P33** agente sucessor | Um agente inteiro sobe como outro projeto, parado? | ✅ C1/C3 · 🟡 C2/C4 indiretos · achado: três atos do dono, não dois |
+| **P34** avaliação de fora | O pai julga o sucessor com o próprio juiz? | ✅ 6 cenários, empate 5×5, nenhum veredito vazou |
 
 ### Consertos de instrumento (2026-09-19/20)
 
