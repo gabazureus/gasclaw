@@ -802,6 +802,43 @@ console.log(`${r.agent}: ${r.enabled.length} tool(s) enabled`);for(const t of r.
 console.log(`people: ${r.users.length?r.users.join(", "):"owner only"}`)})'
 }
 
+cmd_swarm() { # a corrida do enxame (F6): ./gasclaw swarm <battery|interval|budget|run|measure|status>
+  local sub="${1:-}"; shift || true
+  local folder="${SWARM_FOLDER:-}"
+  case "$sub" in
+    battery) # ./gasclaw swarm battery <arquivo.json>  — declara o que é "melhor" (portão H5)
+      [ -f "${1:-}" ] || die "usage: ./gasclaw swarm battery <file.json>"
+      # A bateria tem aspas, virgulas e quebras de linha: vai codificada, senao quebra a query do POST.
+      local enc; enc=$(node -e 'process.stdout.write(encodeURIComponent(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")))))' "$1")
+      remote "battery&set=$enc${folder:+&folder=$folder}" | swarm_print ;;
+    interval) # ./gasclaw swarm interval <minutos>  — o piso de 60 min e do nucleo, nao daqui
+      [ -n "${1:-}" ] || die "usage: ./gasclaw swarm interval <minutes>"
+      remote "interval&ms=$(( $1 * 60000 ))${folder:+&folder=$folder}" | swarm_print ;;
+    budget) # ./gasclaw swarm budget <codegen> <family> <horas> | ./gasclaw swarm budget end
+      if [ "${1:-}" = end ]; then remote "budget&end=1" | swarm_print; else
+        [ -n "${3:-}" ] || die "usage: ./gasclaw swarm budget <codegenUsd> <familyUsd> <hours> | end"
+        remote "budget&codegen=$1&family=$2&hours=$3" | swarm_print; fi ;;
+    run) # ./gasclaw swarm run "<objetivo>"  — GASTA OPUS e implanta um projeto filho
+      [ -n "${1:-}" ] || die "usage: ./gasclaw swarm run \"<goal>\" [scope,scope]"
+      remote "succeed&goal=$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$1")&scopes=${2:-https://www.googleapis.com/auth/userinfo.email}${folder:+&folder=$folder}" | swarm_print ;;
+    measure) # ./gasclaw swarm measure <scriptId>  — so mede filho JA autorizado pelo dono
+      [ -n "${1:-}" ] || die "usage: ./gasclaw swarm measure <scriptId>"
+      remote "measure&child=$1" | swarm_print ;;
+    status) remote "lineage" | swarm_lineage ;;
+    *) die "usage: ./gasclaw swarm battery <file> | interval <min> | budget <c> <f> <h>|end | run \"<goal>\" | measure <id> | status" ;;
+  esac
+}
+
+swarm_print() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);if(r.ok===false){console.error(r.error||r.reason);process.exit(1)}console.log(JSON.stringify(r,null,1))})'; }
+
+swarm_lineage() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);
+const cg=(r.entries||[]).filter((e)=>e.kind==="codegen");
+if(!cg.length){console.log("no generation yet");process.exit(0)}
+console.log("gen  child                 passes   rate    delta     cost");
+for(const e of cg){const rate=Number.isInteger(e.passes)&&e.k?(e.passes/e.k):null;
+console.log(`${String(e.generation).padEnd(4)} ${e.child.slice(0,20).padEnd(21)} ${rate===null?"not measured":String(e.passes)+"/"+e.k} ${rate===null?"      ":("   "+(rate*100).toFixed(0)+"%").padStart(7)} ${e.delta===null||e.delta===undefined?"     -":(e.delta>=0?"+":"")+e.delta.toFixed(3)}  US$ ${(e.costUsd||0).toFixed(2)}`)}
+const t=cg.reduce((a,e)=>a+(e.costUsd||0),0);console.log(`\ntotal spent: US$ ${t.toFixed(2)}`)})'; }
+
 cmd_rollback() {
   lock_dev # B4
   local d cur
@@ -998,12 +1035,13 @@ gasclaw — agents that live in your Google Drive, running on Google Apps Script
   ./gasclaw usage [YYYY-MM-DD]  cost per model: last 7 days, or the 24 h of one day
   ./gasclaw eval <scenario|--all> [--model id]  run evals/*.md on dev (exit != 0 on failure)
   ./gasclaw tools all|none|<a,b,c> [folder]     turn the agent's tools on and off
+  ./gasclaw swarm <sub>       the swarm run: battery, interval, budget, run, measure, status
   ./gasclaw onboard           guided setup menu (the default before anything is published)
 TXT
 }
 
 case "$CMD" in
-  up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs|eval|limits|usage|tools|onboard) "cmd_$CMD" "$@" ;;
+  up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs|eval|limits|usage|tools|swarm|onboard) "cmd_$CMD" "$@" ;;
   # Sem argumento: quem ainda nao publicou nao quer uma lista de 15 comandos, quer saber por onde comecar.
   # Quem ja publicou ja sabe, e a lista e mais util. O `help` explicito sempre mostra a lista.
   '') if [ -n "$(var "DEPLOY_ID_$UP")" ]; then cmd_help; else cmd_onboard; fi ;;

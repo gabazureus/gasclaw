@@ -2194,7 +2194,14 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
   // a regra proíbe é o MODELO inventar o problema — o dono declarando um objetivo não é isso, e
   // exigir aglomerado aqui travaria a capacidade inteira até haver falha acumulada.
   const aglomerado = agentMaterial(id);
-  const pedido = String(goal ?? '').trim().slice(0, 500);
+  // D5: ISTO ERA `.slice(0, 500)`, E CORTAVA EM SILÊNCIO. O enunciado da primeira corrida da F6 tem
+  // 1047 caracteres — mais da metade das regras sumiria, e o Opus seria julgado por casos que
+  // dependem de regras que ele nunca recebeu, a US$ 1 por geração.
+  //
+  // Recusar em vez de cortar é a mesma decisão de `narrowScopes`: um corte calado deixa o dono
+  // achando que pediu o que não pediu, e ele só descobre pelo resultado ruim.
+  const pedido = String(goal ?? '').trim();
+  if (pedido.length > GOAL_MAX) throw new Error(`the goal is too long to send whole: ${pedido.length} characters, limit is ${GOAL_MAX}. Shorten it — cutting it here would judge the generator by rules it never received`);
   const material = aglomerado || pedido;
   if (!material) return { ok: false as const, reason: 'nothing to improve: no failure cluster yet, and no goal was stated', costUsd: 0 };
 
@@ -2283,6 +2290,9 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
   // ninguém mais usa seria a promessa sobrevivendo ao mecanismo.
   return { ok: true as const, child: r.child, costUsd: r.costUsd, needsConsent: true, budget: { spentToday: codegenSpentToday(Date.now()), cap: budgetNow().codegenUsd, perRun: CODEGEN_BUDGET_USD } };
 }
+
+/** Teto do objetivo declarado pelo dono. Cabe um enunciado de verdade; acima disso, recusa. */
+const GOAL_MAX = 2_000;
 
 /** Intervalo declarado entre gerações, por agente. O piso de 1 h é de `intervalOf`, não daqui. */
 const genIntervalProp = (folderId: string) => `GENINT:${folderId}`;

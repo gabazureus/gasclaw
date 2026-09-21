@@ -258,3 +258,31 @@ describe('fiação: a medição existe, é do dono, e a bateria nunca vem da pas
     expect(m).not.toMatch(/expected\s*\)?\s*\}|c\.expected/);
   });
 });
+
+// D5 — O OBJETIVO DO DONO ERA CORTADO EM SILÊNCIO.
+//
+// `succeedNow` fazia `String(goal).slice(0, 500)`. O enunciado da primeira corrida tem 1047
+// caracteres: mais da METADE das regras sumiria, e o Opus seria julgado por 17 casos que dependem de
+// regras que ele nunca recebeu. Cada geração custaria US$ 1 para falhar por um corte invisível.
+//
+// A resposta é a mesma que `narrowScopes` já dá para escopo: RECUSAR, não cortar calado. Um corte
+// silencioso deixa o dono achando que pediu o que não pediu — e só descobrindo pelo resultado ruim.
+describe('o objetivo do dono não é cortado em silêncio', () => {
+  const main = readFileSync('src/main.ts', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  test('`slice(0, 500)` não corta mais o objetivo', () => {
+    expect(main).not.toContain("String(goal ?? '').trim().slice(0, 500)");
+  });
+
+  test('objetivo longo demais é RECUSADO, com o tamanho e o teto na mensagem', () => {
+    const i = main.indexOf('export function writeSuccessor');
+    const bloco = main.slice(i, i + 2500);
+    expect(bloco).toMatch(/GOAL_MAX/);
+    expect(bloco).toMatch(/throw new Error/);
+  });
+
+  test('o teto cabe num enunciado de verdade: o da primeira corrida tem 1047 caracteres', () => {
+    const teto = Number(/const GOAL_MAX = ([0-9_]+)/.exec(readFileSync('src/main.ts', 'utf8'))?.[1].replace(/_/g, '') ?? 0);
+    expect(teto).toBeGreaterThanOrEqual(1047);
+  });
+});
