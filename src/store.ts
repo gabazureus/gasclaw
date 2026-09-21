@@ -46,6 +46,8 @@ export const saveAgents = (agents: AgentEntry[]): void => {
 // Com semente, o sucessor nasce PARADO e só liga com um "true" explícito — a coroa. Sem ela, a regra
 // de sempre. Era `RUNTIME_ENABLED !== 'false'`, que num projeto novo quer dizer LIGADO.
 export const isEnabled = (): boolean => enabledWith(props().getProperty('RUNTIME_ENABLED'), seed());
+/** Este motor é um agente SUCESSOR (tem a semente que o pai escreveu)? Um motor comum nunca é. */
+export const isSuccessor = (): boolean => seed() !== null;
 export const setEnabled = (on: boolean): void => {
   props().setProperty('RUNTIME_ENABLED', String(on));
 };

@@ -1,4 +1,5 @@
 import { namesOf, scenarioMd, SCENARIOS } from './judgeSet';
+import { parseScenario } from './eval';
 import { startDream, tickDream, type DreamDeps } from './dreamTick';
 import { dreamIO } from './dreamStore';
 import { failProp, failuresFrom, parseFailures, serializeFailures, withFailure } from './failureLog';
@@ -41,7 +42,7 @@ import { pump, pumpById, type StepDeps } from './runner';
 import { runIO, type RunIO } from './runStore';
 import { flushMemory } from './tools/memoryFlush';
 import { cliAuthorized, MUTATING, validSecret } from './cli';
-import { evalAction } from './evalEntry';
+import { evalAction, judgeRun, parseRunSpec, runSpec, toRunSpec, type EvalEnv, type RunTrace } from './evalEntry';
 import { pocP11 } from '../poc/p11-free/harness';
 import { pocP18 } from '../poc/p18-sessoes/harness';
 import { sessionMessages } from './session';
@@ -61,7 +62,7 @@ import {
   CAPABILITIES, can, canSucceed, capsAfterSuccession, creatorOf, DEFAULT_INTERVAL_MS, bestHeirOf, forgetAgentProps, intervalOf, mayGenerate,
   accessAfterArchive, capsAfterCreatorMoved, capsEnabled, clearCreator, effectiveCapabilities, isRunnable, nextGeneration, parseCapabilities, parseStatus, setCreator, type Capability, type LineageEntry,
 } from './agentCaps';
-import { CODEGEN_BUDGET_USD, mayWriteProject, withinDailyCap } from './dream';
+import { beatsIncumbent, CODEGEN_BUDGET_USD, mayWriteProject, withinDailyCap } from './dream';
 import { generateSuccessor, sourceOfChild, type SuccessorDeps } from './successor';
 import { codeDelta, judgeCase, parseBattery, previousScore, scoreRun, withMeasurement } from './fitness';
 import { applyPatch, parsePatch, type Change, type PatchFile } from './patch';
@@ -261,6 +262,10 @@ export function doPost(e: GoogleAppsScript.Events.DoPost) {
     assertOwner();
     const props = PropertiesService.getScriptProperties();
     const stored = props.getProperty('CLI_SECRET');
+    // P34 — A PORTA DO SUCESSOR PARA SER AVALIADO DE FORA. Vem ANTES do segredo da CLI porque o pai
+    // não tem esse segredo, e não deve ter. O que a torna segura sem ele são as três guardas de
+    // `evalRunForParent` (só sucessor, só parado, só caixa de areia).
+    if (action === 'evalrun') return json(evalRunForParent(p.spec ?? ''));
     // A ROTA `childkey` FOI REMOVIDA (2026-09-20, ADR-040 opção 4). Ela era o único ponto do projeto
     // que devolvia a chave do OpenRouter por HTTP. A P27 mediu que o filho não consegue alcançá-la —
     // o Google recusa o token de outro projeto antes de chegar aqui —, então ela não servia a ninguém
@@ -2567,6 +2572,79 @@ function sandboxMemory(): { read: () => string; write: (t: string) => void; day:
   };
 }
 
+/**
+ * O ambiente de eval em CAIXA DE AREIA — um só, para o sonho E para a avaliação do sucessor (P34).
+ *
+ * Duas cópias de um ambiente de segurança divergem em silêncio: uma ganha `google` num conserto, a
+ * outra não, e ninguém percebe. Por isso ele mora aqui, e os dois usam o mesmo.
+ *
+ * Sem `google`: nenhuma ferramenta do Workspace alcança a conta do dono. Sem `bootstrap`:
+ * `bootstrap.consume()` mandaria o `BOOTSTRAP.md` vivo para a lixeira. Memória DESCARTÁVEL: o cenário
+ * escreve e apaga à vontade sem tocar no `MEMORY.md` curado.
+ */
+function sandboxEvalEnv(folderId: string, key: string | null, enabled: () => boolean): EvalEnv {
+  const tz = Session.getScriptTimeZone();
+  return {
+    owner: ownerEmail(),
+    apiKey: key,
+    agent: () => withAccess(loadAgent(folderId), approvedOf(folderId)),
+    folderId,
+    memory: sandboxMemory(),
+    now: () => Utilities.formatDate(new Date(), tz, "yyyy-MM-dd'T'HH:mm:ssXXX (EEEE)") + ` fuso ${tz}`,
+    llm: (m, messages, defs) => complete(key ?? '', m, messages, 1000, undefined, defs),
+    clock: Date.now,
+    tickets: cacheTickets(),
+    newToken,
+    skill: (name) => skillsIO(folderId).body(name),
+    enabled,
+    sandboxed: true, // ninguém está olhando: o cenário não concede nada
+    zone: zone(),
+  };
+}
+
+/**
+ * A porta do SUCESSOR para ser avaliado de fora (P34): roda um cenário e devolve os turnos CRUS, sem
+ * veredito nenhum. Quem julga é o pai, com o juiz dele — o avaliado nunca julga a si mesmo.
+ *
+ * Três guardas, e cada uma fecha um caminho:
+ * - **só num sucessor** (tem a semente): um motor comum nunca expõe esta porta;
+ * - **só parado**: a avaliação é ANTES da coroa; coroado, ele serve tráfego real;
+ * - **só em caixa de areia**: nenhuma ferramenta do Workspace, memória descartável.
+ *
+ * É o conjunto das três que a deixa dispensar o segredo da CLI, que o pai não tem. O pior que um
+ * pedido forjado consegue é gastar o modelo do sucessor numa conversa de mentira — sem tocar a conta.
+ *
+ * A caixa de areia roda com `enabled: () => true` DE PROPÓSITO: o sucessor está parado, e a pausa
+ * existe para barrar tráfego REAL. Sem isso a avaliação antes da coroa seria impossível.
+ */
+function evalRunForParent(specJson: string) {
+  if (!store.isSuccessor()) return { ok: false, status: 403, error: 'only a successor agent answers evalrun' };
+  if (store.isEnabled()) return { ok: false, status: 403, error: 'only a PAUSED successor answers evalrun: evaluation happens before the crown' };
+  const spec = parseRunSpec(specJson);
+  if (!spec) return { ok: false, status: 400, error: 'invalid run spec' };
+  const ag = defaultAgent();
+  if (!ag) return { ok: false, status: 400, error: 'the successor has no agent to run the scenario with' };
+  return { ok: true, trace: runSpec(spec, sandboxEvalEnv(ag.folderId, store.getApiKey(), () => true)) };
+}
+
+/**
+ * POST no web app de um filho/sucessor, seguindo o 302 do Apps Script — o irmão de `fetchChild`.
+ *
+ * Mesmas regras: só para `script.google.com`, e a segunda perna SEM o token de 16 escopos. Diferente
+ * dele, devolve o corpo INTEIRO: o `RunTrace` é JSON, e cortá-lo em 1.200 caracteres quebraria o parse.
+ */
+function postChild(url: string, form: Record<string, string>): { code: number; body: string } {
+  if (!/^https:\/\/script\.google\.com\//i.test(url)) return { code: 0, body: 'refused: a child URL must be on script.google.com' };
+  const res = UrlFetchApp.fetch(url, { method: 'post', payload: form, muteHttpExceptions: true, followRedirects: false, headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` } });
+  const h = res.getHeaders() as Record<string, string>;
+  const alvo = redirectTarget(res.getResponseCode(), h['Location'] ?? h['location'] ?? null);
+  if (alvo) {
+    const segunda = UrlFetchApp.fetch(alvo, { muteHttpExceptions: true, followRedirects: false });
+    return { code: segunda.getResponseCode(), body: segunda.getContentText() };
+  }
+  return { code: res.getResponseCode(), body: res.getContentText() };
+}
+
 function dreamDeps(): DreamDeps {
   const key = store.getApiKey();
   const tz = Session.getScriptTimeZone();
@@ -2587,25 +2665,7 @@ function dreamDeps(): DreamDeps {
     //
     // A caixa de areia é a única resposta: um sonho que precisa tocar a conta do dono para se medir
     // não é um sonho, é um agente agindo sem supervisão com o nome trocado.
-    env: (folderId) => ({
-      owner: ownerEmail(),
-      apiKey: key,
-      agent: () => withAccess(loadAgent(folderId), approvedOf(folderId)),
-      folderId,
-      // Memória DESCARTÁVEL: o cenário pode escrever e apagar à vontade sem tocar no `MEMORY.md`.
-      memory: sandboxMemory(),
-      now: () => Utilities.formatDate(new Date(), tz, "yyyy-MM-dd'T'HH:mm:ssXXX (EEEE)") + ` fuso ${tz}`,
-      llm: (m, messages, defs) => complete(key ?? '', m, messages, 1000, undefined, defs),
-      clock: Date.now,
-      tickets: cacheTickets(),
-      newToken,
-      skill: (name) => skillsIO(folderId).body(name),
-      enabled: store.isEnabled, // a chave geral do dono para o sonho também
-      sandboxed: true, // ninguém está olhando: o cenário não concede nada
-      // Sem `bootstrap`: `bootstrap.consume()` manda o `BOOTSTRAP.md` vivo para a lixeira.
-      // Sem `google`: nenhuma ferramenta do Workspace alcança a conta do dono a partir daqui.
-      zone: zone(),
-    }),
+    env: (folderId) => sandboxEvalEnv(folderId, key, store.isEnabled), // a chave geral do dono para o sonho também
     generate: (messages, temperature) => {
       const r = runFree((id) => complete(key ?? '', id, messages, 2000, undefined, undefined, temperature), { tools: false });
       return typeof r.text === 'string' ? r.text : '';
@@ -3393,6 +3453,67 @@ function pocP33(step?: string): unknown {
   return { pass: false, error: 'steps: deploy, check' };
 }
 
+/**
+ * Sonda da P34 (só no dev): **o pai avalia o sucessor DE FORA?**
+ *
+ * Para cada cenário: o pai manda ao sucessor só o `RunSpec` (sem juiz, rubrica nem verificações), roda
+ * o MESMO cenário aqui no titular, e julga os dois com o `judgeRun` DELE. O avaliado nunca julga a si
+ * mesmo — e a sonda confere isso: o sucessor tem que devolver turnos crus, nunca um veredito.
+ *
+ * `k` são os CENÁRIOS medidos, e `beatsIncumbent` decide sobre passes/k. Os dois lados rodam na caixa
+ * de areia, com o mesmo agente: a única diferença entre eles é o código.
+ */
+const P34_SCENARIOS = ['smoke', 'e1-now', 'e1-memoria', 'e1-limite', 'e1-fora-da-lista', 'e1-injecao'];
+
+function pocP34(step?: string, params: Record<string, string> = {}): unknown {
+  if (step !== 'run') return { pass: false, error: 'steps: run' };
+  const props = PropertiesService.getScriptProperties();
+  const sucessor = JSON.parse(props.getProperty('P33_SUCCESSOR') ?? 'null') as { url: string } | null;
+  if (!sucessor) return { pass: false, error: 'no successor yet: run `./gasclaw poc p33 deploy` first' };
+  const key = store.getApiKey();
+  if (!key) return { pass: false, error: 'save the OpenRouter key first' };
+  const ag = defaultAgent();
+  if (!ag) return { pass: false, error: 'no active agent' };
+  const envPai = sandboxEvalEnv(ag.folderId, key, () => true);
+  const nomes = P34_SCENARIOS.filter((n) => scenarioMd(n) !== null).slice(0, Number(params.n) || P34_SCENARIOS.length);
+  const t0 = Date.now();
+  const linhas: { name: string; successor: boolean | null; incumbent: boolean; error?: string; verdictLeaked?: boolean }[] = [];
+  for (const nome of nomes) {
+    if (Date.now() - t0 > 270_000) break; // margem contra o corte de 6 min: parar é melhor que perder tudo
+    const cenario = parseScenario(scenarioMd(nome) as string);
+    const spec = toRunSpec(cenario);
+    const r = postChild(sucessor.url, { action: 'evalrun', spec: JSON.stringify(spec) });
+    let trace: RunTrace | null = null;
+    let erro = '';
+    let vazou = false;
+    try {
+      const j = JSON.parse(r.body) as { ok?: boolean; trace?: RunTrace & Record<string, unknown>; error?: string };
+      if (j.ok && j.trace) {
+        trace = j.trace;
+        // C2: o sucessor devolveu TURNOS, não um veredito. Um `pass` ou `checks` aqui seria ele se julgando.
+        vazou = 'pass' in j.trace || 'checks' in j.trace || 'judge' in j.trace;
+      } else erro = j.error ?? 'the successor refused';
+    } catch {
+      erro = `HTTP ${r.code}: the successor answered something that is not JSON`;
+    }
+    const titular = runSpec(spec, envPai);
+    // O JUIZ É DO PAI — para os dois lados, com o cenário INTEIRO.
+    linhas.push({ name: nome, successor: trace ? judgeRun(cenario, trace, envPai).pass : null, incumbent: judgeRun(cenario, titular, envPai).pass, ...(erro ? { error: erro } : {}), ...(vazou ? { verdictLeaked: true } : {}) });
+  }
+  const medidos = linhas.filter((l) => l.successor !== null);
+  const k = medidos.length;
+  const sp = medidos.filter((l) => l.successor).length;
+  const ip = medidos.filter((l) => l.incumbent).length;
+  return {
+    pass: k > 0 && k === linhas.length && !linhas.some((l) => l.verdictLeaked),
+    c1_parentDrives: k > 0,
+    c2_parentJudges: k > 0 && !linhas.some((l) => l.verdictLeaked),
+    c3_compared: { successorPasses: sp, incumbentPasses: ip, k, successorWins: k > 0 ? beatsIncumbent(sp, ip, k) : false },
+    rows: linhas,
+    ms: Date.now() - t0,
+  };
+}
+
 const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {
   p1: () => pocUrlFetchTimeout(),
   p2: (step, params = {}) => pocP2(step, params, runIO()),
@@ -3407,6 +3528,7 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p29: (step) => pocP29(step),
   p32: (step, params = {}) => pocP32(step, params),
   p33: (step) => pocP33(step),
+  p34: (step, params = {}) => pocP34(step, params),
   p6: (step) => pocP6(step, ownerEmail()),
   p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),

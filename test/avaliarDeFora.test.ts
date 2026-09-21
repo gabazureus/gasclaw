@@ -83,3 +83,30 @@ describe('parseRunSpec: o que chega pela rede é conferido', () => {
     expect(r).not.toHaveProperty('rubric');
   });
 });
+
+// A FIAÇÃO DA PORTA. As três guardas de `evalRunForParent` são o que a deixa dispensar o segredo da
+// CLI. Se qualquer uma sumir, a porta vira um jeito de rodar conversas no sucessor sem o dono saber.
+import { readFileSync } from 'node:fs';
+describe('fiação: a porta do sucessor e o juiz do pai', () => {
+  const main = readFileSync('src/main.ts', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const porta = main.slice(main.indexOf('function evalRunForParent'), main.indexOf('\n}', main.indexOf('function evalRunForParent')));
+
+  test('só um sucessor responde', () => expect(porta).toMatch(/if \(!store\.isSuccessor\(\)\) return/));
+  test('só PARADO responde: a avaliação é antes da coroa', () => expect(porta).toMatch(/if \(store\.isEnabled\(\)\) return/));
+  test('só em caixa de areia', () => expect(porta).toContain('sandboxEvalEnv('));
+  test('o que chega é conferido', () => expect(porta).toContain('parseRunSpec('));
+
+  // O AVALIADO NUNCA JULGA A SI MESMO: a porta roda, e não pode chamar nenhum juiz.
+  test('a porta do sucessor RODA e não JULGA', () => {
+    expect(porta).toContain('runSpec(');
+    expect(porta).not.toMatch(/judgeRun\(|evaluate\(|judgeMessages\(|gradeMessages\(/);
+  });
+
+  test('a caixa de areia do sonho e a da porta são a MESMA função', () => {
+    expect(main).toContain('env: (folderId) => sandboxEvalEnv(folderId, key, store.isEnabled)');
+  });
+
+  test('a porta vem antes do segredo da CLI — o pai não o tem', () => {
+    expect(main.indexOf("action === 'evalrun'")).toBeLessThan(main.indexOf("action === 'setsecret'"));
+  });
+});
