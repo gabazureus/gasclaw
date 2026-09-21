@@ -1,16 +1,16 @@
 # POC P33 — um agente completo sobe como OUTRO projeto, nascendo parado?
 
-> **Status: C1 MEDIDO (dev v148). C2–C4 esperam o dono** — e a primeira tentativa dele achou um
-> portão humano que a spec não tinha previsto. Ver [ADR-043](../../docs/adr/043-sucessor-e-um-agente.md).
+> **Status: C1 e C3 MEDIDOS; C2 e C4 com evidência INDIRETA (dev v151)** — e a primeira tentativa
+> do dono achou um portão humano que a spec não tinha previsto (o projeto GCP). Ver [ADR-043](../../docs/adr/043-sucessor-e-um-agente.md).
 
 ## Critérios
 
 | # | Critério | Resultado |
 |---|---|---|
 | C1 | motor + telas + manifesto do pai implantados pela API | ✅ **v148** — 8 arquivos, 16,6 s |
-| C2 | nasce parado (`enabled: false`) | ⏳ espera o `check` |
-| C3 | o dono configura: consentimento + a chave no painel do sucessor | ⏳ em andamento |
-| C4 | uma conversa de teste vai e volta | ⏳ |
+| C2 | nasce parado (`enabled: false`) | 🟡 **indireto** — a semente diz `bornDisabled: true`, mas o dono ativou antes da leitura; depois de ele pausar, `check` leu `the successor is PAUSED` |
+| C3 | o dono configura: consentimento + a chave no painel do sucessor | ✅ `c3_hasKey: true` — com um 3º ato imprevisto: vincular o GCP |
+| C4 | uma conversa de teste vai e volta | 🟡 **indireto** — o sucessor respondeu os 6 cenários da [P34](../p34-avaliacao-de-fora/README.md) com a chave dele; a tela de chat não foi usada |
 
 ## C1 — dev v148
 
