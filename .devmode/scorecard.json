@@ -1274,5 +1274,31 @@
         "note": "cada recusa virou numero gravado com a versao do dev; o bloqueio final esta dito como externo e com o que destrava. Reverti uma recusa minha explicando o erro de enquadramento"
       }
     }
+  },
+  {
+    "phase": "F6 Fases 1-4 e 6 (Implement+Docs) \u2014 maquina provada, corrida bloqueada por credito",
+    "summary": "P29 mediu a plataforma e, de bonus, provou a MEDICAO de aptidao de ponta a ponta por US$ 0 (0/17 medido, delta null). Seis defeitos achados e consertados, o sexto com a maquina em movimento. Fase 5 nao rodou: OpenRouter 402, zero gasto.",
+    "scores": {
+      "correctness": {
+        "score": 9,
+        "note": "D6 achado RODANDO: com o motor pausado, swarm run foi ate o OpenRouter \u2014 a chave de parada nao parava o que gasta. Antes/depois medido no dev v138 vs v139"
+      },
+      "design": {
+        "score": 9,
+        "note": "contrato de aptidao corrigido (o filho dava a propria nota); teto que expira sozinho; selecao separada do encadeamento; parada agora vale para TUDO que age sozinho"
+      },
+      "testing": {
+        "score": 9,
+        "note": "1904 testes, 0 falhas. 36 mutacoes, 34 mortas, 1 equivalente declarada. A prova mais forte nao foi teste: foi a medicao real 0/17 com delta null no dev v140"
+      },
+      "safety": {
+        "score": 9,
+        "note": "tetos devolvidos a US$3/US$5; 20 filhos para a lixeira; nenhum dolar gasto sem decisao; recusei baixar max_tokens para caber no credito porque geraria programa truncado"
+      },
+      "clarity": {
+        "score": 9,
+        "note": "README/CHANGELOG/PROGRESS com os numeros e a versao do dev; o que NAO foi provado esta dito no README da POC; duas reversoes minhas registradas com o erro de enquadramento"
+      }
+    }
   }
 ]

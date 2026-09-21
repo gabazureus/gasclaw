@@ -224,3 +224,65 @@ describe('successorMessages: o pedido diz o que é proibido, não só o que é d
     expect(ms[1].content).toContain('calendar.events');
   });
 });
+
+// D7 — O CRIVO ACEITAVA UM PROGRAMA CORTADO NO MEIO.
+//
+// Achado ao justificar por que eu NÃO baixaria `max_tokens` para caber no crédito restante: um fonte
+// truncado mantém `function doGet(` e passa por TODAS as regras. Ele seria implantado, quebraria em
+// execução, e mediria 0 de 17 — um número que parece "o Opus foi mal" quando a causa é outra.
+//
+// O corte não vem só de `max_tokens`: vem de `stop` inesperado, de resposta cortada na rede, de
+// cerca de markdown malformada. A regra certa é sobre o FONTE, não sobre a causa.
+describe('crivo: fonte cortado no meio não é publicado', () => {
+  test('chave que abre e não fecha é recusada, com motivo', () => {
+    const v = checkSuccessorSource('function doGet(e) { var x = 1; if (x) { return 2;');
+    expect(v.ok).toBe(false);
+    expect(v.reason).toMatch(/truncated|unbalanced/i);
+  });
+
+  test('parêntese e colchete também contam', () => {
+    expect(checkSuccessorSource('function doGet(e) { return f(1, [2, 3); }').ok).toBe(false);
+    expect(checkSuccessorSource('function doGet(e) { return [1, 2; }').ok).toBe(false);
+  });
+
+  // FALSO POSITIVO É O RISCO REAL desta regra: chave dentro de string, de comentário ou de regex é
+  // texto, não estrutura. Uma regra que recusa código bom é pior que a ausência dela — ela queima
+  // uma geração paga e manda o dono caçar um defeito que não existe.
+  test('chave dentro de string, comentário ou regex NÃO conta', () => {
+    for (const bom of [
+      'function doGet(e) { return "{"; }',
+      "function doGet(e) { return '}'; }",
+      'function doGet(e) { return `${e} {`; }',
+      'function doGet(e) { /* } } } */ return 1; }',
+      'function doGet(e) { // }\n return 1; }',
+      'function doGet(e) { return "he said \\"{\\" ok"; }',
+    ]) {
+      expect(checkSuccessorSource(bom).ok).toBe(true);
+    }
+  });
+
+  // M3: uma string que ABRE e não fecha é o corte mais comum de todos — o modelo parou no meio de um
+  // literal. Sem esta asserção, remover a guarda de fim-de-fonte sobrevivia a todos os testes.
+  test('string que abre e não fecha é corte, e é recusada', () => {
+    for (const cortado of ['function doGet(e) { return "abc; }', "function doGet(e) { return 'abc; }", 'function doGet(e) { return `abc; }']) {
+      expect(checkSuccessorSource(cortado).ok).toBe(false);
+    }
+  });
+
+  // OS TRÊS CASOS ACIMA NÃO PROVAVAM A GUARDA: neles a string engole a chave de fechamento, e quem
+  // recusa é o desbalanceamento. Aqui as chaves FECHAM e a string sem terminar é o único defeito —
+  // é o corte que acontece quando o modelo para depois de uma função completa.
+  test('string sem fechar DEPOIS do código balanceado ainda é corte', () => {
+    expect(checkSuccessorSource('function doGet(e) { return 1; } var s = "abc').ok).toBe(false);
+  });
+
+  // M4: CONTAGEM CERTA, ORDEM ERRADA. `( [ ) ]` fecha tantos quantos abriu — só que trocados. Sem
+  // conferir QUAL fechamento casa com qual abertura, o crivo aceitaria estrutura impossível.
+  test('fechamento na ordem errada é recusado, mesmo com a contagem batendo', () => {
+    expect(checkSuccessorSource('function doGet(){ x = ( [ ) ] ; }').ok).toBe(false);
+  });
+
+  test('o código bom de sempre continua passando', () => {
+    expect(checkSuccessorSource('function doGet() { return ContentService.createTextOutput("ok"); }').ok).toBe(true);
+  });
+});
