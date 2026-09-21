@@ -60,7 +60,7 @@ export function startDream(folderId: string, d: DreamDeps): { started: boolean; 
   return { started: true, cycleId, reason: '' };
 }
 
-export type TickResult = { cycleId: string | null; steps: number; status: string; error?: string; summary?: string };
+export type TickResult = { cycleId: string | null; steps: number; status: string; error?: string; summary?: string; longestStepMs?: number };
 
 /**
  * Avança o ciclo ativo deste agente em até `DREAM_STEPS_PER_TICK` passos.
@@ -75,7 +75,7 @@ export type TickResult = { cycleId: string | null; steps: number; status: string
  */
 export const DREAM_STEP_ESTIMATE_MS = 90_000;
 
-export function tickDream(folderId: string, d: DreamDeps, deadline = Infinity): TickResult {
+export function tickDream(folderId: string, d: DreamDeps, deadline = Infinity, estimateMs = DREAM_STEP_ESTIMATE_MS): TickResult {
   const io = dreamIO();
   const cycleId = io.active(folderId);
   if (!cycleId) return { cycleId: null, steps: 0, status: 'idle' };
@@ -91,7 +91,8 @@ export function tickDream(folderId: string, d: DreamDeps, deadline = Infinity): 
   const env = d.env(folderId);
   const base = d.spec(folderId);
   let feitos = 0;
-  let maiorPasso = DREAM_STEP_ESTIMATE_MS;
+  let maiorPasso = Math.max(DREAM_STEP_ESTIMATE_MS, estimateMs); // a medida de tiques anteriores (revisão F9)
+  let medido = 0;
   for (let i = 0; i < DREAM_STEPS_PER_TICK; i++) {
     // Passo que não cabe até o prazo nem começa: morto pelo teto de 6 min, seria pago e perdido.
     const t0 = d.now();
@@ -110,7 +111,8 @@ export function tickDream(folderId: string, d: DreamDeps, deadline = Infinity): 
       s = afterStep(s, step, r.passed, d.now());
       io.save(s); // depois de CADA passo
       feitos++;
-      maiorPasso = Math.max(maiorPasso, d.now() - t0);
+      medido = Math.max(medido, d.now() - t0);
+      maiorPasso = Math.max(maiorPasso, medido);
     } catch (err) {
       s = failCycle(s, `step ${stepKey(step)} threw: ${String((err as Error)?.message ?? err)}`, d.now());
       io.save(s);
@@ -122,7 +124,7 @@ export function tickDream(folderId: string, d: DreamDeps, deadline = Infinity): 
   // O ciclo acabou: a trava sai, o estado fica para o dono ler. O resumo vai junto no retorno, para
   // quem chamou não precisar reabrir o arquivo só para saber no que deu.
   if (s.status === 'done') io.setActive(folderId, null);
-  return { cycleId, steps: feitos, status: s.status, ...(s.status === 'done' ? { summary: summarize(s) } : {}) };
+  return { cycleId, steps: feitos, status: s.status, ...(medido ? { longestStepMs: medido } : {}), ...(s.status === 'done' ? { summary: summarize(s) } : {}) };
 }
 
 /** O prompt do candidato daquele passo. O titular é o próprio `incumbent` guardado no estado. */

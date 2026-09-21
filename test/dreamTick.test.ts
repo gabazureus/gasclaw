@@ -155,6 +155,22 @@ describe('tickDream respeita o prazo da execução', () => {
     expect(r.steps).toBe(2);
   });
 
+  // REVISÃO FINAL F9: a medida morria com o tique e cada tique novo apostava de novo nos 90 s. Quem chama
+  // guarda o maior passo medido e o devolve como estimativa.
+  test('a estimativa vinda de fora (o maior passo de tiques anteriores) vale desde o primeiro passo', async () => {
+    comRun(120_000);
+    const m = await mod();
+    m.startDream('f1', dRelogio());
+    // t=0: 0+200<=250 roda → t=120; 120+200>250 para. Com os 90 s padrão seriam 2.
+    expect(m.tickDream('f1', dRelogio(), relogio + 250_000, 200_000).steps).toBe(1);
+  });
+  test('o tique devolve o maior passo medido, para quem chama guardar', async () => {
+    comRun(120_000);
+    const m = await mod();
+    m.startDream('f1', dRelogio());
+    expect(m.tickDream('f1', dRelogio(), relogio + 250_000).longestStepMs).toBe(120_000);
+  });
+
   test('sem prazo, continua tomando até DREAM_STEPS_PER_TICK', async () => {
     comRun(1_000);
     const m = await mod();

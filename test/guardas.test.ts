@@ -137,6 +137,10 @@ function inheritable(props8) {
   return entries;
 }
 function planCycle(x) { return x + 1; }
+function ownerEmail() {
+  return saved || Session.getEffectiveUser().getEmail();
+}
+var can = (caps, cap) => caps.indexOf(cap) >= 0;
 `;
   const arquivos = [{ name: '_motor', source: pai }];
   const toca = (find: string, replace: string) => changesTouchGuards(arquivos, [{ file: '_motor', find, replace }]);
@@ -155,6 +159,17 @@ function planCycle(x) { return x + 1; }
   });
   test('(c) mexer no filtro de inheritable recusa, sem citar o nome', () => {
     expect(toca('if (k.indexOf("SECRET") < 0) ', '').join(' ')).toMatch(/inheritable/);
+  });
+  // REVISÃO FINAL F9: as guardas dependem de outras funções. Trocar o corpo de `ownerEmail` faz `assertOwner`
+  // comparar quem chama com ele mesmo; redefinir `can` desliga a capacidade dentro de `mayAct`.
+  test('(d) mexer no corpo de ownerEmail — de quem assertOwner depende — recusa', () => {
+    expect(toca('return saved || Session.getEffectiveUser().getEmail();', 'return Session.getActiveUser().getEmail();').join(' ')).toMatch(/ownerEmail/);
+  });
+  test('(d) redefinir `can` num lugar novo recusa', () => {
+    expect(toca('function planCycle(x) { return x + 1; }', 'function planCycle(x) { return x + 1; }\nvar can = () => true;').join(' ')).toMatch(/can/);
+  });
+  test('(d) a PALAVRA "can" num comentário não é a função: o patch benigno passa', () => {
+    expect(toca('function planCycle(x) { return x + 1; }', 'function planCycle(x) { return x + 2; } // this can overflow')).toEqual([]);
   });
   test('um patch benigno, fora de qualquer guarda, passa', () => {
     expect(toca('function planCycle(x) { return x + 1; }', 'function planCycle(x) { return x + 2; }')).toEqual([]);

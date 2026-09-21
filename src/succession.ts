@@ -26,7 +26,9 @@ const SYSTEM =
   'Rules: at most 3 changes; each "find" must be copied EXACTLY from the file and must appear EXACTLY ONCE in it, at most 300 characters; ' +
   'fix ONE real defect or risk you can point to in the code. ' +
   'Never remove or weaken assertOwner, NEVER_AUTO, mayWriteProject, mayAct, isRunnable, isEnabled, the closed tool registry, or any permission or approval check. ' +
-  'Never change the files appsscript (the manifest) or successor_seed.';
+  'Never change the files appsscript (the manifest) or successor_seed. ' +
+  // Revisão F9: o crivo recusa troca que CITE uma função protegida — o Opus pagava por patches recusados.
+  'A change is refused if its find or replace text mentions, even in a comment, a permission function or one it depends on (assertOwner, mayAct, ownerEmail, isEnabled, can, effectiveCapabilities, cliAuthorized, crownFromParent, inheritFromParent, inheritable), or falls inside one of them.';
 
 /** O pedido ao Opus: o código INTEIRO, e o objetivo do dono quando ele declarou um. */
 export function patchMessages(files: readonly PatchFile[], goal: string): { role: 'system' | 'user'; content: string }[] {
@@ -233,7 +235,7 @@ export function crownReadiness(i: ReadinessInput): { ok: boolean; checks: Readin
     coroado
       ? c('evaluation', 'Crowned after an outside evaluation', true, 'the evaluation counted for the crown')
       : c('evaluation', 'Judged from outside after the last write, not worse', v.ok && fresca, !v.ok ? v.reason : fresca ? `${v.standing === 'wins' ? 'wins' : 'ties'}: ${i.record.evaluation!.successorPasses}/${i.record.evaluation!.k} vs ${i.record.evaluation!.incumbentPasses}/${i.record.evaluation!.k}` : 'the successor was written again after this evaluation: evaluate it again'),
-    c('settings', 'It has the parent’s permissions and capabilities', !coroado || iguais, !coroado ? 'handed over by the crown' : iguais ? 'same as this engine' : `${diferem.map((k) => k.split(':')[0]).join(', ')} differ from this engine${capsLado(diferem, pai, s?.settings)}: succession inherit copies this engine's over the successor's`),
+    c('settings', 'It has the parent’s permissions and capabilities', !coroado || iguais, !coroado ? 'handed over by the crown' : !s?.settings ? 'no health answer' : iguais ? 'same as this engine' : `${diferem.map((k) => k.split(':')[0]).join(', ')} differ from this engine${capsLado(diferem, pai, s?.settings)}: succession inherit copies this engine's over the successor's`),
   ];
   return { ok: checks.every((x) => x.ok), checks };
 }

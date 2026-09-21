@@ -191,6 +191,8 @@ exec_url() { script_url "$1" exec; }
 dev_url()  { script_url "$1" dev; }
 # GASCLAW_ENGINE_URL: fala com OUTRO motor do dono (o sucessor coroado, que é quem responde depois da
 # coroa). Só leitura, poc e trace fazem sentido ali; o segredo da CLI é registrado nele na primeira vez.
+# O token do Google vai no primeiro salto: a URL só pode ser um web app do Apps Script (revisão F9).
+# (validada no início do script, antes de qualquer comando: um `die` aqui dentro morreria só no subshell de `$(url)`).
 url() { if [ -n "${GASCLAW_ENGINE_URL:-}" ]; then printf '%s' "$GASCLAW_ENGINE_URL"; else exec_url "$(var "DEPLOY_ID_$UP")"; fi; }
 # A tela de conversa servida pelo proprio Apps Script (`?page=chat`). Quem nao tem Google Workspace nao
 # fica sem conversar com o agente: o Chat do Google e um canal a mais, nao o unico.
@@ -1112,6 +1114,11 @@ gasclaw — agents that live in your Google Drive, running on Google Apps Script
 TXT
 }
 
+# Publicar, pausar e voltar versão são do motor DESTE projeto: com a variável apontando para outro, `up` ligaria
+# e mediria o outro, e `down` o pausaria (revisão F9).
+case "$CMD" in up|down|restart|ship|rollback) [ -z "${GASCLAW_ENGINE_URL:-}" ] || die "unset GASCLAW_ENGINE_URL first: $CMD acts on this project's engine" ;; esac
+[ -z "${GASCLAW_ENGINE_URL:-}" ] || printf '%s' "$GASCLAW_ENGINE_URL" | grep -qE '^https://script\.google\.com/(a/macros/[A-Za-z0-9.-]+/)?macros/s/[A-Za-z0-9_-]+/(exec|dev)$' \
+  || die "GASCLAW_ENGINE_URL must be an Apps Script web app URL (https://script.google.com/.../macros/s/<id>/exec)"
 case "$CMD" in
   up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs|eval|limits|usage|tools|swarm|succession|onboard) "cmd_$CMD" "$@" ;;
   # Sem argumento: quem ainda nao publicou nao quer uma lista de 15 comandos, quer saber por onde comecar.

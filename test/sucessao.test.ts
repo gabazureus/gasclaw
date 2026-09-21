@@ -369,6 +369,10 @@ describe('crownReadiness no modo coroado, e a 10ª checagem: as permissões do f
     expect(falha({ self: { ...selfCoroado, settings: { ...settings, 'CAP:f1': '[]' } } })).toEqual(['settings']);
     expect(falha({ self: { ...selfCoroado, settings: undefined } })).toEqual(['settings']);
   });
+  test('sem resposta do health, a 10ª diz isso — não "tudo difere", que mandaria rodar o inherit à toa', () => {
+    const d = crownReadiness({ ...base, self: null }).checks.find((c) => c.id === 'settings')!.detail;
+    expect(d).toBe('no health answer');
+  });
   test('a 10ª diz QUAIS diferem (sem o id da pasta): inherit na direção errada apagaria o que o dono ligou', () => {
     const r = crownReadiness({ ...base, self: { ...selfCoroado, settings: { ...settings, 'CAP:f1': '[]', 'STATUS:f1': 'paused' } } });
     const d = r.checks.find((c) => c.id === 'settings')!.detail;

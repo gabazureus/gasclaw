@@ -1,6 +1,6 @@
 import { namesOf, scenarioMd, SCENARIOS } from './judgeSet';
 import { parseScenario } from './eval';
-import { startDream, tickDream, withDreamLease, type DreamDeps } from './dreamTick';
+import { DREAM_STEP_ESTIMATE_MS, startDream, tickDream, withDreamLease, type DreamDeps } from './dreamTick';
 import { dreamIO } from './dreamStore';
 import { failProp, failuresFrom, parseFailures, serializeFailures, withFailure } from './failureLog';
 import { mergeAcrossGenerations, originLabel, parseSchema, validateValues, type ConfigField } from './agentConfig';
@@ -1779,7 +1779,11 @@ export function drainRuns() {
       // sonhando e gastando cota — o oposto do que arquivar significa — e a chave de emergência não
       // pararia justamente o que roda sozinho, que é o que ela existe para parar.
       if (!mayAct(a.folderId, 'dream').ok) continue;
-      tickDream(a.folderId, d, inicio + 330_000);
+      // O maior passo já medido vira a estimativa do próximo tique (revisão F9): sem guardá-lo, cada tique
+      // apostava de novo nos 90 s e o passo de 130 s começado tarde morria no teto, pago e perdido.
+      const est = Number(props.getProperty('DREAMSTEP_MS')) || DREAM_STEP_ESTIMATE_MS;
+      const r = tickDream(a.folderId, d, inicio + 330_000, est);
+      if ((r.longestStepMs ?? 0) > est) props.setProperty('DREAMSTEP_MS', String(r.longestStepMs));
     }
   }));
   return drained ?? { n: 0, ms: 0, oldest: null };
@@ -1943,11 +1947,16 @@ function tickProactive(): void {
     // então `lastSeen` já era `minutos`, a janela nascia vazia e NADA vencia nunca. O controle
     // positivo do teste foi quem pegou: os seis testes de portão continuavam verdes, porque um motor
     // que não desperta nunca também não desperta quando não deve.
-    // E ANDA ANTES DA AGENDA VAZIA (auditoria 2026-09-21): pular o agente sem jobs congelava o carimbo, e o
+    // E NÃO SOBREVIVE À AGENDA VAZIA (auditoria 2026-09-21): pular o agente sem jobs congelava o carimbo, e o
     // primeiro job posto depois herdava a janela velha — disparava na hora.
     const visto = props.getProperty(seenProp(a.folderId));
+    // Agenda vazia: o carimbo velho SAI (revisão F9) — gravar o minuto aqui eram 1.440 escritas por agente por
+    // dia. Sem carimbo, `dueJobs` não dispara nada, e o primeiro tique com job carimba de novo.
+    if (jobs.length === 0) {
+      if (visto !== null) props.deleteProperty(seenProp(a.folderId));
+      continue;
+    }
     props.setProperty(seenProp(a.folderId), String(minutos));
-    if (jobs.length === 0) continue;
 
     const v = mayAct(a.folderId, 'initiative');
     if (!v.ok) continue;
@@ -3607,7 +3616,9 @@ export function crownSuccessor(scriptId: string) {
   if (rec.crownedAt !== null) return { ok: false as const, reason: 'this successor was already crowned' };
   // UM coroado por vez: o slot é um por pasta, então dois agentes podiam ter um sucessor avaliado cada, e
   // coroar o segundo o ligava com o primeiro rodando — dois motores, as duas agendas (auditoria 2026-09-21).
-  const outro = readSuccessors(props).find((r) => r.crownedAt !== null);
+  // Só conta quem ainda RODA (ou não se deixa ler): `crownedAt` nunca é apagado, e um coroado parado — o dono
+  // retomou o agente — não responde por ninguém. Sem esta leitura, a regra travava para sempre (revisão F9).
+  const outro = readSuccessors(props).find((r) => r.crownedAt !== null && successorEnabled(r.url) !== false);
   if (outro) return { ok: false as const, reason: `another successor is already crowned (${outro.scriptId}): take the agent back from it first` };
   // O HEALTH INTEIRO, não só a nota: a coroa pausa o motor que hoje funciona, e só vale se o sucessor
   // consegue de fato servir o agente — todas as checagens, lidas AGORA.
@@ -3642,8 +3653,7 @@ export function crownSuccessor(scriptId: string) {
     if (!crownLanded(resposta, successorEnabled(rec.url))) {
       store.setEnabled(antes);
       const motivo = resposta?.error ? ` (${resposta.error})` : '';
-      const estado = antes ? 'this engine is running again' : 'this engine stays paused, as it was';
-      return { ok: false as const, reason: `the successor did not take the crown${motivo}. It is still paused, and ${estado}.` };
+      return { ok: false as const, reason: `the successor did not take the crown${motivo}. It is still paused, and this engine is running again.` };
     }
   }
   saveSuccessor(props, { ...rec, crownedAt: Date.now() });
@@ -4262,6 +4272,16 @@ function pocP36(step?: string, params: Record<string, string> = {}): unknown {
     const jobs = [...parseSchedule(antes).jobs, { at, prompt, days: [] }];
     setAgentSchedule(id, jobs);
     return { pass: true, armedAtMinute: minutos, fireAtMinute: at, reading: 'wait ~3 min, then read the most recent run with ./gasclaw trace' };
+  }
+  // A conversa direta do dono, com o erro real se não achar (o despertar engole o erro para não travar o run).
+  if (step === 'dm') {
+    if (!chatAppAvailable()) return { pass: false, reading: 'this build has no Chat app identity' };
+    try {
+      const dm = ownerDmAsChatApp(ownerEmail());
+      return { pass: !!dm, owner: ownerEmail(), dm };
+    } catch (e) {
+      return { pass: false, owner: ownerEmail(), error: String((e as Error)?.message ?? e).slice(0, 300) };
+    }
   }
   if (step === 'wakeread') {
     const runId = props.getProperty(`LASTWAKE:${id}`);

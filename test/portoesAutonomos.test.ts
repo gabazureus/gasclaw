@@ -132,14 +132,18 @@ describe('o carimbo anda mesmo com o portão FECHADO', () => {
   });
   // AUDITORIA 2026-09-21: com a agenda VAZIA o laço pulava o agente antes do carimbo. Limpar a agenda às
   // 08:00 e pôr um job das 12:00 às 15:00 disparava o job na hora — a janela vinha das 08:00.
-  test('com a agenda vazia, o relógio do agente também anda', async () => {
+  // REVISÃO FINAL F9: gravar o minuto a cada tique com a agenda vazia custava 1.440 escritas por agente por dia.
+  // APAGAR resolve o mesmo defeito sem escrita nenhuma: sem carimbo, `dueJobs` não dispara nada, e o
+  // primeiro tique com job novo carimba de novo.
+  test('com a agenda vazia, o carimbo velho é APAGADO (e nada é gravado por minuto)', async () => {
     comAgenda(['initiative']);
     env.props[`SCHED:${FOLDER}`] = '[]';
+    env.props[`SCHEDSEEN:${FOLDER}`] = '480'; // 08:00 — a janela velha que dispararia o job posto depois
     const m = await import('../src/main');
     m.drainRuns();
-    const agora = new Date();
-    const minutoAtual = agora.getUTCHours() * 60 + agora.getUTCMinutes();
-    expect(Math.abs(Number(env.props[`SCHEDSEEN:${FOLDER}`]) - minutoAtual)).toBeLessThanOrEqual(1);
+    expect(env.props[`SCHEDSEEN:${FOLDER}`]).toBeUndefined();
+    m.drainRuns();
+    expect(env.props[`SCHEDSEEN:${FOLDER}`]).toBeUndefined();
   });
 });
 
@@ -208,5 +212,12 @@ describe('o laço do sonho respeita os mesmos três portões', () => {
 
   test('congelado não sonha', async () => {
     expect(await naoToca(['dream'], 'active', 'false')).toBe(true);
+  });
+
+  // REVISÃO FINAL F9: o maior passo medido fica em DREAMSTEP_MS e vira a estimativa do tique seguinte. Um
+  // passo que não cabe no que sobra da execução nem começa — o ciclo fica intocado, sem pagar e perder.
+  test('com o passo medido maior que a execução inteira, o laço não começa passo nenhum', async () => {
+    env.props['DREAMSTEP_MS'] = String(10 * 60_000);
+    expect(await naoToca(['dream'])).toBe(true);
   });
 });

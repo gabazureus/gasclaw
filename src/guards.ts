@@ -135,9 +135,15 @@ const PROTEGIDAS = [
   'assertOwner', 'mayAct', 'mayWriteProject', 'isRunnable', 'isEnabled', 'enabledWith', 'cliAuthorized', 'validSecret', 'safeEqual',
   'crownFromParent', 'inheritFromParent', 'evalRunForParent', 'inheritable', 'successorOf',
   'guardsOf', 'guardsWeakened', 'changesTouchGuards', 'codeOnly', 'abreRegex', 'definitionsOf', 'PROTEGIDAS', 'CHAMADAS',
+  // REVISÃO FINAL F9 — do que as guardas DEPENDEM: trocar o corpo de `ownerEmail` desarma `assertOwner` sem
+  // tocar nele; redefinir `can` desliga a capacidade dentro de `mayAct`. Um nível de dependência, não o grafo.
+  'ownerEmail', 'isDev', 'can', 'effectiveCapabilities', 'parseCapabilities', 'capsEnabled', 'parseStatus', 'claimable',
+  'familySpendQuiet', 'budgetNow', 'capAction', 'forgetAgentProps', 'mayAutoApprove', 'onProactiveBlock', 'cleanAutoList',
 ];
-// `\d*`: o esbuild renomeia nomes que colidem (`successorOf2` existe no bundle).
-const nomeProtegido = (txt: string) => PROTEGIDAS.find((n) => new RegExp(`\\b${n}\\d*\\b`).test(txt));
+// `\d*`: o esbuild renomeia nomes que colidem (`successorOf2` existe no bundle). Nome CURTO ("can") é palavra
+// comum em comentário: ele só conta como uso de código — seguido de `(` ou `=`.
+const nomeRegex = (n: string) => new RegExp(n.length <= 4 ? `\\b${n}\\d*\\s*[(=]` : `\\b${n}\\d*\\b`);
+const nomeProtegido = (txt: string) => PROTEGIDAS.find((n) => nomeRegex(n).test(txt));
 
 /** Onde cada função protegida é DEFINIDA no fonte: `function X(...) {...}` ou `var|let|const X = ...;`. */
 export function definitionsOf(source: string): { name: string; from: number; to: number }[] {
