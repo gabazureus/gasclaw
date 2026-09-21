@@ -93,3 +93,37 @@ justamente quando ninguém sabe quanto já foi gasto. Agora tem.
 
 O dono escolheu **função de texto** (recomendada): normalizar datas em pt-BR para ISO. Eu proponho a
 bateria; **ela só vale depois que o dono aprovar** — `setAgentBattery` não é chamado antes disso.
+
+## 2026-09-20 — A CORRIDA PAROU NUM BLOQUEIO EXTERNO: crédito do OpenRouter
+
+Tudo pronto no dev v138 — bateria de 17 casos aplicada, intervalo em 60 min, teto de US$ 5 por 24 h,
+capacidade `succeed` ligada, 20 filhos da P29 autorizados. A geração 1 foi disparada e recusada:
+
+```
+OpenRouter 402: "You requested up to 8000 tokens, but can only afford 1342"
+```
+
+**Não é defeito do gasclaw e não é teto nosso.** É o limite mensal da chave do OpenRouter, do lado
+de fora. Verificado depois da recusa: `spentTodayUsd: 0`, linhagem vazia, nenhum projeto criado — o
+custo só é contado depois que a chamada volta, e ela não voltou.
+
+**O que NÃO fiz, e por quê.** Baixar `max_tokens` de 8000 para caber em 1342 geraria um programa
+truncado — pior que não gerar. Trocar o Opus por um modelo barato contraria a ADR-041, que fixa o
+gerador exatamente porque "um modelo fraco produz algo plausível e quebrado, e o resultado não é uma
+resposta ruim na tela: é um projeto implantado rodando como o dono". As duas saídas trocariam um
+bloqueio honesto por um resultado falso.
+
+**O que destrava:** o dono aumenta o limite mensal da chave, ou acrescenta crédito. Depois disso, a
+corrida roda sem mais nenhum portão: `./gasclaw swarm run "$(cat conductor/tracks/f6-enxame/tarefa-proposta.md)"`.
+
+### Estado da máquina quando parou
+
+| Portão | Estado |
+|---|---|
+| H1 orçamento | ✅ US$ 5 / US$ 8, expira em 2026-09-22T00:40Z (volta sozinho) |
+| H2 intervalo | ✅ 60 min, o piso |
+| H3 consentimento | ✅ 20 filhos da P29 autorizados |
+| H5 bateria | ✅ 17 casos aplicados |
+| H6 escopos | ✅ decidido NÃO acrescentar — o `drive` já cobre Docs e Sheets pela REST |
+| capacidade `succeed` | ✅ ligada (e só ela) |
+| **crédito do OpenRouter** | ❌ **bloqueia** |
