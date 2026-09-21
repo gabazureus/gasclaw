@@ -210,6 +210,32 @@ export function heirOf(entries: readonly LineageEntry[], parent: string): string
   return meus.reduce((a, b) => (b.at > a.at ? b : a)).child;
 }
 
+/**
+ * De quem herdar quando JÁ EXISTE aptidão medida: do MELHOR, não do mais recente.
+ *
+ * É esta função que separa evolução de deriva. `heirOf` encadeia — cada geração parte da anterior —
+ * mas encadear sozinho é variação sem seleção: a linhagem anda, e não sobe. Com a nota medida (P31),
+ * a próxima geração parte do filho que foi mais longe.
+ *
+ * **Taxa, nunca contagem:** 9 de 10 é melhor que 12 de 20, e comparar os brutos escolheria o pior.
+ *
+ * **Um filho MEDIDO ganha de um nunca medido, por pior que seja sua nota.** O não medido é incógnita,
+ * e partir de uma incógnita desperdiça a única informação que a corrida produziu. Mas enquanto
+ * NENHUM tiver nota, o mais recente continua valendo: exigir aptidão para encadear travaria a
+ * corrida no primeiro filho, que só é medido depois do clique do dono.
+ */
+export function bestHeirOf(entries: readonly LineageEntry[], parent: string): string | null {
+  const pai = String(parent ?? '').trim();
+  if (!pai) return null;
+  const medidos = (entries ?? []).filter(
+    (e) => e && e.kind === 'codegen' && e.parent === pai && String(e.child ?? '').trim() && Number.isFinite(e.at) && Number.isInteger(e.passes) && Number.isInteger(e.k) && (e.k as number) > 0,
+  );
+  if (!medidos.length) return heirOf(entries, pai);
+  const taxa = (e: LineageEntry) => (e.passes as number) / (e.k as number);
+  // Empate vai para o mais recente: entre iguais, o mais novo já carrega o que veio antes dele.
+  return medidos.reduce((a, b) => (taxa(b) > taxa(a) || (taxa(b) === taxa(a) && b.at > a.at) ? b : a)).child;
+}
+
 // ---------- Escalonamento de privilégio ----------
 
 /**

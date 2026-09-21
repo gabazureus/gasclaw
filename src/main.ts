@@ -58,7 +58,7 @@ import { folderModel, getOverride, listModels as openRouterModels, type ModelInf
 import * as observe from './observe';
 import * as runlog from './runlog';
 import {
-  CAPABILITIES, can, canSucceed, capsAfterSuccession, creatorOf, DEFAULT_INTERVAL_MS, forgetAgentProps, heirOf, intervalOf, mayGenerate,
+  CAPABILITIES, can, canSucceed, capsAfterSuccession, creatorOf, DEFAULT_INTERVAL_MS, bestHeirOf, forgetAgentProps, intervalOf, mayGenerate,
   accessAfterArchive, capsAfterCreatorMoved, capsEnabled, clearCreator, effectiveCapabilities, isRunnable, nextGeneration, parseCapabilities, parseStatus, setCreator, type Capability, type LineageEntry,
 } from './agentCaps';
 import { CODEGEN_BUDGET_USD, mayWriteProject } from './dream';
@@ -2227,7 +2227,10 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
   // clique do dono (portão da plataforma, medido na P24). Por recência a corrente anda sozinha.
   //
   // O fonte vem da API do Apps Script. NUNCA do Drive (ADR-002): a pasta é compartilhável.
-  const heranca = heirOf(lineage().entries, id);
+  // `bestHeirOf`, não `heirOf`: com aptidão medida, a próxima geração parte do MELHOR filho, não do
+  // último. Encadear sozinho é variação sem seleção — a linhagem anda e não sobe. Enquanto nenhum
+  // filho tiver nota, ele cai no mais recente, que é a única escolha possível antes da primeira medição.
+  const heranca = bestHeirOf(lineage().entries, id);
   const herdado = heranca ? sourceOfChild(deps.api(`https://script.googleapis.com/v1/projects/${heranca}/content`, 'get').full) : null;
 
   const r = generateSuccessor(

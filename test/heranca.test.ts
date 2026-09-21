@@ -10,7 +10,7 @@
 // do Apps Script, nunca do Drive).
 import { describe, expect, test } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { heirOf, type LineageEntry } from '../src/agentCaps';
+import { bestHeirOf, heirOf, type LineageEntry } from '../src/agentCaps';
 import { sourceOfChild } from '../src/successor';
 
 const e = (o: Partial<LineageEntry>): LineageEntry => ({ at: 0, kind: 'codegen', parent: 'pai', child: 'filho', generation: 1, delta: null, costUsd: 0, summary: '', ...o });
@@ -91,8 +91,10 @@ describe('fiação: a geração N+1 recebe o fonte da N, e cai no prompt só qua
     expect(main).not.toContain('incumbentSource: agente.system,');
   });
 
-  test('a herança é consultada, e o prompt é o fallback declarado', () => {
-    expect(main).toContain('heirOf(');
+  // `bestHeirOf`, e não `heirOf`: a casca tem que consultar a SELEÇÃO. Aceitar `heirOf` aqui deixaria
+  // a corrida encadear sem subir, que é o defeito que a seleção existe para fechar.
+  test('a herança é consultada pela SELEÇÃO, e o prompt é o fallback declarado', () => {
+    expect(main).toContain('bestHeirOf(');
     expect(main).toContain('sourceOfChild(');
     expect(main).toMatch(/\?\?\s*agente\.system/); // sem filho anterior, o prompt continua valendo
   });
@@ -101,5 +103,49 @@ describe('fiação: a geração N+1 recebe o fonte da N, e cai no prompt só qua
     const bloco = main.slice(main.indexOf('const heranca'), main.indexOf('const r = generateSuccessor'));
     expect(bloco).toContain('/content');
     expect(bloco).not.toMatch(/DriveApp|getFolderById/);
+  });
+});
+
+// SELEÇÃO. `heirOf` herda do mais RECENTE — e variação sem seleção é deriva, não evolução. Com a
+// aptidão medida (P31), a linhagem passa a herdar do MELHOR: é aqui que a corrida deixa de ser
+// "replicar 15 vezes" e vira "subir uma escada".
+//
+// O fallback importa tanto quanto a regra: antes de existir medição, o mais recente continua sendo a
+// única escolha possível. Exigir aptidão para encadear travaria a corrida no primeiro filho.
+describe('bestHeirOf: herda do melhor medido, e do mais recente enquanto não há medição', () => {
+  const e2 = (child: string, at: number, passes?: number, k?: number): LineageEntry => e({ child, at, passes, k });
+
+  test('sem nenhuma medição, cai no mais recente — o comportamento de antes', () => {
+    expect(bestHeirOf([e2('c1', 10), e2('c2', 20)], 'pai')).toBe('c2');
+  });
+
+  test('com medição, herda do MELHOR — mesmo que ele seja o mais antigo', () => {
+    expect(bestHeirOf([e2('c1', 10, 15, 17), e2('c2', 20, 4, 17)], 'pai')).toBe('c1');
+  });
+
+  test('empate na taxa vai para o mais recente: entre iguais, o mais novo', () => {
+    expect(bestHeirOf([e2('c1', 10, 9, 17), e2('c2', 20, 9, 17)], 'pai')).toBe('c2');
+  });
+
+  // Taxa, não contagem: 9 de 10 é melhor que 12 de 20, e comparar os brutos escolheria o pior.
+  test('compara TAXA, não número de acertos', () => {
+    expect(bestHeirOf([e2('c1', 10, 9, 10), e2('c2', 20, 12, 20)], 'pai')).toBe('c1');
+  });
+
+  // Um filho medido, por pior que seja, sabe mais que um nunca medido: o não medido é incógnita.
+  test('um filho medido ganha de um nunca medido, mesmo o não medido sendo mais novo', () => {
+    expect(bestHeirOf([e2('c1', 10, 1, 17), e2('c2', 20)], 'pai')).toBe('c1');
+  });
+
+  test('0 de k MEDIDO ainda é medido, e perde para quem acertou algo', () => {
+    expect(bestHeirOf([e2('c1', 10, 0, 17), e2('c2', 20, 1, 17)], 'pai')).toBe('c2');
+  });
+
+  test('k igual a zero não é medição, e não vira divisão por zero', () => {
+    expect(bestHeirOf([e2('c1', 10, 0, 0), e2('c2', 20)], 'pai')).toBe('c2');
+  });
+
+  test('linhagem vazia continua sem herdeiro', () => {
+    expect(bestHeirOf([], 'pai')).toBeNull();
   });
 });
