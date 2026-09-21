@@ -24,7 +24,7 @@ import { pocP20 } from '../poc/p20-approval/harness';
 import { pocP22, TICK_REQ as P22_TICK_REQ, TICK_RESULT as P22_TICK_RESULT, WAKE_REQ as P22_WAKE_REQ, WAKE_RESULT as P22_WAKE_RESULT } from '../poc/p22-proatividade/harness';
 import { dueAgenda, evaluateAgenda, syntheticAgenda } from '../poc/p22-proatividade/probe';
 import { deliverP2Probe, pocP2, startP2Event } from '../poc/p2-chat-async/harness';
-import { chatAppAvailable, createAsChatApp } from './chatApiGas';
+import { chatAppAvailable, createAsChatApp, spacesAsChatApp } from './chatApiGas';
 import { acceptChatMessage } from './chatAsync';
 import { deliveryDue, sendChatDelivery } from './chatDelivery';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
@@ -4154,7 +4154,18 @@ function p35Record(e: ChatEvent) {
 }
 
 function pocP35(step?: string): unknown {
-  if (step !== 'read') return { pass: false, error: 'steps: read (send a Chat message to the agent first)' };
+  // `link`: as conversas em que ESTE app do Chat está, com o endereço de cada uma. Vários apps no Chat
+  // têm o mesmo nome; a lista vem da identidade do app deste projeto, então é o app certo.
+  if (step === 'link') {
+    if (!chatAppAvailable()) return { pass: false, error: 'this engine has no Chat app identity' };
+    try {
+      const espacos = spacesAsChatApp().map((sp) => ({ ...sp, url: `https://mail.google.com/chat/u/0/#chat/space/${sp.name.replace('spaces/', '')}` }));
+      return { pass: espacos.length > 0, spaces: espacos, reading: espacos.length ? 'open the DIRECT_MESSAGE url: it is the conversation with this engine' : 'this Chat app is in no conversation yet' };
+    } catch (e) {
+      return { pass: false, error: String((e as Error)?.message ?? e).slice(0, 300) };
+    }
+  }
+  if (step !== 'read') return { pass: false, error: 'steps: read (send a Chat message to the agent first), link' };
   const l = JSON.parse(PropertiesService.getScriptProperties().getProperty('P35_LAST') ?? 'null') as { accepted: boolean; ms: number; effectiveUser: string; sender: string } | null;
   if (!l) return { pass: false, reading: 'no Chat message has reached this engine since the probe was deployed: send one, then read again' };
   return {
