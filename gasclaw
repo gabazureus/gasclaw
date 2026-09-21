@@ -1117,7 +1117,7 @@ TXT
 # Publicar, pausar e voltar versão são do motor DESTE projeto: com a variável apontando para outro, `up` ligaria
 # e mediria o outro, e `down` o pausaria (revisão F9).
 case "$CMD" in up|down|restart|ship|rollback) [ -z "${GASCLAW_ENGINE_URL:-}" ] || die "unset GASCLAW_ENGINE_URL first: $CMD acts on this project's engine" ;; esac
-[ -z "${GASCLAW_ENGINE_URL:-}" ] || printf '%s' "$GASCLAW_ENGINE_URL" | grep -qE '^https://script\.google\.com/(a/macros/[A-Za-z0-9.-]+/)?macros/s/[A-Za-z0-9_-]+/(exec|dev)$' \
+[ -z "${GASCLAW_ENGINE_URL:-}" ] || printf '%s' "$GASCLAW_ENGINE_URL" | grep -qE '^https://script\.google\.com/(a/macros/[A-Za-z0-9.-]+|macros)/s/[A-Za-z0-9_-]+/(exec|dev)$' \
   || die "GASCLAW_ENGINE_URL must be an Apps Script web app URL (https://script.google.com/.../macros/s/<id>/exec)"
 case "$CMD" in
   up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs|eval|limits|usage|tools|swarm|succession|onboard) "cmd_$CMD" "$@" ;;
