@@ -3,7 +3,7 @@ import { DEFAULT_STEPS, type ToolEvent, type TurnResult } from './agent';
 import type { Ticket } from './approval';
 import { cacheTickets, newToken } from './approvalStore';
 import { handleChat, type ChatDeps, type ChatEvent, type Tickets } from './chat';
-import { evaluate, gradeMessages, judgeMessages, parseGrade, parseJudge, parseScenario, scriptedLlm, type Report, type TurnOutcome } from './eval';
+import { evaluate, gradeMessages, judgeMessages, parseGrade, parseJudge, parseScenario, scriptedLlm, type Report, type Scenario, type TurnOutcome } from './eval';
 import { complete, type Completion, type Message, type ToolDef } from './llm';
 import * as store from './store';
 import { runCleanup, UNDOABLE } from './tools/cleanup';
@@ -65,9 +65,37 @@ function memoryTickets(): Tickets {
   };
 }
 
+/**
+ * O que o sucessor precisa para RODAR um cenário — e nada do gabarito (P34).
+ *
+ * O sucessor tem o código que o Opus reescreveu. Se ele recebesse o critério do juiz, a rubrica ou as
+ * verificações, um patch malicioso poderia ler o critério e responder para agradar. O esperado nunca
+ * atravessa: é a mesma regra do CSV da F6, agora para agentes.
+ */
+export type RunSpec = Omit<Scenario, 'judge' | 'rubric' | 'checks' | 'set'>;
+
+export const toRunSpec = (s: Scenario): RunSpec => {
+  const { judge: _judge, rubric: _rubric, checks: _checks, set: _set, ...run } = s;
+  return run;
+};
+
+/** O que aconteceu quando o cenário rodou — sem veredito nenhum. É isto que o sucessor devolve ao pai. */
+export type RunTrace = { name: string; turns: TurnOutcome[]; convo: { user: string; reply: string }[]; events: ToolEvent[]; cleanup?: EvalResult['cleanup']; t0: number; model: string };
+
+/**
+ * `runEval` = `runSpec` + `judgeRun`, e o comportamento é o de sempre. As duas metades existem
+ * separadas para o PAI julgar o sucessor com o próprio juiz (P34): o avaliado responde, quem julga é
+ * outro — se o juiz morasse no código que o Opus reescreveu, o Opus poderia reescrever o juiz.
+ */
 export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalResult {
-  const t0 = env.clock();
   const s = parseScenario(md);
+  return judgeRun(s, runSpec(toRunSpec(s), env, modelOverride), env);
+}
+
+/** A metade que RODA. Recebe o cenário sem gabarito e devolve o que aconteceu. */
+export function runSpec(runSpec: RunSpec, env: EvalEnv, modelOverride?: string): RunTrace {
+  const t0 = env.clock();
+  const s = runSpec;
   if (!OWNER_EMAIL.test(env.owner)) throw new Error('e-mail do dono inválido para o eval');
   // {{dono}} no roteiro = e-mail do dono (nunca um terceiro nos evals do Workspace).
   // {{id}} = id do último recurso criado por uma tool (ex.: docs.create → docs.read), resolvido na hora da chamada.
@@ -194,6 +222,17 @@ export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalR
     cleanup = env.google ? runCleanup(created, env.google) : undefined;
   }
 
+  return { name: s.name, turns, convo, events, ...(cleanup ? { cleanup } : {}), t0, model };
+}
+
+/**
+ * A metade que JULGA — no processo de quem avalia, com o cenário INTEIRO (juiz, rubrica, verificações).
+ * `judgeModel` é do avaliador; por padrão, o mesmo modelo que rodou, como sempre foi no `runEval`.
+ */
+export function judgeRun(scenario: Scenario, run: RunTrace, env: EvalEnv, judgeModel: string = run.model): EvalResult {
+  const s = scenario;
+  const model = judgeModel;
+  const { turns, convo, events, cleanup, t0 } = run;
   let judge: Report['judge'];
   if (s.judge && env.apiKey) {
     try {
