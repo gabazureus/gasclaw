@@ -83,3 +83,81 @@ export function crownVerdict(ev: Evaluation | null): CrownVerdict {
   if (ev.successorPasses < ev.incumbentPasses) return { ok: false, reason: `the successor scores worse than the incumbent: ${ev.successorPasses} vs ${ev.incumbentPasses} of ${ev.k}` };
   return { ok: true, standing: beatsIncumbent(ev.successorPasses, ev.incumbentPasses, ev.k) ? 'wins' : 'ties' };
 }
+
+// ---------- O registro dos sucessores ----------
+//
+// Cada sucessor guarda o que o dono precisa ler antes de coroar: a explicação, as trocas, o custo e a
+// avaliação. As trocas não cabem numa Property só (9 KB): o registro vai em PEDAÇOS, e o índice diz
+// quantos pedaços cada um tem — para a regravação apagar as sobras em vez de deixá-las ressuscitar.
+
+/** Uma linha da avaliação de fora: o cenário e o que o juiz do PAI disse de cada lado. */
+export type EvalRow = { name: string; successor: boolean | null; incumbent: boolean; error?: string; verdictLeaked?: boolean };
+
+export type SuccessorRecord = {
+  scriptId: string;
+  url: string;
+  folderId: string;
+  at: number;
+  model: string;
+  explanation: string;
+  changes: Change[];
+  costUsd: number;
+  evaluation: (Evaluation & { at: number; rows: EvalRow[] }) | null;
+  crownedAt: number | null;
+};
+
+export const SUCCESSORS_PROP = 'SUCCESSORS';
+const PEDACO = 8000;
+const pedacoProp = (id: string, i: number) => `SUCC:${id}:${i}`;
+type Indice = { scriptId: string; chunks: number }[];
+
+function indiceDe(raw: string | null | undefined): Indice {
+  try {
+    const v = JSON.parse(raw ?? '[]') as unknown;
+    return Array.isArray(v) ? v.filter((x): x is Indice[number] => !!x && typeof x.scriptId === 'string' && Number.isInteger(x.chunks) && x.chunks > 0) : [];
+  } catch {
+    return []; // índice ilegível: nenhum sucessor na tela, e nenhum motor derrubado por isso
+  }
+}
+
+/** Os sucessores registrados, na ordem do índice. Um registro ilegível é pulado sem cegar os outros. */
+export function readSuccessorsFrom(all: Record<string, string | null | undefined>): SuccessorRecord[] {
+  const out: SuccessorRecord[] = [];
+  for (const { scriptId, chunks } of indiceDe(all[SUCCESSORS_PROP])) {
+    try {
+      const texto = Array.from({ length: chunks }, (_, i) => all[pedacoProp(scriptId, i)] ?? '').join('');
+      const r = JSON.parse(texto) as SuccessorRecord;
+      if (r && r.scriptId === scriptId) out.push(r);
+    } catch {
+      // pedaço perdido ou cortado: pula este, mostra os outros
+    }
+  }
+  return out;
+}
+
+/**
+ * O que gravar para salvar (ou substituir) um registro. `value: null` quer dizer APAGUE: o pedaço que
+ * sobrou de uma versão maior do mesmo registro.
+ */
+export function successorWrites(all: Record<string, string | null | undefined>, rec: SuccessorRecord): { prop: string; value: string | null }[] {
+  const texto = JSON.stringify(rec);
+  const pedacos: string[] = [];
+  for (let i = 0; i < texto.length; i += PEDACO) pedacos.push(texto.slice(i, i + PEDACO));
+  const indice = indiceDe(all[SUCCESSORS_PROP]);
+  const antes = indice.find((x) => x.scriptId === rec.scriptId)?.chunks ?? 0;
+  const novo = [...indice.filter((x) => x.scriptId !== rec.scriptId), { scriptId: rec.scriptId, chunks: pedacos.length }];
+  const escritas: { prop: string; value: string | null }[] = pedacos.map((p, i) => ({ prop: pedacoProp(rec.scriptId, i), value: p }));
+  for (let i = pedacos.length; i < antes; i++) escritas.push({ prop: pedacoProp(rec.scriptId, i), value: null });
+  escritas.push({ prop: SUCCESSORS_PROP, value: JSON.stringify(novo) });
+  return escritas;
+}
+
+/**
+ * Onde escrever a próxima geração: o sucessor PARADO e NÃO coroado mais recente deste agente. Reusar o
+ * projeto é o que poupa o dono dos três atos (vincular o GCP, autorizar, colar a chave) a cada geração —
+ * eles são do projeto, não do código. `null` = criar um projeto novo.
+ */
+export function slotFor(list: readonly SuccessorRecord[], folderId: string): SuccessorRecord | null {
+  const livres = list.filter((r) => r.folderId === folderId && r.crownedAt === null);
+  return livres.length ? livres.reduce((a, b) => (b.at > a.at ? b : a)) : null;
+}

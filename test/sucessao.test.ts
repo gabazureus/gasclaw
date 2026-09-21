@@ -8,7 +8,7 @@
 // - `patchMessages` leva o código INTEIRO e as guardas proibidas ao Opus — o que ele não recebe, ele
 //   não pode respeitar.
 import { describe, expect, test } from 'vitest';
-import { crownVerdict, patchMessages, prepareSuccessor } from '../src/succession';
+import { crownVerdict, patchMessages, prepareSuccessor, readSuccessorsFrom, slotFor, successorWrites, type SuccessorRecord } from '../src/succession';
 
 const motor = `function a() { assertOwner(); return lastSeen; }\nfunction b() { mayWriteProject(x, y); }\n`;
 const arquivos = [
@@ -105,5 +105,68 @@ describe('patchMessages: o que o Opus recebe', () => {
   test('o objetivo do dono vai quando existe, e não vai quando não existe', () => {
     expect(patchMessages(arquivos, 'make the midnight job fire')[1].content).toContain('make the midnight job fire');
     expect(m[1].content).not.toContain("The owner's goal");
+  });
+});
+
+describe('o registro dos sucessores: em pedaços, sem sobras que ressuscitam', () => {
+  const rec = (scriptId: string, extra: Partial<SuccessorRecord> = {}): SuccessorRecord => ({ scriptId, url: `https://script.google.com/${scriptId}`, folderId: 'F', at: 1, model: 'opus', explanation: 'x', changes: [], costUsd: 1, evaluation: null, crownedAt: null, ...extra });
+  const aplica = (all: Record<string, string | null>, w: { prop: string; value: string | null }[]) => {
+    const n = { ...all };
+    for (const { prop, value } of w) {
+      if (value === null) delete n[prop];
+      else n[prop] = value;
+    }
+    return n;
+  };
+
+  test('grava e lê de volta um registro grande, partido em pedaços', () => {
+    const grande = rec('A', { changes: [{ file: '_motor', find: 'a', replace: 'b'.repeat(20_000) }] });
+    const all = aplica({}, successorWrites({}, grande));
+    expect(Object.keys(all).filter((k) => k.startsWith('SUCC:A:')).length).toBe(3);
+    expect(readSuccessorsFrom(all)).toEqual([grande]);
+  });
+
+  test('regravar menor APAGA os pedaços que sobraram', () => {
+    let all = aplica({}, successorWrites({}, rec('A', { changes: [{ file: '_motor', find: 'a', replace: 'b'.repeat(20_000) }] })));
+    all = aplica(all, successorWrites(all, rec('A')));
+    expect(Object.keys(all).filter((k) => k.startsWith('SUCC:A:'))).toEqual(['SUCC:A:0']);
+    expect(readSuccessorsFrom(all)).toEqual([rec('A')]);
+  });
+
+  test('regravar o mesmo sucessor substitui, não duplica; outro sucessor fica', () => {
+    let all = aplica({}, successorWrites({}, rec('A')));
+    all = aplica(all, successorWrites(all, rec('B')));
+    all = aplica(all, successorWrites(all, rec('A', { costUsd: 2 })));
+    expect(readSuccessorsFrom(all).map((r) => [r.scriptId, r.costUsd])).toEqual([['B', 1], ['A', 2]]);
+  });
+
+  test('um registro ilegível é pulado sem cegar os outros', () => {
+    let all = aplica({}, successorWrites({}, rec('A')));
+    all = aplica(all, successorWrites(all, rec('B')));
+    all['SUCC:A:0'] = '{cortado';
+    expect(readSuccessorsFrom(all).map((r) => r.scriptId)).toEqual(['B']);
+  });
+
+  test('índice ilegível não derruba nada: nenhum sucessor', () => {
+    expect(readSuccessorsFrom({ SUCCESSORS: 'lixo' })).toEqual([]);
+  });
+
+  test('índice ilegível é RECOMEÇADO na próxima gravação, não herdado', () => {
+    const w = successorWrites({ SUCCESSORS: 'lixo' }, rec('A'));
+    expect(JSON.parse(w.find((x) => x.prop === 'SUCCESSORS')?.value ?? '')).toEqual([{ scriptId: 'A', chunks: 1 }]);
+  });
+
+  // Um pedaço trocado de lugar (ou gravado à mão) não pode fazer a tela mostrar o registro de OUTRO
+  // sucessor sob este id — e a coroa agir no projeto errado.
+  test('um registro cujo id não é o do índice é pulado', () => {
+    const all = { SUCCESSORS: JSON.stringify([{ scriptId: 'A', chunks: 1 }]), 'SUCC:A:0': JSON.stringify(rec('B')) };
+    expect(readSuccessorsFrom(all)).toEqual([]);
+  });
+
+  test('slotFor: o mais recente parado e não coroado DESTE agente; coroado ou de outro agente não serve', () => {
+    const lista = [rec('A', { at: 1 }), rec('B', { at: 3 }), rec('C', { at: 5, crownedAt: 6 }), rec('D', { at: 9, folderId: 'G' })];
+    expect(slotFor(lista, 'F')?.scriptId).toBe('B');
+    expect(slotFor([rec('C', { crownedAt: 2 })], 'F')).toBeNull();
+    expect(slotFor(lista, 'Z')).toBeNull();
   });
 });
