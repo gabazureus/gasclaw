@@ -230,14 +230,16 @@ coroado), pela [P36](poc/p36-capacidades-no-real/README.md). Spec:
 |---|---|---|---|
 | A1 | tsc limpo, suíte verde | ✅ | **2206/2206**, tsc sem erro |
 | A2 | cada conserto com teste que falha sem ele | ✅ | 12 mutações nos consertos desta rodada, todas pegas; os agentes de conserto registraram o vermelho antes do verde |
-| A3 | health do coroado 10/10 | 🟡 **9/10** | só falta a 10ª, que espera a decisão do dono (A4) |
-| A4 | o lado certo do CAP vence | ⏸ **decisão do dono** | as 4 capacidades estão no **sucessor**; o pai só tem Succeed. O `inherit` que a verificação sugeria **apagaria 3 das 4**, e não foi rodado |
+| A3 | health do coroado 10/10 | ✅ **10/10** | dev v173, sucessor v20 |
+| A4 | o lado certo do CAP vence | ✅ **decisão do dono: opção A** | as 4 capacidades estavam no **sucessor**, e o pai só tinha Succeed. O `inherit` que a verificação sugeria **apagaria 3 das 4**, e não foi rodado. Decisão: depois da coroa vale o painel do sucessor, e a 10ª só exige que ele devolva as permissões, informando a diferença para o pai |
 | D1 | Dream | ✅ recusa honesta | "no real failures to dream about": não há falha agrupada em 30 dias. Consertos: portão com `:`, placar, prazo + arrendamento, estimativa guardada |
 | R1 | Reach out | ✅ | disparou uma vez no tique certo; a resposta chegou ao Chat do dono com recibo (79 s). Antes, morria no trace ([ADR-045](docs/adr/045-reach-out-entrega-ao-dono.md)). Fora da lista: nada age, e a pergunta chega ao dono |
 | S1 | Succeed | ✅ | coroa, rebase e avaliação passam por `mayAct`; um coroado **rodando** por vez; texto do painel = sucessor-agente; health 9/10 |
 | C1 | Create agents | ✅ | agente de teste nasceu com `caps []`, `tools []`, `users []`; removido |
 | X1 | segurança | ✅ | crivo sem bypass por comentário, corpo ou dependência; `GASCLAW_ENGINE_URL` só para Apps Script; conversa direta **do dono**, nunca a primeira da lista |
 | X2 | docs | ✅ | este bloco, CHANGELOG, READMEs, ADR-045, P36 |
+
+**F9 fechada.** Tudo passou, com o health do coroado em 10/10 no real.
 
 **Auditorias:** duas rodadas de security-scanner + code-reviewer. A primeira achou 6 defeitos sérios (portão
 do Dream, placar, tique sem prazo, segunda coroa, `mayAct` ausente, bypass do crivo) e 3 menores. A

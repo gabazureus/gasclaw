@@ -36,7 +36,7 @@ unset GASCLAW_ENGINE_URL        # up/down/ship/restart/rollback recusam com ela 
 | **Reach out** (entrega) | antes do conserto, `delivery: null`: a resposta morria no trace. Depois, `status: sent`, recibo `spaces/g_jQUqAAAAE/messages/…`, 79 s | ✅ com a [ADR-045](../../docs/adr/045-reach-out-entrega-ao-dono.md) |
 | **Reach out** (fora da lista) | o modelo não chamou `docs.create` e perguntou "Aprova?", pergunta que foi entregue ao dono; nada foi criado | ✅ nada age sem o dono. O caminho "a ferramenta fora da lista faz o run falhar" fica provado por teste: o modelo não chamou a ferramenta. |
 | **Create agents** | `f9-probe-mubqfy9c`: `caps: "[]"`, `tools: []`, `users: []`; removido depois | ✅ nasce sem nada |
-| **Succeed** | health do coroado 9/10; a 10ª mostra os dois lados de CAP | ✅ salvo a decisão do dono sobre o lado do CAP |
+| **Succeed** | health do coroado **10/10** (sucessor v20); a 10ª informa os dois lados de CAP | ✅ depois da coroa vale o painel do sucessor (decisão do dono) |
 
 ## Achados que viraram conserto (com teste)
 

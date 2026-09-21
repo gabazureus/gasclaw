@@ -500,8 +500,8 @@ never receives new code — you pause it first.
 ```
 
 After the crown, the engine that answers is the successor. `succession inherit` copies **this** engine's
-settings over the successor's: if you turned something on in the successor's panel, the 10th health check
-shows both sides, so read it before you inherit. To read or measure the crowned successor itself, point
+settings over the successor's. After the crown, the successor's panel is the one that counts: the 10th health
+check shows how it differs from this engine, without failing, so read it before you inherit. To read or measure the crowned successor itself, point
 the CLI at it (reads, `trace` and `poc` only; `up`, `down` and `ship` refuse while it is set):
 
 ```bash

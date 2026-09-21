@@ -58,6 +58,6 @@
 
 Tabela critério → evidência no [PROGRESS](../../PROGRESS.md) (seção F9) e na [P36](../../poc/p36-capacidades-no-real/README.md).
 
-- Passaram **A1, A2, D1** (recusa honesta), **R1, S1, C1, X1 e X2**.
-- **A3 está em 9/10.** A 10ª verificação espera **A4**, que é decisão do dono: as 4 capacidades estão no
-  sucessor, e o `inherit` as apagaria.
+- Passaram todos os critérios: **A1, A2, A3 (10/10), A4, D1** (recusa honesta), **R1, S1, C1, X1 e X2**.
+- **A4 foi decidido pelo dono (opção A):** depois da coroa, vale o painel do sucessor. A 10ª verificação
+  só exige que ele devolva as permissões, e informa a diferença para o pai.

@@ -502,8 +502,8 @@ você o pausa antes.
 ```
 
 Depois da coroa, quem responde é o sucessor. O `succession inherit` copia as configurações **deste** motor
-por cima das do sucessor: se você ligou algo no painel do sucessor, a 10ª checagem mostra os dois lados —
-leia antes de herdar. Para ler ou medir o próprio sucessor coroado, aponte o CLI para ele (só leitura,
+por cima das do sucessor. Depois da coroa, vale o painel do sucessor: a 10ª checagem mostra a diferença
+para este motor, sem reprovar — leia antes de herdar. Para ler ou medir o próprio sucessor coroado, aponte o CLI para ele (só leitura,
 `trace` e `poc`; `up`, `down` e `ship` recusam enquanto ela estiver definida):
 
 ```bash

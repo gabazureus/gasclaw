@@ -18,6 +18,8 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 > 🔒 **Fechamento da branch (F9), consertos das auditorias:**
 > - **Dream:** um candidato reprovado no portão não vence mais; o placar não mostra vitória no meio do
 >   ciclo; o tique tem prazo, e dois tiques nunca pagam o mesmo passo.
+> - **Depois da coroa, vale o painel do sucessor:** o health não reprova mais porque você mudou algo
+>   nele. Ele mostra a diferença para o pai, que está parado, e não manda copiar nada por cima.
 > - **Sucessão:** coroa, rebase e avaliação obedecem ao `./gasclaw down`, ao Succeed desligado e ao
 >   congelamento; só um sucessor coroado roda por vez; o health diz QUAIS permissões diferem, e de que lado.
 > - **Crivo de guardas:** um patch não desarma uma guarda por comentário, pelo corpo dela, nem pelas
