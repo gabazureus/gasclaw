@@ -4115,6 +4115,20 @@ function pocP34(step?: string, params: Record<string, string> = {}): unknown {
 }
 
 /**
+ * A conversa com ESTE agente no Google Chat, para o painel. O app do dev e o de prod respondem com o mesmo
+ * nome ("gasclaw"), e o dono não conseguia saber em qual conversa escrever. A conversa certa sai da
+ * identidade do próprio app deste projeto: o espaço de mensagem direta em que ele está.
+ */
+export function chatLink() {
+  assertOwner();
+  if (!chatAppAvailable()) return { ok: false as const, reason: 'this engine has no Google Chat app identity' };
+  const dm = spacesAsChatApp().find((sp) => sp.type === 'DIRECT_MESSAGE');
+  if (!dm) return { ok: false as const, reason: 'no direct conversation with this app yet: in Google Chat, start one with the gasclaw app of this project' };
+  const id = dm.name.replace('spaces/', '');
+  return { ok: true as const, url: `https://chat.google.com/dm/${id}`, space: dm.name };
+}
+
+/**
  * P35 — o Chat pode seguir o motor coroado? A mensagem do Chat chega ao PAI (é o Deployment ID que o
  * console conhece). Para repassá-la ao sucessor, a identidade com que este onMessage roda precisa ser
  * aceita pelo web app do sucessor, que só abre para o dono. Esta sonda mede, sem mudar nada: quem roda,

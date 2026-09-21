@@ -478,6 +478,12 @@ and the score from the outside evaluation. A successor that scores **worse** tha
 be crowned; a tie can, and the panel says it is a tie — the scenarios do not exercise every defect a
 code patch fixes, and the decision is yours.
 
+**After the crown, point Google Chat at the successor once** ([ADR-044](docs/adr/044-chat-segue-o-coroado.md)):
+Chat sends messages to the Deployment ID set in the Cloud console, and that is the parent's. In the dev
+project: *Chat API → Configuration → Connection settings → Apps Script project → Deployment ID* = the
+successor's (the `AKfy…` part of its `/s/…/exec` URL). An automatic relay was measured and rejected: 17.4 s
+round trip against a 10 s bar (P35).
+
 **The next generation reuses the paused successor**, same project and address: the GCP link, the
 authorization and the key belong to the project, not to the code. A successor that is **running**
 never receives new code — you pause it first.

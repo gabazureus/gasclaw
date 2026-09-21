@@ -480,6 +480,12 @@ explicação e a nota da avaliação de fora. Um sucessor com nota **pior** que 
 coroado; um empate pode, e o painel diz que é empate — os cenários não exercitam todo defeito que um
 patch de código conserta, e a decisão é sua.
 
+**Depois da coroa, reaponte o Google Chat para o sucessor uma vez** ([ADR-044](docs/adr/044-chat-segue-o-coroado.md)):
+o Chat manda as mensagens para o Deployment ID do console do Cloud, e esse é o do pai. No projeto do dev:
+*Chat API → Configuration → Connection settings → Apps Script project → Deployment ID* = o do sucessor (o
+trecho `AKfy…` da URL `/s/…/exec` dele). Um repasse automático foi medido e reprovado: 17,4 s de ida e
+volta contra um limiar de 10 s (P35).
+
 **A próxima geração reusa o sucessor parado**, mesmo projeto e endereço: o vínculo do GCP, a
 autorização e a chave são do projeto, não do código. Um sucessor **ligado** nunca recebe código novo —
 você o pausa antes.

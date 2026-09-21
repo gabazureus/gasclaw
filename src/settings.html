@@ -84,6 +84,8 @@
   <h1>🦀 gasclaw <span class="env" id="envBadge"><span class="sr">environment: </span><span id="envName"></span></span> <span class="identity" id="identity"></span></h1>
   <p class="links">
     <a id="chatLink" target="_top" hidden>Chat with the agent</a>
+    <!-- O app do dev e o de prod têm o mesmo nome no Google Chat: o link vem da identidade do app deste projeto -->
+    <a id="gchatLink" target="_blank" rel="noopener" hidden>Open in Google Chat</a>
     <a id="hubLink" target="_top" hidden>Panels</a>
     <!-- link do ambiente, não do agente: é o mesmo projeto para todos eles (P21) -->
     <a id="scriptLink" target="_blank" rel="noopener" hidden>Apps Script</a>
@@ -243,6 +245,7 @@
     // link absoluto: a tela roda num iframe em googleusercontent.com, onde "?page=chat" relativo não chega ao web app
     if (s.appUrl) {
       $('chatLink').href = s.appUrl + '?page=chat'; $('chatLink').hidden = false;
+    quiet('chatLink').then((g) => { if (g && g.ok) { $('gchatLink').href = g.url; $('gchatLink').hidden = false; } }).catch(() => {});
       $('hubLink').href = s.appUrl + '?page=hub'; $('hubLink').hidden = false;
     }
     // ambiente sempre à vista: evita mexer no prod achando que é o dev (P21)

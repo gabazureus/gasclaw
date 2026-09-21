@@ -47,3 +47,4 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [041](041-sucessor-como-codigo.md) | O sucessor é código novo (Opus 5), não um prompt melhor | Aceito; nenhum código gerado rodou ainda |
 | [042](042-automation-subagente-persona.md) | Três coisas diferentes chamadas "sub-agente": persona, automation e sub-agente | Aceito |
 | [043](043-sucessor-e-um-agente.md) | O sucessor é um AGENTE, e o Opus melhora o código dele por patch | aceita (desenho) |
+| [044](044-chat-segue-o-coroado.md) | Depois da coroa, o Chat é reapontado à mão (a P35 reprovou o repasse: 17,4 s > 10 s) | aceita |
