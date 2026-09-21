@@ -261,3 +261,38 @@ export function halfCrowned(checks: readonly ReadinessCheck[]): boolean {
 export function crownLanded(reply: { ok?: boolean } | null, successorEnabled: boolean | null): boolean {
   return successorEnabled !== null ? successorEnabled : reply?.ok === true;
 }
+
+// ---------- A HERANÇA (F8) ----------
+//
+// O filho serve o MESMO agente: precisa das permissões, capacidades, agenda, modelo e histórico que o
+// pai guarda nas Script Properties dele — que são por projeto, e a semente não leva. O que é SEGREDO
+// (chave do OpenRouter, segredo da CLI, chaves de filho) ou estado do MOTOR (ligado, registros de
+// sucessor e filhos, runs em voo) nunca atravessa: a opção 4 da ADR-040 vale na herança também.
+
+/** Chaves exatas e prefixos do AGENTE. Lista fechada: o que não está aqui não passa. */
+const HERDA_EXATAS = ['CREATOR', 'CAPS_ENABLED', 'LINEAGE', 'BUDGET_OVERRIDE', 'RUNS_FOLDER_ID', 'RUNS_SHEET_ID'];
+const HERDA_PREFIXOS = ['ACCESS:', 'CAP:', 'STATUS:', 'STEPS:', 'MODEL:', 'AUTOOK:', 'BATTERY:', 'CFG:', 'FAIL:', 'GENINT:', 'MANDATE:', 'SCHED:', 'SCHEDSEEN:', 'LASTGEN:', 'CODEGEN:'];
+/** Segredo VENCE a lista: nenhum nome que contenha um destes passa, com qualquer prefixo. */
+const SEGREDOS = ['OPENROUTER_API_KEY', 'CLI_SECRET', 'KEYSEC:', 'KEYDEL:'];
+/** Teto de uma Script Property (9 KB): acima disso a gravação falharia no destino. */
+const PROP_MAX = 8_900;
+
+/**
+ * O que o filho herda do pai. Usada nos DOIS lados — o pai filtra o que manda, o filho filtra o que
+ * aceita — para que um erro de um lado só não entregue segredo nenhum.
+ */
+export function inheritable(props: Record<string, string | null | undefined>): { entries: Record<string, string>; refused: { key: string; reason: string }[] } {
+  const entries: Record<string, string> = {};
+  const refused: { key: string; reason: string }[] = [];
+  for (const [key, value] of Object.entries(props ?? {})) {
+    if (SEGREDOS.some((s) => key.includes(s))) continue;
+    if (!HERDA_EXATAS.includes(key) && !HERDA_PREFIXOS.some((p) => key.startsWith(p))) continue;
+    if (typeof value !== 'string') continue;
+    if (value.length > PROP_MAX) {
+      refused.push({ key, reason: `${value.length} characters, above the ${PROP_MAX} a property holds` });
+      continue;
+    }
+    entries[key] = value;
+  }
+  return { entries, refused };
+}

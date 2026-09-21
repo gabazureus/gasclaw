@@ -8,7 +8,7 @@
 // - `patchMessages` leva o código INTEIRO e as guardas proibidas ao Opus — o que ele não recebe, ele
 //   não pode respeitar.
 import { describe, expect, test } from 'vitest';
-import { codeMatches, crownLanded, crownReadiness, crownVerdict, halfCrowned, patchMessages, prepareSuccessor, readSuccessorsFrom, slotFor, successorWrites, type SuccessorRecord } from '../src/succession';
+import { codeMatches, crownLanded, crownReadiness, crownVerdict, halfCrowned, inheritable, patchMessages, prepareSuccessor, readSuccessorsFrom, slotFor, successorWrites, type SuccessorRecord } from '../src/succession';
 
 const motor = `function a() { assertOwner(); return lastSeen; }\nfunction b() { mayWriteProject(x, y); }\n`;
 const arquivos = [
@@ -259,5 +259,74 @@ describe('a coroa que chegou pela metade (achado ao vivo, dev v153)', () => {
     expect(crownLanded({ ok: true }, null)).toBe(true);
     expect(crownLanded({ ok: false }, null)).toBe(false);
     expect(crownLanded(null, null)).toBe(false);
+  });
+});
+
+// F8 — a HERANÇA. O filho serve o mesmo agente: precisa das permissões, capacidades, agenda, modelo e
+// histórico do pai. Mas o que é SEGREDO ou estado do MOTOR nunca atravessa — a opção 4 da ADR-040.
+describe('inheritable: o que o filho herda do pai — lista FECHADA, segredo nunca', () => {
+  const pai: Record<string, string> = {
+    'ACCESS:f1': '{"users":["a@x.com"],"tools":["gmail.read"]}',
+    'CAP:f1': '["dream"]',
+    'STATUS:f1': 'active',
+    'MODEL:f1': 'test/model',
+    'SCHED:f1': '[]',
+    CREATOR: 'f1',
+    CAPS_ENABLED: 'true',
+    LINEAGE: '[]',
+    'CODEGEN:2026-09-21': '1.5',
+    RUNS_SHEET_ID: 'sheet1',
+    OPENROUTER_API_KEY: 'sk-or-v1-secreta',
+    CLI_SECRET: 'a'.repeat(64),
+    CLI_SECRET_AT: '2026',
+    'KEYSEC:x': 'segredo',
+    'KEYDEL:x': 'segredo',
+    RUNTIME_ENABLED: 'false',
+    SUCCESSORS: '[]',
+    'SUCC:x:0': '{}',
+    CHILDREN: '[]',
+    P33_SUCCESSOR: '{}',
+    'R:run1': '{}',
+    OWNER: 'dono@x.com',
+    AGENTS: '[]',
+  };
+
+  test('passam as chaves do agente que estão na lista', () => {
+    const r = inheritable(pai);
+    expect(Object.keys(r.entries).sort()).toEqual(['ACCESS:f1', 'CAP:f1', 'CAPS_ENABLED', 'CODEGEN:2026-09-21', 'CREATOR', 'LINEAGE', 'MODEL:f1', 'RUNS_SHEET_ID', 'SCHED:f1', 'STATUS:f1']);
+    expect(r.entries['ACCESS:f1']).toBe(pai['ACCESS:f1']);
+  });
+
+  test.each(['OPENROUTER_API_KEY', 'CLI_SECRET', 'CLI_SECRET_AT', 'KEYSEC:x', 'KEYDEL:x'])('o segredo %s NUNCA passa', (k) => {
+    expect(inheritable(pai).entries[k]).toBeUndefined();
+  });
+
+  test.each(['RUNTIME_ENABLED', 'SUCCESSORS', 'SUCC:x:0', 'CHILDREN', 'P33_SUCCESSOR', 'R:run1', 'OWNER', 'AGENTS'])('o estado do motor %s não passa', (k) => {
+    expect(inheritable(pai).entries[k]).toBeUndefined();
+  });
+
+  // Uma chave que PARECE da lista mas carrega um segredo no nome não pode passar por acidente de prefixo.
+  test('segredo vence a lista: nem com prefixo parecido', () => {
+    expect(inheritable({ 'CLI_SECRET:f1': 'x', 'KEYSEC:ACCESS:f1': 'x' }).entries).toEqual({});
+  });
+
+  // O teste que a mutação exigiu: sem ele, apagar a regra "segredo vence a lista" deixava tudo verde,
+  // porque os segredos do teste acima já ficavam fora da lista por outro motivo.
+  test.each(['ACCESS:KEYSEC:x', 'CFG:OPENROUTER_API_KEY', 'CAP:CLI_SECRET', 'MODEL:KEYDEL:y'])('segredo DENTRO de uma chave da lista não passa: %s', (k) => {
+    expect(inheritable({ [k]: 'x' }).entries).toEqual({});
+  });
+
+  test('o prefixo vale no COMEÇO do nome, não no meio', () => {
+    expect(inheritable({ 'X_CAP:f1': 'x', 'OLD_ACCESS:f1': 'x' }).entries).toEqual({});
+  });
+
+  test('valor grande demais é RECUSADO com motivo, não cortado', () => {
+    const r = inheritable({ 'FAIL:f1': 'x'.repeat(9_000) });
+    expect(r.entries).toEqual({});
+    expect(r.refused).toEqual([{ key: 'FAIL:f1', reason: expect.stringContaining('9000') }]);
+  });
+
+  test('nada que não seja texto passa', () => {
+    expect(inheritable({ 'CAP:f1': null as unknown as string }).entries).toEqual({});
   });
 });
