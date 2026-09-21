@@ -64,7 +64,7 @@ import {
 } from './agentCaps';
 import { beatsIncumbent, CODEGEN_BUDGET_USD, mayWriteProject, withinDailyCap } from './dream';
 import { generateSuccessor, sourceOfChild, type SuccessorDeps } from './successor';
-import { codeMatches, crownReadiness, crownVerdict, patchMessages, prepareSuccessor, readSuccessorsFrom, slotFor, successorWrites, type EvalRow, type Evaluation, type ReadinessCheck, type SuccessorRecord, type SuccessorSelf } from './succession';
+import { codeMatches, crownLanded, crownReadiness, crownVerdict, halfCrowned, patchMessages, prepareSuccessor, readSuccessorsFrom, slotFor, successorWrites, type EvalRow, type Evaluation, type ReadinessCheck, type SuccessorRecord, type SuccessorSelf } from './succession';
 import { codeDelta, judgeCase, parseBattery, previousScore, scoreRun, withMeasurement } from './fitness';
 import { applyPatch, parsePatch, type Change, type PatchFile } from './patch';
 import { seedSource } from './seed';
@@ -3548,21 +3548,28 @@ export function crownSuccessor(scriptId: string) {
   // O HEALTH INTEIRO, não só a nota: a coroa pausa o motor que hoje funciona, e só vale se o sucessor
   // consegue de fato servir o agente — todas as checagens, lidas AGORA.
   const saude = healthOf(rec);
-  if (!saude.ok) return { ok: false as const, reason: `the successor is not ready: ${saude.checks.filter((c) => !c.ok).map((c) => `${c.label} — ${c.detail}`).join('; ')}`, checks: saude.checks };
+  // A COROA PELA METADE: o sucessor já responde e todo o resto passa. Coroar aqui não cria dois motores —
+  // termina os dois que já existem. Qualquer outra checagem reprovada continua travando.
+  const metade = halfCrowned(saude.checks);
+  if (!saude.ok && !metade) return { ok: false as const, reason: `the successor is not ready: ${saude.checks.filter((c) => !c.ok).map((c) => `${c.label} — ${c.detail}`).join('; ')}`, checks: saude.checks };
   const veredito = crownVerdict(rec.evaluation);
   if (!veredito.ok) return { ok: false as const, reason: veredito.reason };
   const antes = store.isEnabled();
   store.setEnabled(false);
-  let resposta: { ok?: boolean; error?: string } = {};
-  const r = postChild(rec.url, { action: 'crown', parent: ScriptApp.getScriptId() });
-  try {
-    resposta = JSON.parse(r.body);
-  } catch {
-    resposta = { ok: false, error: `HTTP ${r.code}: the successor answered something that is not JSON` };
-  }
-  if (!resposta.ok) {
-    store.setEnabled(antes);
-    return { ok: false as const, reason: `the successor refused the crown: ${resposta.error ?? 'no reason given'} — this engine is running again` };
+  if (!metade) {
+    let resposta: { ok?: boolean; error?: string } | null = null;
+    try {
+      resposta = JSON.parse(postChild(rec.url, { action: 'crown', parent: ScriptApp.getScriptId() }).body);
+    } catch {
+      resposta = null; // resposta perdida ou ilegível: quem decide é o estado do sucessor, lido abaixo
+    }
+    // DEPOIS DE MANDAR, LÊ O ESTADO. Achado ao vivo (dev v153): o sucessor ligou, a resposta não chegou
+    // legível, e o pai voltou a rodar — dois motores. Decidir pela resposta era o defeito.
+    if (!crownLanded(resposta, successorEnabled(rec.url))) {
+      store.setEnabled(antes);
+      const motivo = resposta?.error ? ` (${resposta.error})` : '';
+      return { ok: false as const, reason: `the successor did not take the crown${motivo}. It is still paused, and this engine is running again.` };
+    }
   }
   saveSuccessor(props, { ...rec, crownedAt: Date.now() });
   const anterior = lineage().entries;
@@ -3633,13 +3640,24 @@ function healthOf(rec: SuccessorRecord) {
   return crownReadiness({ parentId: own, authState: estado, self, code, record: rec });
 }
 
+/** O sucessor está ligado? Lido pela porta de readiness; nulo quando não deu para ler, e aí ninguém presume. */
+function successorEnabled(url: string): boolean | null {
+  try {
+    const j = JSON.parse(postChild(url, { action: 'readiness' }).body) as { ok?: boolean; self?: SuccessorSelf };
+    return j.ok && j.self ? j.self.enabled === true : null;
+  } catch {
+    return null;
+  }
+}
+
 /** O health da coroa de um sucessor registrado, para o painel e a CLI. */
 export function successorHealth(scriptId: string) {
   assertOwner();
   const rec = readSuccessors(PropertiesService.getScriptProperties()).find((r) => r.scriptId === String(scriptId ?? '').trim());
   if (!rec) return { ok: false as const, reason: 'unknown successor', checks: [] as ReadinessCheck[] };
   if (rec.crownedAt !== null) return { ok: false as const, reason: 'this successor was already crowned', checks: [] as ReadinessCheck[] };
-  return { scriptId: rec.scriptId, ...healthOf(rec) };
+  const h = healthOf(rec);
+  return { scriptId: rec.scriptId, ...h, halfCrowned: halfCrowned(h.checks) };
 }
 
 /**

@@ -1159,7 +1159,7 @@
       detalhe.append(celula);
       if (!r.crownedAt) {
         const coroa = button('Crown it', () => {
-          if (!confirm('Every health check passed.\n\nCrowning PAUSES this engine and turns the successor on: from now on the successor answers for this agent.\n\nCrown it?')) return;
+          if (!confirm('Crowning PAUSES this engine and leaves the successor answering for this agent.\n\nCrown it?')) return;
           coroa.disabled = true;
           call('crownSuccessor', r.scriptId).then((x) => {
             if (!x.ok) { coroa.disabled = false; $('msg').className = 'err'; $('msg').textContent = x.reason; return; }
@@ -1189,8 +1189,9 @@
             celula.replaceChildren();
             (h.checks || []).forEach((c) => celula.append(el('p', { className: c.ok ? 'muted' : 'err', textContent: (c.ok ? '\u2713 ' : '\u2717 ') + c.label + ' \u2014 ' + c.detail })));
             if (!h.checks || !h.checks.length) celula.append(el('p', { className: 'err', textContent: h.reason || 'no answer' }));
-            celula.append(el('p', { className: h.ok ? '' : 'muted', textContent: h.ok ? 'Ready: you can crown it.' : 'Not ready: the crown stays locked until every check passes.' }));
-            coroa.disabled = !h.ok;
+            // A coroa pela metade: o sucessor já responde e só "paused" reprova. Coroar aqui termina os dois motores.
+            celula.append(el('p', { className: h.ok || h.halfCrowned ? '' : 'muted', textContent: h.ok ? 'Ready: you can crown it.' : h.halfCrowned ? 'The successor is already answering and every other check passes: two engines are serving this agent. Crowning pauses this engine and ends that.' : 'Not ready: the crown stays locked until every check passes.' }));
+            coroa.disabled = !(h.ok || h.halfCrowned);
             const codigoFalhou = (h.checks || []).some((c) => c.id === 'code' && !c.ok);
             rebase.hidden = !codigoFalhou;
           }).catch((e) => { saude.disabled = false; celula.replaceChildren(el('p', { className: 'err', textContent: e.message })); });

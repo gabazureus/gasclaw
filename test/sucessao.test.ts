@@ -8,7 +8,7 @@
 // - `patchMessages` leva o código INTEIRO e as guardas proibidas ao Opus — o que ele não recebe, ele
 //   não pode respeitar.
 import { describe, expect, test } from 'vitest';
-import { codeMatches, crownReadiness, crownVerdict, patchMessages, prepareSuccessor, readSuccessorsFrom, slotFor, successorWrites, type SuccessorRecord } from '../src/succession';
+import { codeMatches, crownLanded, crownReadiness, crownVerdict, halfCrowned, patchMessages, prepareSuccessor, readSuccessorsFrom, slotFor, successorWrites, type SuccessorRecord } from '../src/succession';
 
 const motor = `function a() { assertOwner(); return lastSeen; }\nfunction b() { mayWriteProject(x, y); }\n`;
 const arquivos = [
@@ -232,5 +232,32 @@ describe('codeMatches: o sucessor é o código ATUAL do pai mais o patch', () =>
   });
   test('a semente do PAI (quando ele mesmo é sucessor) não entra na conta', () => {
     expect(codeMatches([...pai, { name: 'successor_seed', source: 'var GASCLAW_SEED = {"p":1};' }], filho, troca).ok).toBe(true);
+  });
+});
+
+describe('a coroa que chegou pela metade (achado ao vivo, dev v153)', () => {
+  const c = (id: string, ok: boolean) => ({ id, label: id, ok, detail: '' });
+  const todas = ['authorized', 'seed', 'paused', 'key', 'scopes', 'drive', 'worker', 'code', 'evaluation'];
+  test('só "parado" reprovado: é a coroa pela metade, e pode ser concluída', () => {
+    expect(halfCrowned(todas.map((id) => c(id, id !== 'paused')))).toBe(true);
+  });
+  test('"parado" e mais alguma reprovada: não conclui', () => {
+    expect(halfCrowned(todas.map((id) => c(id, id !== 'paused' && id !== 'code')))).toBe(false);
+  });
+  test('nada reprovado não é coroa pela metade (é a coroa normal)', () => {
+    expect(halfCrowned(todas.map((id) => c(id, true)))).toBe(false);
+  });
+  test('outra reprovada sozinha também não conclui', () => {
+    expect(halfCrowned(todas.map((id) => c(id, id !== 'key')))).toBe(false);
+  });
+  test('crownLanded: o ESTADO lido do sucessor vence a resposta, nos dois sentidos', () => {
+    expect(crownLanded(null, true)).toBe(true);
+    expect(crownLanded({ ok: false }, true)).toBe(true);
+    expect(crownLanded({ ok: true }, false)).toBe(false);
+  });
+  test('crownLanded: sem estado legível, vale a resposta — e sem resposta, não pegou', () => {
+    expect(crownLanded({ ok: true }, null)).toBe(true);
+    expect(crownLanded({ ok: false }, null)).toBe(false);
+    expect(crownLanded(null, null)).toBe(false);
   });
 });

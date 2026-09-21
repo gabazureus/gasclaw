@@ -237,3 +237,27 @@ export function codeMatches(parent: readonly PatchFile[], successor: readonly Pa
   }
   return { ok: true, reason: 'identical to this engine plus the patch, no guard weakened' };
 }
+
+// ---------- A coroa que chegou pela metade ----------
+//
+// Achado ao vivo (2026-09-21, dev v153): o dono clicou em Crown it, o sucessor RECEBEU a coroa (criou o
+// worker e ligou), mas a resposta não chegou legível ao pai — e o pai, lendo "fracasso", voltou a rodar.
+// Resultado: dois motores respondendo pelo mesmo agente, o estado que a coroa existe para evitar. O erro
+// foi decidir pela RESPOSTA, que pode se perder, e não pelo ESTADO do sucessor, que pode ser lido.
+
+/**
+ * Tudo passa menos "parado": o sucessor já responde. Coroar aqui não cria dois motores — resolve os dois
+ * que já existem. Qualquer outra checagem reprovada continua travando a coroa.
+ */
+export function halfCrowned(checks: readonly ReadinessCheck[]): boolean {
+  const reprovadas = checks.filter((c) => !c.ok);
+  return reprovadas.length === 1 && reprovadas[0].id === 'paused';
+}
+
+/**
+ * A coroa pegou? Quando dá para ler o estado do sucessor depois de mandá-la, é ele que decide. Só quando
+ * não dá (fora do ar), vale a resposta — e sem resposta legível, não pegou.
+ */
+export function crownLanded(reply: { ok?: boolean } | null, successorEnabled: boolean | null): boolean {
+  return successorEnabled !== null ? successorEnabled : reply?.ok === true;
+}

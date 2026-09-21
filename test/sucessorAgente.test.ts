@@ -19,6 +19,8 @@ let coroa: { ok: boolean; error?: string } = { ok: true };
 const SELF_OK = { seedParent: 'script1', enabled: false, hasKey: true, authRequired: false, agentReadable: { ok: true, detail: 'read' }, trigger: 'inactive' };
 let self: Record<string, unknown> | null = { ...SELF_OK };
 let codigoFilho: string = MOTOR.replace('return lastSeen;', 'return lastSeen - 1;');
+// Como a resposta da coroa chega ao pai: `null` = o JSON normal; texto = corpo ilegível; 'throw' = erro de rede.
+let corpoDaCoroa: string | null | 'throw' = null;
 
 const bom = JSON.stringify({ explanation: 'the midnight job never fired', changes: [{ file: '_motor', find: 'return lastSeen;', replace: 'return lastSeen - 1;' }] });
 
@@ -28,6 +30,7 @@ beforeEach(() => {
   coroa = { ok: true };
   self = { ...SELF_OK };
   codigoFilho = MOTOR.replace('return lastSeen;', 'return lastSeen - 1;');
+  corpoDaCoroa = null;
   env = stubGas();
   env.props['STATUS:f1'] = 'active';
   env.props['CAP:f1'] = JSON.stringify(['succeed']);
@@ -48,7 +51,10 @@ beforeEach(() => {
     if ((url === URL_SLOT || url === URL_NOVO) && init.method === 'post') {
       const acao = (init.payload as Record<string, string>).action;
       if (acao === 'readiness') return self ? { code: 200, body: JSON.stringify({ ok: true, self }) } : { code: 200, body: JSON.stringify({ ok: false, error: 'unknown action: readiness' }) };
-      return { code: 200, body: JSON.stringify(coroa) };
+      // O sucessor AGE antes de responder: ligou é ligou, chegue a resposta ou não.
+      if (coroa.ok && self) self = { ...self, enabled: true };
+      if (corpoDaCoroa === 'throw') throw new Error('Address unavailable');
+      return { code: 200, body: corpoDaCoroa ?? JSON.stringify(coroa) };
     }
     return null;
   };
@@ -224,7 +230,6 @@ describe('crownSuccessor: a coroa — só com o health inteiro; o titular para A
   test.each([
     ['sem a chave', () => void (self = { ...SELF_OK, hasKey: false })],
     ['sem ler o Drive (GCP não vinculado)', () => void (self = { ...SELF_OK, agentReadable: { ok: false, detail: '403 Drive API disabled' } })],
-    ['já rodando', () => void (self = { ...SELF_OK, enabled: true })],
     ['sucessor antigo, sem a porta do health', () => void (self = null)],
     ['código que não é o pai atual + o patch', () => void (codigoFilho = MOTOR)],
     ['sem o escopo do gatilho', () => void (self = { ...SELF_OK, trigger: 'awaiting authorization' })],
@@ -251,6 +256,47 @@ describe('crownSuccessor: a coroa — só com o health inteiro; o titular para A
     expect(h.ok).toBe(false);
     expect(h.checks).toHaveLength(9);
     expect(h.checks.filter((c) => !c.ok).map((c) => c.id)).toEqual(['key']);
+  });
+
+  // O ACHADO AO VIVO: o sucessor ligou, a resposta não chegou legível, e o pai voltou a rodar — dois motores.
+  test('resposta ilegível, mas o sucessor LIGOU: a coroa vale — o pai fica parado e registra', async () => {
+    slotRegistrado(avaliado(5, 5));
+    corpoDaCoroa = '<html>Moved Temporarily</html>';
+    const m = await motor();
+    expect(m.crownSuccessor('SLOT')).toMatchObject({ ok: true });
+    expect(env.props['RUNTIME_ENABLED']).toBe('false');
+    expect((m.successionState() as unknown as { successors: { crownedAt: number | null }[] }).successors[0].crownedAt).not.toBeNull();
+  });
+
+  test('erro de rede na coroa, mas o sucessor LIGOU: a coroa vale', async () => {
+    slotRegistrado(avaliado(5, 5));
+    corpoDaCoroa = 'throw';
+    expect((await motor()).crownSuccessor('SLOT')).toMatchObject({ ok: true });
+    expect(env.props['RUNTIME_ENABLED']).toBe('false');
+  });
+
+  test('erro de rede e o sucessor segue PARADO: o pai volta a rodar', async () => {
+    slotRegistrado(avaliado(5, 5));
+    coroa = { ok: false, error: 'x' };
+    corpoDaCoroa = 'throw';
+    expect((await motor()).crownSuccessor('SLOT').ok).toBe(false);
+    expect(env.props['RUNTIME_ENABLED']).toBe('true');
+  });
+
+  test('coroa pela metade (o sucessor já responde, todo o resto passa): o clique CONCLUI — pai parado, registrado', async () => {
+    slotRegistrado(avaliado(5, 5));
+    self = { ...SELF_OK, enabled: true, trigger: 'active' };
+    const m = await motor();
+    expect(m.crownSuccessor('SLOT')).toMatchObject({ ok: true });
+    expect(env.props['RUNTIME_ENABLED']).toBe('false');
+    expect((m.successionState() as unknown as { successors: { crownedAt: number | null }[] }).successors[0].crownedAt).not.toBeNull();
+  });
+
+  test('coroa pela metade com OUTRA checagem reprovada: não conclui, e o pai não é tocado', async () => {
+    slotRegistrado(avaliado(5, 5));
+    self = { ...SELF_OK, enabled: true, hasKey: false };
+    expect((await motor()).crownSuccessor('SLOT').ok).toBe(false);
+    expect(env.props['RUNTIME_ENABLED']).toBeUndefined();
   });
 
   test('o sucessor recusa a coroa: o titular VOLTA a rodar', async () => {
