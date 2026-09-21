@@ -4217,7 +4217,7 @@ function pocP35(step?: string): unknown {
  * P36 (F9) — as quatro capacidades medidas NO MOTOR QUE RESPONDE (o coroado), pelo caminho real de cada
  * uma. Só o dono (a CLI com o segredo). Cada passo que muda algo tem o seu passo de desfazer.
  */
-function pocP36(step?: string): unknown {
+function pocP36(step?: string, params: Record<string, string> = {}): unknown {
   const ag = defaultAgent();
   if (!ag) return { pass: false, error: 'there is no agent' };
   const props = PropertiesService.getScriptProperties();
@@ -4240,7 +4240,9 @@ function pocP36(step?: string): unknown {
     const antes = props.getProperty(schedProp(id));
     if (props.getProperty('P36_SCHED_BACKUP') === null) props.setProperty('P36_SCHED_BACKUP', antes ?? '');
     const at = (minutos + 2) % 1440;
-    const jobs = [...parseSchedule(antes).jobs, { at, prompt: 'F9 probe (Reach out): reply with exactly the word pong. Do not use any tool.', days: [] }];
+    // `--variant deny`: pede uma ferramenta FORA da auto-aprovação — o run tem de falhar dizendo por quê, sem agir.
+    const prompt = params.variant === 'deny' ? 'F9 probe (Reach out, deny): create a Google Doc titled f9-probe with the text hello.' : 'F9 probe (Reach out): reply with exactly the word pong. Do not use any tool.';
+    const jobs = [...parseSchedule(antes).jobs, { at, prompt, days: [] }];
     setAgentSchedule(id, jobs);
     return { pass: true, armedAtMinute: minutos, fireAtMinute: at, reading: 'wait ~3 min, then read the most recent run with ./gasclaw trace' };
   }
@@ -4290,7 +4292,7 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p33: (step) => pocP33(step),
   p34: (step, params = {}) => pocP34(step, params),
   p35: (step) => pocP35(step),
-  p36: (step) => pocP36(step),
+  p36: (step, params = {}) => pocP36(step, params),
   p6: (step) => pocP6(step, ownerEmail()),
   p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),
