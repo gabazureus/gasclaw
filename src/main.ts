@@ -52,7 +52,7 @@ import { bootstrapIO } from './tools/bootstrapStore';
 import { skillsIO } from './tools/skillsStore';
 import { isFree } from './freeModels';
 import { runFree } from './freeRun';
-import { complete, type Completion, type EmptyCompletionError, type Message, type ToolDef } from './llm';
+import { complete, type Completion, type EmptyCompletionError, type Message, type Reasoning, type ToolDef } from './llm';
 import { gasGoogle, zone } from './tools/googleHttp';
 import { offsetMinutes } from './agenda';
 import { folderModel, getOverride, listModels as openRouterModels, type ModelInfo, setOverride, validateChoice } from './models';
@@ -79,6 +79,13 @@ import { webClick, webSend, webSpace } from './webchat';
 import { agentRoles, saveRole, agentFolderPath, canUse, effectiveAccess, enabledTools, ensureFolderPath, extractFolderId, loadAgent, parseAccess, parseSteps, pendingSuggestions, seedAgent, validAgentName, withAccess, withTool, withUser, type Access, type LoadedAgent } from './workspace';
 
 const CHAT_MAX_TOKENS = 1000; // resposta síncrona precisa caber em 30 s
+/**
+ * A RESERVA DA RESPOSTA num turno de agente (F8 · G). Num modelo que raciocina, o pensamento sai do MESMO
+ * `max_tokens`: sem teto para ele, o `e1-memoria` voltava vazio nos dois motores (`finish_reason: length,
+ * content: null`). 600 para pensar deixa 400 para a resposta ou a chamada de ferramenta. Modelo que não
+ * raciocina ignora o parâmetro.
+ */
+const TURN_REASONING: Reasoning = { max_tokens: 600 };
 
 function ownerEmail(): string {
   const saved = store.getOwner();
@@ -169,7 +176,7 @@ function mutate(action: string, p: Record<string, string>): unknown {
       // C1 da P16: o eval e o juiz chamam o modelo pelo trace (llm_call), para o custo entrar no medido
       const r = t.step('eval', () =>
         evalAction(p.md ?? '', ownerEmail(), model, (m: string, messages: Message[], tools: ToolDef[]) =>
-          t.step('llm_call', () => complete(store.getApiKey() ?? '', m, messages, 1000, undefined, tools), llmInfo(m, messages), true),
+          t.step('llm_call', () => complete(store.getApiKey() ?? '', m, messages, 1000, undefined, tools, undefined, TURN_REASONING), llmInfo(m, messages), true),
         ),
       );
       t.end({ answer: JSON.stringify(r).slice(0, 500) });
@@ -403,7 +410,7 @@ function runPersona(spec: AgentSpec, name: string, task: string): string {
       // A persona NÃO herda a memória nem o Google do pai: ela é um papel para pensar, não uma
       // segunda identidade com as mesmas chaves.
       ctx: { now: nowText, ownerDm: false, memory: memoryIO(spec.folderId, zone().timeZone) },
-      llm: (m: Message[], defs: ToolDef[]) => complete(key, spec.config.model, m, 1000, undefined, defs),
+      llm: (m: Message[], defs: ToolDef[]) => complete(key, spec.config.model, m, 1000, undefined, defs, undefined, TURN_REASONING),
       runId: `${spec.folderId}:${span ?? name}`,
       steps: p.steps,
       deadlineMs: Date.now() + 60_000,
@@ -575,7 +582,7 @@ function chatDeps(): ChatDeps {
     compact: (k, llm) => void compactSession(sessionIO(folderOf(k)), k, llm),
     // ADR-025: `model: free` vira rodízio entre os gratuitos; qualquer outro id continua indo direto ao complete()
     llm: (key, model, messages, tools) => {
-      const call = (id: string) => complete(key, id, messages, CHAT_MAX_TOKENS, undefined, tools);
+      const call = (id: string) => complete(key, id, messages, CHAT_MAX_TOKENS, undefined, tools, undefined, TURN_REASONING);
       return isFree(model) ? runFree(call, { tools: (tools ?? []).length > 0 }) : call(model);
     },
     toolkit: (spec, ownerDm) => ({
@@ -1704,7 +1711,7 @@ export function testAgent(folderId: string, text: string) {
     const spec = t.step('resolve_agent', () => loadAgentForTurn(folderId), agentInfo(folderId));
     // ADR-025: o teste da tela e o burst da POC P11 passam pelo mesmo caminho do Chat, rodízio incluído
     const model = spec.config.model;
-    const call = (id: string, m: Message[]) => complete(key, id, m, CHAT_MAX_TOKENS);
+    const call = (id: string, m: Message[]) => complete(key, id, m, CHAT_MAX_TOKENS, undefined, [], undefined, TURN_REASONING);
     const out = reply(spec, [], text, (m) =>
       t.step('llm_call', () => (isFree(model) ? runFree((id) => call(id, m), { tools: false }) : call(model, m)), llmInfo(model, m), true),
     );
@@ -2643,7 +2650,7 @@ function sandboxEvalEnv(folderId: string, key: string | null, enabled: () => boo
     folderId,
     memory: sandboxMemory(),
     now: () => Utilities.formatDate(new Date(), tz, "yyyy-MM-dd'T'HH:mm:ssXXX (EEEE)") + ` fuso ${tz}`,
-    llm: (m, messages, defs) => complete(key ?? '', m, messages, 1000, undefined, defs),
+    llm: (m, messages, defs) => complete(key ?? '', m, messages, 1000, undefined, defs, undefined, TURN_REASONING),
     clock: Date.now,
     tickets: cacheTickets(),
     newToken,
