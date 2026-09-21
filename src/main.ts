@@ -196,6 +196,10 @@ function mutate(action: string, p: Record<string, string>): unknown {
   }
   if (action === 'step') return stepRuns();
   if (action === 'disable' || action === 'enable') {
+    // O PAI COROADO NÃO É RELIGADO PELA CLI. O up chama enable a cada publicação, e religaria o motor
+    // que entregou o agente ao sucessor: dois motores de novo. Retomar o agente é decisão do dono, no painel.
+    const coroado = action === 'enable' ? readSuccessors(PropertiesService.getScriptProperties()).find((r) => r.crownedAt !== null) : undefined;
+    if (coroado) return { ok: false, status: 409, enabled: store.isEnabled(), error: `this engine handed the agent to its crowned successor ${coroado.scriptId.slice(0, 10)}: it stays paused. To take the agent back, turn this engine on in its panel and pause the successor.` };
     store.setEnabled(action === 'enable');
     return { ok: true, enabled: store.isEnabled() };
   }

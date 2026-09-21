@@ -373,3 +373,38 @@ describe('no SUCESSOR, a porta `crown`: só do pai da semente, e só com o worke
     expect(env.props['RUNTIME_ENABLED']).toBeUndefined();
   });
 });
+
+// Achado depois da primeira coroa real: `./gasclaw up` chama `enable`, e religaria o pai que entregou o
+// agente — dois motores de novo, na próxima publicação. Religar o pai é decisão do dono, no painel.
+describe('o pai coroado não é religado pela CLI', () => {
+  const SEGREDO = 'a'.repeat(64);
+  const cli = async (action: string) => {
+    env.props['CLI_SECRET'] = SEGREDO;
+    const m = await import('../src/main');
+    const out = m.doPost({ parameter: { action, secret: SEGREDO } } as unknown as GoogleAppsScript.Events.DoPost) as unknown as { getContent: () => string };
+    return JSON.parse(out.getContent()) as { ok: boolean; error?: string };
+  };
+
+  test('com um sucessor coroado, enable pela CLI recusa e o pai segue parado', async () => {
+    slotRegistrado({ crownedAt: 9 });
+    env.props['RUNTIME_ENABLED'] = 'false';
+    const r = await cli('enable');
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain('crowned');
+    expect(env.props['RUNTIME_ENABLED']).toBe('false');
+  });
+
+  test('sem sucessor coroado, enable liga normalmente', async () => {
+    slotRegistrado();
+    env.props['RUNTIME_ENABLED'] = 'false';
+    expect((await cli('enable')).ok).toBe(true);
+    expect(env.props['RUNTIME_ENABLED']).toBe('true');
+  });
+
+  test('disable continua valendo com sucessor coroado', async () => {
+    slotRegistrado({ crownedAt: 9 });
+    env.props['RUNTIME_ENABLED'] = 'true';
+    expect((await cli('disable')).ok).toBe(true);
+    expect(env.props['RUNTIME_ENABLED']).toBe('false');
+  });
+});

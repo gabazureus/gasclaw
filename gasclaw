@@ -600,7 +600,10 @@ cmd_up() {
   deploy
   ensure_cli_secret # ADR-022 (a): logo depois do deploy, antes de qualquer outra chamada ao web app
   authorize
-  remote enable >/dev/null 2>&1 || true
+  # Um motor que entregou o agente a um sucessor coroado RECUSA o enable (fica parado). Dizer isso aqui
+  # evita o health abaixo parecer defeito: parado, neste caso, e o estado certo.
+  local en; en=$(remote enable 2>/dev/null || true)
+  case "$en" in *'crowned successor'*) warn "this engine stays paused: it handed the agent to its crowned successor (take it back in the panel if you mean to)" ;; esac
   health
   # Uma leitura so, usada para as duas conferencias.
   local limits
