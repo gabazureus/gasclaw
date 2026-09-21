@@ -1,7 +1,7 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, e se já foi resolvido.
-> **Atualizado em:** 2026-09-21 · **2157 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
+> **Atualizado em:** 2026-09-21 · **2161 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
 > · **Auditoria:** seis ✅ eram falsos. Critério: *algum módulo importa isto, e o símbolo aparece em `dist/_motor.js`?*
 > · **P22 aprovada 4/4** · P24 **aprovada por inteiro** · P25 **reprovada** (sem combustível)
 > · **P27 medida e REPROVADA** (o filho executa, o motor recusa o token dele: 401 da plataforma)
@@ -207,7 +207,7 @@ a sexta forma de prova falsa desta sessão. As outras cinco estão listadas acim
 
 | ~~F8.G~~ | ✅ **`e1-memoria` — causa-raiz e conserto** | rodado no dev: as duas respostas voltavam VAZIAS (`finish_reason: length, content: null`). O agente usa `deepseek-v4-flash`, que raciocina, e o turno mandava `max_tokens 1000` sem reserva — o pensamento gastava tudo. Agora os cinco pontos de turno passam `reasoning.max_tokens 600` (`TURN_REASONING`), com trava no fonte. **Real (v164): `e1-memoria` ✓ ✓, e a bateria da coroa passou de 5/6 para 6/6** (smoke, e1-now, e1-limite, e1-fora-da-lista, e1-injecao seguem ✓). Levado ao sucessor pelo `sync` (v12) | eval no dev |
 | ~~F8.F~~ | ✅ **Fila de sessões órfã apagada** | `src/sessionQueue.ts` + `src/sessionQueueStore.ts` + teste (143 linhas, zero consumidores). `voice.ts` fica (ADR-019). Dívida de idioma 148 → **145** | suíte verde |
-| F8.B | ⏳ **O Chat segue o motor coroado** | **portão humano**: a sonda P35 está no ar desde a v157 e nenhuma mensagem do Chat chegou. O dono manda UMA mensagem; depois `./gasclaw poc p35 read` decide entre o roteamento automático e o caminho manual | 1 mensagem no Chat |
+| ~~F8.B~~ | ✅ **O Chat depois da coroa — P35 medida, REPROVADA em C2** | uma mensagem real do dono: C1 a identidade do `onMessage` é aceita pelo sucessor (só provado para o dono — o `onMessage` roda como quem manda); C2 ida e volta **17.429 ms contra 10 s**. O limiar não se afrouxa: **sem roteamento automático**. [ADR-044](docs/adr/044-chat-segue-o-coroado.md): depois de cada coroa o dono reaponta o Deployment ID do Chat para o do sucessor (passo documentado nos READMEs). Achado: o app do dev e o de prod respondem com o MESMO nome — o painel ganhou **Open in Google Chat** (`chatLink`, pela identidade do próprio app) | [poc/p35](poc/p35-chat-segue-o-coroado/README.md) |
 
 ### F8.I — checklist de ida para prod (NÃO executado: o `ship` é decisão do dono)
 

@@ -32,6 +32,10 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 > novo ao motor que responde; `succession inherit` reentrega as permissões.
 > 🔧 **Respostas vazias com modelos que raciocinam:** o turno agora reserva espaço para a resposta — o
 > cenário de memória, que falhava, passa (a bateria foi de 5/6 para 6/6).
+> 💬 **Google Chat depois da coroa:** o Chat continua apontando para o motor antigo; depois de coroar,
+> reaponte uma vez o Deployment ID no console do Chat (o passo está no README). Um repasse automático foi
+> medido e reprovado (17,4 s). O painel ganhou **Open in Google Chat**, que abre a conversa com o agente
+> certo — o app do dev e o de prod têm o mesmo nome no Chat.
 
 > 🧬 **Capacidades por agente (F5):** quatro poderes que você liga UM A UM no painel, e nenhum liga
 > outro — **Sonho** (reescreve o próprio prompt e se mede contra o conjunto-juiz), **Procurar**
