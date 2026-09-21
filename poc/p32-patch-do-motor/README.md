@@ -1,7 +1,8 @@
 # POC P32 — o Opus devolve um patch válido do motor inteiro, dentro de 6 min?
 
-> **Status: rodada 1 MEDIDA (dev v146) e REPROVADA em C3 — o tempo e o tamanho passaram; a resposta
-> voltou vazia.** Rodada 2 espera o orçamento do dono. Ver [ADR-043](../../docs/adr/043-sucessor-e-um-agente.md).
+> **Status: APROVADA na rodada 2 (dev v147), os cinco critérios.** E o patch que o Opus devolveu
+> achou um **defeito real** no agente, já portado para o `src/` com teste. GPT-6-Astra fica para depois
+> da virada do dia (decisão de orçamento do dono). Ver [ADR-043](../../docs/adr/043-sucessor-e-um-agente.md).
 
 ## A pergunta
 
@@ -77,3 +78,52 @@ contexto e no tempo. O que falhou foi o orçamento de saída.
 ./gasclaw poc p32 patch --model gpt          # até ~US$ 2,69
 ./gasclaw poc p32 show                       # o patch guardado, inteiro
 ```
+
+## Rodada 2 — dev v147, Opus 5, 16.000 de teto e 8.000 para pensar — APROVADA
+
+```
+patch: 43.061 ms no total — a chamada em 42.371 ms
+       finish_reason: "stop"
+       tokens: 252.504 entrada · 2.734 saída, dos quais 2.324 de raciocínio · 0 em cache
+       custo: US$ 1,3309  (estimativa do pré-teste: US$ 1,3489)
+```
+
+| # | Resultado |
+|---|---|
+| C1 | ✅ aceitou **252.504** tokens de entrada |
+| C2 | ✅ **43 s** |
+| C3 | ✅ **1 troca**, e o trecho casa exatamente uma vez |
+| C4 | ✅ **US$ 1,33** — o pré-teste estimou US$ 1,35 |
+| C5 | ✅ explicação do que melhorou (abaixo) |
+
+**O orçamento de raciocínio resolveu:** ele pensou 2.324 tokens e sobrou espaço para responder. A
+rodada 1, sem esse limite, não gravou quanto pensou — então a hipótese de que ela se esgotou
+raciocinando segue **coerente, não medida**.
+
+**O código tokeniza a 2,25 caracteres por token**, não 3 (569.326 caracteres → 252.504 tokens). O
+pré-teste acertou o total por acaso — errou para menos na entrada e para mais na saída — e foi
+corrigido para 2,25.
+
+### O patch achou um defeito de verdade
+
+A explicação do Opus, verbatim:
+
+> "Fixed a real scheduling defect in `dueJobs`: at the midnight rollover the local minute restarts at
+> 0 while `lastSeen` is still late in the previous day, and the function returned an empty list for
+> that tick. Since the tick then stores the new (smaller) minute as `lastSeen`, any job whose time had
+> already passed on the new day — notably one at 00:00 — was silently skipped forever, so a proactive
+> agent scheduled for midnight never woke up."
+
+A troca: `if (now < lastSeen) return [];` → `if (now < lastSeen) lastSeen = -1;`
+
+**A explicação não foi aceita como prova.** Conferida contra o chamador: `tickProactive` grava
+`lastSeen = minutos` ANTES de chamar `dueJobs`, e sempre. Então 23:59 grava 1439; 00:00 grava 0 e
+recebe vazio; 00:01 tem `lastSeen = 0`, e `j.at > 0` exclui o job das 00:00 para sempre. **O defeito é
+real: um agente proativo agendado para meia-noite nunca acordava**, e nenhum teste cobria a virada do dia.
+
+**Portado para `src/schedule.ts`** (decisão 3 da ADR-043), pelo fluxo do projeto: 5 testes novos, 4
+vermelhos no código antigo — a sequência real de tiques dava **0 disparos em vez de 1** —, depois verdes.
+Mutação: 3 reais mortas (desfazer o conserto, disparar o dia inteiro, disparar duas vezes) e 1
+equivalente declarada antes de rodar (`-Infinity` e `-1` não se distinguem com `at ≥ 0`).
+
+**O portão da spec não dispara:** coube no contexto e no tempo. O patch do motor inteiro é viável.

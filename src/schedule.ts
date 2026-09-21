@@ -86,8 +86,17 @@ export const serializeSchedule = (jobs: readonly Job[]): string => JSON.stringif
  */
 export function dueJobs(jobs: readonly Job[], lastSeen: number | null, now: number, weekday: number): Job[] {
   if (lastSeen === null || !Number.isInteger(now)) return [];
-  if (now < lastSeen) return []; // virou o dia: recomeça limpo em vez de disparar o dia inteiro
-  return jobs.filter((j) => (j.days.length === 0 || j.days.includes(weekday)) && j.at > lastSeen && j.at <= now);
+  // VIRADA DO DIA — o primeiro defeito achado pela SUCESSÃO (P32, rodada 2, dev v147). Aqui havia
+  // `if (now < lastSeen) return []`: à meia-noite `now` recomeça em 0 com `lastSeen` ainda em 1439, e
+  // a lista voltava vazia. Como `tickProactive` grava `lastSeen = minutos` antes e sempre, o tique
+  // seguinte já tinha `lastSeen = 0`, e `j.at > 0` excluía para sempre um job às 00:00 — um agente
+  // agendado para meia-noite nunca acordava.
+  //
+  // O Opus recebeu o código do agente e propôs esta troca; ela foi conferida contra o chamador antes
+  // de ser portada. Virar o dia vira "o dia começa agora": dispara o que venceu desde a meia-noite
+  // (`at <= now`), e nada mais — o cuidado original de não disparar o dia inteiro continua valendo.
+  const desde = now < lastSeen ? -1 : lastSeen;
+  return jobs.filter((j) => (j.days.length === 0 || j.days.includes(weekday)) && j.at > desde && j.at <= now);
 }
 
 /** O que a tela mostra de cada job. Em inglês (ADR-033). */

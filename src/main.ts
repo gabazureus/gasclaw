@@ -3209,9 +3209,10 @@ function pocP32(step?: string, params: Record<string, string> = {}): unknown {
     const maxTokens = Number(params.tokens) || 16_000;
     const pensar = Number(params.reasoning) || 8_000;
     // PRÉ-TESTE COM A ESTIMATIVA REAL. `CODEGEN_BUDGET_USD` supõe US$ 1 por geração e a P32 custou
-    // US$ 1,38: com ele, o teto deixaria passar uma chamada que o estoura. Código tokeniza a ~3
-    // caracteres por token — é o que o custo medido da primeira rodada indica.
-    const estimativa = (bytes / 3) * gerador.inUsd / 1e6 + maxTokens * gerador.outUsd / 1e6;
+    // US$ 1,38: com ele, o teto deixaria passar uma chamada que o estoura. MEDIDO na rodada 2 (v147):
+    // 569.326 caracteres viraram 252.504 tokens — 2,25 por token. A primeira estimativa usava 3 e
+    // acertou o total por acaso: errou para menos na entrada e para mais na saída.
+    const estimativa = (bytes / 2.25) * gerador.inUsd / 1e6 + maxTokens * gerador.outUsd / 1e6;
     const gasto = codegenSpentToday(Date.now());
     const teto = budgetNow().codegenUsd;
     if (gasto + estimativa > teto) return { pass: false, error: `this run could cost up to US$ ${estimativa.toFixed(2)} and US$ ${gasto.toFixed(2)} of US$ ${teto.toFixed(2)} are already spent today`, estimateUsd: estimativa, spentTodayUsd: gasto, capUsd: teto };

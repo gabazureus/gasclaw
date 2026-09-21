@@ -150,3 +150,51 @@ describe('a agenda da PASTA não volta para o motor', () => {
     expect(probe).toContain("from '../../src/agenda'");
   });
 });
+
+// O PRIMEIRO DEFEITO ACHADO PELA SUCESSÃO — P32, rodada 2 (dev v147), 2026-09-21.
+//
+// O motor mandou o próprio código ao Opus, e o patch que voltou apontou isto: à meia-noite `now`
+// recomeça em 0 enquanto `lastSeen` ainda é 1439, e `dueJobs` devolvia VAZIO. Como `tickProactive`
+// grava `lastSeen = minutos` ANTES e SEMPRE (main.ts, em volta de `dueJobs(`), o tique seguinte já
+// tinha `lastSeen = 0` — e `j.at > 0` exclui para sempre um job às 00:00.
+//
+// UM AGENTE PROATIVO AGENDADO PARA MEIA-NOITE NUNCA ACORDAVA. Nenhum teste cobria a virada do dia.
+// A correção foi conferida à mão contra o chamador antes de ser portada — a explicação do Opus não
+// foi aceita como prova.
+describe('dueJobs na virada do dia', () => {
+  const job = (at: number) => ({ at, prompt: 'x', days: [] as number[] });
+
+  test('um job às 00:00 dispara no tique da meia-noite', () => {
+    expect(dueJobs([job(0)], 1439, 0, 1)).toHaveLength(1);
+  });
+
+  // O cuidado que o código original tinha, e que a correção preserva: virar o dia NÃO dispara o dia
+  // inteiro — só o que já venceu desde a meia-noite.
+  test('virar o dia não dispara o que ainda não chegou', () => {
+    expect(dueJobs([job(0), job(720)], 1439, 0, 1).map((j) => j.at)).toEqual([0]);
+  });
+
+  // Tique atrasado (a cota de gatilho do Apps Script não garante o minuto exato): tudo que venceu entre
+  // a meia-noite e agora dispara, uma vez.
+  test('tique atrasado na virada dispara o que venceu desde a meia-noite', () => {
+    expect(dueJobs([job(0), job(1), job(2), job(3)], 1439, 2, 1).map((j) => j.at)).toEqual([0, 1, 2]);
+  });
+
+  // E uma vez só: o tique seguinte, com `lastSeen` já no novo dia, não dispara de novo.
+  test('o job das 00:00 não dispara duas vezes', () => {
+    expect(dueJobs([job(0)], 0, 1, 1)).toHaveLength(0);
+  });
+
+  // A SEQUÊNCIA REAL, como o chamador a vive: grava o minuto e então pergunta. Era aqui que o defeito
+  // morava — nenhum teste simulava mais de um tique.
+  test('a sequência de tiques 23:59 → 00:00 → 00:01 dispara o job das 00:00 exatamente uma vez', () => {
+    let visto: number | null = null;
+    let disparos = 0;
+    for (const minuto of [1438, 1439, 0, 1, 2]) {
+      const anterior = visto;
+      visto = minuto; // `tickProactive` grava ANTES de perguntar
+      disparos += dueJobs([job(0)], anterior, minuto, 1).length;
+    }
+    expect(disparos).toBe(1);
+  });
+});
