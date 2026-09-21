@@ -216,3 +216,49 @@ describe('fiação: sem pasta declarada, as ações do enxame usam o agente padr
     }
   });
 });
+
+// D7, REFEITO — achado na primeira geração real do Opus.
+//
+// O D7 inferia o corte contando chaves, e não tratava regex. Um compositor de CSV correto usa `/"/g`
+// e `/["\n]/`: o scanner via o `"` dentro da regex como abertura de string e recusava o programa como
+// "truncado". A primeira geração real (US$ 0,108) foi recusada assim — quase certamente por esse
+// FALSO POSITIVO, não por corte. E o commit do D7 tinha errado a direção do risco: dizia que a lacuna
+// de regex "deixava passar um corte, do lado seguro". Era o contrário — recusava código BOM.
+//
+// O corte é propriedade da GERAÇÃO, e a API diz isso diretamente: `finish_reason: "length"`. Inferir
+// por heurística o que a fonte já reporta era trocar um sinal exato por um palpite.
+describe('corte: decidido pelo finish_reason da API, não por contar chaves', () => {
+  test('finish_reason "length" é corte: recusa, com o motivo, e o custo entra no dia', () => {
+    const addSpent = vi.fn();
+    const r = generateSuccessor(pedido, deps({ complete: () => ({ text: BOM, costUsd: 0.11, finishReason: 'length' }), addSpent }));
+    expect(porque(r)).toMatch(/truncated/);
+    expect(porque(r)).toMatch(/length/);
+    expect(addSpent).toHaveBeenCalledWith(0.11);
+  });
+
+  // O FALSO POSITIVO QUE QUEIMOU A GERAÇÃO 1: um compositor de CSV correto, com aspas dentro de regex.
+  test('código completo com aspas dentro de regex NÃO é recusado como corte', () => {
+    const csv = `function doGet(e) {
+  var d = ",";
+  function q(s) { if (/["\\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"'; return s; }
+  return ContentService.createTextOutput(JSON.stringify({ output: q("a") }));
+}`;
+    const r = generateSuccessor(pedido, deps({ complete: () => ({ text: csv, costUsd: 0.1, finishReason: 'stop' }) }));
+    // `porque` EXIGE recusa; aqui o certo é passar. Se falhar por outro motivo, que não seja corte.
+    expect(r.ok ? '' : r.reason).not.toMatch(/truncated/);
+  });
+
+  test('finish_reason "stop" não é corte, mesmo que o scanner antigo achasse que era', () => {
+    const r = generateSuccessor(pedido, deps({ complete: () => ({ text: BOM, costUsd: 0.1, finishReason: 'stop' }) }));
+    expect(r.ok ? '' : r.reason).not.toMatch(/truncated/);
+  });
+});
+
+// M2 do corte: a casca podia parar de repassar o `finish_reason` e a detecção de corte morria calada —
+// o núcleo seguia certo e nunca recebia o sinal. Mesmo padrão da M4 do D8.
+describe('fiação: a casca repassa o finish_reason ao núcleo', () => {
+  const main = readFileSync('src/main.ts', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  test('o retorno de `deps.complete` leva o finish_reason da API', () => {
+    expect(main).toContain('finishReason: r.finish_reason');
+  });
+});

@@ -103,46 +103,6 @@ export function extractSource(raw: string | null | undefined): string | null {
   return corpo.length > 0 ? corpo : null;
 }
 
-/**
- * O fonte fecha tudo que abriu? Um programa **cortado no meio** mantém `function doGet(` e passa por
- * todas as outras regras — seria implantado, quebraria em execução, e mediria 0 de 17. O número
- * pareceria "o gerador foi mal" quando a causa é o corte.
- *
- * O corte não vem só de `max_tokens` curto: vem de `stop` inesperado, de resposta truncada na rede,
- * de cerca de markdown malformada. A regra é sobre o FONTE, não sobre a causa.
- *
- * **O risco real aqui é o falso positivo**, e é ele que dita o tamanho do scanner: chave dentro de
- * string, de comentário ou de template é TEXTO, não estrutura. Recusar código bom queima uma geração
- * paga e manda o dono caçar um defeito que não existe — pior que não ter a regra.
- *
- * Regex ficou DE FORA de propósito: distinguir `/` de divisão exige quase um parser, e uma barra mal
- * lida viraria exatamente o falso positivo que esta função existe para evitar. O preço é deixar
- * passar um corte dentro de uma regex — raro, e do lado seguro.
- */
-function balanced(src: string): boolean {
-  const pares: Record<string, string> = { '}': '{', ')': '(', ']': '[' };
-  const pilha: string[] = [];
-  let i = 0;
-  while (i < src.length) {
-    const c = src[i];
-    const d = src[i + 1];
-    if (c === '/' && d === '/') { i = src.indexOf('\n', i); if (i < 0) return pilha.length === 0; continue; }
-    if (c === '/' && d === '*') { const f = src.indexOf('*/', i + 2); if (f < 0) return false; i = f + 2; continue; }
-    if (c === '"' || c === "'" || c === '`') {
-      const aspas = c;
-      i++;
-      while (i < src.length && src[i] !== aspas) i += src[i] === '\\' ? 2 : 1;
-      if (i >= src.length) return false; // string que não fecha É o corte
-      i++;
-      continue;
-    }
-    if (c === '{' || c === '(' || c === '[') pilha.push(c);
-    else if (pares[c]) { if (pilha.pop() !== pares[c]) return false; }
-    i++;
-  }
-  return pilha.length === 0;
-}
-
 export type Check = { ok: boolean; reason: string };
 
 /** O crivo. Fail-closed: o que não passa em TODAS as regras não é publicado. */
@@ -151,7 +111,9 @@ export function checkSuccessorSource(source: string): Check {
   if (!s) return { ok: false, reason: 'the generator returned no code' };
   if (s.length > SOURCE_MAX) return { ok: false, reason: `the generated code is too long to review before publishing: ${s.length} characters, limit is ${SOURCE_MAX}` };
   for (const f of FORBIDDEN) if (f.re.test(s)) return { ok: false, reason: f.reason };
-  if (!balanced(s)) return { ok: false, reason: 'the generated code is truncated: it does not close everything it opens. Publishing it would deploy a child that breaks at runtime and scores zero for a reason that has nothing to do with the task' };
+  // O CORTE NÃO É DECIDIDO AQUI. Havia uma contagem de chaves que não tratava regex e recusava código
+  // correto — um compositor de CSV com `/"/g` era lido como "truncado". Ele saiu: o corte é decidido em
+  // `generateSuccessor` pelo `finish_reason` da API, que é o sinal exato, não um palpite sobre o texto.
   if (!ENTRY.test(s)) return { ok: false, reason: 'the generated code has no doGet entry point: fitness is measured by calling the child\'s URL, so a child without doGet can never be measured, and a child that cannot be measured can never be selected' };
   return { ok: true, reason: '' };
 }

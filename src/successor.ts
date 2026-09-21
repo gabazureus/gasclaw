@@ -26,7 +26,7 @@ export type SuccessorDeps = {
    * diria só "sem código", e o dono não saberia se o gerador gastou o orçamento raciocinando ou se o
    * conteúdo veio num formato que ninguém leu.
    */
-  complete: (messages: ReturnType<typeof successorMessages>, model: string) => { text: string; costUsd: number; why?: string };
+  complete: (messages: ReturnType<typeof successorMessages>, model: string) => { text: string; costUsd: number; why?: string; finishReason?: string };
   /** Os escopos que o MOTOR tem hoje: o teto do que o filho pode herdar. */
   parentScopes: () => string[];
   /** O scriptId de quem está executando. Sem ele não se escreve em projeto nenhum. */
@@ -101,6 +101,11 @@ export function generateSuccessor(req: SuccessorRequest, d: SuccessorDeps): Succ
   const custo = Number.isFinite(gen.costUsd) ? gen.costUsd : 0;
   d.addSpent(custo); // antes de qualquer recusa: o gasto não depende do veredito
 
+  // O CORTE É DA GERAÇÃO, e a API diz isso: `finish_reason: "length"` — o modelo parou por falta de
+  // tokens, não por ter terminado. O D7 inferia isso contando chaves, sem tratar regex, e recusou como
+  // "truncado" um compositor de CSV CORRETO (`/"/g` abria uma string que nunca fechava). A primeira
+  // geração real foi queimada assim. Um sinal exato da fonte vence um palpite sobre o texto.
+  if (gen.finishReason === 'length') return fail('the generated code is truncated (finish_reason: length): the generator ran out of tokens before finishing. Publishing it would deploy a child that breaks at runtime and scores zero for a reason that has nothing to do with the task', custo);
   const fonte = extractSource(gen.text);
   if (!fonte) return fail(gen.why ? `the generator returned no code (${gen.why})` : 'the generator returned no code', custo);
   const crivo = checkSuccessorSource(fonte);

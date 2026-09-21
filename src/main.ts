@@ -2233,7 +2233,7 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
       // o dono pode baixar (nunca subir) para caber no crédito ou no tamanho esperado do filho.
       try {
         const r = complete(key, model, messages, codeTokens(maxTokens));
-        return { text: r.text, costUsd: Number(r.usage?.cost ?? 0) };
+        return { text: r.text, costUsd: Number(r.usage?.cost ?? 0), finishReason: r.finish_reason };
       } catch (e) {
         // D9: resposta VAZIA que pode ter custado. Deixar o erro subir pulava `addSpent` — o dinheiro
         // saía e sumia, o oposto da ADR-041 §4. Aqui ela vira texto vazio COM o custo e o motivo, e
