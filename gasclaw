@@ -829,7 +829,11 @@ cmd_swarm() { # a corrida do enxame (F6): ./gasclaw swarm <battery|interval|budg
   esac
 }
 
-swarm_print() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);if(r.ok===false){console.error(r.error||r.reason);process.exit(1)}console.log(JSON.stringify(r,null,1))})'; }
+# Uma RECUSA do servidor ("succeed is off for this agent") e um RESULTADO, nao um crash: ela diz o que
+# o dono precisa fazer. Sair com 1 fazia o `set -e` matar o script com "stopped unexpectedly near line
+# 808" — escondendo a frase util atras de um erro que parece defeito nosso. Mesma regra do runner de POC.
+swarm_print() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{let r;try{r=JSON.parse(s)}catch{console.error(s.slice(0,200));return}
+if(r.ok===false||r.reason){console.log("refused: "+(r.error||r.reason));return}console.log(JSON.stringify(r,null,1))})'; }
 
 swarm_lineage() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);
 const cg=(r.entries||[]).filter((e)=>e.kind==="codegen");
