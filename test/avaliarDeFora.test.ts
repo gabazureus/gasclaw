@@ -52,3 +52,34 @@ describe('toRunSpec: o que atravessa até o sucessor não tem gabarito', () => {
     expect(spec.turns).toEqual(['oi']);
   });
 });
+
+// A PORTA DO SUCESSOR recebe o RunSpec de uma requisição HTTP. O pai é confiável; o que chega pela rede
+// é conferido mesmo assim — um JSON malformado não pode virar um eval que roda qualquer coisa.
+import { parseRunSpec } from '../src/evalEntry';
+describe('parseRunSpec: o que chega pela rede é conferido', () => {
+  const bom = toRunSpec(parseScenario(md));
+
+  test('um RunSpec válido volta igual', () => {
+    expect(parseRunSpec(JSON.stringify(bom))).toEqual(bom);
+  });
+
+  test('lixo não vira eval', () => {
+    for (const bruto of ['', 'não é json', '[]', '{}', JSON.stringify({ name: 'x' })]) expect(parseRunSpec(bruto)).toBeNull();
+  });
+
+  test('sem turnos não roda: não há o que perguntar', () => {
+    expect(parseRunSpec(JSON.stringify({ ...bom, turns: [] }))).toBeNull();
+  });
+
+  test('passos fora de 1..50 são recusados, como no parseScenario', () => {
+    expect(parseRunSpec(JSON.stringify({ ...bom, steps: 999 }))).toBeNull();
+  });
+
+  // O GABARITO NÃO ENTRA NEM PELA PORTA DE TRÁS: se alguém mandar `judge`/`checks` junto, eles caem.
+  test('um RunSpec que chega COM gabarito tem o gabarito descartado', () => {
+    const r = parseRunSpec(JSON.stringify({ ...bom, judge: 'x', checks: [{ kind: 'noTool', arg: '' }], rubric: 'y' }));
+    expect(r).not.toHaveProperty('judge');
+    expect(r).not.toHaveProperty('checks');
+    expect(r).not.toHaveProperty('rubric');
+  });
+});

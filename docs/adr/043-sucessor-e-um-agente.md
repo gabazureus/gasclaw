@@ -98,3 +98,17 @@ seleção por aptidão, orçamento que expira, registro partido, parada que vale
 | **P32** | o Opus aceita ~140 mil tokens do motor e devolve um patch válido **dentro de 6 min**? Quanto custa? | o limite de contexto e o custo por geração do Opus 5 nunca foram medidos aqui |
 | **P33** | um agente completo, implantado como outro projeto, sobe parado, recebe a chave e responde? | nunca se implantou um motor inteiro pela API |
 | **P34** | o pai consegue avaliar o sucessor de fora, pelo web app dele? | hoje os evals rodam dentro do próprio processo |
+
+## Achado da P33 (2026-09-21): o sucessor precisa de um projeto GCP padrão
+
+Um projeto criado pela API ganha um projeto GCP **automático**, sem nenhuma API ligada. O motor lê os
+papéis do agente pela API REST do Drive — e o sucessor recebeu `403: Drive API has not been used in
+project … or it is disabled`.
+
+**Não existe API para ligar um script a um projeto GCP padrão**: é um passo manual no editor, o mesmo
+que o `./gasclaw` pede na instalação. A saída é ligar o sucessor ao projeto GCP do pai, onde as APIs
+já estão ligadas.
+
+**Cada agente sucessor custa ao dono três atos, não dois:** vincular o projeto GCP, autorizar, colar a
+chave. É um custo real do desenho "o sucessor é outro projeto" — e ele não some com automação, porque
+a plataforma não oferece o caminho.

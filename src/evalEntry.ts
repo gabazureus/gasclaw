@@ -79,6 +79,39 @@ export const toRunSpec = (s: Scenario): RunSpec => {
   return run;
 };
 
+/**
+ * O RunSpec que chega pela REDE, conferido (P34). O pai é confiável, mas a porta do sucessor recebe
+ * JSON de uma requisição HTTP: malformado vira `null`, nunca um eval que roda qualquer coisa. E só os
+ * campos de RODAR atravessam — um `judge`/`checks`/`rubric` que chegue junto é DESCARTADO, para o
+ * gabarito não entrar nem pela porta de trás.
+ */
+export function parseRunSpec(raw: string | null | undefined): RunSpec | null {
+  let o: Record<string, unknown>;
+  try {
+    const v = JSON.parse(String(raw ?? '')) as unknown;
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+    o = v as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  if (typeof o.name !== 'string' || !o.name.trim()) return null;
+  if (o.channel !== 'chat' && o.channel !== 'tela') return null;
+  if (!Array.isArray(o.turns) || o.turns.length === 0 || !o.turns.every((t) => t === null || typeof t === 'string')) return null;
+  if (o.steps !== undefined && !(Number.isInteger(o.steps) && (o.steps as number) >= 1 && (o.steps as number) <= 50)) return null;
+  if (o.tools !== undefined && !(Array.isArray(o.tools) && o.tools.every((t) => typeof t === 'string'))) return null;
+  if (o.model !== undefined && typeof o.model !== 'string') return null;
+  return {
+    name: o.name,
+    channel: o.channel,
+    ...(o.model !== undefined ? { model: o.model as string } : {}),
+    ...(o.tools !== undefined ? { tools: o.tools as string[] } : {}),
+    ...(o.steps !== undefined ? { steps: o.steps as number } : {}),
+    resetMemory: o.resetMemory === true,
+    turns: o.turns as (string | null)[],
+    script: Array.isArray(o.script) ? (o.script as RunSpec['script']) : [],
+  } as RunSpec;
+}
+
 /** O que aconteceu quando o cenário rodou — sem veredito nenhum. É isto que o sucessor devolve ao pai. */
 export type RunTrace = { name: string; turns: TurnOutcome[]; convo: { user: string; reply: string }[]; events: ToolEvent[]; cleanup?: EvalResult['cleanup']; t0: number; model: string };
 

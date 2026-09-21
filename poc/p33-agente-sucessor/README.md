@@ -1,0 +1,55 @@
+# POC P33 — um agente completo sobe como OUTRO projeto, nascendo parado?
+
+> **Status: C1 MEDIDO (dev v148). C2–C4 esperam o dono** — e a primeira tentativa dele achou um
+> portão humano que a spec não tinha previsto. Ver [ADR-043](../../docs/adr/043-sucessor-e-um-agente.md).
+
+## Critérios
+
+| # | Critério | Resultado |
+|---|---|---|
+| C1 | motor + telas + manifesto do pai implantados pela API | ✅ **v148** — 8 arquivos, 16,6 s |
+| C2 | nasce parado (`enabled: false`) | ⏳ espera o `check` |
+| C3 | o dono configura: consentimento + a chave no painel do sucessor | ⏳ em andamento |
+| C4 | uma conversa de teste vai e volta | ⏳ |
+
+## C1 — dev v148
+
+```json
+{ "scriptId": "1w3Pju8vyj9y1ZgBIZZDDtgRAXuBOljQ8ZyOPU-kOOUFcwtVlwB7MHb0W",
+  "files": 8, "ms": 16591,
+  "improvements": "the P32 patch no longer applies ... expected once the fix has been ported to src
+                   and published: the parent code already carries it" }
+```
+
+8 arquivos: o motor, as telas e o manifesto do pai (os mesmos escopos — decisão 2) + a **semente**.
+
+**O patch da P32 não se aplicou, e é a notícia boa**: o defeito da meia-noite que ele corrigia já
+tinha sido portado para `src/schedule.ts` e publicado. O sucessor nasce do motor que já traz a
+correção — a decisão 3 da ADR-043 funcionando de ponta a ponta.
+
+**O `unknown POC: p33` das duas primeiras tentativas era atraso do Google** em servir a versão nova
+(v148), e só foi aceito como explicação depois de conferir que o código salvo no projeto era idêntico
+ao build. O web app leva **alguns minutos** para servir uma versão recém-implantada. Vale para o
+sucessor também: logo depois de implantado, o endereço dele pode demorar a responder.
+
+## O portão que a spec não previu: o projeto GCP
+
+O dono autorizou o sucessor, colou a chave, ativou — e ao abrir Agents → Access:
+
+```
+Drive download AGENTS 403: Google Drive API has not been used in project 264409976776
+before or it is disabled.
+```
+
+**Causa:** o PAI está ligado a um projeto GCP **padrão** (`gasclaw-dev-e4a6d3`, nº 374106012966),
+onde o `./gasclaw up` ligou as 11 APIs do Google. O sucessor, criado pela API, ganhou um projeto GCP
+**automático** (264409976776) com **nenhuma API ligada** — e o motor lê os papéis do agente pela API
+REST do Drive (ADR-015).
+
+**Não existe API para ligar um script a um projeto GCP padrão.** É um passo manual no editor — é por
+isso que o próprio `./gasclaw` pausa e pede esse clique na instalação (`GCP_LINKED_*`).
+
+**A saída:** ligar o sucessor ao MESMO projeto GCP do pai, onde as APIs já estão ligadas.
+
+**A consequência, e ela vai para a ADR-043:** cada agente sucessor custa ao dono **três atos**, não dois
+— vincular o projeto GCP, autorizar, e colar a chave. A spec só previa os dois últimos.
