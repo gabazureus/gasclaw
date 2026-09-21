@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 // A geração do CÓDIGO do sucessor: o que o Opus escreve, e o que nós recusamos a publicar.
 //
 // Este é o único lugar do projeto onde um modelo escreve algo que vai RODAR. A ADR-002 diz que nada
@@ -314,5 +315,21 @@ describe('o teto de tokens deriva do teto do crivo', () => {
   // Um teto tão baixo que nenhum programa cabe seria dinheiro gasto para garantir truncamento.
   test('abaixo do mínimo praticável, recusa em vez de gerar lixo pago', () => {
     expect(codeTokens(50)).toBe(CODE_MAX_TOKENS);
+  });
+});
+
+// M4 do D8, e a mais importante das quatro: o núcleo estava certo e a CASCA podia voltar a pedir
+// `8000` sem nenhum teste perceber — o D8 inteiro regredindo em silêncio. Três asserções do núcleo
+// não protegem uma linha de `main.ts` que não as chama.
+describe('fiação do D8: a casca pede o teto que o núcleo calcula', () => {
+  const main = readFileSync('src/main.ts', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  test('a chamada ao gerador usa `codeTokens`, não um número cravado', () => {
+    expect(main).toContain('codeTokens(maxTokens)');
+    expect(main).not.toMatch(/complete\(key,\s*model,\s*messages,\s*\d+\)/);
+  });
+
+  test('o teto declarado chega da CLI até a chamada', () => {
+    expect(main).toMatch(/p\.tokens \? Number\(p\.tokens\) : undefined/);
   });
 });
