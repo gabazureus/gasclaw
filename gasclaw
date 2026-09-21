@@ -823,7 +823,9 @@ cmd_swarm() { # a corrida do enxame (F6): ./gasclaw swarm <battery|interval|budg
         remote "budget&codegen=$1&family=$2&hours=$3" | swarm_print; fi ;;
     run) # ./gasclaw swarm run "<objetivo>"  — GASTA OPUS e implanta um projeto filho
       [ -n "${1:-}" ] || die "usage: ./gasclaw swarm run \"<goal>\" [scope,scope]"
-      remote "succeed&goal=$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$1")&scopes=${2:-https://www.googleapis.com/auth/userinfo.email}${folder:+&folder=$folder}" | swarm_print ;;
+      # SWARM_TOKENS baixa o teto de tokens desta geracao (nunca sobe: o maximo vem do crivo). Serve para
+      # caber no credito da chave, ou no tamanho esperado do filho. Vazio = o maximo que o crivo aceita.
+      remote "succeed&goal=$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$1")&scopes=${2:-https://www.googleapis.com/auth/userinfo.email}${SWARM_TOKENS:+&tokens=$SWARM_TOKENS}${folder:+&folder=$folder}" | swarm_print ;;
     measure) # ./gasclaw swarm measure <scriptId>  — so mede filho JA autorizado pelo dono
       [ -n "${1:-}" ] || die "usage: ./gasclaw swarm measure <scriptId>"
       remote "measure&child=$1" | swarm_print ;;
