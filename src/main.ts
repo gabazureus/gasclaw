@@ -61,9 +61,10 @@ import {
   CAPABILITIES, can, canSucceed, capsAfterSuccession, creatorOf, DEFAULT_INTERVAL_MS, bestHeirOf, forgetAgentProps, intervalOf, mayGenerate,
   accessAfterArchive, capsAfterCreatorMoved, capsEnabled, clearCreator, effectiveCapabilities, isRunnable, nextGeneration, parseCapabilities, parseStatus, setCreator, type Capability, type LineageEntry,
 } from './agentCaps';
-import { CODEGEN_BUDGET_USD, mayWriteProject } from './dream';
+import { CODEGEN_BUDGET_USD, mayWriteProject, withinDailyCap } from './dream';
 import { generateSuccessor, sourceOfChild, type SuccessorDeps } from './successor';
 import { codeDelta, judgeCase, parseBattery, previousScore, scoreRun, withMeasurement } from './fitness';
+import { applyPatch, parsePatch, type PatchFile } from './patch';
 import { CHILD_FORBIDDEN_SCOPES, codeTokens, narrowScopes, OPUS_MODEL } from './codegen';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
@@ -3159,6 +3160,101 @@ function pocP29(step?: string): unknown {
   return { pass: false, error: 'steps: burst, quota, consent, adopt, cleanup, state' };
 }
 
+/**
+ * Sonda da P32 (só no dev): **o Opus devolve um patch válido do motor inteiro, dentro de 6 min?**
+ *
+ * É a pergunta que decide a F7 (ADR-043). O agente já lê o próprio código — `engineScopes` baixa
+ * `projects/{eu}/content` a cada `succeed` e descarta tudo menos o manifesto. Aqui o código vai ao
+ * Opus, e o que volta é medido contra os critérios da spec: C1 aceita o motor como contexto, C2 cabe
+ * em < 5 min, C3 cada trecho casa uma vez, C4 custo medido, C5 a explicação existe.
+ *
+ * NADA É IMPLANTADO. O patch é validado em memória (`applyPatch`) e guardado para as próximas POCs.
+ * O custo entra no gasto do dia, mesmo se a resposta vier vazia (ADR-041 §4, D9).
+ */
+function pocP32(step?: string): unknown {
+  const props = PropertiesService.getScriptProperties();
+  const own = ScriptApp.getScriptId();
+  const token = ScriptApp.getOAuthToken();
+  const t0 = Date.now();
+  const res = UrlFetchApp.fetch(`https://script.googleapis.com/v1/projects/${own}/content`, { headers: { Authorization: `Bearer ${token}` }, muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) return { pass: false, error: `could not read this project's own code: HTTP ${res.getResponseCode()}` };
+  const files: PatchFile[] = ((JSON.parse(res.getContentText()) as { files?: { name: string; source: string }[] }).files ?? []).map((f) => ({ name: f.name, source: f.source }));
+  const readMs = Date.now() - t0;
+  const bytes = files.reduce((n, f) => n + f.source.length, 0);
+
+  if (step === 'read') {
+    // Grátis: só confirma que o agente se lê inteiro, e quanto ele pesa em tokens.
+    return { pass: files.length > 0, readMs, files: files.map((f) => ({ name: f.name, chars: f.source.length })), totalChars: bytes, approxTokens: Math.round(bytes / 4) };
+  }
+
+  if (step === 'patch') {
+    const key = store.getApiKey();
+    if (!key) return { pass: false, error: 'save the OpenRouter key first' };
+    // O teto vale ANTES de pagar: a estimativa desta chamada é ~US$ 0,83 (140k entrada + 5k saída).
+    if (!withinDailyCap(codegenSpentToday(Date.now()), CODEGEN_BUDGET_USD, budgetNow().codegenUsd)) return { pass: false, error: 'the code generator is at its daily cap' };
+    const system =
+      'You improve a Google Apps Script agent by returning a SMALL patch, never the whole program. ' +
+      'Answer with JSON only: {"explanation": "<what you improved and why, at most 5 sentences>", "changes": [{"file": "<file name>", "find": "<an exact excerpt of that file>", "replace": "<its replacement>"}]}. ' +
+      'Rules: at most 3 changes; each "find" must be copied EXACTLY from the file and must appear EXACTLY ONCE in it, at most 300 characters; ' +
+      'fix ONE real defect or risk you can point to in the code. ' +
+      'Never remove or weaken assertOwner, NEVER_AUTO, mayWriteProject, the closed tool registry, or any permission or approval check.';
+    const user = files.map((f) => `=== FILE: ${f.name} ===\n${f.source}`).join('\n\n');
+    const t1 = Date.now();
+    let texto = '';
+    let custo = 0;
+    let fim: string | undefined;
+    let tokensIn: number | undefined;
+    let tokensOut: number | undefined;
+    let vazio: string | undefined;
+    try {
+      const r = complete(key, OPUS_MODEL, [{ role: 'system', content: system }, { role: 'user', content: user }], codeTokens(undefined));
+      texto = r.text;
+      custo = Number(r.usage?.cost ?? 0);
+      fim = r.finish_reason;
+      tokensIn = (r.usage as { prompt_tokens?: number } | undefined)?.prompt_tokens;
+      tokensOut = (r.usage as { completion_tokens?: number } | undefined)?.completion_tokens;
+    } catch (e) {
+      const x = e as EmptyCompletionError;
+      if (!(x && typeof x.contentShape === 'string')) return { pass: false, stage: 'call', error: (e as Error).message.slice(0, 300), readMs, callMs: Date.now() - t1 };
+      custo = Number(x.usage?.cost ?? 0);
+      fim = x.finishReason;
+      vazio = x.contentShape;
+    }
+    const callMs = Date.now() - t1;
+    // O dinheiro saiu: conta ANTES de qualquer veredito (ADR-041 §4).
+    props.setProperty(codegenDayProp(Date.now()), String(codegenSpentToday(Date.now()) + custo));
+    const patch = parsePatch(texto);
+    const aplicado = patch.ok ? applyPatch(files, patch.changes) : null;
+    const totalMs = Date.now() - t0;
+    if (patch.ok && aplicado?.ok) props.setProperty('P32_PATCH', JSON.stringify({ explanation: patch.explanation, changes: patch.changes, at: Date.now() }));
+    return {
+      pass: patch.ok && !!aplicado?.ok && totalMs < 300_000,
+      c1_accepted: vazio === undefined,
+      c2_totalMs: totalMs,
+      c2_under5min: totalMs < 300_000,
+      c3_applies: aplicado?.ok ?? false,
+      c3_reason: aplicado && !aplicado.ok ? aplicado.reason : patch.ok ? '' : patch.reason,
+      c4_costUsd: custo,
+      c5_explanation: patch.ok ? patch.explanation : null,
+      changes: patch.ok ? patch.changes.map((c) => ({ file: c.file, findChars: c.find.length, replaceChars: c.replace.length })) : [],
+      readMs,
+      callMs,
+      finishReason: fim ?? null,
+      tokensIn: tokensIn ?? null,
+      tokensOut: tokensOut ?? null,
+      ...(vazio ? { emptyResponse: vazio } : {}),
+      sentChars: bytes,
+    };
+  }
+
+  if (step === 'show') {
+    // Ler o patch guardado, inteiro — o dono precisa poder ver o que o Opus propôs.
+    return { pass: true, patch: JSON.parse(props.getProperty('P32_PATCH') ?? 'null') };
+  }
+
+  return { pass: false, error: 'steps: read, patch, show' };
+}
+
 const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {
   p1: () => pocUrlFetchTimeout(),
   p2: (step, params = {}) => pocP2(step, params, runIO()),
@@ -3171,6 +3267,7 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p26: (step) => pocP26(step),
   p28: (step) => pocP28(step),
   p29: (step) => pocP29(step),
+  p32: (step) => pocP32(step),
   p6: (step) => pocP6(step, ownerEmail()),
   p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),
