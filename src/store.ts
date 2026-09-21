@@ -1,5 +1,13 @@
 import type { AgentEntry } from './chat';
 import type { Message } from './llm';
+import { agentsWith, enabledWith, parseSeed, type Seed } from './seed';
+
+/**
+ * A semente que o pai escreve no projeto de um SUCESSOR (P33). Num motor comum ela não existe, e tudo
+ * segue a regra de sempre. Lida por `typeof` porque é uma variável global de outro arquivo do projeto.
+ */
+declare const GASCLAW_SEED: unknown;
+const seed = (): Seed | null => parseSeed(typeof GASCLAW_SEED === 'undefined' ? null : GASCLAW_SEED);
 
 const props = () => PropertiesService.getScriptProperties();
 const cache = () => CacheService.getScriptCache();
@@ -16,7 +24,9 @@ export const setOwner = (email: string): void => {
   props().setProperty('OWNER', email.toLowerCase());
 };
 
-export const listAgents = (): AgentEntry[] => JSON.parse(props().getProperty('AGENTS') ?? '[]');
+// Num SUCESSOR recém-implantado as Properties estão vazias e o agente mora no pai: a semente diz
+// qual agente servir, até o dono gravar a lista dele no painel.
+export const listAgents = (): AgentEntry[] => agentsWith(props().getProperty('AGENTS'), seed());
 
 /** Script Properties: 9 KB por valor. Mesma margem que o `usage.ts` usa, pelo mesmo motivo. */
 const AGENTS_MAX = 8_000;
@@ -33,7 +43,9 @@ export const saveAgents = (agents: AgentEntry[]): void => {
   props().setProperty('AGENTS', raw);
 };
 
-export const isEnabled = (): boolean => props().getProperty('RUNTIME_ENABLED') !== 'false';
+// Com semente, o sucessor nasce PARADO e só liga com um "true" explícito — a coroa. Sem ela, a regra
+// de sempre. Era `RUNTIME_ENABLED !== 'false'`, que num projeto novo quer dizer LIGADO.
+export const isEnabled = (): boolean => enabledWith(props().getProperty('RUNTIME_ENABLED'), seed());
 export const setEnabled = (on: boolean): void => {
   props().setProperty('RUNTIME_ENABLED', String(on));
 };

@@ -64,7 +64,8 @@ import {
 import { CODEGEN_BUDGET_USD, mayWriteProject, withinDailyCap } from './dream';
 import { generateSuccessor, sourceOfChild, type SuccessorDeps } from './successor';
 import { codeDelta, judgeCase, parseBattery, previousScore, scoreRun, withMeasurement } from './fitness';
-import { applyPatch, parsePatch, type PatchFile } from './patch';
+import { applyPatch, parsePatch, type Change, type PatchFile } from './patch';
+import { seedSource } from './seed';
 import { CHILD_FORBIDDEN_SCOPES, codeTokens, narrowScopes, OPUS_MODEL } from './codegen';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
@@ -3291,6 +3292,107 @@ function pocP32(step?: string, params: Record<string, string> = {}): unknown {
   return { pass: false, error: 'steps: read, patch, show' };
 }
 
+/**
+ * Sonda da P33 (só no dev): **um agente completo sobe como OUTRO projeto, nascendo parado?**
+ *
+ * O sucessor é o próprio agente melhorado (ADR-043): o motor inteiro, as telas e o manifesto do pai —
+ * com os mesmos escopos (decisão 2) —, mais a SEMENTE que o faz nascer parado e saber qual agente
+ * servir. Nada secreto vai na semente: o dono cola a chave no painel do sucessor (ADR-040, opção 4).
+ *
+ * Critérios da spec: C1 implanta · C2 nasce parado · C3 o dono configura (clique + chave) · C4 uma
+ * conversa de teste vai e volta. C3 e C4 são do DONO — a sonda só lê o que já aconteceu.
+ */
+function pocP33(step?: string): unknown {
+  const props = PropertiesService.getScriptProperties();
+  const own = ScriptApp.getScriptId();
+  const token = ScriptApp.getOAuthToken();
+  const api = 'https://script.googleapis.com/v1/projects';
+  const call = (url: string, method: GoogleAppsScript.URL_Fetch.HttpMethod, payload?: unknown) => {
+    const res = UrlFetchApp.fetch(url, { method, contentType: 'application/json', headers: { Authorization: `Bearer ${token}` }, ...(payload ? { payload: JSON.stringify(payload) } : {}), muteHttpExceptions: true });
+    return { code: res.getResponseCode(), full: res.getContentText() };
+  };
+
+  if (step === 'deploy') {
+    const t0 = Date.now();
+    const lido = call(`${api}/${own}/content`, 'get');
+    if (lido.code !== 200) return { pass: false, error: `could not read this project's own code: HTTP ${lido.code}` };
+    const originais = ((JSON.parse(lido.full) as { files?: { name: string; type: string; source: string }[] }).files ?? []);
+
+    // O patch da P32, SE ele ainda couber. Não caber costuma ser a notícia boa: a melhoria já foi
+    // portada para o `src/` e publicada (decisão 3), e o motor do pai já a traz.
+    let melhorias = 'none: this successor carries the parent code as it is';
+    let arquivos = originais.map((f) => ({ name: f.name, source: f.source }));
+    const guardado = JSON.parse(props.getProperty('P32_PATCH') ?? 'null') as { explanation: string; changes: Change[] } | null;
+    if (guardado) {
+      const r = applyPatch(arquivos, guardado.changes);
+      if (r.ok) {
+        arquivos = r.files;
+        melhorias = `applied the P32 patch: ${guardado.explanation}`;
+      } else {
+        melhorias = `the P32 patch no longer applies (${r.reason}) — expected once the fix has been ported to src and published: the parent code already carries it`;
+      }
+    }
+    const tipo = (n: string) => originais.find((f) => f.name === n)?.type ?? 'SERVER_JS';
+    const files = [
+      ...arquivos.map((f) => ({ name: f.name, type: tipo(f.name), source: f.source })),
+      // A SEMENTE: nascer parado e saber qual agente servir. Nenhum segredo (ver `seed.ts`).
+      { name: 'successor_seed', type: 'SERVER_JS', source: seedSource({ bornDisabled: true, parent: own, agents: store.listAgents(), at: Date.now() }) },
+    ];
+
+    const agente = defaultAgent();
+    const criado = call(api, 'post', { title: `${agente?.name ?? 'gasclaw'} — successor agent ${new Date().toISOString().slice(0, 10)}` });
+    const scriptId = criado.code === 200 ? ((JSON.parse(criado.full) as { scriptId?: string }).scriptId ?? null) : null;
+    if (!scriptId) return { pass: false, stage: 'create', code: criado.code, body: criado.full.slice(0, 200) };
+    const guarda = mayWriteProject(scriptId, own);
+    if (!guarda.ok) return { pass: false, stage: 'guard', error: guarda.reason };
+    const escrita = call(`${api}/${scriptId}/content`, 'put', { files });
+    if (escrita.code !== 200) return { pass: false, stage: 'write', code: escrita.code, body: escrita.full.slice(0, 300) };
+    const ver = call(`${api}/${scriptId}/versions`, 'post', { description: 'successor agent' });
+    const versao = ver.code === 200 ? (JSON.parse(ver.full) as { versionNumber?: number }).versionNumber : undefined;
+    if (!Number.isInteger(versao)) return { pass: false, stage: 'version', code: ver.code, body: ver.full.slice(0, 200) };
+    const dep = call(`${api}/${scriptId}/deployments`, 'post', { versionNumber: versao, manifestFileName: 'appsscript', description: 'successor agent' });
+    const url = dep.code === 200 ? ((JSON.parse(dep.full) as { entryPoints?: { webApp?: { url?: string } }[] }).entryPoints ?? []).map((e) => e.webApp?.url).find((u) => !!u) ?? null : null;
+    if (!url) return { pass: false, stage: 'deploy', code: dep.code, body: dep.full.slice(0, 200) };
+    props.setProperty('P33_SUCCESSOR', JSON.stringify({ scriptId, url, at: Date.now() }));
+    return {
+      pass: true,
+      c1_deployed: true,
+      ms: Date.now() - t0,
+      scriptId,
+      url,
+      files: files.length,
+      improvements: melhorias,
+      next: 'the owner opens the URL, authorizes once, pastes the OpenRouter key in its panel, then runs `./gasclaw poc p33 check`',
+    };
+  }
+
+  if (step === 'check') {
+    // Lê o que já aconteceu no sucessor, pelo `health` dele — com o token do dono, e seguindo o 302 do
+    // Apps Script (`fetchChild`). Não liga nada, não configura nada: isso é do dono.
+    const s = JSON.parse(props.getProperty('P33_SUCCESSOR') ?? 'null') as { scriptId: string; url: string } | null;
+    if (!s) return { pass: false, error: 'no successor yet: run `./gasclaw poc p33 deploy` first' };
+    const r = fetchChild(`${s.url}?action=health`);
+    const estado = authState(s.url, r.code, r.body);
+    if (estado !== 'authorized') return { pass: false, authState: estado, reading: estado === 'needs-consent' ? 'the owner has not authorized the successor yet' : `could not read the successor (HTTP ${r.code})`, url: s.url };
+    let h: { enabled?: boolean; agents?: number; hasKey?: boolean } = {};
+    try {
+      h = JSON.parse(r.body);
+    } catch {
+      return { pass: false, reading: 'the successor answered something that is not its health JSON', body: r.body.slice(0, 200) };
+    }
+    return {
+      pass: h.enabled === false && (h.agents ?? 0) > 0,
+      c2_bornDisabled: h.enabled === false,
+      seedAgents: h.agents ?? 0,
+      c3_hasKey: h.hasKey === true,
+      reading: h.enabled === false ? 'the successor is PAUSED, as it should be until crowned' : 'the successor is RUNNING — it should have been born paused',
+      url: s.url,
+    };
+  }
+
+  return { pass: false, error: 'steps: deploy, check' };
+}
+
 const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {
   p1: () => pocUrlFetchTimeout(),
   p2: (step, params = {}) => pocP2(step, params, runIO()),
@@ -3304,6 +3406,7 @@ const POCS: Record<string, (step?: string, params?: Record<string, string>) => u
   p28: (step) => pocP28(step),
   p29: (step) => pocP29(step),
   p32: (step, params = {}) => pocP32(step, params),
+  p33: (step) => pocP33(step),
   p6: (step) => pocP6(step, ownerEmail()),
   p18: (step, params) => pocP18(step, params),
   p10: (step, params) => pocP10(step, params),
