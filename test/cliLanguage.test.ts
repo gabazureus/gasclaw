@@ -264,8 +264,6 @@ const DIVIDA: Record<string, number> = {
   'src/runner.ts': 2,
   'src/session.ts': 3,
   'src/sessionCompact.ts': 1,
-  'src/sessionQueue.ts': 1,
-  'src/sessionQueueStore.ts': 2,
   'src/skills.ts': 3,
   'src/tools/calendar.ts': 6,
   'src/tools/contacts.ts': 3,
