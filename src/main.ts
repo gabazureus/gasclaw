@@ -67,6 +67,7 @@ import { generateSuccessor, sourceOfChild, type SuccessorDeps } from './successo
 import { codeDelta, judgeCase, parseBattery, previousScore, scoreRun, withMeasurement } from './fitness';
 import { applyPatch, parsePatch, type Change, type PatchFile } from './patch';
 import { seedSource } from './seed';
+import { engineIdentity } from './identity';
 import { CHILD_FORBIDDEN_SCOPES, codeTokens, narrowScopes, OPUS_MODEL } from './codegen';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
@@ -296,7 +297,10 @@ export function doGet(e: GoogleAppsScript.Events.DoGet) {
   if (!action) {
     // P21: o ambiente entra no título porque o painel roda em iframe — com dev e prod abertos lado a
     // lado, as duas abas se chamariam "gasclaw" e a pílula no <h1> só ajuda depois de entrar na errada.
-    const title = (s: string) => `${s} · ${panelEnv()}`;
+    // E o MOTOR entra no título também: titular e sucessor servem o mesmo agente, e as duas abas se
+    // chamariam igual. A aba é onde as duas janelas se confundem primeiro.
+    const quem = engineIdentity(ScriptApp.getScriptId(), defaultAgent()?.name, store.successorOf());
+    const title = (s: string) => `${s} · ${panelEnv()} · ${quem.agent} · ${quem.role === 'successor' ? 'successor ' : ''}${quem.engine}`;
     // hub e painel servem a tela com ownerEmail() (a mesma guarda de sempre); quem protege o dado é o
     // assertOwner() dentro de panelsState()/settingsState(). O chat usa assertOwner() já na rota.
     if (e?.parameter?.page === 'hub') {
@@ -1096,7 +1100,9 @@ export function settingsState() {
   observe.maybeDrain(); // fallback sem gatilho ao abrir a tela
   const props = PropertiesService.getScriptProperties();
   const cliSecretAt = props.getProperty('CLI_SECRET_AT');
-  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents: store.listAgents(), appUrl: appUrl(), scriptUrl: scriptUrl(), env: panelEnv(), cliSecretAt, auth: authStatus() };
+  // QUAL MOTOR É ESTE (pedido do dono, 2026-09-21): com titular e sucessor servindo o MESMO agente, os
+  // dois painéis eram idênticos. O nome do agente é igual nos dois; o que diferencia é o motor.
+  return { me, enabled: store.isEnabled(), hasKey: !!store.getApiKey(), agents: store.listAgents(), appUrl: appUrl(), scriptUrl: scriptUrl(), env: panelEnv(), cliSecretAt, auth: authStatus(), identity: engineIdentity(ScriptApp.getScriptId(), defaultAgent()?.name, store.successorOf()) };
 }
 
 /** P21: ambiente já normalizado (desconhecido conta como prod), para o rótulo do cabeçalho. */
@@ -3426,6 +3432,34 @@ function pocP33(step?: string): unknown {
     };
   }
 
+  if (step === 'update') {
+    // ATUALIZA o sucessor que já existe — mesmo projeto, mesmo endereço. Criar um NOVO obrigaria o dono
+    // a refazer os três atos (vincular o GCP, autorizar, colar a chave). Atualizando, o vínculo e a chave
+    // ficam: são do projeto e das Properties dele, não do conteúdo. Serve para levar ao sucessor um
+    // código que o pai ganhou depois da implantação — como a porta `evalrun` da P34.
+    const s = JSON.parse(props.getProperty('P33_SUCCESSOR') ?? 'null') as { scriptId: string; url: string } | null;
+    if (!s) return { pass: false, error: 'no successor yet: run `./gasclaw poc p33 deploy` first' };
+    const guarda = mayWriteProject(s.scriptId, own);
+    if (!guarda.ok) return { pass: false, stage: 'guard', error: guarda.reason };
+    const lido = call(`${api}/${own}/content`, 'get');
+    if (lido.code !== 200) return { pass: false, error: `could not read this project's own code: HTTP ${lido.code}` };
+    const originais = ((JSON.parse(lido.full) as { files?: { name: string; type: string; source: string }[] }).files ?? []);
+    const files = [...originais.map((f) => ({ name: f.name, type: f.type, source: f.source })), { name: 'successor_seed', type: 'SERVER_JS', source: seedSource({ bornDisabled: true, parent: own, agents: store.listAgents(), at: Date.now() }) }];
+    const escrita = call(`${api}/${s.scriptId}/content`, 'put', { files });
+    if (escrita.code !== 200) return { pass: false, stage: 'write', code: escrita.code, body: escrita.full.slice(0, 300) };
+    const ver = call(`${api}/${s.scriptId}/versions`, 'post', { description: 'successor agent update' });
+    const versao = ver.code === 200 ? (JSON.parse(ver.full) as { versionNumber?: number }).versionNumber : undefined;
+    if (!Number.isInteger(versao)) return { pass: false, stage: 'version', code: ver.code };
+    // A implantação do web app, não a HEAD: é ela que responde no endereço que o dono autorizou.
+    const lista = call(`${api}/${s.scriptId}/deployments`, 'get');
+    const implantacoes = (JSON.parse(lista.full) as { deployments?: { deploymentId: string; deploymentConfig?: { versionNumber?: number } }[] }).deployments ?? [];
+    const web = implantacoes.find((d) => d.deploymentConfig?.versionNumber !== undefined);
+    if (!web) return { pass: false, stage: 'find-deployment', error: 'the successor has no versioned web app deployment' };
+    const atual = call(`${api}/${s.scriptId}/deployments/${web.deploymentId}`, 'put', { deploymentConfig: { versionNumber: versao, manifestFileName: 'appsscript', description: 'successor agent update' } });
+    if (atual.code !== 200) return { pass: false, stage: 'update-deployment', code: atual.code, body: atual.full.slice(0, 300) };
+    return { pass: true, version: versao, url: s.url, reading: 'same project, same address: the GCP link and the key stay where they are' };
+  }
+
   if (step === 'check') {
     // Lê o que já aconteceu no sucessor, pelo `health` dele — com o token do dono, e seguindo o 302 do
     // Apps Script (`fetchChild`). Não liga nada, não configura nada: isso é do dono.
@@ -3450,7 +3484,7 @@ function pocP33(step?: string): unknown {
     };
   }
 
-  return { pass: false, error: 'steps: deploy, check' };
+  return { pass: false, error: 'steps: deploy, update, check' };
 }
 
 /**

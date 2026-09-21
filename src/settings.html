@@ -81,7 +81,7 @@
 <div id="tip" role="status" hidden></div>
 <main>
   <!-- "ambiente:" é oculto só visualmente: sem ele, o leitor de tela anuncia "gasclaw dev" e a palavra fica órfã -->
-  <h1>🦀 gasclaw <span class="env" id="envBadge"><span class="sr">environment: </span><span id="envName"></span></span></h1>
+  <h1>🦀 gasclaw <span class="env" id="envBadge"><span class="sr">environment: </span><span id="envName"></span></span> <span class="identity" id="identity"></span></h1>
   <p class="links">
     <a id="chatLink" target="_top" hidden>Chat with the agent</a>
     <a id="hubLink" target="_top" hidden>Panels</a>
@@ -248,6 +248,13 @@
     // ambiente sempre à vista: evita mexer no prod achando que é o dev (P21)
     $('envName').textContent = s.env;
     $('envBadge').className = 'env ' + s.env;
+    // QUAL MOTOR É ESTE: nome do agente + id do motor, e se é o sucessor (e de quem). Só textContent: o
+    // nome do agente vem de uma Property e não pode virar marcação.
+    if (s.identity) {
+      $('identity').textContent = s.identity.line;
+      $('identity').className = 'identity ' + s.identity.role;
+      $('identity').title = s.identity.role === 'successor' ? 'This is a SUCCESSOR engine of ' + s.identity.parent + '. It serves the same agent as its parent.' : 'This is the incumbent engine serving this agent.';
+    }
     $('scriptLink').href = s.scriptUrl;
     $('scriptLink').hidden = false; // como os outros links: só aparece depois de ter destino
     $('status').textContent = (s.enabled ? '🟢 Active' : '⏸ Paused') + ' · key ' + (s.hasKey ? 'saved' : 'missing') + ' · ' + s.agents.length + ' agent(s)';

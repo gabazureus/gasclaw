@@ -48,6 +48,8 @@ export const saveAgents = (agents: AgentEntry[]): void => {
 export const isEnabled = (): boolean => enabledWith(props().getProperty('RUNTIME_ENABLED'), seed());
 /** Este motor é um agente SUCESSOR (tem a semente que o pai escreveu)? Um motor comum nunca é. */
 export const isSuccessor = (): boolean => seed() !== null;
+/** De quem este motor é sucessor — o scriptId do pai, que a semente carrega. `null` num motor comum. */
+export const successorOf = (): string | null => seed()?.parent ?? null;
 export const setEnabled = (on: boolean): void => {
   props().setProperty('RUNTIME_ENABLED', String(on));
 };
