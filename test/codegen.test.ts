@@ -5,7 +5,7 @@
 // diferença entre os dois casos é que a pasta é compartilhável e o modelo não — mas a consequência de
 // errar é a mesma, e por isso o crivo é igualmente fechado.
 import { describe, expect, test } from 'vitest';
-import { CHILD_FORBIDDEN_SCOPES, checkSuccessorSource, extractSource, narrowScopes, OPUS_MODEL, successorManifest, successorMessages } from '../src/codegen';
+import { CHILD_FORBIDDEN_SCOPES, checkSuccessorSource, CODE_MAX_TOKENS, codeTokens, extractSource, narrowScopes, OPUS_MODEL, SOURCE_MAX_CHARS, successorManifest, successorMessages } from '../src/codegen';
 import { familyOf, judgeIsIndependent } from '../src/dream';
 
 describe('o gerador é o Opus, e isso é uma exceção declarada', () => {
@@ -284,5 +284,35 @@ describe('crivo: fonte cortado no meio não é publicado', () => {
 
   test('o código bom de sempre continua passando', () => {
     expect(checkSuccessorSource('function doGet() { return ContentService.createTextOutput("ok"); }').ok).toBe(true);
+  });
+});
+
+// D8 — O PEDIDO E O CRIVO NÃO SE FALAVAM.
+//
+// `complete(..., 8000)` autorizava ~32.000 caracteres de resposta; `SOURCE_MAX` recusa acima de
+// 20.000. Tudo entre os dois só podia terminar em recusa por tamanho — tokens pagos para produzir um
+// fonte que o crivo jamais aceitaria. Dois números sobre a MESMA coisa, escritos em lugares
+// diferentes e livres para divergir.
+describe('o teto de tokens deriva do teto do crivo', () => {
+  test('pedir mais tokens do que o crivo aceita é impossível por construção', () => {
+    expect(CODE_MAX_TOKENS * 4).toBeLessThanOrEqual(SOURCE_MAX_CHARS);
+  });
+
+  // O dono pode pedir MENOS — por crédito, por pressa, por tamanho esperado do filho. Nunca mais:
+  // um teto maior só compraria recusa por tamanho.
+  test('o dono pode baixar o teto, nunca subir', () => {
+    expect(codeTokens(1200)).toBe(1200);
+    expect(codeTokens(CODE_MAX_TOKENS + 5000)).toBe(CODE_MAX_TOKENS);
+    expect(codeTokens(undefined)).toBe(CODE_MAX_TOKENS);
+  });
+
+  // Zero ou negativo não é "sem limite" nem "não gere nada": é valor inválido, e cai no padrão.
+  test('valor inválido cai no padrão, não em zero', () => {
+    for (const v of [0, -1, Number.NaN, 1.5 as number]) expect(codeTokens(v)).toBe(CODE_MAX_TOKENS);
+  });
+
+  // Um teto tão baixo que nenhum programa cabe seria dinheiro gasto para garantir truncamento.
+  test('abaixo do mínimo praticável, recusa em vez de gerar lixo pago', () => {
+    expect(codeTokens(50)).toBe(CODE_MAX_TOKENS);
   });
 });

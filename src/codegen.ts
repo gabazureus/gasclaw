@@ -26,7 +26,33 @@ import type { Message } from './llm';
 export const OPUS_MODEL = 'anthropic/claude-opus-5';
 
 /** Teto de fonte que ainda cabe numa revisão humana antes de publicar. */
-const SOURCE_MAX = 20_000;
+export const SOURCE_MAX_CHARS = 20_000;
+const SOURCE_MAX = SOURCE_MAX_CHARS;
+
+/**
+ * Quantos tokens pedir ao gerador — **derivado do teto do crivo, não escolhido à parte**.
+ *
+ * O pedido usava `8000` cravado, que autoriza ~32.000 caracteres, enquanto `SOURCE_MAX_CHARS` recusa
+ * acima de 20.000. Tudo entre os dois era token PAGO para produzir um fonte que o crivo jamais
+ * aceitaria — dois números sobre a mesma coisa, em lugares diferentes, livres para divergir.
+ *
+ * ~4 caracteres por token é a razão usual para código; errar para baixo aqui é errar para o lado
+ * seguro, porque o teto que decide de verdade continua sendo o do crivo.
+ */
+export const CODE_MAX_TOKENS = Math.floor(SOURCE_MAX_CHARS / 4);
+
+/** Piso praticável: abaixo disto nenhum programa de verdade cabe, e pedir seria pagar por truncamento. */
+const CODE_MIN_TOKENS = 400;
+
+/**
+ * O teto declarado pelo dono, preso ao máximo. Ele pode pedir MENOS — por crédito, por pressa, por
+ * tamanho esperado do filho — e nunca mais: um teto maior só compraria recusa por tamanho.
+ *
+ * Valor inválido (zero, negativo, quebrado, ou baixo demais para caber um programa) cai no padrão,
+ * nunca em zero: "não gere nada" precisa ser dito de outro jeito, não por um número mal digitado.
+ */
+export const codeTokens = (declared: number | undefined): number =>
+  Number.isInteger(declared) && (declared as number) >= CODE_MIN_TOKENS ? Math.min(declared as number, CODE_MAX_TOKENS) : CODE_MAX_TOKENS;
 
 /**
  * Escopos que um filho NUNCA herda, mesmo com o pai tendo.

@@ -64,7 +64,7 @@ import {
 import { CODEGEN_BUDGET_USD, mayWriteProject } from './dream';
 import { generateSuccessor, sourceOfChild, type SuccessorDeps } from './successor';
 import { codeDelta, judgeCase, parseBattery, previousScore, scoreRun, withMeasurement } from './fitness';
-import { CHILD_FORBIDDEN_SCOPES, narrowScopes, OPUS_MODEL } from './codegen';
+import { CHILD_FORBIDDEN_SCOPES, codeTokens, narrowScopes, OPUS_MODEL } from './codegen';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
 import { allowedTools, findTool, toolCatalog } from './tools/registry';
@@ -206,7 +206,7 @@ function mutate(action: string, p: Record<string, string>): unknown {
   if (action === 'battery') return setAgentBattery(p.folder || '', p.set ?? '');
   if (action === 'interval') return setAgentInterval(p.folder || '', Number(p.ms));
   if (action === 'budget') return p.end === '1' ? endRunBudget() : setRunBudget(Number(p.codegen), Number(p.family), Number(p.hours));
-  if (action === 'succeed') return writeSuccessor(p.folder || '', (p.scopes ?? '').split(',').filter(Boolean), p.goal ?? '');
+  if (action === 'succeed') return writeSuccessor(p.folder || '', (p.scopes ?? '').split(',').filter(Boolean), p.goal ?? '', p.tokens ? Number(p.tokens) : undefined);
   if (action === 'measure') return measureChild(p.child || '');
   if (action === 'lineage') return lineage();
   return { ok: false, status: 400, error: `unknown action: ${action}` };
@@ -2184,7 +2184,7 @@ export function successorOptions(folderId: string) {
   };
 }
 
-export function writeSuccessor(folderId: string, requestedScopes: string[], goal?: string) {
+export function writeSuccessor(folderId: string, requestedScopes: string[], goal?: string, maxTokens?: number) {
   assertOwner();
   const props = PropertiesService.getScriptProperties();
   const id = String(folderId ?? '').trim();
@@ -2225,7 +2225,9 @@ export function writeSuccessor(folderId: string, requestedScopes: string[], goal
 
   const deps: SuccessorDeps = {
     complete: (messages, model) => {
-      const r = complete(key, model, messages, 8000);
+      // D8: era `8000` cravado — mais do que o crivo pode aceitar. Agora deriva do teto do crivo, e
+      // o dono pode baixar (nunca subir) para caber no crédito ou no tamanho esperado do filho.
+      const r = complete(key, model, messages, codeTokens(maxTokens));
       return { text: r.text, costUsd: Number(r.usage?.cost ?? 0) };
     },
     parentScopes: () => engineScopes(token, own),
