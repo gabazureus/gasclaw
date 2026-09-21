@@ -199,6 +199,10 @@ function mutate(action: string, p: Record<string, string>): unknown {
   // A CORRIDA DO ENXAME PELA CLI (F6). Mesma autoridade do painel — o dono, provado pelo segredo —
   // por outra porta, como já vale para `tools` (ADR-021/022). Sem isto, conduzir uma corrida de 24 h
   // exigiria o dono clicando em cada geração, e o pedido era acompanhar, não operar.
+  // `capability` entra aqui pelo MESMO argumento que `tools` (ADR-021/022): o segredo prova o dono, e
+  // é o dono que decide. A guarda continua inteira — `setAgentCapability` mantém `assertOwner`, o
+  // nome válido, o `missing`, o lock e o trace. O que muda é a porta, não quem pode abrir.
+  if (action === 'capability') return setAgentCapability(p.folder || '', p.cap ?? '', p.on === '1');
   if (action === 'battery') return setAgentBattery(p.folder || '', p.set ?? '');
   if (action === 'interval') return setAgentInterval(p.folder || '', Number(p.ms));
   if (action === 'budget') return p.end === '1' ? endRunBudget() : setRunBudget(Number(p.codegen), Number(p.family), Number(p.hours));

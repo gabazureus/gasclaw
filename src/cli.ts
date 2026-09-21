@@ -7,7 +7,7 @@
 // `battery`, `interval`, `budget`, `succeed` e `measure` conduzem a corrida do enxame (F6). Todas
 // têm efeito — `succeed` gasta Opus e implanta um projeto —, então entram aqui. `lineage` é leitura,
 // mas fica junto para o comando único do enxame não precisar de duas portas.
-export const MUTATING: ReadonlySet<string> = new Set(['eval', 'poc', 'enable', 'disable', 'drain', 'step', 'tools', 'battery', 'interval', 'budget', 'succeed', 'measure', 'lineage']);
+export const MUTATING: ReadonlySet<string> = new Set(['eval', 'poc', 'enable', 'disable', 'drain', 'step', 'tools', 'capability', 'battery', 'interval', 'budget', 'succeed', 'measure', 'lineage']);
 
 /** Comparação em tempo constante para strings do mesmo tamanho (não revela o prefixo certo pelo tempo). */
 export function safeEqual(a: string, b: string): boolean {

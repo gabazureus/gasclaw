@@ -273,7 +273,7 @@ remote_to() { # $1 URL base (…/exec ou …/dev) · $2 "acao&a=b" (já no forma
   [ -n "$t" ] || t=$(gcloud auth print-access-token 2>/dev/null) || return 1
   # Espelho do MUTATING de src/cli.ts. São duas listas porque o shell não lê o TS; se divergirem, a ação sai por
   # GET e o web app responde 405 — foi o que aconteceu com `tools`. Mexeu lá, mexe aqui.
-  case " eval poc enable disable drain step tools battery interval budget succeed measure lineage " in
+  case " eval poc enable disable drain step tools capability battery interval budget succeed measure lineage " in
     *" $action "*) # M1: ação com efeito → POST; parâmetros no corpo; token e segredo pelo stdin, nunca em argv nem na URL
       # `return 1`, nunca `die`: quem chama guarda com `|| true` e `die` faz `exit`, que `|| true` NAO captura.
       # Com o `2>&1` do chamador engolindo a mensagem, o ./gasclaw up morria mudo aqui e pulava health,
@@ -806,6 +806,9 @@ cmd_swarm() { # a corrida do enxame (F6): ./gasclaw swarm <battery|interval|budg
   local sub="${1:-}"; shift || true
   local folder="${SWARM_FOLDER:-}"
   case "$sub" in
+    capability) # ./gasclaw swarm capability <nome> on|off  — mesma autoridade do painel, provada pelo segredo
+      [ -n "${2:-}" ] || die "usage: ./gasclaw swarm capability <name> on|off"
+      remote "capability&cap=$1&on=$([ "$2" = on ] && echo 1 || echo 0)${folder:+&folder=$folder}" | swarm_print ;;
     battery) # ./gasclaw swarm battery <arquivo.json>  — declara o que é "melhor" (portão H5)
       [ -f "${1:-}" ] || die "usage: ./gasclaw swarm battery <file.json>"
       # A bateria tem aspas, virgulas e quebras de linha: vai codificada, senao quebra a query do POST.
@@ -825,7 +828,7 @@ cmd_swarm() { # a corrida do enxame (F6): ./gasclaw swarm <battery|interval|budg
       [ -n "${1:-}" ] || die "usage: ./gasclaw swarm measure <scriptId>"
       remote "measure&child=$1" | swarm_print ;;
     status) remote "lineage" | swarm_lineage ;;
-    *) die "usage: ./gasclaw swarm battery <file> | interval <min> | budget <c> <f> <h>|end | run \"<goal>\" | measure <id> | status" ;;
+    *) die "usage: ./gasclaw swarm capability <name> on|off | battery <file> | interval <min> | budget <c> <f> <h>|end | run \"<goal>\" | measure <id> | status" ;;
   esac
 }
 
