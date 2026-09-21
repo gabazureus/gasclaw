@@ -355,6 +355,13 @@ describe('crownReadiness no modo coroado, e a 10ª checagem: as permissões do f
     expect(falha({ self: { ...selfCoroado, settings: { ...settings, 'CAP:f1': '[]' } } })).toEqual(['settings']);
     expect(falha({ self: { ...selfCoroado, settings: undefined } })).toEqual(['settings']);
   });
+  test('a 10ª diz QUAIS diferem (sem o id da pasta): inherit na direção errada apagaria o que o dono ligou', () => {
+    const r = crownReadiness({ ...base, self: { ...selfCoroado, settings: { ...settings, 'CAP:f1': '[]', 'STATUS:f1': 'paused' } } });
+    const d = r.checks.find((c) => c.id === 'settings')!.detail;
+    expect(d).toContain('CAP, STATUS');
+    expect(d).not.toContain('ACCESS');
+    expect(d).not.toContain('f1');
+  });
   test('coroado não depende de avaliação nova: ela valeu para a coroa', () => {
     expect(falha({})).toEqual([]);
   });

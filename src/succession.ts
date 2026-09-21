@@ -204,7 +204,8 @@ export function crownReadiness(i: ReadinessInput): { ok: boolean; checks: Readin
   const coroado = i.crowned === true;
   // A 10ª: depois da coroa, o filho tem de ter as permissões do pai; antes, é a coroa que as entrega.
   const pai = i.parentSettings ?? {};
-  const iguais = !!s?.settings && Object.keys(pai).every((k) => (s.settings as Record<string, string | null>)[k] === pai[k]);
+  const diferem = Object.keys(pai).filter((k) => !s?.settings || (s.settings as Record<string, string | null>)[k] !== pai[k]);
+  const iguais = !!s?.settings && diferem.length === 0;
   const checks = [
     c('authorized', 'You authorized the successor project', i.authState === 'authorized', i.authState === 'authorized' ? 'authorized' : i.authState === 'needs-consent' ? 'open it once and authorize it' : `could not read it (${i.authState})`),
     c('seed', 'Its seed names this engine as the parent', !!s && s.seedParent === i.parentId, !s ? 'no health answer' : s.seedParent === i.parentId ? 'same parent' : `its parent is ${s.seedParent ?? 'nobody'}`),
@@ -222,7 +223,7 @@ export function crownReadiness(i: ReadinessInput): { ok: boolean; checks: Readin
     coroado
       ? c('evaluation', 'Crowned after an outside evaluation', true, 'the evaluation counted for the crown')
       : c('evaluation', 'Judged from outside after the last write, not worse', v.ok && fresca, !v.ok ? v.reason : fresca ? `${v.standing === 'wins' ? 'wins' : 'ties'}: ${i.record.evaluation!.successorPasses}/${i.record.evaluation!.k} vs ${i.record.evaluation!.incumbentPasses}/${i.record.evaluation!.k}` : 'the successor was written again after this evaluation: evaluate it again'),
-    c('settings', 'It has the parent’s permissions and capabilities', !coroado || iguais, !coroado ? 'handed over by the crown' : iguais ? 'same as this engine' : 'differs from this engine: run succession inherit'),
+    c('settings', 'It has the parent’s permissions and capabilities', !coroado || iguais, !coroado ? 'handed over by the crown' : iguais ? 'same as this engine' : `${diferem.map((k) => k.split(':')[0]).join(', ')} differ from this engine: succession inherit copies this engine's over the successor's`),
   ];
   return { ok: checks.every((x) => x.ok), checks };
 }

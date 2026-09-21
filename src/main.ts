@@ -1442,7 +1442,8 @@ const CAP_TEXT: Record<Capability, { label: string; what: string; missing: strin
     // A capacidade é ESCREVER o sucessor, e isso funciona. Coroar é outro ato, humano, e continua
     // sendo — a ressalva foi para o `what`, onde ela informa, em vez de ficar no `missing`, onde
     // bloqueava a capacidade inteira por causa de uma decisão que nunca foi da máquina.
-    what: 'Writes a successor — its CODE, generated with Opus 5, as its own Apps Script project with narrower permissions than this engine has. Writing is not crowning: the successor does not run until you authorize it, and passing the baton stays your click.',
+    // ADR-043: o sucessor é o AGENTE por patch, com os mesmos escopos — não mais código "mais estreito".
+    what: 'Writes a successor: this same agent, improved by a patch that Opus 5 writes, deployed as its own Apps Script project with the same permissions. It is born paused and judged from outside against this engine. Writing is not crowning: passing the baton is your click in Projects, and only once its health checks pass.',
     missing: null,
   },
   create: {
