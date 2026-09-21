@@ -3747,7 +3747,7 @@ export function successorHealth(scriptId: string) {
   const rec = readSuccessors(PropertiesService.getScriptProperties()).find((r) => r.scriptId === String(scriptId ?? '').trim());
   if (!rec) return { ok: false as const, reason: 'unknown successor', checks: [] as ReadinessCheck[] };
   const h = healthOf(rec);
-  return { scriptId: rec.scriptId, ...h, halfCrowned: halfCrowned(h.checks) };
+  return { scriptId: rec.scriptId, crowned: rec.crownedAt !== null, ...h, halfCrowned: halfCrowned(h.checks) };
 }
 
 /**

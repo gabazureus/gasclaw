@@ -885,7 +885,7 @@ cmd_succession() { # o AGENTE sucessor (F7, ADR-043): ./gasclaw succession write
 succession_health() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);
 if(!r.checks||!r.checks.length){console.log("refused: "+(r.error||r.reason));return}
 for(const c of r.checks)console.log(`${c.ok?"PASS":"FAIL"}  ${c.label} — ${c.detail}`);
-console.log(r.ok?"\nready: crown it in the panel (Projects)":"\nnot ready: the crown stays locked until every check passes")})'; }
+console.log(r.crowned?(r.ok?"\nhealthy: the crowned successor answers for the agent with the code and settings of this engine":"\nattention: the crowned successor needs work (see the failed checks)"):(r.ok?"\nready: crown it in the panel (Projects)":"\nnot ready: the crown stays locked until every check passes"))})'; }
 
 succession_print() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);
 if(r.ok===false){console.log("refused: "+(r.error||r.reason));return}

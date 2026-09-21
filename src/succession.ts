@@ -218,7 +218,7 @@ export function crownReadiness(i: ReadinessInput): { ok: boolean; checks: Readin
     coroado
       ? c('worker', 'Its 1-minute worker is running', !!s && s.trigger === 'active', !s ? 'no health answer' : s.trigger)
       : c('worker', 'Its 1-minute worker exists or can be created', !!s && s.trigger !== 'awaiting authorization', !s ? 'no health answer' : s.trigger === 'active' ? 'active' : s.trigger === 'inactive' ? 'created by the crown' : 'the trigger scope is not authorized'),
-    c('code', 'Its code is this engine’s CURRENT code plus the patch', !!i.code && i.code.ok, !i.code ? 'could not read its code' : i.code.reason),
+    c('code', coroado ? 'Its code is this engine’s CURRENT code' : 'Its code is this engine’s CURRENT code plus the patch', !!i.code && i.code.ok, !i.code ? 'could not read its code' : i.code.reason),
     coroado
       ? c('evaluation', 'Crowned after an outside evaluation', true, 'the evaluation counted for the crown')
       : c('evaluation', 'Judged from outside after the last write, not worse', v.ok && fresca, !v.ok ? v.reason : fresca ? `${v.standing === 'wins' ? 'wins' : 'ties'}: ${i.record.evaluation!.successorPasses}/${i.record.evaluation!.k} vs ${i.record.evaluation!.incumbentPasses}/${i.record.evaluation!.k}` : 'the successor was written again after this evaluation: evaluate it again'),
