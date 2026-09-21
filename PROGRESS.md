@@ -170,19 +170,21 @@ a sexta forma de prova falsa desta sessão. As outras cinco estão listadas acim
 > implantado, avaliado de fora, coroado, e a correção voltou ao `src`. O que segue são as pontas que a
 > coroa ABRIU (A, B) e as que já estavam abertas.
 
-| # | O que falta | Por que importa | Depende de |
-|---|---|---|---|
-| **A** | **Para onde vão as próximas publicações** | O motor que RESPONDE agora é o sucessor (`1w3Pju8v…`). O `./gasclaw up` publica no pai, que está pausado — mudanças novas do `src` (inclusive as guardas desta rodada) **não chegam ao motor que responde**. Três saídas: promover o sucessor a alvo do dev; um comando que leva o `src` ao sucessor coroado (o rebase já faz isso para um sucessor parado); ou descoroar e voltar ao pai | **decisão do dono** |
-| **B** | **O Google Chat aponta para o pai pausado** | O app do Chat foi configurado à mão para o projeto do pai. Com ele pausado, **o Chat não responde**. Não há API para reapontar: é o passo manual no console do Chat, com a URL do sucessor | passo manual do dono (depois de A) |
-| C | P33 C2 e C4 com evidência só indireta | O "nasce parado" e a conversa de teste não foram vistos ao vivo, só pela semente e pelos 6 cenários | uma próxima geração |
-| D | **Medir um ciclo de sonho real (26, 27, 29, 30)** | **Destravado agora**: antes desta correção, nenhum ciclo podia concluir. O defeito que o sucessor achou era exatamente o que impedia a P23 de medir | material (falhas reais) |
-| E | Corrida de 3 gerações de automações (54) | Parada desde a v145: falta medir o filho 1 e as gerações 2 e 3 | clique do dono + teto |
-| F | Três módulos órfãos (45) | Apagar a fila de sessões ou ligá-la | decisão do dono |
-| G | `e1-memoria` reprova nos DOIS motores | Não é do sucessor: é uma reprovação do agente que já existia, e a bateria da coroa a carrega | investigação |
-| H | Dívida de idioma: **148** | A catraca não deixa subir | — |
-| I | Prod ainda na versão antiga | Nada da F6/F7 está em prod; o `ship` é decisão do dono | decisão do dono |
-| J | Comparar o GPT-6-Astra na P32 | Adiado pelo teto do dia | teto |
-| K | Teto de código em US$ 6 | Volta sozinho a US$ 3 às 20:14 UTC de 2026-09-21 | relógio |
+| # | O que falta | Por que importa | Depende de | Decisão do dono |
+|---|---|---|---|---|
+| **A** | **Para onde vão as próximas publicações** | O motor que RESPONDE agora é o sucessor (`1w3Pju8v…`). O `./gasclaw up` publica no pai, que está pausado — mudanças novas do `src` (inclusive as guardas desta rodada) **não chegam ao motor que responde**. Três saídas: promover o sucessor a alvo do dev; um comando que leva o `src` ao sucessor coroado (o rebase já faz isso para um sucessor parado); ou descoroar e voltar ao pai | **decisão do dono** | Construir `succession sync`: leva o build atual do `src` ao sucessor COROADO; o pai segue alvo do build e porta do Chat |
+| **B** | **O Google Chat aponta para o pai pausado** | O app do Chat foi configurado à mão para o projeto do pai. Com ele pausado, **o Chat não responde**. Não há API para reapontar: é o passo manual no console do Chat, com a URL do sucessor | passo manual do dono (depois de A) | O pai vira o roteador do Chat (depende do resultado da P35); plano B = uma reconfiguração manual no console |
+| C | P33 C2 e C4 com evidência só indireta | O "nasce parado" e a conversa de teste não foram vistos ao vivo, só pela semente e pelos 6 cenários | uma próxima geração | Nada agora; observar na próxima geração |
+| D | **Medir um ciclo de sonho real (26, 27, 29, 30)** | **Destravado agora**: antes desta correção, nenhum ciclo podia concluir. O defeito que o sucessor achou era exatamente o que impedia a P23 de medir | material (falhas reais) | Esperar falhas reais (nada de material inventado, regra D5) |
+| E | Corrida de 3 gerações de automações (54) | Parada desde a v145: falta medir o filho 1 e as gerações 2 e 3 | clique do dono + teto | Fechada: superada pela F7. A maquinaria fica, nenhum gasto |
+| F | Três módulos órfãos (45) | Apagar a fila de sessões ou ligá-la | decisão do dono | Apagar a fila de sessões órfã (`sessionQueue.ts`, `sessionQueueStore.ts` e testes); `voice.ts` fica |
+| G | `e1-memoria` reprova nos DOIS motores | Não é do sucessor: é uma reprovação do agente que já existia, e a bateria da coroa a carrega | investigação | Investigar |
+| H | Dívida de idioma: **148** | A catraca não deixa subir | — | Manter a catraca |
+| I | Prod ainda na versão antiga | Nada da F6/F7 está em prod; o `ship` é decisão do dono | decisão do dono | Não publicar em prod agora; publicar depois de A, B e G, com checklist |
+| J | Comparar o GPT-6-Astra na P32 | Adiado pelo teto do dia | teto | Fechada |
+| K | Teto de código em US$ 6 | Volta sozinho a US$ 3 às 20:14 UTC de 2026-09-21 | relógio | Automático |
+
+> **Decisões do dono (2026-09-21).** Ordem de execução: A → levar as Script Properties do pai ao sucessor na coroa (lista permitida, nunca segredos) + nova checagem de saúde "as permissões do sucessor são as do pai" → B (depois da P35) → G → F → I.
 
 ### POCs
 
