@@ -851,6 +851,8 @@
         // ligada: oferecer o botão a quem não ligou a capacidade seria a tela contradizendo a caixinha
         // logo acima dela.
         if (caps.capabilities.some((c) => c.name === 'succeed' && c.on)) showSuccessor(folderId, box);
+        // A automação usa a MESMA capacidade: as duas escrevem código com o Opus, e o teto do dia é um só.
+        if (caps.capabilities.some((c) => c.name === 'succeed' && c.on)) showAutomation(folderId, box);
         // As telas que faltavam (itens 35 e 36). Cada uma só aparece quando a capacidade está ligada:
         // uma seção permanentemente vazia ensina menos que a ausência dela.
         if (caps.capabilities.some((c) => c.name === 'succeed' && c.on)) showLineage(folderId, box);
@@ -877,15 +879,16 @@
       .catch((e) => { holder.textContent = e.message; });
   }
 
-  // ----- Escrever o sucessor: o Opus escreve o CÓDIGO, o dono escolhe o que ele herda -----
+  // ----- Escrever uma AUTOMAÇÃO: o Opus escreve um projeto pequeno, o dono escolhe o que ele herda -----
   //
+  // Era o "Write a successor" até a ADR-043: o que ele produz é uma ferramenta, não o agente melhorado.
   // Duas coisas ficam VISÍVEIS antes do clique, porque as duas custam: o gasto do dia contra o teto
   // (o gerador é o modelo mais caro do projeto) e os escopos, um a um. Escolher escopo por caixinha é
-  // o que impede o sucessor de nascer com tudo que o motor tem — e é o dono decidindo, não o modelo.
-  function showSuccessor(folderId, box) {
-    quiet('successorOptions', folderId).then((o) => {
+  // o que impede a automação de nascer com tudo que o motor tem — e é o dono decidindo, não o modelo.
+  function showAutomation(folderId, box) {
+    quiet('automationOptions', folderId).then((o) => {
       const fs = document.createElement('fieldset');
-      fs.append(el('legend', { textContent: 'Write a successor' }), el('p', { className: 'muted', textContent: o.note }));
+      fs.append(el('legend', { textContent: 'Write an automation' }), el('p', { className: 'muted', textContent: o.note }));
       fs.append(el('p', { className: 'muted', textContent: 'Code generation today: ' + money(o.budget.spentToday) + ' of ' + money(o.budget.cap) + ', across every agent.' }));
       if (o.scopesError) fs.append(el('p', { className: 'err', textContent: 'Could not read this engine\u2019s own scopes: ' + o.scopesError }));
       if (!o.can) fs.append(el('p', { className: 'muted', textContent: o.reason }));
@@ -904,7 +907,7 @@
       });
       // Nunca TODOS: sucessão estreita, e o motor recusa um pedido que iguale o conjunto do pai. Dizer
       // isso aqui evita o dono marcar tudo e levar uma recusa depois de esperar a geração.
-      fs.append(el('p', { className: 'muted', textContent: 'Pick fewer than ' + o.scopes.length + ': a successor narrows what it can do, it never matches the parent.' }));
+      fs.append(el('p', { className: 'muted', textContent: 'Pick fewer than ' + o.scopes.length + ': an automation narrows what it can do, it never matches the parent.' }));
 
       const goal = document.createElement('input');
       goal.id = 'succ-goal-' + folderId;
@@ -914,14 +917,14 @@
       const b = button('Write it with ' + o.generator, () => {
         const escolhidos = marcadas.filter((c) => c.checked).map((c) => c.value);
         b.disabled = true;
-        $('msg').textContent = 'Writing the successor\u2026 this calls the most expensive model in the project, so it takes a while.';
-        call('writeSuccessor', folderId, escolhidos, goal.value)
+        $('msg').textContent = 'Writing the automation\u2026 this calls the most expensive model in the project, so it takes a while.';
+        call('writeAutomation', folderId, escolhidos, goal.value)
           .then((r) => {
             b.disabled = false;
             if (!r.ok) { $('msg').className = 'err'; $('msg').textContent = r.reason; return; }
             // O que o dono precisa fazer A SEGUIR, dito no momento em que ele pode fazer: o filho não
             // executa antes do clique de autorização, e ele aparece na lista de projetos filhos.
-            $('msg').textContent = 'Successor written (' + money(r.costUsd) + '). It does not run until you authorize it \u2014 find it in the child projects list below.';
+            $('msg').textContent = 'Automation written (' + money(r.costUsd) + '). It does not run until you authorize it \u2014 find it in the child projects list below.';
             quiet('listChildren').then(showChildren).catch(() => {}); // o filho recém-escrito aparece na lista sem recarregar a tela
           })
           .catch((e) => { b.disabled = false; $('msg').className = 'err'; $('msg').textContent = e.message; });
@@ -929,7 +932,108 @@
       b.disabled = !o.can || !o.interval.ok;
       fs.append(b);
       box.append(fs);
+    }).catch(() => {}); // a seção da automação não pode derrubar a tela de configuração inteira
+  }
+
+  // ----- Escrever o SUCESSOR (F7, ADR-043): o PRÓPRIO agente, melhorado por patch -----
+  //
+  // Os escopos aparecem TODOS marcados e travados: o sucessor é este agente melhorado, e não um diferente
+  // dele (pedido do dono, 2026-09-21). Abaixo do botão, cada sucessor escrito com o que o dono precisa
+  // para decidir: a explicação, as trocas, a nota da avaliação de fora — e só então a coroa.
+  function showSuccessor(folderId, box) {
+    quiet('successorOptions', folderId).then((o) => {
+      const fs = document.createElement('fieldset');
+      fs.append(el('legend', { textContent: 'Write a successor' }), el('p', { className: 'muted', textContent: o.note }));
+      fs.append(el('p', { className: 'muted', textContent: 'Code generation today: ' + money(o.budget.spentToday) + ' of ' + money(o.budget.cap) + ', across every agent.' }));
+      if (o.scopesError) fs.append(el('p', { className: 'err', textContent: 'Could not read this engine\u2019s own scopes: ' + o.scopesError }));
+      if (!o.can) fs.append(el('p', { className: 'muted', textContent: o.reason }));
+      if (!o.interval.ok) fs.append(el('p', { className: 'muted', textContent: o.interval.reason }));
+      o.scopes.forEach((sc) => {
+        const linha = el('div', { className: 'tool' });
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = true;
+        cb.disabled = true;
+        cb.id = 'heir-' + folderId + '-' + sc.split('/').pop();
+        linha.append(cb, el('label', { htmlFor: cb.id, textContent: sc.split('/').pop() }));
+        fs.append(linha);
+      });
+      fs.append(el('p', { className: 'muted', textContent: 'All ' + o.scopes.length + ' scopes, as this engine has them: the successor is this agent improved, not a different one.' }));
+      const goal = document.createElement('input');
+      goal.id = 'heir-goal-' + folderId;
+      goal.placeholder = o.material || 'optional: what should it fix or do better?';
+      fs.append(el('label', { htmlFor: goal.id, textContent: 'Your goal for this improvement (optional \u2014 without one, it fixes one real defect it can point to in the code)' }), goal);
+      const b = button('Write it with ' + o.generator, () => {
+        b.disabled = true;
+        $('msg').className = '';
+        $('msg').textContent = 'Writing the successor\u2026 ' + o.generator + ' reads this engine\u2019s whole code, so it takes a minute or two.';
+        call('writeSuccessor', folderId, goal.value)
+          .then((r) => {
+            b.disabled = false;
+            if (!r.ok) { $('msg').className = 'err'; $('msg').textContent = r.reason + (r.costUsd ? ' (' + money(r.costUsd) + ' spent)' : ''); return; }
+            $('msg').textContent = 'Successor written (' + money(r.costUsd) + '). ' + r.next;
+            showAgentSettings(folderId, box.parentNode || box);
+          })
+          .catch((e) => { b.disabled = false; $('msg').className = 'err'; $('msg').textContent = e.message; });
+      });
+      b.disabled = !o.can || !o.interval.ok;
+      fs.append(b);
+      (o.successors || []).slice().reverse().forEach((r) => fs.append(successorCard(r, folderId, box)));
+      box.append(fs);
     }).catch(() => {}); // a seção do sucessor não pode derrubar a tela de configuração inteira
+  }
+
+  // Um sucessor escrito: o que ele muda, por quê, a nota — e os dois botões na ordem em que valem.
+  function successorCard(r, folderId, box) {
+    const c = el('div', { className: 'limit' });
+    const estado = r.crownedAt ? 'crowned ' + new Date(r.crownedAt).toLocaleString() : r.evaluation ? 'evaluated' : 'not evaluated yet';
+    c.append(el('div', { className: 'row' }, el('strong', { textContent: new Date(r.at).toLocaleString() + ' \u00b7 ' + r.changes.length + ' change(s) \u00b7 ' + money(r.costUsd) }), el('span', { className: 'badge' + (r.crownedAt ? ' gasclaw' : ''), textContent: estado })));
+    c.append(el('p', { textContent: r.explanation }));
+    const a = el('a', { href: r.url, target: '_blank', textContent: 'open the successor panel' });
+    c.append(el('p', { className: 'muted' }, a, document.createTextNode(' \u00b7 ' + r.scriptId.slice(0, 10))));
+    // O DIFF, troca por troca: é linha a linha que o dono concorda ou não.
+    const d = el('details', {});
+    d.append(el('summary', { textContent: 'what it changes in the code' }));
+    r.changes.forEach((t) => {
+      d.append(el('p', { className: 'muted', textContent: t.file }));
+      d.append(el('pre', { className: 'err', textContent: '\u2212 ' + t.find }));
+      d.append(el('pre', { className: 'muted', textContent: '+ ' + t.replace }));
+    });
+    c.append(d);
+    if (r.evaluation) {
+      const e = r.evaluation;
+      c.append(el('p', { className: 'muted', textContent: 'Judged by THIS engine: successor ' + e.successorPasses + '/' + e.k + ' \u00b7 this engine ' + e.incumbentPasses + '/' + e.k + (e.complete ? '' : ' \u00b7 incomplete') }));
+      e.rows.forEach((x) => c.append(el('p', { className: 'muted', textContent: x.name + ': successor ' + (x.successor === null ? 'no answer' + (x.error ? ' (' + x.error + ')' : '') : x.successor ? 'pass' : 'fail') + ' \u00b7 this engine ' + (x.incumbent ? 'pass' : 'fail') })));
+    }
+    if (!r.crownedAt) {
+      if (r.verdict && !r.verdict.ok) c.append(el('p', { className: 'muted', textContent: r.verdict.reason }));
+      const ev = button('Evaluate it from here', () => {
+        ev.disabled = true;
+        $('msg').className = '';
+        $('msg').textContent = 'Evaluating\u2026 this engine sends each scenario to the successor and judges both answers itself. Pause the successor first.';
+        call('evaluateSuccessor', r.scriptId).then((x) => {
+          ev.disabled = false;
+          if (!x.ok) { $('msg').className = 'err'; $('msg').textContent = x.reason; return; }
+          $('msg').textContent = 'Evaluated: successor ' + x.evaluation.successorPasses + '/' + x.evaluation.k + ', this engine ' + x.evaluation.incumbentPasses + '/' + x.evaluation.k + '.';
+          showAgentSettings(folderId, box.parentNode || box);
+        }).catch((err) => { ev.disabled = false; $('msg').className = 'err'; $('msg').textContent = err.message; });
+      });
+      const cr = button('Crown it', () => {
+        const empate = r.verdict && r.verdict.standing === 'ties';
+        // O PORTÃO HUMANO: o dono confirma lendo o que vai acontecer, e o empate é dito como empate.
+        if (!confirm((empate ? 'The successor TIES this engine on the scenarios \u2014 the score does not show the change it makes. ' : 'The successor beats this engine on the scenarios. ') + 'Crowning pauses this engine and turns the successor on. Crown it?')) return;
+        cr.disabled = true;
+        call('crownSuccessor', r.scriptId).then((x) => {
+          cr.disabled = false;
+          if (!x.ok) { $('msg').className = 'err'; $('msg').textContent = x.reason; return; }
+          $('msg').textContent = 'Crowned. ' + x.next;
+          showAgentSettings(folderId, box.parentNode || box);
+        }).catch((err) => { cr.disabled = false; $('msg').className = 'err'; $('msg').textContent = err.message; });
+      });
+      cr.disabled = !(r.verdict && r.verdict.ok);
+      c.append(ev, ' ', cr);
+    }
+    return c;
   }
 
   // ----- Item 36: o DreamBoard — o placar que o dono lê antes de trocar o titular -----

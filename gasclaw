@@ -273,7 +273,7 @@ remote_to() { # $1 URL base (…/exec ou …/dev) · $2 "acao&a=b" (já no forma
   [ -n "$t" ] || t=$(gcloud auth print-access-token 2>/dev/null) || return 1
   # Espelho do MUTATING de src/cli.ts. São duas listas porque o shell não lê o TS; se divergirem, a ação sai por
   # GET e o web app responde 405 — foi o que aconteceu com `tools`. Mexeu lá, mexe aqui.
-  case " eval poc enable disable drain step tools capability battery interval budget succeed measure lineage " in
+  case " eval poc enable disable drain step tools capability battery interval budget succeed automate evaluate succession measure lineage " in
     *" $action "*) # M1: ação com efeito → POST; parâmetros no corpo; token e segredo pelo stdin, nunca em argv nem na URL
       # `return 1`, nunca `die`: quem chama guarda com `|| true` e `die` faz `exit`, que `|| true` NAO captura.
       # Com o `2>&1` do chamador engolindo a mensagem, o ./gasclaw up morria mudo aqui e pulava health,
@@ -825,7 +825,7 @@ cmd_swarm() { # a corrida do enxame (F6): ./gasclaw swarm <battery|interval|budg
       [ -n "${1:-}" ] || die "usage: ./gasclaw swarm run \"<goal>\" [scope,scope]"
       # SWARM_TOKENS baixa o teto de tokens desta geracao (nunca sobe: o maximo vem do crivo). Serve para
       # caber no credito da chave, ou no tamanho esperado do filho. Vazio = o maximo que o crivo aceita.
-      remote "succeed&goal=$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$1")&scopes=${2:-https://www.googleapis.com/auth/userinfo.email}${SWARM_TOKENS:+&tokens=$SWARM_TOKENS}${folder:+&folder=$folder}" | swarm_print ;;
+      remote "automate&goal=$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$1")&scopes=${2:-https://www.googleapis.com/auth/userinfo.email}${SWARM_TOKENS:+&tokens=$SWARM_TOKENS}${folder:+&folder=$folder}" | swarm_print ;;
     measure) # ./gasclaw swarm measure <scriptId>  — so mede filho JA autorizado pelo dono
       [ -n "${1:-}" ] || die "usage: ./gasclaw swarm measure <scriptId>"
       remote "measure&child=$1" | swarm_print ;;

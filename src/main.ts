@@ -64,6 +64,7 @@ import {
 } from './agentCaps';
 import { beatsIncumbent, CODEGEN_BUDGET_USD, mayWriteProject, withinDailyCap } from './dream';
 import { generateSuccessor, sourceOfChild, type SuccessorDeps } from './successor';
+import { crownVerdict, patchMessages, prepareSuccessor, readSuccessorsFrom, slotFor, successorWrites, type EvalRow, type Evaluation, type SuccessorRecord } from './succession';
 import { codeDelta, judgeCase, parseBattery, previousScore, scoreRun, withMeasurement } from './fitness';
 import { applyPatch, parsePatch, type Change, type PatchFile } from './patch';
 import { seedSource } from './seed';
@@ -214,7 +215,12 @@ function mutate(action: string, p: Record<string, string>): unknown {
   if (action === 'battery') return setAgentBattery(pasta, p.set ?? '');
   if (action === 'interval') return setAgentInterval(pasta, Number(p.ms));
   if (action === 'budget') return p.end === '1' ? endRunBudget() : setRunBudget(Number(p.codegen), Number(p.family), Number(p.hours));
-  if (action === 'succeed') return writeSuccessor(pasta, (p.scopes ?? '').split(',').filter(Boolean), p.goal ?? '', p.tokens ? Number(p.tokens) : undefined);
+  // F7 (ADR-043): `succeed` escreve o AGENTE sucessor por patch; o que ela fazia antes — um projeto
+  // pequeno de código novo — é uma AUTOMAÇÃO, e responde por `automate`. A corrida do enxame usa `automate`.
+  if (action === 'succeed') return writeSuccessor(pasta, p.goal ?? '');
+  if (action === 'automate') return writeAutomation(pasta, (p.scopes ?? '').split(',').filter(Boolean), p.goal ?? '', p.tokens ? Number(p.tokens) : undefined);
+  if (action === 'evaluate') return evaluateSuccessor(p.child || '');
+  if (action === 'succession') return successionState();
   if (action === 'measure') return measureChild(p.child || '');
   if (action === 'lineage') return lineage();
   return { ok: false, status: 400, error: `unknown action: ${action}` };
@@ -267,6 +273,10 @@ export function doPost(e: GoogleAppsScript.Events.DoPost) {
     // não tem esse segredo, e não deve ter. O que a torna segura sem ele são as três guardas de
     // `evalRunForParent` (só sucessor, só parado, só caixa de areia).
     if (action === 'evalrun') return json(evalRunForParent(p.spec ?? ''));
+    // F7 — A COROA. Mesma razão de vir antes do segredo: o pai não o tem. O que a torna segura são as
+    // guardas de `crownFromParent` (só sucessor, só o PAI da semente) — e o token do dono, sem o qual
+    // `assertOwner` acima já recusou. Coroar é o clique do dono no painel do pai (`crownSuccessor`).
+    if (action === 'crown') return json(crownFromParent(p.parent ?? ''));
     // A ROTA `childkey` FOI REMOVIDA (2026-09-20, ADR-040 opção 4). Ela era o único ponto do projeto
     // que devolvia a chave do OpenRouter por HTTP. A P27 mediu que o filho não consegue alcançá-la —
     // o Google recusa o token de outro projeto antes de chegar aqui —, então ela não servia a ninguém
@@ -1117,8 +1127,12 @@ const panelEnv = () => asEnv(envName());
  * fonte pelo registro de sucessores de verdade, e o hub não precisa mudar.
  */
 function knownSuccessors(): { scriptId: string; url: string }[] {
-  const s = JSON.parse(PropertiesService.getScriptProperties().getProperty('P33_SUCCESSOR') ?? 'null') as { scriptId?: string; url?: string } | null;
-  return s?.scriptId && s.url ? [{ scriptId: s.scriptId, url: s.url }] : [];
+  const props = PropertiesService.getScriptProperties();
+  const lista = readSuccessors(props).map((r) => ({ scriptId: r.scriptId, url: r.url }));
+  // O da P33 veio antes do registro; entra enquanto não foi registrado por uma geração.
+  const s = JSON.parse(props.getProperty('P33_SUCCESSOR') ?? 'null') as { scriptId?: string; url?: string } | null;
+  if (s?.scriptId && s.url && !lista.some((x) => x.scriptId === s.scriptId)) lista.unshift({ scriptId: s.scriptId, url: s.url });
+  return lista;
 }
 
 export function panelsState() {
@@ -2182,7 +2196,7 @@ function engineScopes(token: string, own: string): string[] {
  * lista repetida envelheceria calada no dia em que um escopo entrasse no manifesto, e a tela
  * ofereceria menos (ou mais) do que o motor de fato tem.
  */
-export function successorOptions(folderId: string) {
+export function automationOptions(folderId: string) {
   assertOwner();
   const props = PropertiesService.getScriptProperties();
   const id = String(folderId ?? '').trim();
@@ -2209,11 +2223,11 @@ export function successorOptions(folderId: string) {
     material: agentMaterial(id),
     generator: OPUS_MODEL,
     budget: { spentToday: gasto, cap: budgetNow().codegenUsd, perRun: CODEGEN_BUDGET_USD },
-    note: `The successor is new CODE, written by ${OPUS_MODEL}, deployed as its own Apps Script project. It inherits fewer scopes than this engine has — never the same set, and never the ones that let a project write other projects. Google will not run it until you authorize it.`,
+    note: `An automation is new CODE, written by ${OPUS_MODEL}, deployed as its own Apps Script project. It is a tool, not a successor: it inherits fewer scopes than this engine has — never the same set, and never the ones that let a project write other projects. Google will not run it until you authorize it.`,
   };
 }
 
-export function writeSuccessor(folderId: string, requestedScopes: string[], goal?: string, maxTokens?: number) {
+export function writeAutomation(folderId: string, requestedScopes: string[], goal?: string, maxTokens?: number) {
   assertOwner();
   const props = PropertiesService.getScriptProperties();
   const id = String(folderId ?? '').trim();
@@ -3239,6 +3253,358 @@ function pocP29(step?: string): unknown {
   return { pass: false, error: 'steps: burst, quota, consent, adopt, cleanup, state' };
 }
 
+// ---------- F7: o AGENTE sucessor por patch (ADR-043) ----------
+//
+// O Opus recebe o código do agente, devolve um patch com a explicação do que melhorou, e o patch vira
+// um agente implantado em OUTRO projeto, parado. O pai o avalia de fora, com o juiz dele; o dono lê o
+// diff, a explicação e a nota, e coroa. Tudo o que decide mora em `succession.ts`; aqui só há I/O.
+
+const SCRIPT_API = 'https://script.googleapis.com/v1/projects';
+
+type ProjectFile = { name: string; type: string; source: string };
+type ScriptCall = (url: string, method: GoogleAppsScript.URL_Fetch.HttpMethod, payload?: unknown) => { code: number; full: string };
+
+function scriptCall(token: string): ScriptCall {
+  return (url, method, payload) => {
+    const res = UrlFetchApp.fetch(url, { method, contentType: 'application/json', headers: { Authorization: `Bearer ${token}` }, ...(payload ? { payload: JSON.stringify(payload) } : {}), muteHttpExceptions: true });
+    return { code: res.getResponseCode(), full: res.getContentText() };
+  };
+}
+
+/** O código deste motor, pela API do Apps Script — NUNCA pelo Drive (ADR-002). */
+function readOwnFiles(call: ScriptCall, own: string): ProjectFile[] {
+  const lido = call(`${SCRIPT_API}/${own}/content`, 'get');
+  if (lido.code !== 200) throw new Error(`could not read this project's own code: HTTP ${lido.code}`);
+  return ((JSON.parse(lido.full) as { files?: ProjectFile[] }).files ?? []).map((f) => ({ name: f.name, type: f.type, source: f.source }));
+}
+
+type Deployed = { ok: true; scriptId: string; url: string; version: number } | { ok: false; stage: string; reason: string };
+
+/**
+ * Escreve os arquivos num projeto, versiona e implanta. Com `slot`, ATUALIZA a implantação que já existe
+ * — mesmo projeto, mesmo endereço: o vínculo do GCP, a autorização e a chave são do projeto, não do
+ * código, e ficam. Sem `slot`, cria um projeto novo.
+ */
+function deployAgentProject(call: ScriptCall, own: string, files: ProjectFile[], title: string, slot: { scriptId: string; url: string } | null): Deployed {
+  let scriptId = slot?.scriptId ?? null;
+  if (!scriptId) {
+    const criado = call(SCRIPT_API, 'post', { title });
+    scriptId = criado.code === 200 ? ((JSON.parse(criado.full) as { scriptId?: string }).scriptId ?? null) : null;
+    if (!scriptId) return { ok: false, stage: 'create', reason: `HTTP ${criado.code}: ${criado.full.slice(0, 200)}` };
+  }
+  // Ninguém escreve no próprio projeto — nem com um slot que, por engano, apontasse para cá.
+  const guarda = mayWriteProject(scriptId, own);
+  if (!guarda.ok) return { ok: false, stage: 'guard', reason: guarda.reason };
+  const escrita = call(`${SCRIPT_API}/${scriptId}/content`, 'put', { files });
+  if (escrita.code !== 200) return { ok: false, stage: 'write', reason: `HTTP ${escrita.code}: ${escrita.full.slice(0, 300)}` };
+  const ver = call(`${SCRIPT_API}/${scriptId}/versions`, 'post', { description: 'successor agent' });
+  const versao = ver.code === 200 ? (JSON.parse(ver.full) as { versionNumber?: number }).versionNumber : undefined;
+  if (!Number.isInteger(versao)) return { ok: false, stage: 'version', reason: `HTTP ${ver.code}: ${ver.full.slice(0, 200)}` };
+  if (slot) {
+    // A implantação do web app, não a HEAD: é ela que responde no endereço que o dono autorizou.
+    const lista = call(`${SCRIPT_API}/${scriptId}/deployments`, 'get');
+    const web = ((JSON.parse(lista.full) as { deployments?: { deploymentId: string; deploymentConfig?: { versionNumber?: number } }[] }).deployments ?? []).find((d) => d.deploymentConfig?.versionNumber !== undefined);
+    if (!web) return { ok: false, stage: 'find-deployment', reason: 'the successor has no versioned web app deployment' };
+    const atual = call(`${SCRIPT_API}/${scriptId}/deployments/${web.deploymentId}`, 'put', { deploymentConfig: { versionNumber: versao, manifestFileName: 'appsscript', description: 'successor agent' } });
+    if (atual.code !== 200) return { ok: false, stage: 'update-deployment', reason: `HTTP ${atual.code}: ${atual.full.slice(0, 300)}` };
+    return { ok: true, scriptId, url: slot.url, version: versao as number };
+  }
+  const dep = call(`${SCRIPT_API}/${scriptId}/deployments`, 'post', { versionNumber: versao, manifestFileName: 'appsscript', description: 'successor agent' });
+  const url = dep.code === 200 ? ((JSON.parse(dep.full) as { entryPoints?: { webApp?: { url?: string } }[] }).entryPoints ?? []).map((e) => e.webApp?.url).find((u) => !!u) ?? null : null;
+  if (!url) return { ok: false, stage: 'deploy', reason: `HTTP ${dep.code}: ${dep.full.slice(0, 200)}` };
+  return { ok: true, scriptId, url, version: versao as number };
+}
+
+/** A semente que o pai escreve no sucessor: nascer parado e saber qual agente servir. Nada secreto. */
+const successorSeedFile = (own: string): ProjectFile => ({ name: 'successor_seed', type: 'SERVER_JS', source: seedSource({ bornDisabled: true, parent: own, agents: store.listAgents(), at: Date.now(), parentUrl: appUrl() }) });
+
+const readSuccessors = (props: GoogleAppsScript.Properties.Properties): SuccessorRecord[] => readSuccessorsFrom(props.getProperties());
+
+const saveSuccessor = (props: GoogleAppsScript.Properties.Properties, rec: SuccessorRecord): void => {
+  for (const { prop, value } of successorWrites(props.getProperties(), rec)) {
+    if (value === null) props.deleteProperty(prop);
+    else props.setProperty(prop, value);
+  }
+};
+
+/**
+ * O sucessor da P33 foi implantado antes do registro existir. Ele entra como slot do agente padrão —
+ * é o projeto que o dono já vinculou, autorizou e configurou, e reusá-lo poupa os três atos de novo.
+ */
+function legacySlot(props: GoogleAppsScript.Properties.Properties, folderId: string): { scriptId: string; url: string } | null {
+  if (defaultAgent()?.folderId !== folderId) return null;
+  const s = JSON.parse(props.getProperty('P33_SUCCESSOR') ?? 'null') as { scriptId?: string; url?: string } | null;
+  if (!s?.scriptId || !s.url) return null;
+  return readSuccessors(props).some((r) => r.scriptId === s.scriptId) ? null : { scriptId: s.scriptId, url: s.url };
+}
+
+/**
+ * Um slot só recebe código novo se estiver PARADO. Escrever num sucessor ligado trocaria o motor que já
+ * responde ao dono sem coroa nenhuma. Autorização pendente pode receber (ele ainda não roda); leitura
+ * que falhou, não: na dúvida, não se escreve num motor que talvez esteja respondendo.
+ */
+function slotWritable(url: string): { ok: true } | { ok: false; reason: string } {
+  let r: { code: number; body: string };
+  try {
+    r = fetchChild(`${url}?action=health`);
+  } catch (e) {
+    return { ok: false, reason: `could not read the successor before writing into it: ${(e as Error).message}` };
+  }
+  const estado = authState(url, r.code, r.body);
+  if (estado === 'needs-consent') return { ok: true };
+  if (estado !== 'authorized') return { ok: false, reason: `could not read the successor before writing into it (HTTP ${r.code})` };
+  try {
+    const h = JSON.parse(r.body) as { enabled?: boolean };
+    return h.enabled === false ? { ok: true } : { ok: false, reason: 'the successor is RUNNING: pause it in its panel first — new code does not go into an engine that answers without a crown' };
+  } catch {
+    return { ok: false, reason: 'the successor answered something that is not its health JSON' };
+  }
+}
+
+/** Teto da resposta do Opus, e a parte dele reservada para pensar (medido na P32: sem ela, `length` com conteúdo nulo). */
+const SUCCESSOR_MAX_TOKENS = 16_000;
+const SUCCESSOR_REASONING = 8_000;
+const OPUS_USD_PER_M = { in: 5, out: 25 };
+
+/**
+ * Escreve o AGENTE sucessor: o Opus recebe o código deste motor e devolve um patch; o patch vira um
+ * agente implantado em outro projeto, PARADO. Não coroa ninguém — isso é `crownSuccessor`, depois da
+ * avaliação de fora e do clique do dono.
+ */
+export function writeSuccessor(folderId: string, goal?: string) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const id = String(folderId ?? '').trim();
+  if (!id) throw new Error('unknown agent');
+  const v = mayAct(id, 'succeed');
+  if (!v.ok) return { ok: false as const, reason: v.reason, costUsd: 0 };
+  const intervalo = mayGenerateNow(id);
+  if (!intervalo.ok) return { ok: false as const, reason: intervalo.reason, costUsd: 0 };
+  const pedido = String(goal ?? '').trim();
+  if (pedido.length > GOAL_MAX) throw new Error(`the goal is too long to send whole: ${pedido.length} characters, limit is ${GOAL_MAX}. Shorten it — cutting it here would judge the generator by rules it never received`);
+  const key = store.getApiKey();
+  if (!key) return { ok: false as const, reason: 'save the OpenRouter key first', costUsd: 0 };
+
+  const own = ScriptApp.getScriptId();
+  const call = scriptCall(ScriptApp.getOAuthToken());
+  const registrado = slotFor(readSuccessors(props), id);
+  const slot = registrado ? { scriptId: registrado.scriptId, url: registrado.url } : legacySlot(props, id);
+  if (slot) {
+    // As duas recusas vêm ANTES do Opus: descobri-las depois de pagar a geração seria jogar dinheiro fora.
+    const guarda = mayWriteProject(slot.scriptId, own);
+    if (!guarda.ok) return { ok: false as const, reason: guarda.reason, costUsd: 0 };
+    const w = slotWritable(slot.url);
+    if (!w.ok) return { ok: false as const, reason: w.reason, costUsd: 0 };
+  }
+
+  // A semente deste motor (quando ele mesmo é sucessor) não vai ao Opus: não é código dele, e o pai
+  // escreve uma nova para o filho.
+  const originais = readOwnFiles(call, own).filter((f) => f.name !== 'successor_seed');
+  const arquivos = originais.map((f) => ({ name: f.name, source: f.source }));
+
+  // PRÉ-TESTE COM A ESTIMATIVA MEDIDA (P32: 2,25 caracteres por token). O teto do dia vale para cada
+  // geração, e o sucessor pode gerar o próprio sucessor (decisão 2) — é aqui que isso para.
+  const chars = arquivos.reduce((n, f) => n + f.source.length, 0);
+  const estimativa = (chars / 2.25) * OPUS_USD_PER_M.in / 1e6 + SUCCESSOR_MAX_TOKENS * OPUS_USD_PER_M.out / 1e6;
+  const gasto = codegenSpentToday(Date.now());
+  const teto = budgetNow().codegenUsd;
+  if (gasto + estimativa > teto) return { ok: false as const, reason: `this generation could cost up to US$ ${estimativa.toFixed(2)} and US$ ${gasto.toFixed(2)} of US$ ${teto.toFixed(2)} are already spent today`, costUsd: 0 };
+
+  let texto = '';
+  let custo = 0;
+  let fim: string | undefined;
+  try {
+    const r = complete(key, OPUS_MODEL, patchMessages(arquivos, pedido), SUCCESSOR_MAX_TOKENS, undefined, [], undefined, { max_tokens: SUCCESSOR_REASONING });
+    texto = r.text;
+    custo = Number(r.usage?.cost ?? 0);
+    fim = r.finish_reason;
+  } catch (e) {
+    // D9: resposta VAZIA que pode ter custado. O custo entra, e a recusa diz por quê.
+    const x = e as EmptyCompletionError;
+    if (!(x && typeof x.contentShape === 'string')) throw e;
+    custo = Number(x.usage?.cost ?? 0);
+    fim = x.finishReason;
+  }
+  // O dinheiro saiu: conta ANTES de qualquer veredito (ADR-041 §4).
+  props.setProperty(codegenDayProp(Date.now()), String(codegenSpentToday(Date.now()) + custo));
+  props.setProperty(genStamp(id), String(Date.now())); // o intervalo conta a partir da tentativa paga
+  // D7: o corte é decidido pelo `finish_reason`, não pela forma do texto.
+  if (fim === 'length') return { ok: false as const, reason: `the generator was cut off (finish_reason: length) — nothing was deployed`, costUsd: custo };
+  if (!texto) return { ok: false as const, reason: `the generator returned nothing (finish_reason: ${fim ?? '?'}) — nothing was deployed`, costUsd: custo };
+
+  const prep = prepareSuccessor(arquivos, texto);
+  if (!prep.ok) return { ok: false as const, reason: prep.reason, costUsd: custo };
+  const tipo = (n: string) => originais.find((f) => f.name === n)?.type ?? 'SERVER_JS';
+  const files: ProjectFile[] = [...prep.files.map((f) => ({ name: f.name, type: tipo(f.name), source: f.source })), successorSeedFile(own)];
+  const agente = loadAgent(id);
+  const dep = deployAgentProject(call, own, files, `${agente.name} — successor agent ${new Date().toISOString().slice(0, 10)}`, slot);
+  if (!dep.ok) return { ok: false as const, reason: `${dep.stage}: ${dep.reason}`, costUsd: custo };
+
+  const rec: SuccessorRecord = { scriptId: dep.scriptId, url: dep.url, folderId: id, at: Date.now(), model: OPUS_MODEL, explanation: prep.explanation, changes: prep.changes, costUsd: custo, evaluation: null, crownedAt: null };
+  saveSuccessor(props, rec);
+  const anterior = lineage().entries;
+  const entrada: LineageEntry = {
+    at: Date.now(),
+    kind: 'codegen',
+    parent: id,
+    child: dep.scriptId,
+    generation: nextGeneration('codegen', anterior.filter((e) => e.parent === id).map((e) => e.generation)[0] ?? 1),
+    delta: null, // nada foi medido: a avaliação de fora vem depois
+    costUsd: custo,
+    summary: `successor AGENT patched by ${OPUS_MODEL} (${prep.changes.length} change(s)): ${prep.explanation.slice(0, 160)}`,
+  };
+  props.setProperty(lineageProp, JSON.stringify([...anterior, entrada].slice(-100)));
+  return {
+    ok: true as const,
+    scriptId: dep.scriptId,
+    url: dep.url,
+    version: dep.version,
+    reused: !!slot,
+    explanation: prep.explanation,
+    changes: prep.changes,
+    costUsd: custo,
+    next: slot
+      ? 'same project and address: the GCP link, the authorization and the key stayed. Evaluate it from here before crowning.'
+      : 'a new project: link it to the parent GCP project, authorize it once, paste the OpenRouter key in its panel — then evaluate it from here.',
+  };
+}
+
+/**
+ * O PAI avalia o sucessor de fora (P34): manda cada cenário ao web app dele só como `RunSpec` (sem juiz,
+ * rubrica nem verificações), roda o MESMO cenário aqui, e julga os dois com o `judgeRun` DELE.
+ */
+function evaluateFromOutside(url: string, folderId: string, key: string, n?: number): Evaluation & { rows: EvalRow[]; ms: number } {
+  const envPai = sandboxEvalEnv(folderId, key, () => true);
+  const nomes = P34_SCENARIOS.filter((x) => scenarioMd(x) !== null).slice(0, n && n > 0 ? n : P34_SCENARIOS.length);
+  const t0 = Date.now();
+  const rows: EvalRow[] = [];
+  for (const nome of nomes) {
+    if (Date.now() - t0 > 270_000) break; // margem contra o corte de 6 min: parar é melhor que perder tudo
+    const cenario = parseScenario(scenarioMd(nome) as string);
+    const spec = toRunSpec(cenario);
+    const r = postChild(url, { action: 'evalrun', spec: JSON.stringify(spec) });
+    let trace: RunTrace | null = null;
+    let erro = '';
+    let vazou = false;
+    try {
+      const j = JSON.parse(r.body) as { ok?: boolean; trace?: RunTrace & Record<string, unknown>; error?: string };
+      if (j.ok && j.trace) {
+        trace = j.trace;
+        // O sucessor devolveu TURNOS, não um veredito. Um `pass` ou `checks` aqui seria ele se julgando.
+        vazou = 'pass' in j.trace || 'checks' in j.trace || 'judge' in j.trace;
+      } else erro = j.error ?? 'the successor refused';
+    } catch {
+      erro = `HTTP ${r.code}: the successor answered something that is not JSON`;
+    }
+    const titular = runSpec(spec, envPai);
+    rows.push({ name: nome, successor: trace ? judgeRun(cenario, trace, envPai).pass : null, incumbent: judgeRun(cenario, titular, envPai).pass, ...(erro ? { error: erro } : {}), ...(vazou ? { verdictLeaked: true } : {}) });
+  }
+  const medidos = rows.filter((l) => l.successor !== null);
+  return {
+    successorPasses: medidos.filter((l) => l.successor).length,
+    incumbentPasses: medidos.filter((l) => l.incumbent).length,
+    k: medidos.length,
+    complete: rows.length === nomes.length && medidos.length === rows.length,
+    verdictLeaked: rows.some((l) => l.verdictLeaked),
+    rows,
+    ms: Date.now() - t0,
+  };
+}
+
+/** Avalia um sucessor registrado e guarda a nota junto dele — é o que a coroa vai ler. */
+export function evaluateSuccessor(scriptId: string) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const rec = readSuccessors(props).find((r) => r.scriptId === String(scriptId ?? '').trim());
+  if (!rec) return { ok: false as const, reason: 'unknown successor' };
+  if (rec.crownedAt !== null) return { ok: false as const, reason: 'this successor was already crowned' };
+  const key = store.getApiKey();
+  if (!key) return { ok: false as const, reason: 'save the OpenRouter key first' };
+  const { ms, ...ev } = evaluateFromOutside(rec.url, rec.folderId, key);
+  const evaluation = { ...ev, at: Date.now() };
+  saveSuccessor(props, { ...rec, evaluation });
+  return { ok: true as const, evaluation, ms, verdict: crownVerdict(evaluation) };
+}
+
+/**
+ * A COROA — o portão humano da F7. O dono leu o diff, a explicação e a nota, e clicou.
+ *
+ * O titular para PRIMEIRO: se a coroa falhar, ele volta. A ordem contrária deixaria, por um instante ou
+ * para sempre, dois motores respondendo pelo mesmo agente.
+ */
+export function crownSuccessor(scriptId: string) {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  const rec = readSuccessors(props).find((r) => r.scriptId === String(scriptId ?? '').trim());
+  if (!rec) return { ok: false as const, reason: 'unknown successor' };
+  if (rec.crownedAt !== null) return { ok: false as const, reason: 'this successor was already crowned' };
+  const veredito = crownVerdict(rec.evaluation);
+  if (!veredito.ok) return { ok: false as const, reason: veredito.reason };
+  const antes = store.isEnabled();
+  store.setEnabled(false);
+  let resposta: { ok?: boolean; error?: string } = {};
+  const r = postChild(rec.url, { action: 'crown', parent: ScriptApp.getScriptId() });
+  try {
+    resposta = JSON.parse(r.body);
+  } catch {
+    resposta = { ok: false, error: `HTTP ${r.code}: the successor answered something that is not JSON` };
+  }
+  if (!resposta.ok) {
+    store.setEnabled(antes);
+    return { ok: false as const, reason: `the successor refused the crown: ${resposta.error ?? 'no reason given'} — this engine is running again` };
+  }
+  saveSuccessor(props, { ...rec, crownedAt: Date.now() });
+  const anterior = lineage().entries;
+  props.setProperty(lineageProp, JSON.stringify([...anterior, { at: Date.now(), kind: 'succession', parent: rec.folderId, child: rec.scriptId, generation: nextGeneration('succession', anterior.filter((e) => e.parent === rec.folderId).map((e) => e.generation)[0] ?? 1), delta: rec.evaluation ? rec.evaluation.successorPasses - rec.evaluation.incumbentPasses : null, costUsd: 0, summary: `crowned the successor agent (${veredito.standing})` } as LineageEntry].slice(-100)));
+  return { ok: true as const, standing: veredito.standing, url: rec.url, next: 'this engine is paused and the successor answers now. Port the change to src with `./gasclaw succession pull`, or the next deploy erases it.' };
+}
+
+/**
+ * No SUCESSOR: a coroa chega do pai — só do pai que a semente nomeia. Um motor sem semente não tem pai
+ * (`successorOf()` é `null`), e nenhum `parent` é igual a `null`: a mesma linha recusa os dois casos.
+ */
+function crownFromParent(parent: string) {
+  if (parent !== store.successorOf()) return { ok: false, status: 403, error: 'only the parent named in the seed crowns this engine' };
+  store.setEnabled(true);
+  return { ok: true };
+}
+
+/** O que o painel e a CLI leem: os sucessores, com a explicação, as trocas, a nota e a coroa. */
+export function successionState() {
+  assertOwner();
+  return { successors: readSuccessors(PropertiesService.getScriptProperties()).map((r) => ({ ...r, verdict: r.crownedAt === null ? crownVerdict(r.evaluation) : null })) };
+}
+
+/**
+ * O que a tela precisa antes de mandar escrever o SUCESSOR (F7). Os escopos são TODOS os do pai, e a tela
+ * os mostra marcados e travados: o sucessor é o próprio agente melhorado, não um diferente dele.
+ */
+export function successorOptions(folderId: string) {
+  assertOwner();
+  const id = String(folderId ?? '').trim();
+  const cap = mayAct(id, 'succeed');
+  let escopos: string[] = [];
+  let erro = '';
+  try {
+    escopos = engineScopes(ScriptApp.getOAuthToken(), ScriptApp.getScriptId());
+  } catch (e) {
+    erro = (e as Error).message;
+  }
+  return {
+    folderId: id,
+    can: cap.ok,
+    reason: cap.reason,
+    interval: mayGenerateNow(id),
+    scopes: escopos,
+    scopesError: erro,
+    material: agentMaterial(id),
+    generator: OPUS_MODEL,
+    budget: { spentToday: codegenSpentToday(Date.now()), cap: budgetNow().codegenUsd },
+    successors: successionState().successors.filter((r) => r.folderId === id),
+    note: `The successor is THIS agent, improved: ${OPUS_MODEL} reads this engine's code and returns a small patch with an explanation of what it improves. The patch is deployed as another Apps Script project with the same scopes, born paused. This engine evaluates it from outside with its own judge; you read the change, the explanation and the score, and crown it.`,
+  };
+}
+
 /**
  * Sonda da P32 (só no dev): **o Opus devolve um patch válido do motor inteiro, dentro de 6 min?**
  *
@@ -3383,18 +3749,11 @@ function pocP32(step?: string, params: Record<string, string> = {}): unknown {
 function pocP33(step?: string): unknown {
   const props = PropertiesService.getScriptProperties();
   const own = ScriptApp.getScriptId();
-  const token = ScriptApp.getOAuthToken();
-  const api = 'https://script.googleapis.com/v1/projects';
-  const call = (url: string, method: GoogleAppsScript.URL_Fetch.HttpMethod, payload?: unknown) => {
-    const res = UrlFetchApp.fetch(url, { method, contentType: 'application/json', headers: { Authorization: `Bearer ${token}` }, ...(payload ? { payload: JSON.stringify(payload) } : {}), muteHttpExceptions: true });
-    return { code: res.getResponseCode(), full: res.getContentText() };
-  };
+  const call = scriptCall(ScriptApp.getOAuthToken());
 
   if (step === 'deploy') {
     const t0 = Date.now();
-    const lido = call(`${api}/${own}/content`, 'get');
-    if (lido.code !== 200) return { pass: false, error: `could not read this project's own code: HTTP ${lido.code}` };
-    const originais = ((JSON.parse(lido.full) as { files?: { name: string; type: string; source: string }[] }).files ?? []);
+    const originais = readOwnFiles(call, own).filter((f) => f.name !== 'successor_seed');
 
     // O patch da P32, SE ele ainda couber. Não caber costuma ser a notícia boa: a melhoria já foi
     // portada para o `src/` e publicada (decisão 3), e o motor do pai já a traz.
@@ -3414,23 +3773,13 @@ function pocP33(step?: string): unknown {
     const files = [
       ...arquivos.map((f) => ({ name: f.name, type: tipo(f.name), source: f.source })),
       // A SEMENTE: nascer parado e saber qual agente servir. Nenhum segredo (ver `seed.ts`).
-      { name: 'successor_seed', type: 'SERVER_JS', source: seedSource({ bornDisabled: true, parent: own, agents: store.listAgents(), at: Date.now(), parentUrl: appUrl() }) },
+      successorSeedFile(own),
     ];
 
     const agente = defaultAgent();
-    const criado = call(api, 'post', { title: `${agente?.name ?? 'gasclaw'} — successor agent ${new Date().toISOString().slice(0, 10)}` });
-    const scriptId = criado.code === 200 ? ((JSON.parse(criado.full) as { scriptId?: string }).scriptId ?? null) : null;
-    if (!scriptId) return { pass: false, stage: 'create', code: criado.code, body: criado.full.slice(0, 200) };
-    const guarda = mayWriteProject(scriptId, own);
-    if (!guarda.ok) return { pass: false, stage: 'guard', error: guarda.reason };
-    const escrita = call(`${api}/${scriptId}/content`, 'put', { files });
-    if (escrita.code !== 200) return { pass: false, stage: 'write', code: escrita.code, body: escrita.full.slice(0, 300) };
-    const ver = call(`${api}/${scriptId}/versions`, 'post', { description: 'successor agent' });
-    const versao = ver.code === 200 ? (JSON.parse(ver.full) as { versionNumber?: number }).versionNumber : undefined;
-    if (!Number.isInteger(versao)) return { pass: false, stage: 'version', code: ver.code, body: ver.full.slice(0, 200) };
-    const dep = call(`${api}/${scriptId}/deployments`, 'post', { versionNumber: versao, manifestFileName: 'appsscript', description: 'successor agent' });
-    const url = dep.code === 200 ? ((JSON.parse(dep.full) as { entryPoints?: { webApp?: { url?: string } }[] }).entryPoints ?? []).map((e) => e.webApp?.url).find((u) => !!u) ?? null : null;
-    if (!url) return { pass: false, stage: 'deploy', code: dep.code, body: dep.full.slice(0, 200) };
+    const dep = deployAgentProject(call, own, files, `${agente?.name ?? 'gasclaw'} — successor agent ${new Date().toISOString().slice(0, 10)}`, null);
+    if (!dep.ok) return { pass: false, stage: dep.stage, error: dep.reason };
+    const { scriptId, url } = dep;
     props.setProperty('P33_SUCCESSOR', JSON.stringify({ scriptId, url, at: Date.now() }));
     return {
       pass: true,
@@ -3451,24 +3800,10 @@ function pocP33(step?: string): unknown {
     // código que o pai ganhou depois da implantação — como a porta `evalrun` da P34.
     const s = JSON.parse(props.getProperty('P33_SUCCESSOR') ?? 'null') as { scriptId: string; url: string } | null;
     if (!s) return { pass: false, error: 'no successor yet: run `./gasclaw poc p33 deploy` first' };
-    const guarda = mayWriteProject(s.scriptId, own);
-    if (!guarda.ok) return { pass: false, stage: 'guard', error: guarda.reason };
-    const lido = call(`${api}/${own}/content`, 'get');
-    if (lido.code !== 200) return { pass: false, error: `could not read this project's own code: HTTP ${lido.code}` };
-    const originais = ((JSON.parse(lido.full) as { files?: { name: string; type: string; source: string }[] }).files ?? []);
-    const files = [...originais.map((f) => ({ name: f.name, type: f.type, source: f.source })), { name: 'successor_seed', type: 'SERVER_JS', source: seedSource({ bornDisabled: true, parent: own, agents: store.listAgents(), at: Date.now(), parentUrl: appUrl() }) }];
-    const escrita = call(`${api}/${s.scriptId}/content`, 'put', { files });
-    if (escrita.code !== 200) return { pass: false, stage: 'write', code: escrita.code, body: escrita.full.slice(0, 300) };
-    const ver = call(`${api}/${s.scriptId}/versions`, 'post', { description: 'successor agent update' });
-    const versao = ver.code === 200 ? (JSON.parse(ver.full) as { versionNumber?: number }).versionNumber : undefined;
-    if (!Number.isInteger(versao)) return { pass: false, stage: 'version', code: ver.code };
-    // A implantação do web app, não a HEAD: é ela que responde no endereço que o dono autorizou.
-    const lista = call(`${api}/${s.scriptId}/deployments`, 'get');
-    const implantacoes = (JSON.parse(lista.full) as { deployments?: { deploymentId: string; deploymentConfig?: { versionNumber?: number } }[] }).deployments ?? [];
-    const web = implantacoes.find((d) => d.deploymentConfig?.versionNumber !== undefined);
-    if (!web) return { pass: false, stage: 'find-deployment', error: 'the successor has no versioned web app deployment' };
-    const atual = call(`${api}/${s.scriptId}/deployments/${web.deploymentId}`, 'put', { deploymentConfig: { versionNumber: versao, manifestFileName: 'appsscript', description: 'successor agent update' } });
-    if (atual.code !== 200) return { pass: false, stage: 'update-deployment', code: atual.code, body: atual.full.slice(0, 300) };
+    const originais = readOwnFiles(call, own).filter((f) => f.name !== 'successor_seed');
+    const dep = deployAgentProject(call, own, [...originais, successorSeedFile(own)], '', { scriptId: s.scriptId, url: s.url });
+    if (!dep.ok) return { pass: false, stage: dep.stage, error: dep.reason };
+    const versao = dep.version;
     return { pass: true, version: versao, url: s.url, reading: 'same project, same address: the GCP link and the key stay where they are' };
   }
 
@@ -3520,43 +3855,15 @@ function pocP34(step?: string, params: Record<string, string> = {}): unknown {
   if (!key) return { pass: false, error: 'save the OpenRouter key first' };
   const ag = defaultAgent();
   if (!ag) return { pass: false, error: 'no active agent' };
-  const envPai = sandboxEvalEnv(ag.folderId, key, () => true);
-  const nomes = P34_SCENARIOS.filter((n) => scenarioMd(n) !== null).slice(0, Number(params.n) || P34_SCENARIOS.length);
-  const t0 = Date.now();
-  const linhas: { name: string; successor: boolean | null; incumbent: boolean; error?: string; verdictLeaked?: boolean }[] = [];
-  for (const nome of nomes) {
-    if (Date.now() - t0 > 270_000) break; // margem contra o corte de 6 min: parar é melhor que perder tudo
-    const cenario = parseScenario(scenarioMd(nome) as string);
-    const spec = toRunSpec(cenario);
-    const r = postChild(sucessor.url, { action: 'evalrun', spec: JSON.stringify(spec) });
-    let trace: RunTrace | null = null;
-    let erro = '';
-    let vazou = false;
-    try {
-      const j = JSON.parse(r.body) as { ok?: boolean; trace?: RunTrace & Record<string, unknown>; error?: string };
-      if (j.ok && j.trace) {
-        trace = j.trace;
-        // C2: o sucessor devolveu TURNOS, não um veredito. Um `pass` ou `checks` aqui seria ele se julgando.
-        vazou = 'pass' in j.trace || 'checks' in j.trace || 'judge' in j.trace;
-      } else erro = j.error ?? 'the successor refused';
-    } catch {
-      erro = `HTTP ${r.code}: the successor answered something that is not JSON`;
-    }
-    const titular = runSpec(spec, envPai);
-    // O JUIZ É DO PAI — para os dois lados, com o cenário INTEIRO.
-    linhas.push({ name: nome, successor: trace ? judgeRun(cenario, trace, envPai).pass : null, incumbent: judgeRun(cenario, titular, envPai).pass, ...(erro ? { error: erro } : {}), ...(vazou ? { verdictLeaked: true } : {}) });
-  }
-  const medidos = linhas.filter((l) => l.successor !== null);
-  const k = medidos.length;
-  const sp = medidos.filter((l) => l.successor).length;
-  const ip = medidos.filter((l) => l.incumbent).length;
+  // O MESMO caminho que `evaluateSuccessor` usa: a sonda mede o que o produto faz, não uma cópia dele.
+  const ev = evaluateFromOutside(sucessor.url, ag.folderId, key, Number(params.n) || undefined);
   return {
-    pass: k > 0 && k === linhas.length && !linhas.some((l) => l.verdictLeaked),
-    c1_parentDrives: k > 0,
-    c2_parentJudges: k > 0 && !linhas.some((l) => l.verdictLeaked),
-    c3_compared: { successorPasses: sp, incumbentPasses: ip, k, successorWins: k > 0 ? beatsIncumbent(sp, ip, k) : false },
-    rows: linhas,
-    ms: Date.now() - t0,
+    pass: ev.k > 0 && ev.complete && !ev.verdictLeaked,
+    c1_parentDrives: ev.k > 0,
+    c2_parentJudges: ev.k > 0 && !ev.verdictLeaked,
+    c3_compared: { successorPasses: ev.successorPasses, incumbentPasses: ev.incumbentPasses, k: ev.k, successorWins: ev.k > 0 ? beatsIncumbent(ev.successorPasses, ev.incumbentPasses, ev.k) : false },
+    rows: ev.rows,
+    ms: ev.ms,
   };
 }
 

@@ -15,7 +15,7 @@ export type GasEnv = {
   /** Conteúdo dos arquivos do Drive, por "<folderId>/<caminho>/<arquivo>". */
   drive: Map<string, string>;
   /** Respostas do OpenRouter, na ordem em que serão servidas. */
-  llm: { content: string; cost?: number; tool?: { name: string; args?: string } }[];
+  llm: { content: string; cost?: number; tool?: { name: string; args?: string }; finish?: string }[];
   /** Código HTTP que o Google Chat devolve (400 reproduz o incidente da v83). */
   chatCode: number;
   /** Lista do OpenRouter (`/api/v1/models`); ausente = uma lista padrao que aceita o modelo dos testes. */
@@ -25,12 +25,15 @@ export type GasEnv = {
   fetched: (part: string) => Captured[];
   /** Quem está chamando. Trocar isto é como um teste pergunta "e se não for o dono?". */
   activeUser: string;
+  /** Rotas extras, consultadas ANTES das padrão: `null` cai nas padrão. (F7: a API do Apps Script e o web app do sucessor.) */
+  route?: (url: string, init: Record<string, unknown>) => { code: number; body: string } | null;
 };
 
 const res = (code: number, body: string) => ({
   getResponseCode: () => code,
   getContentText: () => body,
   getBlob: () => ({ getDataAsString: () => body }),
+  getHeaders: () => ({}),
 });
 
 /** Pasta do Drive em memória: subpastas criadas sob demanda, arquivos com setContent. */
@@ -107,7 +110,7 @@ function route(env: GasEnv, url: string): ReturnType<typeof res> {
       choices: [
         next.tool
           ? { message: { content: next.content, tool_calls: [{ id: 'tc1', type: 'function', function: { name: next.tool.name.replace(/\./g, '_'), arguments: next.tool.args ?? '{}' } }] }, finish_reason: 'tool_calls' }
-          : { message: { content: next.content }, finish_reason: 'stop' },
+          : { message: { content: next.content }, finish_reason: next.finish ?? 'stop' },
       ],
       usage: { prompt_tokens: 10, completion_tokens: 5, cost: next.cost ?? 0.01 },
     }));
@@ -163,7 +166,8 @@ export function stubGas(over: Partial<GasEnv> = {}): GasEnv {
   };
   const fetch = (url: string, init: Record<string, unknown> = {}) => {
     env.calls.push({ url, init });
-    return route(env, url);
+    const extra = env.route?.(url, init);
+    return extra ? res(extra.code, extra.body) : route(env, url);
   };
 
   // Constantes embutidas pelo build.mjs; no teste elas precisam existir, senão a entrega morre com ReferenceError.
