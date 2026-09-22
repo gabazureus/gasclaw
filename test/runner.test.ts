@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TurnResult } from '../src/agent';
-import { markInflight, MAX_ATTEMPTS, newRun, queueKey, RUN_BUDGET_USD, type DurableRun } from '../src/run';
+import { markInflight, MAX_ATTEMPTS, newRun, queueKey, RUN_BUDGET_USD, waitKey, type DurableRun } from '../src/run';
 import { runIO, type RunFiles } from '../src/runStore';
 import { pump, pumpById, pumpOnce, type StepDeps, type StepOutcome } from '../src/runner';
 import { deliveryDue, sendChatDelivery } from '../src/chatDelivery';
@@ -74,18 +74,46 @@ describe('pumpOnce: um passo por execução', () => {
   // `settle` mantinha na fila qualquer run com entrega pendente — inclusive `waiting`, que espera o USUARIO
   // e nunca fica `due`. Como `enqueue` limpa o lease e preserva o `at`, esse run voltava a ser o mais antigo
   // reivindicavel a cada volta: o pump so pegava ele, 20 vezes por tique, para sempre, e nenhuma outra
-  // mensagem era atendida. Sair da fila e seguro: `io.decide` recoloca o ponteiro quando o usuario responde.
-  it('run waiting com entrega pendente sai da fila e nao afoga os outros runs', () => {
-    const h = harness(() => ({ turn: turn({ text: 'posso mandar?', pending: { kind: 'approval', name: 'gmail.draft', callId: 'c1', key: 'r1:0:c1', args: {} }, state: snap(0) }) }));
-    const delivery = { kind: 'google-chat' as const, space: 'spaces/AAA', requestId: '123e4567-e89b-42d3-a456-426614174000', notBefore: NOW, status: 'pending' as const };
-    h.io.enqueue(mk({ delivery }), NOW);
+  // mensagem era atendida.
+  //
+  // Incidente de 2026-09-21: sair da fila CEDO demais deixava a espera sem cartão — se o POST falhasse, ninguém
+  // mais a revisitava. Agora ela fica só até o cartão sair (`prompted` na autoridade) e então libera a fila.
+  const pedeAprovacao = () => ({ turn: turn({ text: 'posso mandar?', pending: { kind: 'approval' as const, name: 'gmail.draft', callId: 'c1', key: 'r1:0:c1', args: {} }, state: snap(0) }) });
+  const entregaChat = { kind: 'google-chat' as const, space: 'spaces/AAA', requestId: '123e4567-e89b-42d3-a456-426614174000', notBefore: NOW, status: 'pending' as const };
 
+  it('espera do Chat SEM cartão fica na fila até o cartão sair', () => {
+    const h = harness(pedeAprovacao);
+    h.io.enqueue(mk({ delivery: entregaChat }), NOW);
     const r = pumpOnce(h.d)!;
-
     expect(r.status).toBe('waiting');
-    expect(h.queued()).toBe(false); // sem isto o proximo pumpOnce devolve o MESMO run, para sempre
-    expect(h.io.load('f1', 'r1')?.delivery?.status).toBe('pending'); // a entrega continua pendente no Drive
-    expect(pumpOnce(h.d)).toBeNull(); // a fila esta livre para os outros
+    expect(h.queued()).toBe(true);
+  });
+
+  it('com o cartão postado a espera sai da fila e não afoga os outros runs', () => {
+    const h = harness((r) => (r.runId === 'r1' ? pedeAprovacao() : { turn: turn({ text: 'outro pronto' }) }));
+    h.io.enqueue(mk({ delivery: entregaChat }), NOW);
+    h.io.enqueue(mk({ runId: 'r2' }), NOW + 1);
+    // o `after` do gatilho: posta o cartão e marca a espera como enviada
+    const posta = (r: DurableRun) => {
+      if (r.status !== 'waiting') return;
+      h.io.markPrompted(r.runId, waitKey(r)!);
+      h.io.dequeue(r.runId);
+    };
+    const tocados = pump(h.d, 10, Infinity, posta);
+    expect(tocados.map((r) => [r.runId, r.status])).toEqual([['r1', 'waiting'], ['r2', 'done']]);
+    expect(h.queued()).toBe(false);
+    expect(h.io.load('f1', 'r1')?.delivery?.status).toBe('pending'); // a entrega final continua pendente no Drive
+  });
+
+  it('ponteiro velho de uma espera cujo cartão já saiu: só limpa a fila', () => {
+    const h = harness(pedeAprovacao);
+    h.io.enqueue(mk({ delivery: entregaChat }), NOW);
+    const r = pumpOnce(h.d)!;
+    h.io.markPrompted('r1', waitKey(r)!);
+    h.tick(1);
+    expect(pumpOnce(h.d)?.status).toBe('waiting');
+    expect(h.queued()).toBe(false);
+    expect(pumpOnce(h.d)).toBeNull();
   });
 
   // Regressao (auditoria 2026-09-18): entrega impossivel (400 do Chat) tentava para SEMPRE.

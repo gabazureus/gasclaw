@@ -29,6 +29,18 @@ describe('finish', () => {
   test('erro vira status error com a mensagem', () => {
     expect(finish(base(), 1_500, { error: 'falhou' })).toMatchObject({ status: 'error', error: 'falhou', ms: 500 });
   });
+  // Incidente de 2026-09-21: o run do Chat parou pedindo aprovação e o trace dizia "ok" — quem lia o
+  // `./gasclaw trace` achava que o agente tinha terminado. Esperar o dono não é sucesso nem erro.
+  test('parar esperando o dono vira status waiting, com o que falta no passo', () => {
+    const f = finish(base(), 1_500, { answer: 'May I use tasks.create?', waiting: 'aprovação de tasks.create' });
+    expect(f).toMatchObject({ status: 'waiting', step: 'aguardando: aprovação de tasks.create', answer: 'May I use tasks.create?' });
+    expect(f).not.toHaveProperty('waiting');
+    expect(renderTree(f).split('\n')[0]).toContain('· waiting ·');
+    expect(summaryRow(f)[4]).toBe('waiting');
+  });
+  test('erro vence a espera', () => {
+    expect(finish(base(), 1_500, { error: 'caiu', waiting: 'x' }).status).toBe('error');
+  });
 });
 
 describe('closeStale', () => {

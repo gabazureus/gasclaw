@@ -50,7 +50,22 @@ export type RunPointer = {
  * `space`/`thread`: para onde a resposta pode ir, fixado na criação (imutável durante o run).
  * `auth`: assinatura dos campos de autoridade do estado que NÓS gravamos por último (muda a cada passo).
  */
-export type RunAuthority = { space?: string; thread?: string; auth: string };
+export type RunAuthority = {
+  space?: string;
+  thread?: string;
+  auth: string;
+  /** Pasta do agente, para achar o run SEM listar o Drive (varredura das esperas). Ausente nos registros antigos. */
+  folderId?: string;
+  /**
+   * `waitKey` da última espera cujo cartão foi POSTADO no Chat (ou `handled` quando a varredura já olhou e
+   * não havia o que mandar). Mora aqui, fora da pasta compartilhável, para ninguém silenciar nem forçar o cartão
+   * editando o arquivo do run.
+   */
+  prompted?: string;
+};
+
+/** Uma espera do Chat que pode ter ficado sem cartão: autoridade com destino, sem ponteiro e nunca tratada. */
+export type OrphanWait = { runId: string; folderId?: string };
 
 export const authKey = (runId: string): string => `${AUTH_PREFIX}${runId}`;
 
@@ -171,6 +186,25 @@ export const pointerOf = (r: DurableRun, now: number): RunPointer => ({
   // Entrega agendada para o futuro: o pump nao deve girar em falso ate a hora chegar (regressao da P2).
   ...(r.delivery?.status === 'pending' && Number.isFinite(r.delivery.notBefore) ? { notBefore: r.delivery.notBefore } : {}),
 });
+
+/**
+ * Qual ESPERA do dono este run atravessa agora — a chave que diz se o cartão dela já foi ao Chat.
+ * Muda a cada espera nova (outra aprovação, outro `ask`, teto estendido), então o cartão de uma espera
+ * nunca conta como o da seguinte. `undefined` = o run não espera o dono.
+ */
+export function waitKey(r: DurableRun): string | undefined {
+  if (r.status === 'waiting' && r.pending) return `${r.pending.kind}:${r.pending.key}`;
+  if (r.status === 'paused') return `paused:${r.budget.capUsd}`;
+  return undefined;
+}
+
+/** O que o run espera do dono, em palavras (vai para o passo do trace, que é pt-BR por decisão). */
+export function waitLabel(r: DurableRun): string | undefined {
+  if (r.status === 'waiting' && r.pending?.kind === 'approval') return `aprovação de ${r.pending.name}`; // lang-ok: passo do TRACE, pt-BR por decisão
+  if (r.status === 'waiting' && r.pending) return 'resposta do dono (ask)'; // lang-ok: passo do TRACE
+  if (r.status === 'paused') return 'continuar depois do teto de custo'; // lang-ok: passo do TRACE
+  return undefined;
+}
 
 /** Um run só é trabalho para o pump enquanto não terminou; `waiting` espera o usuário, não o pump. */
 export const isOpen = (s: RunStatus): boolean => s === 'queued' || s === 'running';

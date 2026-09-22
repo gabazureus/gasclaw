@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, test } from 'vitest';
 import type { Snapshot, TurnResult } from '../src/agent';
 import {
   afterFailure,
@@ -22,6 +22,8 @@ import {
   RUN_BUDGET_USD,
   splitRunQueue,
   view,
+  waitKey,
+  waitLabel,
   withDecision,
   type DurableRun,
   type RunPointer,
@@ -262,5 +264,24 @@ describe('parseRun: o arquivo no Drive é editável pelo dono', () => {
 
   it('descarta snapshot sem mensagens (não dá para retomar de lixo)', () => {
     expect(parseRun(JSON.stringify({ runId: 'r1', folderId: 'f1', snapshot: { step: 1 } }))?.snapshot).toBeUndefined();
+  });
+});
+
+describe('waitKey / waitLabel: qual espera do dono o run atravessa', () => {
+  const r0 = newRun({ runId: 'w1', session: 's', folderId: 'f', user: 'u@x.com', text: 't', now: 1 });
+  const aprova = { ...r0, status: 'waiting' as const, pending: { kind: 'approval' as const, name: 'tasks.create', callId: 'c', key: 'w1:0:c', args: {} } };
+  test('cada espera tem chave própria; outra aprovação ou outro teto é outra chave', () => {
+    expect(waitKey(aprova)).toBe('approval:w1:0:c');
+    expect(waitKey({ ...aprova, pending: { ...aprova.pending, key: 'w1:1:d' } })).not.toBe(waitKey(aprova));
+    expect(waitKey({ ...r0, status: 'paused', budget: { usedUsd: 0.1, capUsd: 0.1 } })).toBe('paused:0.1');
+    expect(waitKey({ ...r0, status: 'paused', budget: { usedUsd: 0.2, capUsd: 0.2 } })).toBe('paused:0.2');
+    expect(waitKey({ ...r0, status: 'done' })).toBeUndefined();
+    expect(waitKey({ ...r0, status: 'queued' })).toBeUndefined();
+  });
+  test('o rótulo do trace diz o que falta', () => {
+    expect(waitLabel(aprova)).toBe('aprovação de tasks.create');
+    expect(waitLabel({ ...aprova, pending: { ...aprova.pending, kind: 'ask' as const } })).toMatch(/ask/);
+    expect(waitLabel({ ...r0, status: 'paused' })).toMatch(/teto/);
+    expect(waitLabel({ ...r0, status: 'done' })).toBeUndefined();
   });
 });

@@ -2,7 +2,7 @@
 // gasclaw/runs/<id>.json (completo, 90 dias) são gravados em lote pelo observe.drain (gatilho de 1 min ou fallback).
 // NUNCA lança: falha de gravação vira console.warn e a resposta segue.
 import { enqueue, enqueueOnce, RUNNING_PREFIX, TERMINAL_PREFIX } from './observe';
-import { closeStale, expired, finish, HEADER, redact, renderTree, setStep, span, startRun, type Run, type RunKind, type RunMeta } from './trace';
+import { closeStale, expired, finish, HEADER, redact, renderTree, setStep, span, startRun, type Run, type RunKind, type RunMeta, type RunOutcome } from './trace';
 import { ensureFolderPath, SHEET_MIME } from './workspace';
 
 const SHEET_NAME = 'gasclaw — execuções';
@@ -129,7 +129,7 @@ export type Tracer = {
   readonly run: Run;
   step<T>(name: string, fn: () => T, info?: (v: T) => Record<string, unknown>, slow?: boolean): T;
   mark(name: string, data?: Record<string, unknown>): void;
-  end(out: { answer?: string; error?: string }): Run;
+  end(out: RunOutcome): Run;
 };
 
 export type TracerOptions = { now?: () => number; sheetId?: string }; // sheetId: sem uso desde o lote (P14 antiga)

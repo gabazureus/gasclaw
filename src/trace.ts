@@ -11,7 +11,8 @@ export type Run = RunMeta & {
   id: string;
   kind: RunKind;
   startedAt: number;
-  status: 'running' | 'ok' | 'error';
+  /** `waiting`: o turno parou esperando o dono (aprovação, resposta do `ask`, teto de custo) — nem sucesso nem erro. */
+  status: 'running' | 'ok' | 'error' | 'waiting';
   step: string;
   spans: Span[];
   endedAt?: number;
@@ -45,16 +46,24 @@ export function span(run: Run, name: string, start: number, end: number, data?: 
 const num = (x: unknown) => (typeof x === 'number' ? x : 0);
 const round = (x: number) => Math.round(x * 1e8) / 1e8;
 
-export function finish(run: Run, now: number, out: { answer?: string; error?: string }): Run {
+/** Custo somado das chamadas ao modelo até agora — o mesmo número que `finish` grava no fim. */
+export const llmCost = (run: Run): number => round(run.spans.filter((s) => s.name === 'llm_call' && s.data).reduce((t, s) => t + num(s.data?.cost), 0));
+
+/** `waiting` diz o que o turno espera do dono; o trace não pode chamar de "ok" um run que parou (incidente de 2026-09-21). */
+export type RunOutcome = { answer?: string; error?: string; waiting?: string };
+
+export function finish(run: Run, now: number, outcome: RunOutcome): Run {
+  const { waiting, ...out } = outcome;
   const llm = run.spans.filter((s) => s.name === 'llm_call' && s.data);
   const totals = llm.length
     ? {
         model: String(llm[llm.length - 1].data?.model ?? ''),
         tokens: llm.reduce((t, s) => t + num(s.data?.prompt_tokens) + num(s.data?.completion_tokens), 0),
-        cost: round(llm.reduce((t, s) => t + num(s.data?.cost), 0)),
+        cost: llmCost(run),
       }
     : {};
-  return { ...run, ...totals, ...out, status: out.error ? 'error' : 'ok', step: 'fim', endedAt: now, ms: now - run.startedAt };
+  const espera = waiting && !out.error;
+  return { ...run, ...totals, ...out, status: out.error ? 'error' : espera ? 'waiting' : 'ok', step: espera ? `aguardando: ${waiting}` : 'fim', endedAt: now, ms: now - run.startedAt };
 }
 
 /** Um processo morto pelo runtime não executa `end`; fecha sua representação ao vivo depois do limite impossível. */

@@ -128,3 +128,336 @@ describe('o clique em Continue estende o teto — só para o dono do run', () =>
     expect(salvo(env, 'r-teto')?.status).toBe('paused');
   });
 });
+
+// ---------------------------------------------------------------------------------------------------
+// AUDITORIA DO FLUXO DE ESPERA (2026-09-22): o que ainda deixava o dono sem cartão, sem resposta, ou
+// com um trace que mentia. Cada bloco nasce de um defeito reproduzido pela fiação real.
+// ---------------------------------------------------------------------------------------------------
+
+const comTarefas = (env: GasEnv) => {
+  env.props[`ACCESS:${FOLDER}`] = JSON.stringify({ users: [], tools: ['tasks.create'] });
+};
+const pedeTarefa = (title: string) => ({ content: '', tool: { name: 'tasks.create', args: JSON.stringify({ title }) } });
+/** Todas as mensagens que o gasclaw postou no espaço, na ordem. */
+const postados = (env: GasEnv) => env.fetched('chat.googleapis.com/v1/spaces/AAA/messages').map((c) => JSON.parse(String(c.init.payload)) as { text?: string; cardsV2?: Card[] });
+/** O trace (runlog) do run do Chat, pelo cache ao vivo. */
+const tracesChat = (env: GasEnv) =>
+  Object.entries(env.cache).filter(([k]) => k.startsWith('run:')).map(([, v]) => JSON.parse(v) as { kind: string; status: string; step: string }).filter((r) => r.kind === 'chat');
+const aprovarClique = (c: Card, user = 'dono@x.com') => ({ type: 'CARD_CLICKED', user: { email: user }, space: { name: 'spaces/AAA' }, common: { parameters: params(botoes(c)[0]) } });
+
+describe('1. o trace diz a verdade sobre um run que parou esperando o dono', () => {
+  let env: GasEnv;
+  beforeEach(() => {
+    vi.resetModules();
+    env = stubGas();
+    comTarefas(env);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  test('pedido de aprovação: o trace fica waiting, não ok', async () => {
+    runIO().enqueue(base('r-trace'), 1000);
+    env.llm = [pedeTarefa('Verificar alerta')];
+    const { drainRuns } = await import('../src/main');
+    drainRuns();
+    expect(salvo(env, 'r-trace')?.status).toBe('waiting'); // controle: o turno parou mesmo
+    const [t] = tracesChat(env);
+    expect(t?.status).toBe('waiting');
+    expect(t?.step).toMatch(/aprova.*tasks\.create/);
+  });
+
+  test('run que termina continua ok (controle)', async () => {
+    runIO().enqueue(base('r-ok'), 1000);
+    env.llm = [{ content: 'pronto' }];
+    const { drainRuns } = await import('../src/main');
+    drainRuns();
+    expect(tracesChat(env)[0]?.status).toBe('ok');
+  });
+});
+
+describe('2a. espera que ficou sem cartão é achada e recebe o cartão', () => {
+  let env: GasEnv;
+  beforeEach(() => {
+    vi.resetModules();
+    env = stubGas();
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  // O run de 2026-09-21 já está `waiting` e FORA da fila: parou antes do conserto, e o pump nunca mais o
+  // revisitaria. A autoridade dele (nas Properties) é o que sobra para achá-lo sem listar o Drive.
+  test('run legado em espera, fora da fila e sem cartão: o gatilho posta o cartão uma vez', async () => {
+    const io = runIO();
+    io.save(esperandoAprovacao()); // como o pump antigo deixou: gravado e assinado, sem ponteiro
+    const auth = JSON.parse(env.props['A:r-aprova']);
+    delete auth.folderId; // o registro antigo não sabia a pasta
+    env.props['A:r-aprova'] = JSON.stringify(auth);
+    expect(env.props['R:r-aprova']).toBeUndefined();
+    const m = await import('../src/main');
+    m.drainRuns();
+    expect(cartoes(env).map((c) => c.cardId)).toEqual(['approval']);
+    expect(env.props['R:r-aprova']).toBeUndefined(); // cartão postado: sai da fila de novo
+    m.drainRuns(); // o tique seguinte não repete
+    expect(cartoes(env)).toHaveLength(1);
+  });
+
+  test('Chat fora do ar na hora do cartão: a espera fica na fila, espera o intervalo e o cartão sai depois', async () => {
+    env.chatCode = 500;
+    runIO().enqueue(esperandoAprovacao(), 1000);
+    const m = await import('../src/main');
+    m.drainRuns();
+    const posts = env.fetched('chat.googleapis.com').length;
+    expect(posts).toBe(1); // UMA tentativa no tique ruim — não as quatro de uma vez
+    const ponteiro = JSON.parse(env.props['R:r-aprova']);
+    expect(ponteiro.notBefore).toBeGreaterThan(Date.now()); // volta só depois do intervalo
+    expect(salvo(env, 'r-aprova')?.delivery?.status).toBe('pending');
+    env.chatCode = 200;
+    const agora = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(agora + 301_000);
+    m.drainRuns();
+    expect(cartoes(env).map((c) => c.cardId)).toEqual(['approval', 'approval']); // o POST que falhou e o que entrou
+    expect(env.props['R:r-aprova']).toBeUndefined();
+    m.drainRuns();
+    expect(cartoes(env)).toHaveLength(2); // e não repete
+    vi.restoreAllMocks();
+  });
+
+  test('espera já com cartão enviado: nenhum tique ocioso relê o Drive nem reenvia', async () => {
+    runIO().enqueue(esperandoAprovacao(), 1000);
+    const m = await import('../src/main');
+    m.drainRuns();
+    expect(cartoes(env)).toHaveLength(1);
+    const lidas = { n: 0 };
+    const orig = DriveApp.getFolderById;
+    vi.stubGlobal('DriveApp', { ...DriveApp, getFolderById: (id: string) => { lidas.n++; return orig(id); } });
+    m.drainRuns();
+    expect(lidas.n).toBe(0);
+    expect(cartoes(env)).toHaveLength(1);
+  });
+});
+
+describe('2b. ask: a resposta volta ao MESMO run durável', () => {
+  let env: GasEnv;
+  beforeEach(() => {
+    vi.resetModules();
+    env = stubGas();
+  });
+  afterEach(() => vi.unstubAllGlobals());
+  const digitado = (text: string, user = 'dono@x.com') => ({ type: 'MESSAGE', user: { email: user }, space: { name: 'spaces/AAA', type: 'DM', singleUserBotDm: true }, message: { name: 'spaces/AAA/messages/novo', text } });
+
+  test('clique numa opção do cartão retoma o run durável (não um ticket de 10 min)', async () => {
+    runIO().enqueue(esperandoResposta(), 1000);
+    const m = await import('../src/main');
+    m.drainRuns();
+    const [c] = cartoes(env);
+    expect(params(botoes(c)[0])).toMatchObject({ folderId: FOLDER, runId: 'r-ask', answer: 'terça 10h' });
+    env.llm = [{ content: 'marquei terça 10h' }];
+    m.onCardClick({ type: 'CARD_CLICKED', user: { email: 'dono@x.com' }, space: { name: 'spaces/AAA' }, common: { parameters: params(botoes(c)[0]) } } as never);
+    const r = salvo(env, 'r-ask')!;
+    expect(r.status).toBe('done');
+    expect(postados(env).some((p) => p.text?.includes('marquei terça 10h'))).toBe(true); // a resposta chegou ao espaço
+  });
+
+  test('outra pessoa não responde a pergunta do dono', async () => {
+    runIO().enqueue(esperandoResposta(), 1000);
+    const m = await import('../src/main');
+    m.drainRuns();
+    const [c] = cartoes(env);
+    const out = m.onCardClick({ type: 'CARD_CLICKED', user: { email: 'estranho@x.com' }, space: { name: 'spaces/AAA' }, common: { parameters: params(botoes(c)[0]) } } as never) as { text?: string };
+    expect(out.text).toMatch(/not yours/i);
+    expect(salvo(env, 'r-ask')?.status).toBe('waiting');
+  });
+
+  test('resposta DIGITADA responde o ask aberto em vez de virar um run novo', async () => {
+    env.props[`ACCESS:${FOLDER}`] = JSON.stringify({ users: [], tools: [] });
+    runIO().enqueue(esperandoResposta(), 1000);
+    const m = await import('../src/main');
+    m.drainRuns();
+    m.onMessage(digitado('quarta às 15h') as never);
+    const r = salvo(env, 'r-ask')!;
+    expect(r.status).toBe('queued');
+    expect(r.decision).toEqual({ answer: 'quarta às 15h' });
+    expect(env.props['R:spaces/AAA/messages/novo']).toBeUndefined(); // não nasceu run novo
+  });
+
+  test('mensagem de OUTRA pessoa no espaço segue como mensagem comum', async () => {
+    env.props[`ACCESS:${FOLDER}`] = JSON.stringify({ users: ['outro@x.com'], tools: [] });
+    runIO().enqueue(esperandoResposta(), 1000);
+    const m = await import('../src/main');
+    m.drainRuns();
+    m.onMessage(digitado('quarta às 15h', 'outro@x.com') as never);
+    expect(salvo(env, 'r-ask')?.status).toBe('waiting');
+    expect(env.props['R:spaces/AAA/messages/novo']).toBeDefined();
+  });
+});
+
+describe('2c. depois do Approve: a resposta final chega, e a próxima aprovação também', () => {
+  let env: GasEnv;
+  beforeEach(() => {
+    vi.resetModules();
+    env = stubGas();
+    comTarefas(env);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  test('Approve: o run termina e a resposta final é POSTADA no espaço (uma vez)', async () => {
+    runIO().enqueue(base('r-fluxo'), 1000);
+    env.llm = [pedeTarefa('Verificar alerta')];
+    const m = await import('../src/main');
+    m.drainRuns();
+    const [c] = cartoes(env);
+    env.route = (url) => (url.includes('tasks.googleapis.com') ? { code: 200, body: JSON.stringify({ id: 't1', title: 'Verificar alerta' }) } : null);
+    env.llm = [{ content: 'tarefa criada' }];
+    const out = m.onCardClick(aprovarClique(c) as never) as { text?: string; cardsV2?: unknown[] };
+    expect(out.cardsV2).toEqual([]); // o cartão perde os botões
+    expect(salvo(env, 'r-fluxo')?.status).toBe('done');
+    m.drainRuns(); // o gatilho seguinte não entrega de novo
+    expect(postados(env).filter((p) => p.text?.includes('tarefa criada'))).toHaveLength(1);
+  });
+
+  test('Approve que leva a OUTRA aprovação: o segundo cartão chega ao espaço', async () => {
+    runIO().enqueue(base('r-dupla'), 1000);
+    env.llm = [pedeTarefa('Primeira')];
+    const m = await import('../src/main');
+    m.drainRuns();
+    const [c] = cartoes(env);
+    env.route = (url) => (url.includes('tasks.googleapis.com') ? { code: 200, body: JSON.stringify({ id: 't1', title: 'Primeira' }) } : null);
+    env.llm = [pedeTarefa('Segunda')];
+    m.onCardClick(aprovarClique(c) as never);
+    const r = salvo(env, 'r-dupla')!;
+    expect(r.status).toBe('waiting');
+    expect(cartoes(env).map((x) => x.cardId)).toEqual(['approval', 'approval']);
+    const segundo = cartoes(env)[1];
+    expect(params(botoes(segundo)[0]).token).not.toBe(params(botoes(c)[0]).token);
+    expect(r.approval).toBeTruthy(); // a credencial do segundo cartão foi gravada
+  });
+
+  test('a retomada manda UM system prompt ao modelo, não dois', async () => {
+    runIO().enqueue(base('r-sys'), 1000);
+    env.llm = [pedeTarefa('X')];
+    const m = await import('../src/main');
+    m.drainRuns();
+    const [c] = cartoes(env);
+    env.route = (url) => (url.includes('tasks.googleapis.com') ? { code: 200, body: JSON.stringify({ id: 't1', title: 'X' }) } : null);
+    env.llm = [{ content: 'feito' }];
+    m.onCardClick(aprovarClique(c) as never);
+    const ultima = env.fetched('openrouter.ai').map((x) => JSON.parse(String(x.init.payload)) as { messages: { role: string }[] }).pop()!;
+    expect(ultima.messages.filter((x) => x.role === 'system')).toHaveLength(1);
+  });
+});
+
+describe('2f. segurança do cartão', () => {
+  let env: GasEnv;
+  beforeEach(() => {
+    vi.resetModules();
+    env = stubGas();
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  test('o destino vem da autoridade, nunca do arquivo: arquivo trocado de espaço não recebe cartão', async () => {
+    runIO().enqueue(esperandoAprovacao(), 1000);
+    // o arquivo aponta outro espaço, a autoridade (Properties) diz AAA
+    const k = `${FOLDER}/.gasclaw/runs/${runFile('r-aprova')}`;
+    const r = parseRun(env.drive.get(k))!;
+    env.drive.set(k, JSON.stringify({ ...r, delivery: { ...r.delivery!, space: 'spaces/ZZZ' } }));
+    env.cache = Object.fromEntries(Object.entries(env.cache).filter(([key]) => !key.startsWith('r:')));
+    const { drainRuns } = await import('../src/main');
+    drainRuns();
+    expect(env.fetched('chat.googleapis.com')).toHaveLength(0);
+    const r2 = salvo(env, 'r-aprova')!;
+    expect(r2.delivery?.status).toBe('failed'); // desiste já, com o motivo — não fica girando na fila
+    expect(r2.error).toMatch(/refused.*differs/);
+    expect(env.props['R:r-aprova']).toBeUndefined();
+  });
+
+  test('o texto do aviso de teto é escapado no cartão', async () => {
+    runIO().enqueue({ ...pausado(), answer: 'veja <a href="https://mal.example">aqui</a>' }, 1000);
+    const { drainRuns } = await import('../src/main');
+    drainRuns();
+    const [c] = cartoes(env);
+    const texto = JSON.stringify(c);
+    expect(texto).not.toContain('<a href');
+    expect(texto).toContain('&lt;a href');
+  });
+});
+
+describe('2d/2f. o que acontece em volta de uma espera', () => {
+  let env: GasEnv;
+  beforeEach(() => {
+    vi.resetModules();
+    env = stubGas();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+  const digitado = (text: string, name = 'spaces/AAA/messages/novo') => ({ type: 'MESSAGE', user: { email: 'dono@x.com' }, space: { name: 'spaces/AAA', type: 'DM', singleUserBotDm: true }, message: { name, text } });
+
+  test('mensagem nova do dono enquanto uma APROVAÇÃO espera: vira run próprio e não mexe na espera', async () => {
+    runIO().enqueue(esperandoAprovacao(), 1000);
+    const m = await import('../src/main');
+    m.drainRuns();
+    m.onMessage(digitado('e a minha agenda?') as never);
+    expect(env.props['R:spaces/AAA/messages/novo']).toBeDefined();
+    expect(salvo(env, 'r-aprova')?.status).toBe('waiting');
+  });
+
+  test('o Chat reentrega a resposta digitada: continua sendo UMA resposta, sem run novo', async () => {
+    runIO().enqueue(esperandoResposta(), 1000);
+    const m = await import('../src/main');
+    m.drainRuns();
+    m.onMessage(digitado('quarta às 15h') as never);
+    m.onMessage(digitado('quarta às 15h') as never);
+    expect(env.props['R:spaces/AAA/messages/novo']).toBeUndefined();
+  });
+
+  test('pergunta sem opções: o cartão diz que é para responder digitando', async () => {
+    runIO().enqueue({ ...esperandoResposta(), pending: { ...esperandoResposta().pending!, args: { question: 'Qual o assunto?' } } as never }, 1000);
+    const { drainRuns } = await import('../src/main');
+    drainRuns();
+    expect(JSON.stringify(cartoes(env)[0])).toContain('Reply in this chat to answer.');
+  });
+
+  // A credencial vence em 24 h; o clique vencido renova o cartão NO LUGAR. Se isso apagasse a marca de
+  // "cartão enviado", a varredura acharia a espera de novo e mandaria um SEGUNDO cartão — que invalida o
+  // que o dono acabou de receber.
+  test('credencial vencida renovada no clique não faz a varredura mandar outro cartão', async () => {
+    runIO().enqueue(esperandoAprovacao(), 1000);
+    const m = await import('../src/main');
+    m.drainRuns();
+    const [c] = cartoes(env);
+    const agora = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(agora + 25 * 3_600_000);
+    const out = m.onCardClick(aprovarClique(c) as never) as { cardsV2?: Card[] };
+    expect(out.cardsV2?.[0]?.cardId).toBe('approval'); // controle: renovou no lugar
+    m.drainRuns();
+    expect(cartoes(env)).toHaveLength(1);
+  });
+
+  test('espera legada com o arquivo adulterado: nenhum cartão, e o motor NÃO re-assina o arquivo', async () => {
+    const io = runIO();
+    io.save(esperandoAprovacao());
+    const auth = JSON.parse(env.props['A:r-aprova']);
+    delete auth.folderId;
+    env.props['A:r-aprova'] = JSON.stringify(auth);
+    const k = `${FOLDER}/.gasclaw/runs/${runFile('r-aprova')}`;
+    const r = parseRun(env.drive.get(k))!;
+    env.drive.set(k, JSON.stringify({ ...r, pending: { ...r.pending!, args: { title: 'outra coisa' } } }));
+    env.cache = Object.fromEntries(Object.entries(env.cache).filter(([key]) => !key.startsWith('r:')));
+    const m = await import('../src/main');
+    m.drainRuns();
+    expect(cartoes(env)).toHaveLength(0);
+    expect(JSON.parse(env.props['A:r-aprova']).auth).toBe(auth.auth);
+  });
+
+  test('Deny: o cartão confirma e o run segue sem a ação', async () => {
+    runIO().enqueue(esperandoAprovacao(), 1000);
+    const m = await import('../src/main');
+    m.drainRuns();
+    const [c] = cartoes(env);
+    env.llm = [{ content: 'ok, não criei' }];
+    const negar = { type: 'CARD_CLICKED', user: { email: 'dono@x.com' }, space: { name: 'spaces/AAA' }, common: { parameters: params(botoes(c)[1]) } };
+    const out = m.onCardClick(negar as never) as { text?: string };
+    expect(out.text).toMatch(/Denied/);
+    expect(salvo(env, 'r-aprova')?.decision).toBeUndefined(); // consumida pelo passo
+    expect(postados(env).some((p) => p.text?.includes('ok, não criei'))).toBe(true);
+  });
+});

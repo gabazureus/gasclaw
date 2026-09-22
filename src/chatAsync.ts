@@ -21,6 +21,11 @@ export type ChatAsyncDeps = {
    * Devolve false quando nao deu (sem app, sem escopo, rede): ai cai no fallback sincrono.
    */
   postToSpace?: (space: string, text: string, requestId: string) => boolean;
+  /**
+   * Há um run desta conversa esperando a resposta de um `ask`? Então a mensagem digitada É a resposta: o run
+   * volta à fila com ela, em vez de nascer um run novo que ignora a pergunta. Devolve true quando consumiu.
+   */
+  answerOpenAsk?: (session: string, user: string, text: string, messageName?: string) => boolean;
 };
 
 const response = (text: string): ChatReply => ({ text: safeChatMarkdown(text), markupSyntax: CHAT_MARKUP_SYNTAX });
@@ -55,6 +60,7 @@ export function acceptChatMessage(e: ChatEvent, d: ChatAsyncDeps): ChatReply {
     const now = d.clock();
     const runId = e.message?.name ?? `chat-${d.uuid()}`;
     if (d.loadRun(entry.folderId, runId)) return acknowledge(e.space.name, d); // reentrega do mesmo evento
+    if (d.answerOpenAsk?.(`${entry.folderId}:${e.space.name}`, e.user.email, text, e.message?.name)) return acknowledge(e.space.name, d);
 
     // A resposta vai para o ESPACO, nunca para a thread da pergunta: no Chat, responder dentro da thread
     // esconde a resposta do fluxo principal e o usuario le como 'travado no pensando...'.

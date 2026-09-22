@@ -3,7 +3,7 @@
 // A unidade durável é o passo, como no Eve: uma volta do laço termina, o estado vai para o Drive, e a execução pode
 // morrer em seguida sem prejuízo — a próxima retoma exatamente dali. O gatilho de 1 min chama este worker; a P3
 // mede se o trabalho cabe na cota diária de gatilhos do Workspace.
-import { afterFailure, afterStep, charge, interrupted, isFinished, isOpen, MAX_ATTEMPTS, type DurableRun } from './run';
+import { afterFailure, afterStep, charge, interrupted, isFinished, isOpen, MAX_ATTEMPTS, waitKey, type DurableRun } from './run';
 import { deliveryGivenUp } from './chatDelivery';
 import type { RunIO } from './runStore';
 import type { TurnResult } from './agent';
@@ -25,10 +25,17 @@ export type StepDeps = {
  * Segurar também `waiting`/`paused` travava a fila inteira: eles esperam o usuário, nunca ficam due, e como
  * `enqueue` limpa o lease e preserva o `at`, o mesmo run voltava a ser o mais antigo reivindicável a cada
  * volta — o pump só pegava ele, e nenhuma outra mensagem do Chat era atendida. Sair da fila é seguro: o
- * `io.decide` recoloca o ponteiro assim que o usuário responde.
+ * `io.decide` recoloca o ponteiro assim que o usuário responde. A exceção é a espera do Chat cujo cartão
+ * ainda não saiu (abaixo): ela fica só até o cartão ser postado.
  */
 function settle(d: StepDeps, r: DurableRun, progressed: boolean): DurableRun {
-  const aguardandoEntrega = r.delivery?.status === 'pending' && (r.status === 'done' || r.status === 'failed');
+  // Um run do Chat que parou esperando o dono fica na fila ATÉ o cartão dele sair (incidente de 2026-09-21):
+  // sem isto, um POST que falhasse deixava a espera fora da fila e sem cartão, para sempre. Não trava a fila
+  // como antes: o cartão sai no `after` desta mesma volta e o run deixa a fila; se o Chat estiver fora, as
+  // tentativas contam (`progressed` não zera um run parado) e `MAX_ATTEMPTS` corta.
+  const espera = r.delivery?.status === 'pending' ? waitKey(r) : undefined;
+  const aguardandoCartao = !!espera && d.io.authority(r.runId)?.prompted !== espera;
+  const aguardandoEntrega = aguardandoCartao || (r.delivery?.status === 'pending' && (r.status === 'done' || r.status === 'failed'));
   // `progressed` zera as tentativas, e isso só vale para um run que ainda TRABALHA. Um run terminal está na
   // fila apenas pela entrega: zerar ali fazia uma entrega impossível (o 400 da v83) girar para sempre, porque
   // `MAX_ATTEMPTS` nunca chegava. Aqui a tentativa conta de verdade.

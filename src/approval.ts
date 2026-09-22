@@ -108,24 +108,31 @@ export function decisionFrom(p: Pending, params: { decision?: string; answer?: s
   return answer && answer.length <= 500 ? { answer } : null;
 }
 
-const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+export const escapeCard = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const button = (text: string, token: string, key: 'decision' | 'answer', value: string, ref?: { folderId: string; runId: string }) => ({
   text,
-  onClick: { action: { function: 'onCardClick', parameters: [...(ref ? [{ key: 'folderId', value: ref.folderId }, { key: 'runId', value: ref.runId }] : []), { key: 'token', value: token }, { key, value }] } },
+  onClick: { action: { function: 'onCardClick', parameters: [...(ref ? [{ key: 'folderId', value: ref.folderId }, { key: 'runId', value: ref.runId }] : []), ...(token ? [{ key: 'token', value: token }] : []), { key, value }] } },
 });
 type Button = ReturnType<typeof button>;
 type Widget = { textParagraph: { text: string } } | { buttonList: { buttons: Button[] } };
 
-/** Mensagem do Chat com o card (cardsV2). O clique chega como evento CARD_CLICKED com common.parameters. */
-export function approvalCard(t: Pick<Ticket, 'token' | 'pending' | 'runId' | 'folderId'>, text: string): { text: string; cardsV2: { cardId: string; card: { header: { title: string }; sections: { widgets: Widget[] }[] } }[] } {
+/**
+ * Mensagem do Chat com o card (cardsV2). O clique chega como evento CARD_CLICKED com common.parameters.
+ *
+ * `durableAsk`: a pergunta de um run DURÁVEL (caminho assíncrono do Chat). Os botões levam pasta e run — o
+ * clique retoma aquele run — e nenhum token: quem responde é conferido pelo e-mail do evento, como na tela.
+ * Sem isto a pergunta caía no ticket de 10 min do caminho síncrono, que retomava o turno FORA do run durável.
+ */
+export function approvalCard(t: Pick<Ticket, 'token' | 'pending' | 'runId' | 'folderId'>, text: string, durableAsk = false): { text: string; cardsV2: { cardId: string; card: { header: { title: string }; sections: { widgets: Widget[] }[] } }[] } {
   const ask = t.pending.kind === 'ask';
-  const ref = !ask && t.folderId ? { folderId: t.folderId, runId: t.runId } : undefined;
+  const ref = (!ask || durableAsk) && t.folderId ? { folderId: t.folderId, runId: t.runId } : undefined;
   const options = ask
     ? String(t.pending.args.options ?? '').split(',').map((o) => o.trim()).filter(Boolean).slice(0, 6)
     : [];
   const buttons = ask
-    ? options.map((o) => button(o.slice(0, 40), t.token, 'answer', o))
+    ? options.map((o) => button(o.slice(0, 40), durableAsk ? '' : t.token, 'answer', o, ref))
     : [button('Approve', t.token, 'decision', 'approve', ref), button('Deny', t.token, 'decision', 'deny', ref)];
-  const widgets: Widget[] = [{ textParagraph: { text: escape(text) } }, ...(buttons.length ? [{ buttonList: { buttons } }] : [])];
+  const dica = ask && durableAsk && !buttons.length ? '\n\nReply in this chat to answer.' : '';
+  const widgets: Widget[] = [{ textParagraph: { text: escapeCard(text) + dica } }, ...(buttons.length ? [{ buttonList: { buttons } }] : [])];
   return { text: ask ? 'The agent has a question.' : 'This action needs your approval.', cardsV2: [{ cardId: ask ? 'question' : 'approval', card: { header: { title: ask ? 'The agent has a question' : `Approval needed (valid for ${ref ? '24 h' : '10 min'})` }, sections: [{ widgets }] } }] };
 }

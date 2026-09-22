@@ -6,7 +6,7 @@
 import { redeemGrant, type GrantResult } from './approval';
 import { claimable, parseStatus } from './agentCaps';
 import type { Decision } from './agent';
-import { authKey, claim, isFinished, nextClaimable, nextExhausted, parseRun, pointerOf, queueKey, runAuthority, splitRunQueue, type DurableRun, type RunAuthority, type RunPointer } from './run';
+import { AUTH_PREFIX, authKey, claim, isFinished, nextClaimable, nextExhausted, parseRun, pointerOf, queueKey, runAuthority, splitRunQueue, type DurableRun, type OrphanWait, type RunAuthority, type RunPointer } from './run';
 
 const CACHE_S = 21_600; // 6 h: só acelera; quando expira, o run volta do Drive
 const CACHE_MAX = 90_000;
@@ -94,6 +94,14 @@ export type RunIO = {
   /** Consome ou renova uma aprovação lendo o Drive sob trava; cache nunca decide autorização. */
   decide: (folderId: string, runId: string, request: ApprovalAttempt, now: number) => GrantResult | { kind: 'rejected'; error: string };
   pointers: () => RunPointer[];
+  /**
+   * A fila E as esperas do Chat que podem ter ficado sem cartão, numa leitura só das Properties — a mesma que
+   * o tique já fazia para a fila. Tique ocioso continua sem abrir o Drive (P22/ADR-027): uma espera cujo cartão
+   * já foi postado tem `prompted` e nem entra na lista.
+   */
+  scan: () => { pointers: RunPointer[]; orphans: OrphanWait[] };
+  /** Registra (fora da pasta) que o cartão desta espera foi ao Chat — ou que a varredura já a tratou. */
+  markPrompted: (runId: string, key: string) => void;
   /** Autoridade deste run (ADR-029): destino da entrega e assinatura do estado que nós gravamos. */
   authority: (runId: string) => RunAuthority | null;
   /** Esquece a autoridade de um run que acabou de vez. Só assim o `A:` não se acumula nas Properties. */
@@ -158,13 +166,14 @@ export function runIO(
     }
   };
 
-  const readAuthority = (runId: string): RunAuthority | null => {
-    const raw = props.getProperty?.(authKey(runId)) ?? props.getProperties()[authKey(runId)] ?? null;
+  const readAuthority = (runId: string): RunAuthority | null =>
+    parseAuthority(props.getProperty?.(authKey(runId)) ?? props.getProperties()[authKey(runId)] ?? null);
+  const parseAuthority = (raw: string | null | undefined): RunAuthority | null => {
     if (!raw) return null;
     try {
       const a = JSON.parse(raw) as Partial<RunAuthority>;
       return typeof a.auth === 'string' && a.auth
-        ? { auth: a.auth, ...(typeof a.space === 'string' ? { space: a.space } : {}), ...(typeof a.thread === 'string' ? { thread: a.thread } : {}) }
+        ? { auth: a.auth, ...(typeof a.space === 'string' ? { space: a.space } : {}), ...(typeof a.thread === 'string' ? { thread: a.thread } : {}), ...(typeof a.folderId === 'string' ? { folderId: a.folderId } : {}), ...(typeof a.prompted === 'string' ? { prompted: a.prompted } : {}) }
         : null;
     } catch {
       return null;
@@ -184,7 +193,8 @@ export function runIO(
       : r.delivery
         ? { space: r.delivery.space, ...(r.delivery.thread ? { thread: r.delivery.thread } : {}) }
         : {};
-    setProp(authKey(r.runId), JSON.stringify({ ...destino, auth: sign(runAuthority(r)) } satisfies RunAuthority));
+    // `prompted` sobrevive às gravações: é ele que diz à varredura que esta espera já tem cartão no Chat.
+    setProp(authKey(r.runId), JSON.stringify({ ...destino, auth: sign(runAuthority(r)), folderId: r.folderId, ...(antes?.prompted ? { prompted: antes.prompted } : {}) } satisfies RunAuthority));
   };
 
   /**
@@ -204,11 +214,30 @@ export function runIO(
     return !!a && a.auth === sign(runAuthority(r));
   };
 
+  const scan: RunIO['scan'] = () => {
+    const tudo = props.getProperties();
+    const pointers = splitRunQueue(tudo);
+    const naFila = new Set(pointers.map((p) => p.runId));
+    const orphans = Object.keys(tudo)
+      .filter((k) => k.startsWith(AUTH_PREFIX) && !naFila.has(k.slice(AUTH_PREFIX.length)))
+      .flatMap((k) => {
+        const a = parseAuthority(tudo[k]); // do mesmo mapa: nenhuma leitura a mais por registro
+        // Sem destino = run da tela (não há Chat para onde mandar); com `prompted` = já tratado.
+        return a?.space && !a.prompted ? [{ runId: k.slice(AUTH_PREFIX.length), ...(a.folderId ? { folderId: a.folderId } : {}) }] : [];
+      });
+    return { pointers, orphans };
+  };
+
   return {
     load,
     save,
     untampered,
     pointers,
+    scan,
+    markPrompted: (runId, key) => {
+      const a = readAuthority(runId);
+      if (a) setProp(authKey(runId), JSON.stringify({ ...a, prompted: key } satisfies RunAuthority));
+    },
     authority: readAuthority,
     forget: (runId) => props.deleteProperty(authKey(runId)),
     decide: (folderId, runId, request, now) => {
