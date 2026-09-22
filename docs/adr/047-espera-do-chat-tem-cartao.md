@@ -63,19 +63,35 @@ O commit 3ab7d54 passou a postar o cartão no `after` do pump. A auditoria segui
    edita a pasta escolher para onde iriam o cartão e a resposta final. O defeito era anterior; a varredura o
    tornava alcançável.
 
+10. **Uma fila de perguntas por conversa.** `ASKRUN:<sessão>` guarda a ordem das perguntas digitáveis abertas.
+   A mensagem digitada responde à MAIS ANTIGA, e o cartão das seguintes diz isso. Antes a mais nova tomava a
+   vaga e a mais antiga ficava sem nenhuma forma de resposta quando não tinha opções. Escolhido por ser o
+   comportamento que não perde pergunta nem depende de o dono escolher um cartão: a ordem é a do chat.
+11. **O ponteiro só é apagado se ainda for o do claim** (`io.release`, sob a trava). Um clique que chegou
+   enquanto o cartão saía já regravou o ponteiro; apagá-lo deixava o run `queued` sem ponteiro, parado.
+12. **O POST do cartão é idempotente.** O `requestId` vem da espera (`runId|waitKey`) e, na aprovação, também
+   da credencial; o token é reaproveitado enquanto a credencial gravada for a dele (cache como atalho, o hash
+   no run decide). A Chat API devolve a mensagem já criada para o mesmo `requestId`, então falhar DEPOIS do
+   POST — ao gravar a marca, com as Properties cheias — não manda um segundo cartão.
+13. **A espera expira** (`WAIT_TTL_MS`, 7 dias, `expireWaits`): o run vira `failed` com o motivo, que é
+   entregue no Chat quando veio de lá, e a autoridade sai das Properties. A candidata sai da mesma leitura do
+   tique (`at` na autoridade), e o Drive só abre para ela. Sete dias porque a credencial vale 24 h e se renova
+   no clique: uma semana cobre fim de semana e folga curta sem deixar lixo permanente nos 500 KB.
+
 ## Consequências
 
+- Tique ocioso: nenhuma leitura nova, e agora MEDIDO — o teste conta acessos a `DriveApp` e à Drive API com
+  esperas recentes da tela e do Chat nas Properties, e exige zero.
 - Tique ocioso: nenhuma leitura nova. A varredura é um filtro sobre o mapa que o tique já lia. Com esperas
   já tratadas ela não abre o Drive (teste `nenhum tique ocioso relê o Drive`).
 - Uma espera sem resposta segura a autoridade `A:` enquanto espera. Isso já valia antes. O teto de 500 KB das
   Properties é o limite.
 - O índice `ASKRUN:` é um por conversa e sobrescrito pela pergunta seguinte. Ele é apagado quando a pergunta
   é respondida.
-- Limites conhecidos: duas perguntas abertas sem opções na MESMA conversa dividem o índice `ASKRUN:`, e a
-  resposta digitada vai para a mais recente (a mais antiga só se responde pelo botão, se tiver opções).
-  `markPrompted` lê e regrava a autoridade sem trava; a corrida exige um clique no milissegundo entre o POST e
-  a marca. Um POST que deu certo e só falhou depois (Properties cheias) repete o cartão uma vez no arrendamento
-  seguinte.
+- Os três limites da primeira versão foram FECHADOS na mesma data (decisões 10 a 12 acima): a fila de
+  perguntas, o `release` condicional e o `requestId` estável. Fica em aberto só o que a plataforma impõe: se o
+  Google Chat aceitar o POST e a resposta se perder na rede, a tentativa seguinte usa o mesmo `requestId` e o
+  Chat devolve a mensagem já criada — nenhum cartão a mais.
 - Mutações equivalentes (sobrevivem porque uma guarda anterior já cobre): trocar o destino pelo do arquivo
   (o `authorizedDelivery` exige igualdade antes) e desistir sem conferir a assinatura (o claim marca o run
   adulterado antes de chegar ao cartão).

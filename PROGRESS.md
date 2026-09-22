@@ -1,7 +1,7 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, e se já foi resolvido.
-> **Atualizado em:** 2026-09-22 · **2314 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
+> **Atualizado em:** 2026-09-22 · **2326 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
 > · **Auditoria:** seis ✅ eram falsos. Critério: *algum módulo importa isto, e o símbolo aparece em `dist/_motor.js`?*
 > · **P22 aprovada 4/4** · P24 **aprovada por inteiro** · P25 **reprovada** (sem combustível)
 > · **P27 medida e REPROVADA** (o filho executa, o motor recusa o token dele: 401 da plataforma)
@@ -248,7 +248,7 @@ dependências das guardas desprotegidas. Todos foram consertados, com teste.
 
 **Limites conhecidos (registrados, não abertos):** a herança não apaga chave que o pai removeu; o estado do
 sonho guarda o prompt inteiro em cada chave; um patch pode montar o nome de uma guarda sem escrevê-lo
-(`"assert"+"Owner"`); com a identidade do app, `findDirectMessage` só aceita o id numérico da conta; `DREAMSTEP_MS` só cresce e é global — um passo lento fora da curva encolhe para sempre a janela do sonho em todo agente (sem decaimento, até haver medida para calibrá-lo).
+(`"assert"+"Owner"`); com a identidade do app, `findDirectMessage` só aceita o id numérico da conta; ~~`DREAMSTEP_MS` só cresce e é global~~ — **fechado em 2026-09-22**: a estimativa é por agente, guarda as últimas 5 medidas e tem teto de 240 s.
 
 ### Incidente de 2026-09-21 — o pedido do Chat que ficou no "thinking…" ([ADR-047](docs/adr/047-espera-do-chat-tem-cartao.md))
 
@@ -273,7 +273,15 @@ durável parou em `waiting` pedindo aprovação de `tasks.create` (trace `202609
 | R5 | botão de pergunta antiga respondia a nova | o botão não dizia de qual espera era | ✅ `wait` no botão |
 | R6 | pasta apagada de outro agente travava a varredura | uma exceção abortava a busca | ✅ pasta por pasta, 3 tiques de chance |
 
-Testes: 2279 → **2314**, tsc limpo. **30 mutações**: 28 pegas e 2 equivalentes (destino tirado do arquivo,
+| A1 | **(2ª rodada)** duas perguntas digitáveis dividiam uma vaga | `ASKRUN:` guardava um runId só | ✅ fila: a digitada responde a mais antiga, e o cartão da seguinte avisa |
+| A2 | clique entre o POST e a marca apagava o ponteiro do clique | `dequeue` incondicional | ✅ `io.release` só apaga o ponteiro do claim |
+| A3 | cartão repetido quando a marca não gravava | `requestId` aleatório por tentativa | ✅ `requestId` da espera (+ credencial) e token reaproveitado |
+| A4 | espera nunca respondida segurava a autoridade para sempre | não havia prazo | ✅ 7 dias → `failed` com motivo entregue no Chat, autoridade fora |
+| A5 | "o tique ocioso não abre o Drive" era afirmação | nenhum teste media | ✅ teste conta `DriveApp` + Drive API: zero |
+| A6 | `DREAMSTEP_MS` global e só crescia | uma chave para todos os agentes, sem esquecer | ✅ por agente, janela das últimas 5 medidas, teto de 240 s |
+| A7 | identificadores em português da F9 | — | ✅ `PROTECTED_NAMES`, `opensRegex`, `capsSide`, `longestStep`… com a lista de guardas e os testes coerentes |
+
+Testes: 2279 → **2326**, tsc limpo. **43 mutações**: 41 pegas e 2 equivalentes (destino tirado do arquivo,
 desistência sem conferir assinatura: uma guarda anterior já cobre cada uma). Revisão: security-scanner +
 complexity-reviewer; limites que ficaram estão no ADR-047. Publicação: ver abaixo.
 
