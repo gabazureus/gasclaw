@@ -220,6 +220,13 @@ describe('codeMatches: o sucessor é o código ATUAL do pai mais o patch', () =>
   test('idêntico ao pai + patch: confere', () => {
     expect(codeMatches(pai, filho, troca).ok).toBe(true);
   });
+  // Auditoria 2026-09-21: no coroado não há patch (ele já está no src do pai), e o health dizia "plus the patch".
+  test('coroado (sem patch): o motivo não fala em patch', () => {
+    const r = codeMatches(pai, [pai[0], pai[1], filho[2]], []);
+    expect(r.ok).toBe(true);
+    expect(r.reason).not.toContain('patch');
+    expect(codeMatches(pai, [{ name: '_motor', source: 'x' }, pai[1], filho[2]], []).reason).not.toContain('patch');
+  });
   // Um registro escrito ANTES do crivo por troca não coroa se o patch mexe dentro de uma guarda.
   test('patch que mexe DENTRO de uma guarda não coroa, mesmo idêntico ao pai + patch', () => {
     const paiG = [{ name: '_motor', source: 'function assertOwner() { if (x) throw new Error("no"); }' }, pai[1]];

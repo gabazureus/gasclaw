@@ -248,13 +248,14 @@ export function crownReadiness(i: ReadinessInput): { ok: boolean; checks: Readin
  */
 export function codeMatches(parent: readonly PatchFile[], successor: readonly PatchFile[], changes: readonly Change[]): { ok: boolean; reason: string } {
   const semSemente = (fs: readonly PatchFile[]) => fs.filter((f) => f.name !== 'successor_seed');
+  const base = changes.length ? 'this engine’s code plus the patch' : 'this engine’s code'; // coroado: sem patch
   const esperado = applyPatch(semSemente(parent), changes);
   if (!esperado.ok) return { ok: false, reason: `this engine changed since the successor was written (${esperado.reason}): write it again` };
   const real = semSemente(successor);
   for (const f of esperado.files) {
     const r = real.find((x) => x.name === f.name);
     if (!r) return { ok: false, reason: `the successor is missing ${f.name}` };
-    if (r.source !== f.source) return { ok: false, reason: f.name === 'appsscript' ? 'its manifest differs from this engine’s' : `${f.name} differs from this engine’s code plus the patch` };
+    if (r.source !== f.source) return { ok: false, reason: f.name === 'appsscript' ? 'its manifest differs from this engine’s' : `${f.name} differs from ${base}` };
   }
   const extra = real.find((x) => !esperado.files.some((f) => f.name === x.name));
   if (extra) return { ok: false, reason: `the successor has a file this engine does not: ${extra.name}` };
@@ -268,7 +269,7 @@ export function codeMatches(parent: readonly PatchFile[], successor: readonly Pa
     const fraco = guardsWeakened(antes, f.source);
     if (fraco.length) return { ok: false, reason: `${f.name}: ${fraco.join('; ')}` };
   }
-  return { ok: true, reason: 'identical to this engine plus the patch, no guard weakened' };
+  return { ok: true, reason: `identical to ${base}, no guard weakened` };
 }
 
 // ---------- A coroa que chegou pela metade ----------
