@@ -82,7 +82,7 @@ O commit 3ab7d54 passou a postar o cartão no `after` do pump. A auditoria segui
 
 - Tique ocioso: nenhuma leitura nova, e agora MEDIDO — o teste conta acessos a `DriveApp` e à Drive API com
   esperas recentes da tela e do Chat nas Properties, e exige zero.
-- Tique ocioso: nenhuma leitura nova. A varredura é um filtro sobre o mapa que o tique já lia. Com esperas
+- A varredura é um filtro sobre o mapa que o tique já lia. Com esperas
   já tratadas ela não abre o Drive (teste `nenhum tique ocioso relê o Drive`).
 - Uma espera sem resposta segura a autoridade `A:` enquanto espera. Isso já valia antes. O teto de 500 KB das
   Properties é o limite.

@@ -55,6 +55,7 @@ describe('o run do Chat que para esperando o dono MANDA o cartão ao Chat', () =
     const [aprovar] = botoes(c);
     expect(params(aprovar)).toMatchObject({ folderId: FOLDER, runId: 'r-aprova', decision: 'approve' });
     expect(salvo(env, 'r-aprova')?.approval).toBeTruthy();
+    expect(JSON.parse(env.props['A:r-aprova']).card).toBe('spaces/AAA/messages/msg1'); // o recibo do cartão fica na autoridade
   });
 
   test('aprovação com credencial ainda válida: não manda de novo (o cartão já está no Chat)', async () => {

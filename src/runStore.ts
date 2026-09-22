@@ -107,7 +107,7 @@ export type RunIO = {
    */
   scan: (now: number) => { pointers: RunPointer[]; orphans: OrphanWait[]; expired: OrphanWait[] };
   /** Registra (fora da pasta) que o cartão desta espera foi ao Chat — ou que a varredura já a tratou. */
-  markPrompted: (runId: string, key: string, now: number) => void;
+  markPrompted: (runId: string, key: string, now: number, card?: string) => void;
   /** O arrendamento atual do ponteiro deste run (o do claim que o trouxe até aqui), se houver. */
   leaseOf: (runId: string) => number | undefined;
   /**
@@ -187,7 +187,7 @@ export function runIO(
     try {
       const a = JSON.parse(raw) as Partial<RunAuthority>;
       return typeof a.auth === 'string' && a.auth
-        ? { auth: a.auth, ...(typeof a.space === 'string' ? { space: a.space } : {}), ...(typeof a.thread === 'string' ? { thread: a.thread } : {}), ...(typeof a.folderId === 'string' ? { folderId: a.folderId } : {}), ...(typeof a.prompted === 'string' ? { prompted: a.prompted } : {}), ...(Number.isFinite(a.at) ? { at: Number(a.at) } : {}) }
+        ? { auth: a.auth, ...(typeof a.space === 'string' ? { space: a.space } : {}), ...(typeof a.thread === 'string' ? { thread: a.thread } : {}), ...(typeof a.folderId === 'string' ? { folderId: a.folderId } : {}), ...(typeof a.prompted === 'string' ? { prompted: a.prompted } : {}), ...(Number.isFinite(a.at) ? { at: Number(a.at) } : {}), ...(typeof a.card === 'string' ? { card: a.card } : {}) }
         : null;
     } catch {
       return null;
@@ -211,7 +211,7 @@ export function runIO(
         ? { space: r.delivery.space, ...(r.delivery.thread ? { thread: r.delivery.thread } : {}) }
         : {};
     // `prompted` sobrevive às gravações: é ele que diz à varredura que esta espera já tem cartão no Chat.
-    setProp(authKey(r.runId), JSON.stringify({ ...destino, auth: sign(runAuthority(r)), folderId: r.folderId, at: r.updatedAt, ...(antes?.prompted ? { prompted: antes.prompted } : {}) } satisfies RunAuthority));
+    setProp(authKey(r.runId), JSON.stringify({ ...destino, auth: sign(runAuthority(r)), folderId: r.folderId, at: r.updatedAt, ...(antes?.prompted ? { prompted: antes.prompted } : {}), ...(antes?.card ? { card: antes.card } : {}) } satisfies RunAuthority));
   };
 
   /**
@@ -267,10 +267,10 @@ export function runIO(
     untampered,
     pointers,
     scan,
-    markPrompted: (runId, key, now) => {
+    markPrompted: (runId, key, now, card) => {
       const a = readAuthority(runId);
       // `at` só nasce aqui quando o registro é antigo (sem ele): assim até a espera legada tem prazo para expirar.
-      if (a) setProp(authKey(runId), JSON.stringify({ ...a, prompted: key, at: a.at ?? now } satisfies RunAuthority));
+      if (a) setProp(authKey(runId), JSON.stringify({ ...a, prompted: key, at: a.at ?? now, ...(card ? { card } : {}) } satisfies RunAuthority));
     },
     leaseOf: (runId) => splitRunQueue(props.getProperties()).find((x) => x.runId === runId)?.leaseUntil,
     release,

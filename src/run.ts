@@ -62,6 +62,8 @@ export type RunAuthority = {
    * editando o arquivo do run.
    */
   prompted?: string;
+  /** Recibo do Chat (`spaces/…/messages/…`) do último cartão postado: a prova de que ele chegou. */
+  card?: string;
   /** Última gravação nossa deste run (ou a primeira vez que a varredura o viu): é daqui que a espera expira. */
   at?: number;
 };

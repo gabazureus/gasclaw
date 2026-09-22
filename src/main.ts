@@ -1174,8 +1174,8 @@ function promptInChat(run: DurableRun, io: RunIO): void {
   }
   // Se o POST (ou qualquer passo aqui) falhar, o ponteiro segue arrendado pelo claim (`settle`): nenhuma outra
   // execução posta junto, e a próxima tentativa vem quando o arrendamento vencer.
-  createAsChatApp({ space: target.space, ...(target.thread ? { thread: target.thread } : {}), requestId: stableRequestId(hashToken(seed)), message });
-  io.markPrompted(run.runId, wait, now);
+  const receipt = createAsChatApp({ space: target.space, ...(target.thread ? { thread: target.thread } : {}), requestId: stableRequestId(hashToken(seed)), message });
+  io.markPrompted(run.runId, wait, now, receipt.name);
   io.release(run.runId, lease); // só apaga o ponteiro se ainda for o do claim: um clique no meio já o regravou
   // A pergunta entra na FILA de perguntas digitáveis desta conversa (a mais antiga responde primeiro).
   if (run.pending?.kind === 'ask' && run.status === 'waiting') {
@@ -4545,6 +4545,25 @@ function pocP36(step?: string, params: Record<string, string> = {}): unknown {
     const r = runId ? runIO().load(id, runId) : null;
     if (!r) return { pass: false, reading: 'no wake run yet' };
     return { pass: r.status === 'done' || r.status === 'failed', runId, status: r.status, answer: (r.answer ?? '').slice(0, 300), error: r.error ?? null, delivery: r.delivery ? { status: r.delivery.status, space: r.delivery.space, sentAt: r.delivery.sentAt ?? null, messageName: r.delivery.messageName ?? null } : null };
+  }
+  // ADR-047 — as esperas vistas pela autoridade (Script Properties): cartão postado (recibo), hora, fila, e o
+  // estado do run quando a pasta é conhecida. Só lê.
+  if (step === 'waits') {
+    const io = runIO();
+    const all = props.getProperties();
+    const queued = new Set(io.pointers().map((p) => p.runId));
+    const waits = Object.keys(all).filter((k) => k.startsWith('A:')).slice(0, 20).map((k) => {
+      const runId = k.slice(2);
+      const a = io.authority(runId);
+      let run: DurableRun | null = null;
+      try {
+        run = a?.folderId ? io.load(a.folderId, runId) : io.load(id, runId);
+      } catch {
+        // pasta inacessível: mostra só a autoridade
+      }
+      return { runId, chat: !!a?.space, prompted: a?.prompted ?? null, card: a?.card ?? null, at: a?.at ? new Date(a.at).toISOString() : null, queued: queued.has(runId), status: run?.status ?? null, pending: run?.pending ? `${run.pending.kind}:${run.pending.name}` : null, delivery: run?.delivery?.status ?? null };
+    });
+    return { pass: true, waits, openAsks: Object.keys(all).filter((k) => k.startsWith('ASKRUN:')).length };
   }
   if (step === 'wakeclear') {
     const b = props.getProperty('P36_SCHED_BACKUP');
