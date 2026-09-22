@@ -1383,5 +1383,57 @@
       "clarity": "renomear identificadores pt-BR da F9 (abreRegex, PROTEGIDAS, capsLado, maiorPasso) numa passada pr\u00f3pria",
       "testing": "rodar muta\u00e7\u00e3o sobre o diff em cada fechamento de fase, n\u00e3o s\u00f3 contar as muta\u00e7\u00f5es escolhidas pelo autor"
     }
+  },
+  {
+    "phase": "Incidente Chat: espera sem cart\u00e3o (IMPLEMENT+REVIEW)",
+    "overview": "8 achados do incidente + 6 da revis\u00e3o consertados test-first; 2314/2314, tsc limpo, 30 muta\u00e7\u00f5es (28 pegas, 2 equivalentes); publica\u00e7\u00e3o bloqueada pela credencial do clasp",
+    "scores": {
+      "correctness": {
+        "score": 8,
+        "evidence": "2314/2314; fia\u00e7\u00e3o real via drainRuns/onCardClick/onMessage cobre aprova\u00e7\u00e3o, ask, teto, retomada, Chat fora, varredura; falta prova no real (clasp expirado)"
+      },
+      "design": {
+        "score": 8,
+        "evidence": "marca prompted fora da pasta; arrendamento reaproveita lease/MAX_ATTEMPTS; io.resume une Chat/digitado/tela; varredura sem leitura nova no tique ocioso"
+      },
+      "testing": {
+        "score": 9,
+        "evidence": "36 testes em chatEspera + runner; 30 muta\u00e7\u00f5es, 28 mortas, 2 equivalentes documentadas"
+      },
+      "safety": {
+        "score": 8,
+        "evidence": "security-scanner achou 1 ALTA (destino adotado do arquivo) consertada com teste; nada re-assina sem untampered; corridas residuais documentadas no ADR-047"
+      },
+      "clarity": {
+        "score": 8,
+        "evidence": "ADR-047, CHANGELOG, PROGRESS (I1-I8, R1-R6), gloss\u00e1rio; coment\u00e1rios pt-BR explicam o porqu\u00ea"
+      }
+    }
+  },
+  {
+    "phase": "Itens abertos fechados + publica\u00e7\u00e3o (IMPLEMENT+REVIEW+SHIP dev)",
+    "overview": "7 itens fechados test-first; 2326/2326, tsc limpo; 43 muta\u00e7\u00f5es (41 pegas, 2 equivalentes); dev v177, sucessor v25, health 10/10; run de ontem com cart\u00e3o postado (prompted no real)",
+    "scores": {
+      "correctness": {
+        "score": 9,
+        "evidence": "2326/2326; no real: health 10/10 e o run de ontem marcado prompted (s\u00f3 nasce ap\u00f3s POST ok); falta o clique do dono ponta a ponta"
+      },
+      "design": {
+        "score": 8,
+        "evidence": "requestId est\u00e1vel + release condicional reaproveitam lease/Chat API; fila de ask simples; expira\u00e7\u00e3o pelo mesmo mapa do tique; janela do sonho pura com teto"
+      },
+      "testing": {
+        "score": 9,
+        "evidence": "43 muta\u00e7\u00f5es, 41 mortas; Drive contado no tique ocioso; corrida do clique reproduzida dentro do POST"
+      },
+      "safety": {
+        "score": 9,
+        "evidence": "destino fixado na 1a grava\u00e7\u00e3o; resume sob trava+assinatura; expira\u00e7\u00e3o n\u00e3o re-assina adulterado; nenhum segredo nos novos registros"
+      },
+      "clarity": {
+        "score": 8,
+        "evidence": "ADR-047 com decis\u00f5es 10-13, PROGRESS A1-A7 e evid\u00eancia real, CHANGELOG; nomes em ingl\u00eas nos trechos F9 e novos"
+      }
+    }
   }
 ]

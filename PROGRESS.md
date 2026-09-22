@@ -283,7 +283,15 @@ durável parou em `waiting` pedindo aprovação de `tasks.create` (trace `202609
 
 Testes: 2279 → **2326**, tsc limpo. **43 mutações**: 41 pegas e 2 equivalentes (destino tirado do arquivo,
 desistência sem conferir assinatura: uma guarda anterior já cobre cada uma). Revisão: security-scanner +
-complexity-reviewer; limites que ficaram estão no ADR-047. Publicação: ver abaixo.
+complexity-reviewer; limites que ficaram estão no ADR-047.
+
+**Publicado e medido no real (2026-09-22):** dev **v177**, sucessor **v25**, `succession health` **10/10**.
+Pelo sucessor (`poc p36 waits`): o run de 2026-09-21 (`spaces/g_jQUqAAAAE/messages/FtJPCakj748…`) está
+`waiting` em `approval:tasks.create`, **fora da fila e com `prompted`** gravado às 16:31:29Z, um minuto depois
+da v24 — a marca só nasce depois de o POST do cartão dar certo. O recibo (`card`) passou a ser gravado na v25,
+então o deste cartão não aparece. Tique ocioso (`poc p3 idle`, 4 medidas, sem lote pendente): 844–1021 ms no
+total. A parte da fila e das esperas, que é o que mudou, ficou entre 52 e 129 ms; o restante é reconcile + lote
+do trace, que esta rodada não tocou. O critério da P3 é 1000 ms: duas das quatro medidas passaram por até 21 ms.
 
 
 | POC | Pergunta | Status |
