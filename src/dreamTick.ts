@@ -70,10 +70,41 @@ export type TickResult = { cycleId: string | null; steps: number; status: string
  * pior, contamina o placar com repetição.
  */
 /**
- * Estimativa CONSERVADORA de um passo (agente + juiz), usada até haver um passo medido neste tique.
- * minimal: ponto de partida declarado, não calibrado — o maior passo medido no tique a substitui se for maior.
+ * Estimativa CONSERVADORA de um passo (agente + juiz), usada até haver um passo measured neste tique.
+ * minimal: ponto de partida declarado, não calibrado — o maior passo measured no tique a substitui se for maior.
  */
 export const DREAM_STEP_ESTIMATE_MS = 90_000;
+
+/**
+ * Quantos tiques COM passo measured a estimativa lembra. Um passo fora da curva (o modelo lento numa hora ruim)
+ * pesa por 5 tiques com sonho e então sai — antes ele valia para sempre, porque a estimativa só crescia.
+ */
+export const DREAM_STEP_WINDOW = 5;
+/**
+ * Teto da estimativa: 4 dos 5,5 min que o sonho tem por tique (prazo de 330 s). Sem teto, uma medida acima do
+ * prazo impedia qualquer passo de começar — e sem passo não há medida nova, então o sonho parava para sempre.
+ * Com 240 s, um tique que chega ao sonho cedo ainda tenta; um passo que realmente não cabe morre no teto do
+ * Apps Script, como morreria de qualquer jeito.
+ */
+export const DREAM_STEP_CAP_MS = 240_000;
+
+/** A janela depois deste tique: entra a maior medida dele (se houve passo), sai a mais velha. */
+export const nextStepWindow = (prev: readonly number[], measured?: number): number[] =>
+  measured && measured > 0 ? [...prev, measured].slice(-DREAM_STEP_WINDOW) : [...prev];
+
+/** A estimativa do próximo tique: o maior passo da janela, nunca abaixo da conservadora nem acima do teto. */
+export const stepEstimate = (window: readonly number[]): number =>
+  Math.min(DREAM_STEP_CAP_MS, Math.max(DREAM_STEP_ESTIMATE_MS, ...window.filter((n) => Number.isFinite(n) && n > 0)));
+
+/** A janela gravada nas Properties; valor podre vale janela vazia (a estimativa volta à conservadora). */
+export function parseStepWindow(raw: string | null | undefined): number[] {
+  try {
+    const v = JSON.parse(raw ?? '[]');
+    return Array.isArray(v) ? v.filter((n): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0).slice(-DREAM_STEP_WINDOW) : [];
+  } catch {
+    return [];
+  }
+}
 
 export function tickDream(folderId: string, d: DreamDeps, deadline = Infinity, estimateMs = DREAM_STEP_ESTIMATE_MS): TickResult {
   const io = dreamIO();
@@ -90,13 +121,13 @@ export function tickDream(folderId: string, d: DreamDeps, deadline = Infinity, e
 
   const env = d.env(folderId);
   const base = d.spec(folderId);
-  let feitos = 0;
-  let maiorPasso = Math.max(DREAM_STEP_ESTIMATE_MS, estimateMs); // a medida de tiques anteriores (revisão F9)
-  let medido = 0;
+  let stepsDone = 0;
+  let longestStep = Math.max(DREAM_STEP_ESTIMATE_MS, estimateMs); // a medida de tiques anteriores (revisão F9)
+  let measured = 0;
   for (let i = 0; i < DREAM_STEPS_PER_TICK; i++) {
     // Passo que não cabe até o prazo nem começa: morto pelo teto de 6 min, seria pago e perdido.
     const t0 = d.now();
-    if (t0 + maiorPasso > deadline) break;
+    if (t0 + longestStep > deadline) break;
     const step = nextStep(s.plan, new Set(s.done), s.tally);
     if (!step) break;
     const md = scenarioMd(step.scenario);
@@ -104,27 +135,27 @@ export function tickDream(folderId: string, d: DreamDeps, deadline = Infinity, e
       s = failCycle(s, `scenario "${step.scenario}" is not in this build`, d.now());
       io.save(s);
       io.setActive(folderId, null);
-      return { cycleId, steps: feitos, status: s.status, error: s.error };
+      return { cycleId, steps: stepsDone, status: s.status, error: s.error };
     }
     try {
       const r = runDreamStep(md, candidateSystem(s, step), base, env, step);
       s = afterStep(s, step, r.passed, d.now());
       io.save(s); // depois de CADA passo
-      feitos++;
-      medido = Math.max(medido, d.now() - t0);
-      maiorPasso = Math.max(maiorPasso, medido);
+      stepsDone++;
+      measured = Math.max(measured, d.now() - t0);
+      longestStep = Math.max(longestStep, measured);
     } catch (err) {
       s = failCycle(s, `step ${stepKey(step)} threw: ${String((err as Error)?.message ?? err)}`, d.now());
       io.save(s);
       io.setActive(folderId, null);
-      return { cycleId, steps: feitos, status: s.status, error: s.error };
+      return { cycleId, steps: stepsDone, status: s.status, error: s.error };
     }
   }
 
   // O ciclo acabou: a trava sai, o estado fica para o dono ler. O resumo vai junto no retorno, para
   // quem chamou não precisar reabrir o arquivo só para saber no que deu.
   if (s.status === 'done') io.setActive(folderId, null);
-  return { cycleId, steps: feitos, status: s.status, ...(medido ? { longestStepMs: medido } : {}), ...(s.status === 'done' ? { summary: summarize(s) } : {}) };
+  return { cycleId, steps: stepsDone, status: s.status, ...(measured ? { longestStepMs: measured } : {}), ...(s.status === 'done' ? { summary: summarize(s) } : {}) };
 }
 
 /** O prompt do candidato daquele passo. O titular é o próprio `incumbent` guardado no estado. */

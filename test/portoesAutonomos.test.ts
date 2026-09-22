@@ -240,11 +240,11 @@ describe('o laço do sonho respeita os mesmos três portões', () => {
     expect(await naoToca(['dream'], 'active', 'false')).toBe(true);
   });
 
-  // REVISÃO FINAL F9: o maior passo medido fica em DREAMSTEP_MS e vira a estimativa do tique seguinte. Um
-  // passo que não cabe no que sobra da execução nem começa — o ciclo fica intocado, sem pagar e perder.
-  test('com o passo medido maior que a execução inteira, o laço não começa passo nenhum', async () => {
-    env.props['DREAMSTEP_MS'] = String(10 * 60_000);
-    expect(await naoToca(['dream'])).toBe(true);
+  // F9 guardava o maior passo numa chave GLOBAL que só crescia: uma medida acima do prazo parava o sonho de
+  // todos os agentes para sempre (sem passo, sem medida nova). Agora é por agente, esquece e tem teto.
+  test('medida gravada maior que a execução inteira não para o sonho para sempre (teto)', async () => {
+    env.props[`DREAMSTEP_MS:${FOLDER}`] = JSON.stringify([10 * 60_000]);
+    expect(await naoToca(['dream'])).toBe(false);
   });
 
   // Auditoria 2026-09-21 (mutação): o arrendamento e a gravação de DREAMSTEP_MS não tinham teste no laço real.
@@ -253,7 +253,7 @@ describe('o laço do sonho respeita os mesmos três portões', () => {
     expect(await naoToca(['dream'])).toBe(true);
   });
 
-  /** Relógio falso: cada passo de sonho leva `ms`. Devolve o valor de DREAMSTEP_MS depois do tique. */
+  /** Relógio falso: cada passo de sonho leva `ms`. Devolve a janela DREAMSTEP_MS do agente depois do tique. */
   const passoDe = async (ms: number) => {
     let t = 1_700_000_000_000;
     vi.spyOn(Date, 'now').mockImplementation(() => t);
@@ -266,13 +266,18 @@ describe('o laço do sonho respeita os mesmos três portões', () => {
     vi.doUnmock('../src/dreamRun');
     vi.doUnmock('../src/judgeSet');
     vi.restoreAllMocks();
-    return passosFeitos() > 0 ? env.props['DREAMSTEP_MS'] : 'no step ran';
+    return passosFeitos() > 0 ? env.props[`DREAMSTEP_MS:${FOLDER}`] : 'no step ran';
   };
-  test('o passo medido maior que a estimativa fica gravado para o próximo tique', async () => {
-    expect(await passoDe(120_000)).toBe('120000');
+  test('o passo medido entra na janela DO AGENTE', async () => {
+    expect(await passoDe(120_000)).toBe(JSON.stringify([120_000]));
   });
-  test('o passo medido menor que a estimativa guardada não a rebaixa', async () => {
+  test('a janela esquece: a medida mais velha sai depois de 5 tiques medidos', async () => {
+    env.props[`DREAMSTEP_MS:${FOLDER}`] = JSON.stringify([200_000, 100_000, 100_000, 100_000, 100_000]);
+    expect(await passoDe(95_000)).toBe(JSON.stringify([100_000, 100_000, 100_000, 100_000, 95_000]));
+  });
+  test('a chave global antiga é apagada', async () => {
     env.props['DREAMSTEP_MS'] = '200000';
-    expect(await passoDe(120_000)).toBe('200000');
+    await passoDe(95_000);
+    expect(env.props['DREAMSTEP_MS']).toBeUndefined();
   });
 });

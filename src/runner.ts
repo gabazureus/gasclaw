@@ -35,8 +35,8 @@ function settle(d: StepDeps, r: DurableRun, progressed: boolean): DurableRun {
   // cartões, e o segundo invalidaria a credencial do primeiro). O cartão sai no `after` e o run deixa a fila;
   // se qualquer coisa falhar, o arrendamento vence em LEASE_MS e o próximo claim tenta de novo — uma
   // tentativa por arrendamento, contadas, até `MAX_ATTEMPTS`.
-  const espera = r.delivery?.status === 'pending' ? waitKey(r) : undefined;
-  if (espera && d.io.authority(r.runId)?.prompted !== espera) {
+  const wait = r.delivery?.status === 'pending' ? waitKey(r) : undefined;
+  if (wait && d.io.authority(r.runId)?.prompted !== wait) {
     d.io.save(r);
     return r;
   }

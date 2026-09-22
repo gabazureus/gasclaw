@@ -62,10 +62,19 @@ export type RunAuthority = {
    * editando o arquivo do run.
    */
   prompted?: string;
+  /** Última gravação nossa deste run (ou a primeira vez que a varredura o viu): é daqui que a espera expira. */
+  at?: number;
 };
 
-/** Uma espera do Chat que pode ter ficado sem cartão: autoridade com destino, sem ponteiro e nunca tratada. */
+/** Uma espera fora da fila, achada pela autoridade (sem listar o Drive). */
 export type OrphanWait = { runId: string; folderId?: string };
+
+/**
+ * Quanto uma espera do dono pode durar sem resposta: 7 dias. A credencial de aprovação vale 24 h e se renova
+ * no clique; uma semana cobre fim de semana e uma folga curta. Passado isso, o run vira `failed` com o motivo
+ * (entregue no Chat quando veio de lá) e a autoridade sai das Script Properties, que têm 500 KB no total.
+ */
+export const WAIT_TTL_MS = 7 * 86_400_000;
 
 export const authKey = (runId: string): string => `${AUTH_PREFIX}${runId}`;
 

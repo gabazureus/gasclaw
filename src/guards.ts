@@ -21,7 +21,7 @@ export type Guards = { counts: Record<string, number>; neverAuto: string[] | nul
 /** Força de cada nível: descer na escada é enfraquecer. */
 const FORCA: Record<Approval, number> = { always: 2, once: 1, never: 0 };
 
-const CHAMADAS: Record<string, string> = {
+const GUARD_CALLS: Record<string, string> = {
   assertOwner: 'assertOwner()',
   mayWriteProject: 'mayWriteProject(',
   mayAct: 'mayAct(',
@@ -32,7 +32,7 @@ const CHAMADAS: Record<string, string> = {
 const conta = (src: string, s: string) => src.split(s).length - 1;
 
 /** Uma `/` abre regex (e não divide) quando vem depois de operador, abertura ou palavra como `return`. */
-function abreRegex(out: string[], i: number): boolean {
+function opensRegex(out: string[], i: number): boolean {
   let k = i - 1;
   while (k >= 0 && /\s/.test(out[k])) k--;
   if (k < 0 || '(,=:[!&|?{};+-*%<>~^'.includes(out[k])) return true;
@@ -44,7 +44,7 @@ function abreRegex(out: string[], i: number): boolean {
 /**
  * Troca comentários, literais de string ('', "", ``) e regex literais por espaços, MANTENDO o comprimento
  * e as quebras de linha — os índices continuam valendo no fonte original. Sem isto, `// assertOwner();`
- * ou `"assertOwner();"` contavam como guarda. O regex é reconhecido por heurística (`abreRegex`); se ela
+ * ou `"assertOwner();"` contavam como guarda. O regex é reconhecido por heurística (`opensRegex`); se ela
  * errar, erra igual nos dois lados, e a regra de `changesTouchGuards` cobre o que escapar daqui.
  */
 export function codeOnly(source: string): string {
@@ -55,7 +55,7 @@ export function codeOnly(source: string): string {
     const c = s[i];
     if (c === '/' && s[i + 1] === '/') { const f = s.indexOf('\n', i); const fim = f < 0 ? s.length : f; apaga(i, fim); i = fim; }
     else if (c === '/' && s[i + 1] === '*') { const f = s.indexOf('*/', i + 2); const fim = f < 0 ? s.length : f + 2; apaga(i, fim); i = fim - 1; }
-    else if (c === '/' && abreRegex(out, i)) {
+    else if (c === '/' && opensRegex(out, i)) {
       // Regex literal: vai até a `/` que fecha, fora de `[...]`. Sem fechar na mesma linha, era divisão.
       let j = i + 1;
       let classe = false;
@@ -83,7 +83,7 @@ export function guardsOf(source: string): Guards {
   const src = String(source ?? '');
   const counts: Record<string, number> = {};
   const codigo = codeOnly(src);
-  for (const [k, s] of Object.entries(CHAMADAS)) counts[k] = conta(codigo, s);
+  for (const [k, s] of Object.entries(GUARD_CALLS)) counts[k] = conta(codigo, s);
 
   // `NEVER_AUTO = [ ... ]` — `null` quando a lista SUMIU, que é diferente de lista vazia.
   let neverAuto: string[] | null = null;
@@ -109,8 +109,8 @@ export function guardsWeakened(before: string, after: string): string[] {
   const a = guardsOf(before);
   const d = guardsOf(after);
   const motivos: string[] = [];
-  for (const k of Object.keys(CHAMADAS)) {
-    if (d.counts[k] < a.counts[k]) motivos.push(`\`${CHAMADAS[k]}\` appears ${d.counts[k]} times, it was ${a.counts[k]}`);
+  for (const k of Object.keys(GUARD_CALLS)) {
+    if (d.counts[k] < a.counts[k]) motivos.push(`\`${GUARD_CALLS[k]}\` appears ${d.counts[k]} times, it was ${a.counts[k]}`);
   }
   if (a.neverAuto && !d.neverAuto) motivos.push('the NEVER_AUTO list is gone');
   else if (a.neverAuto && d.neverAuto) {
@@ -131,10 +131,10 @@ export function guardsWeakened(before: string, after: string): string[] {
  * `inheritable` e o `parent !== successorOf()` nem eram contados. `enabledWith` entra porque `isEnabled`
  * só delega a ele.
  */
-const PROTEGIDAS = [
+const PROTECTED_NAMES = [
   'assertOwner', 'mayAct', 'mayWriteProject', 'isRunnable', 'isEnabled', 'enabledWith', 'cliAuthorized', 'validSecret', 'safeEqual',
   'crownFromParent', 'inheritFromParent', 'evalRunForParent', 'inheritable', 'successorOf',
-  'guardsOf', 'guardsWeakened', 'changesTouchGuards', 'codeOnly', 'abreRegex', 'definitionsOf', 'PROTEGIDAS', 'CHAMADAS',
+  'guardsOf', 'guardsWeakened', 'changesTouchGuards', 'codeOnly', 'opensRegex', 'definitionsOf', 'PROTECTED_NAMES', 'GUARD_CALLS',
   // REVISÃO FINAL F9 — do que as guardas DEPENDEM: trocar o corpo de `ownerEmail` desarma `assertOwner` sem
   // tocar nele; redefinir `can` desliga a capacidade dentro de `mayAct`. Um nível de dependência, não o grafo.
   'ownerEmail', 'isDev', 'can', 'effectiveCapabilities', 'parseCapabilities', 'capsEnabled', 'parseStatus', 'claimable',
@@ -142,23 +142,23 @@ const PROTEGIDAS = [
 ];
 // `\d*`: o esbuild renomeia nomes que colidem (`successorOf2` existe no bundle). Nome CURTO ("can") é palavra
 // comum em comentário: ele só conta como uso de código — seguido de `(` ou `=`.
-const nomeRegex = (n: string) => new RegExp(n.length <= 4 ? `\\b${n}\\d*\\s*[(=]` : `\\b${n}\\d*\\b`);
-const nomeProtegido = (txt: string) => PROTEGIDAS.find((n) => nomeRegex(n).test(txt));
+const nameRegex = (n: string) => new RegExp(n.length <= 4 ? `\\b${n}\\d*\\s*[(=]` : `\\b${n}\\d*\\b`);
+const protectedName = (txt: string) => PROTECTED_NAMES.find((n) => nameRegex(n).test(txt));
 
 /** Onde cada função protegida é DEFINIDA no fonte: `function X(...) {...}` ou `var|let|const X = ...;`. */
 export function definitionsOf(source: string): { name: string; from: number; to: number }[] {
   const c = codeOnly(source);
   const defs: { name: string; from: number; to: number }[] = [];
-  for (const n of PROTEGIDAS) {
+  for (const n of PROTECTED_NAMES) {
     for (const m of c.matchAll(new RegExp(`\\b(function\\s+|(?:var|let|const)\\s+)${n}\\d*\\s*[(=]`, 'g'))) {
-      const funcao = m[1].startsWith('function');
-      let prof = 0;
+      const isFunction = m[1].startsWith('function');
+      let depth = 0;
       let k = m.index as number;
       for (; k < c.length; k++) {
         const ch = c[k];
-        if (ch === '(' || ch === '[' || ch === '{') prof++;
-        else if (ch === ')' || ch === ']' || ch === '}') { prof--; if (funcao && ch === '}' && prof === 0) break; }
-        else if (!funcao && ch === ';' && prof === 0) break;
+        if (ch === '(' || ch === '[' || ch === '{') depth++;
+        else if (ch === ')' || ch === ']' || ch === '}') { depth--; if (isFunction && ch === '}' && depth === 0) break; }
+        else if (!isFunction && ch === ';' && depth === 0) break;
       }
       defs.push({ name: n, from: m.index as number, to: k + 1 });
     }
@@ -177,7 +177,7 @@ export function definitionsOf(source: string): { name: string; from: number; to:
 export function changesTouchGuards(files: readonly { name: string; source: string }[], changes: readonly { file: string; find: string; replace: string }[]): string[] {
   const motivos: string[] = [];
   for (const ch of changes) {
-    const nome = nomeProtegido(ch.find) ?? nomeProtegido(ch.replace);
+    const nome = protectedName(ch.find) ?? protectedName(ch.replace);
     if (nome) { motivos.push(`a change in ${ch.file} touches the guard ${nome}`); continue; }
     const src = files.find((f) => f.name === ch.file)?.source ?? '';
     const at = src.indexOf(ch.find);

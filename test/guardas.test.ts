@@ -226,7 +226,7 @@ function planCycle(x) { return x + 1; }
   test.each([
     'assertOwner', 'mayAct', 'mayWriteProject', 'isRunnable', 'isEnabled', 'enabledWith', 'cliAuthorized', 'validSecret', 'safeEqual',
     'crownFromParent', 'inheritFromParent', 'evalRunForParent', 'inheritable', 'successorOf',
-    'guardsOf', 'guardsWeakened', 'changesTouchGuards', 'codeOnly', 'abreRegex', 'definitionsOf',
+    'guardsOf', 'guardsWeakened', 'changesTouchGuards', 'codeOnly', 'opensRegex', 'definitionsOf',
     'ownerEmail', 'isDev', 'can', 'effectiveCapabilities', 'parseCapabilities', 'capsEnabled', 'parseStatus', 'claimable',
     'familySpendQuiet', 'budgetNow', 'capAction', 'forgetAgentProps', 'mayAutoApprove', 'onProactiveBlock', 'cleanAutoList',
   ])('mexer no corpo de %s recusa', (nome) => {

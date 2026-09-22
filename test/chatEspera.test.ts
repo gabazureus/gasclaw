@@ -13,7 +13,7 @@ import { runFile, runIO } from '../src/runStore';
 const FOLDER = 'f1';
 const REQ = '00000001-1111-4222-8333-444444444444';
 const base = (runId: string): DurableRun =>
-  newRun({ runId, session: `${FOLDER}:spaces/AAA`, folderId: FOLDER, user: 'dono@x.com', text: 'organize minha semana', now: 1000, ownerDm: true, delivery: newChatDelivery('spaces/AAA', undefined, REQ, 1000, 0) });
+  newRun({ runId, session: `${FOLDER}:spaces/AAA`, folderId: FOLDER, user: 'dono@x.com', text: 'organize minha semana', now: Date.now(), ownerDm: true, delivery: newChatDelivery('spaces/AAA', undefined, REQ, 1000, 0) }); // agora: um run de 1970 já teria expirado
 const snapshot = { messages: [{ role: 'user', content: 'organize minha semana' }], step: 0, queue: [] } as never;
 const esperandoAprovacao = (): DurableRun => ({
   ...base('r-aprova'),
@@ -188,7 +188,8 @@ describe('2a. espera que ficou sem cartão é achada e recebe o cartão', () => 
     const io = runIO();
     io.save(esperandoAprovacao()); // como o pump antigo deixou: gravado e assinado, sem ponteiro
     const auth = JSON.parse(env.props['A:r-aprova']);
-    delete auth.folderId; // o registro antigo não sabia a pasta
+    delete auth.folderId;
+    delete auth.at; // nem a hora da última gravação // o registro antigo não sabia a pasta
     env.props['A:r-aprova'] = JSON.stringify(auth);
     expect(env.props['R:r-aprova']).toBeUndefined();
     const m = await import('../src/main');
@@ -437,6 +438,7 @@ describe('2d/2f. o que acontece em volta de uma espera', () => {
     io.save(esperandoAprovacao());
     const auth = JSON.parse(env.props['A:r-aprova']);
     delete auth.folderId;
+    delete auth.at; // nem a hora da última gravação
     env.props['A:r-aprova'] = JSON.stringify(auth);
     const k = `${FOLDER}/.gasclaw/runs/${runFile('r-aprova')}`;
     const r = parseRun(env.drive.get(k))!;
@@ -522,6 +524,7 @@ describe('varredura das esperas: pastas que falham', () => {
     runIO().save(esperandoAprovacao());
     const auth = JSON.parse(env.props['A:r-aprova']);
     delete auth.folderId;
+    delete auth.at; // nem a hora da última gravação
     env.props['A:r-aprova'] = JSON.stringify(auth);
   };
   const quebrarPasta = (id: string) => {
@@ -602,5 +605,166 @@ describe('respostas sem credencial passam pela trava e pela assinatura', () => {
     const out = m.onCardClick({ type: 'CARD_CLICKED', user: { email: 'dono@x.com' }, space: { name: 'spaces/AAA' }, common: { parameters: params(botoes(c)[0]) } } as never) as { text?: string };
     expect(out.text).toMatch(/changed outside/);
     expect(JSON.parse(env.props['A:r-teto']).auth).toBe(auth);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------
+// Itens que ficaram abertos no ADR-047 (fechados em 2026-09-22, segunda rodada).
+// ---------------------------------------------------------------------------------------------------
+describe('itens abertos do ADR-047', () => {
+  let env: GasEnv;
+  beforeEach(() => {
+    vi.resetModules();
+    env = stubGas();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+  const semOpcoes = (runId: string, pergunta: string): DurableRun => ({
+    ...base(runId),
+    status: 'waiting',
+    answer: pergunta,
+    pending: { kind: 'ask', name: 'ask', callId: 'c', key: `${runId}:0:c`, args: { question: pergunta } } as never,
+    snapshot,
+  });
+  const digitado = (text: string, name: string) => ({ type: 'MESSAGE', user: { email: 'dono@x.com' }, space: { name: 'spaces/AAA', type: 'DM', singleUserBotDm: true }, message: { name, text } });
+
+  // 1. Duas perguntas digitáveis na MESMA conversa: antes a mais nova tomava a vaga e a mais antiga ficava
+  // impossível de responder. Agora é uma fila: a mais antiga responde primeiro, e o cartão da seguinte avisa.
+  test('1. duas perguntas sem opções: a digitada responde a MAIS ANTIGA, a seguinte depois, e o cartão avisa', async () => {
+    runIO().enqueue(semOpcoes('q1', 'Qual o assunto?'), 1000);
+    const m = await import('../src/main');
+    m.drainRuns();
+    runIO().enqueue(semOpcoes('q2', 'Para quem?'), 2000);
+    m.drainRuns();
+    const [c1, c2] = cartoes(env);
+    expect(JSON.stringify(c1)).not.toContain('still open');
+    expect(JSON.stringify(c2)).toContain('your next typed message answers that one first');
+    m.onMessage(digitado('orçamento', 'spaces/AAA/messages/m1') as never);
+    expect(salvo(env, 'q1')?.decision).toEqual({ answer: 'orçamento' });
+    expect(salvo(env, 'q2')?.status).toBe('waiting');
+    m.onMessage(digitado('para a Ana', 'spaces/AAA/messages/m2') as never);
+    expect(salvo(env, 'q2')?.decision).toEqual({ answer: 'para a Ana' });
+  });
+
+  // 2. O clique chega ENQUANTO o cartão sai (entre o POST e a marca). Antes, o `dequeue` depois do POST
+  // apagava o ponteiro que o clique tinha acabado de gravar: o run ficava `queued` sem ponteiro, parado.
+  test('2. clique no meio do POST: o run não fica parado sem ponteiro', async () => {
+    runIO().enqueue(esperandoAprovacao(), 1000);
+    const m = await import('../src/main');
+    let clicou = false;
+    let falhou = false;
+    env.route = (url, init) => {
+      if (clicou && !falhou && url.includes('openrouter.ai/api/v1/chat')) { falhou = true; return { code: 503, body: 'overloaded' }; } // o passo do clique falha uma vez e volta à fila
+      if (clicou || !url.includes('chat.googleapis.com')) return null;
+      const card = (JSON.parse(String(init.payload)) as { cardsV2?: Card[] }).cardsV2?.[0];
+      if (!card) return null;
+      clicou = true;
+      // o dono clica antes de o POST voltar
+      m.onCardClick(aprovarClique(card) as never);
+      return null;
+    };
+    m.drainRuns();
+    expect(clicou).toBe(true);
+    expect(falhou).toBe(true); // controle: o passo do clique caiu e devolveu o run à fila
+    // O ponteiro que o clique regravou sobreviveu ao fim do POST: o mesmo gatilho seguiu e terminou o run.
+    expect(salvo(env, 'r-aprova')?.status).toBe('done');
+  });
+
+  // 3. O POST deu certo e a marca não gravou (Properties cheias): a tentativa seguinte repetia o cartão. Agora
+  // o `requestId` é o da espera + credencial: o Chat devolve a mesma mensagem, e o token é o mesmo.
+  test('3. POST repetido depois de a marca falhar usa o MESMO requestId e o MESMO token', async () => {
+    runIO().enqueue(esperandoAprovacao(), 1000);
+    const real = PropertiesService.getScriptProperties();
+    let falhar = true;
+    vi.stubGlobal('PropertiesService', { getScriptProperties: () => ({ ...real, setProperty: (k: string, v: string) => {
+      if (falhar && k === 'A:r-aprova' && v.includes('"prompted"')) { falhar = false; throw new Error('Properties cheias'); }
+      real.setProperty(k, v);
+    } }), getUserProperties: () => real });
+    const m = await import('../src/main');
+    m.drainRuns();
+    const agora = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(agora + 361_000); // o arrendamento venceu
+    m.drainRuns();
+    const posts = env.fetched('chat.googleapis.com/v1/spaces/AAA/messages');
+    expect(posts).toHaveLength(2);
+    expect(posts[0].url).toBe(posts[1].url); // mesmo requestId: o Chat devolve a mensagem já criada
+    expect(params(botoes(cartoes(env)[1])[0]).token).toBe(params(botoes(cartoes(env)[0])[0]).token);
+    expect(JSON.parse(env.props['A:r-aprova']).prompted).toBeTruthy();
+  });
+
+  // 4. Espera nunca respondida segurava a autoridade nas Properties para sempre.
+  test('4. espera do Chat parada há mais de 7 dias vira failed, o motivo chega ao Chat e a autoridade sai', async () => {
+    runIO().enqueue(esperandoAprovacao(), 1000);
+    const m = await import('../src/main');
+    m.drainRuns(); // cartão enviado
+    const a = JSON.parse(env.props['A:r-aprova']);
+    env.props['A:r-aprova'] = JSON.stringify({ ...a, at: Date.now() - 8 * 86_400_000 });
+    m.drainRuns();
+    const r = salvo(env, 'r-aprova')!;
+    expect(r.status).toBe('failed');
+    expect(postados(env).some((p) => p.text?.includes('I waited 7 days'))).toBe(true);
+    expect(env.props['A:r-aprova']).toBeUndefined();
+  });
+
+  test('4. espera da TELA parada há mais de 7 dias: failed e autoridade fora, sem Chat', async () => {
+    runIO().save({ ...esperandoAprovacao(), runId: 'tela-1', delivery: undefined });
+    const a = JSON.parse(env.props['A:tela-1']);
+    env.props['A:tela-1'] = JSON.stringify({ ...a, at: Date.now() - 8 * 86_400_000 });
+    const m = await import('../src/main');
+    m.drainRuns();
+    expect(salvo(env, 'tela-1')?.status).toBe('failed');
+    expect(env.props['A:tela-1']).toBeUndefined();
+    expect(env.fetched('chat.googleapis.com')).toHaveLength(0);
+  });
+
+  // Sem carimbo, a autoridade de uma espera legada nunca expiraria: a varredura põe a hora ao marcar.
+  test('4. autoridade legada tratada ganha carimbo, e por ele expira', async () => {
+    const io = runIO();
+    io.save(esperandoAprovacao());
+    const auth = JSON.parse(env.props['A:r-aprova']);
+    delete auth.at;
+    delete auth.folderId;
+    env.props['A:r-aprova'] = JSON.stringify(auth);
+    env.drive.delete(`${FOLDER}/.gasclaw/runs/${runFile('r-aprova')}`); // o arquivo sumiu: nada a mandar
+    env.cache = Object.fromEntries(Object.entries(env.cache).filter(([k]) => !k.startsWith('r:')));
+    const m = await import('../src/main');
+    m.drainRuns();
+    const marcada = JSON.parse(env.props['A:r-aprova']);
+    expect(marcada.prompted).toBe('handled');
+    expect(marcada.at).toBeGreaterThan(0);
+    env.props['A:r-aprova'] = JSON.stringify({ ...marcada, at: Date.now() - 8 * 86_400_000 });
+    m.drainRuns();
+    expect(env.props['A:r-aprova']).toBeUndefined();
+  });
+
+  test('4. espera de 6 dias continua esperando (controle)', async () => {
+    runIO().save({ ...esperandoAprovacao(), runId: 'tela-2', delivery: undefined });
+    const a = JSON.parse(env.props['A:tela-2']);
+    env.props['A:tela-2'] = JSON.stringify({ ...a, at: Date.now() - 6 * 86_400_000 });
+    const m = await import('../src/main');
+    m.drainRuns();
+    expect(salvo(env, 'tela-2')?.status).toBe('waiting');
+    expect(env.props['A:tela-2']).toBeDefined();
+  });
+
+  // 5. "O tique ocioso não abre o Drive", medido: nem DriveApp nem a Drive API, com esperas recentes da tela e
+  // do Chat (já com cartão) nas Properties — exatamente o estado normal enquanto o dono não responde.
+  test('5. tique ocioso com esperas recentes: zero acessos ao Drive', async () => {
+    runIO().enqueue(esperandoAprovacao(), 1000);
+    runIO().save({ ...esperandoAprovacao(), runId: 'tela-3', delivery: undefined, updatedAt: Date.now() });
+    const m = await import('../src/main');
+    m.drainRuns(); // posta o cartão; daqui em diante é só espera
+    env.calls.length = 0;
+    env.cache = Object.fromEntries(Object.entries(env.cache).filter(([k]) => !k.startsWith('r:'))); // sem atalho: ler um run agora custaria Drive
+    let pastas = 0;
+    const orig = DriveApp.getFolderById;
+    vi.stubGlobal('DriveApp', { ...DriveApp, getFolderById: (id: string) => { pastas++; return orig(id); }, getRootFolder: () => { pastas++; return DriveApp.getRootFolder(); } });
+    m.drainRuns();
+    expect(pastas).toBe(0);
+    // A espera da TELA não é candidata a cartão (não há Chat para onde mandar): a varredura nem olha para ela.
+    expect(JSON.parse(env.props['A:tela-3']).prompted).toBeUndefined();
+    expect(env.calls.filter((c) => /googleapis\.com\/(drive|upload\/drive)/.test(c.url))).toHaveLength(0);
   });
 });

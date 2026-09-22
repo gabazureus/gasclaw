@@ -29,6 +29,17 @@ export function newChatDelivery(space: string, thread: string | undefined, reque
 export const deliveryDue = (run: DurableRun, now: number): boolean =>
   !!run.delivery && run.delivery.status === 'pending' && ['done', 'failed'].includes(run.status) && Number.isFinite(now) && now >= run.delivery.notBefore;
 
+/**
+ * `requestId` determinístico a partir de um SHA-256 em hex: a Chat API devolve a mensagem já criada quando o
+ * mesmo `requestId` chega de novo, e é isso que torna idempotente repetir o POST de um cartão. Formato UUID
+ * (versão 5, variante RFC), que é o que `createChatMessage` aceita.
+ */
+export function stableRequestId(sha256Hex: string): string {
+  const h = sha256Hex.toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(h)) throw new Error('requestId seed must be a SHA-256 hex digest');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${(8 | (parseInt(h[16], 16) & 3)).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
 export function markDeliverySent(delivery: ChatDelivery, messageName: string, sentAt: number): ChatDelivery {
   if (!new RegExp(`^${delivery.space.replace('/', '\\/')}\/messages\/[A-Za-z0-9._-]+$`).test(messageName) || !Number.isFinite(sentAt)) throw new Error('recibo do Chat invalido');
   return { ...delivery, status: 'sent', messageName, sentAt };

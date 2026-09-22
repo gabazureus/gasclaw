@@ -201,7 +201,7 @@ export type ReadinessInput = {
 export type ReadinessCheck = { id: string; label: string; ok: boolean; detail: string };
 
 /** Os dois lados de CAP, só com nomes de capacidade — nunca o valor de ACCESS (e-mails) ou de outra chave. */
-function capsLado(diferem: string[], pai: Record<string, string | null>, filho: Record<string, string | null> | undefined): string {
+function capsSide(diferem: string[], pai: Record<string, string | null>, filho: Record<string, string | null> | undefined): string {
   const k = diferem.find((x) => x.startsWith('CAP:'));
   if (!k) return '';
   const nomes = (v: string | null | undefined) => parseCapabilities(v ?? null).join(', ') || 'none';
@@ -236,7 +236,7 @@ export function crownReadiness(i: ReadinessInput): { ok: boolean; checks: Readin
       : c('evaluation', 'Judged from outside after the last write, not worse', v.ok && fresca, !v.ok ? v.reason : fresca ? `${v.standing === 'wins' ? 'wins' : 'ties'}: ${i.record.evaluation!.successorPasses}/${i.record.evaluation!.k} vs ${i.record.evaluation!.incumbentPasses}/${i.record.evaluation!.k}` : 'the successor was written again after this evaluation: evaluate it again'),
     // Opção A do dono (F9): depois da coroa vale o painel do sucessor — a 10ª só exige que ele RESPONDA as
     // permissões, e informa a diferença para o pai. Antes da coroa, é a coroa que as entrega.
-    c('settings', coroado ? 'Its permissions and capabilities are readable' : 'It has the parent’s permissions and capabilities', !coroado || !!s?.settings, !coroado ? 'handed over by the crown' : !s?.settings ? 'no health answer' : iguais ? 'same as this engine' : `${diferem.map((k) => k.split(':')[0]).join(', ')} differ from this engine${capsLado(diferem, pai, s?.settings)}: after the crown, the successor's panel is the one that counts`),
+    c('settings', coroado ? 'Its permissions and capabilities are readable' : 'It has the parent’s permissions and capabilities', !coroado || !!s?.settings, !coroado ? 'handed over by the crown' : !s?.settings ? 'no health answer' : iguais ? 'same as this engine' : `${diferem.map((k) => k.split(':')[0]).join(', ')} differ from this engine${capsSide(diferem, pai, s?.settings)}: after the crown, the successor's panel is the one that counts`),
   ];
   return { ok: checks.every((x) => x.ok), checks };
 }
@@ -260,8 +260,8 @@ export function codeMatches(parent: readonly PatchFile[], successor: readonly Pa
   const extra = real.find((x) => !esperado.files.some((f) => f.name === x.name));
   if (extra) return { ok: false, reason: `the successor has a file this engine does not: ${extra.name}` };
   if (!successor.some((f) => f.name === 'successor_seed')) return { ok: false, reason: 'the successor has no seed' };
-  const tocadas = changesTouchGuards(parent, changes);
-  if (tocadas.length) return { ok: false, reason: tocadas.join('; ') };
+  const touched = changesTouchGuards(parent, changes);
+  if (touched.length) return { ok: false, reason: touched.join('; ') };
   // O crivo de novo, no que está IMPLANTADO: o patch passou por ele ao ser escrito, e a igualdade acima
   // já implica isso — mas a coroa não se apoia numa implicação quando pode medir.
   for (const f of real) {

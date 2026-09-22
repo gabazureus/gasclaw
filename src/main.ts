@@ -1,6 +1,6 @@
 import { namesOf, scenarioMd, SCENARIOS } from './judgeSet';
 import { parseScenario } from './eval';
-import { DREAM_STEP_ESTIMATE_MS, startDream, tickDream, withDreamLease, type DreamDeps } from './dreamTick';
+import { nextStepWindow, parseStepWindow, startDream, stepEstimate, tickDream, withDreamLease, type DreamDeps } from './dreamTick';
 import { dreamIO } from './dreamStore';
 import { failProp, failuresFrom, parseFailures, serializeFailures, withFailure } from './failureLog';
 import { mergeAcrossGenerations, originLabel, parseSchema, validateValues, type ConfigField } from './agentConfig';
@@ -26,7 +26,7 @@ import { dueAgenda, evaluateAgenda, syntheticAgenda } from '../poc/p22-proativid
 import { deliverP2Probe, pocP2, startP2Event } from '../poc/p2-chat-async/harness';
 import { chatAppAvailable, createAsChatApp, ownerDmAsChatApp, spacesAsChatApp } from './chatApiGas';
 import { acceptChatMessage } from './chatAsync';
-import { authorizedDelivery, deliveryDue, deliveryGivenUp, newChatDelivery, sendChatDelivery } from './chatDelivery';
+import { authorizedDelivery, deliveryDue, deliveryGivenUp, newChatDelivery, sendChatDelivery, stableRequestId } from './chatDelivery';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
 import { CHAT_BUDGET_MS, DEFAULT_STEPS, MAX_HISTORY, reply, runTurn } from './agent';
 import { foreignMessage, parseSubagent, personaTools, subagentGrants, subagentSpan, subagentTools } from './subagent';
@@ -36,7 +36,7 @@ import { approvalCard, decisionFrom, escapeCard, issue, issueGrant } from './app
 import { cacheTickets, decideChatApproval, decideScreenApproval, durableTickets, hashToken, newToken } from './approvalStore';
 import { chatTurn, handleChat, type ChatDeps, type ChatEvent, type ChatReply } from './chat';
 import { withChatFormatRules } from './chatFormat';
-import { afterStep, budgetNotice, charge, extendBudget, isFinished, markInflight, newRun, resumeOf, RUN_BUDGET_USD, view, waitKey, waitLabel, withDecision, type DurableRun, type OrphanWait } from './run';
+import { afterStep, budgetNotice, charge, extendBudget, isFinished, markInflight, newRun, resumeOf, RUN_BUDGET_USD, view, WAIT_TTL_MS, waitKey, waitLabel, withDecision, type DurableRun, type OrphanWait } from './run';
 import { asEnv, engineLinks, panelList } from './panels';
 import { pump, pumpById, type StepDeps } from './runner';
 import { runIO, type RunIO } from './runStore';
@@ -632,23 +632,23 @@ function durableChatClick(e: ChatEvent): ChatReply {
   if (p.decision === 'continue' || p.answer !== undefined) {
     // Teto de custo e pergunta do `ask`: só quem pediu o run, só na espera que criou o botão, e sob a trava
     // com o arquivo conferido (`io.resume`) — a mesma regra da tela.
-    const continuar = p.decision === 'continue';
+    const carryOn = p.decision === 'continue';
     const out = io.resume(String(p.folderId ?? ''), String(p.runId ?? ''), (r) => {
-      const naEspera = continuar ? r.status === 'paused' : r.status === 'waiting' && r.pending?.kind === 'ask';
+      const inThatWait = carryOn ? r.status === 'paused' : r.status === 'waiting' && r.pending?.kind === 'ask';
       // `wait` prende o botão à espera que o criou: o botão de uma pergunta antiga não responde a pergunta nova.
-      if (!naEspera || p.wait !== waitKey(r)) return GONE;
+      if (!inThatWait || p.wait !== waitKey(r)) return GONE;
       if (r.user !== e.user.email.toLowerCase()) return 'that task is not yours';
-      if (continuar) return extendBudget(r, RUN_BUDGET_USD, Date.now());
+      if (carryOn) return extendBudget(r, RUN_BUDGET_USD, Date.now());
       const decision = decisionFrom(r.pending!, { answer: String(p.answer) });
       return decision ? withDecision(r, decision, Date.now()) : 'that is not a valid answer';
     }, Date.now());
     if ('error' in out) {
-      if (out.error === GONE || out.error === 'I could not find that task') return updateCard({ text: continuar ? 'This task is no longer paused.' : 'This question was already answered.', cardsV2: [] });
+      if (out.error === GONE || out.error === 'I could not find that task') return updateCard({ text: carryOn ? 'This task is no longer paused.' : 'This question was already answered.', cardsV2: [] });
       return { text: `Cannot answer this: ${out.error}.` }; // mantém o card de outra pessoa intacto
     }
-    if (!continuar) PropertiesService.getScriptProperties().deleteProperty(openAskKey(out.session)); // pergunta respondida
+    if (!carryOn) setOpenAsks(out.session, openAsks(out.session).filter((id) => id !== out.runId)); // pergunta respondida
     done = pumpById(stepDeps(CHAT_BUDGET_MS), out.runId) ?? out;
-    ack = continuar ? 'Cost limit raised. I am carrying on with the task.' : `Answer recorded: ${String(p.answer).replace(/[<>]/g, '').slice(0, 200)}. I am carrying on with the task.`;
+    ack = carryOn ? 'Cost limit raised. I am carrying on with the task.' : `Answer recorded: ${String(p.answer).replace(/[<>]/g, '').slice(0, 200)}. I am carrying on with the task.`;
   } else {
     const replacement = newToken();
     const out = decideChatApproval(io, p, e.user.email, replacement, Date.now());
@@ -942,7 +942,7 @@ export function runState(runId: string, approvalToken?: string) {
 }
 
 /**
- * A resposta do usuário a um run parado: aprovar/negar uma ferramenta, responder uma pergunta, ou mandar continuar
+ * A resposta do usuário a um run parado: aprovar/negar uma ferramenta, responder uma pergunta, ou mandar carryOn
  * depois do teto de custo. Devolve o run à fila e já tenta terminar na hora.
  */
 export function runDecide(runId: string, params: Record<string, string>) {
@@ -1021,7 +1021,7 @@ function runP3IdleProbe(): boolean {
     const drained = observe.drain();
     const drainMs = Date.now() - drainAt;
     const queueAt = Date.now();
-    const scan = runIO().scan(); // a mesma leitura do tique real: fila + esperas sem cartão
+    const scan = runIO().scan(Date.now()); // a mesma leitura do tique real: fila + esperas
     const pointers = scan.pointers;
     if (!pointers.length) workRuns(scan);
     const queueMs = Date.now() - queueAt;
@@ -1075,7 +1075,7 @@ function runP22TickProbe(): boolean {
     runlog.reconcileStaleRuns();
     observe.drain();
     const agenda = evaluateAgenda(text, {}, Date.now(), tz);
-    const scan = runIO().scan();
+    const scan = runIO().scan(Date.now());
     if (!scan.pointers.length) workRuns(scan);
     cache.put(P22_TICK_RESULT, JSON.stringify({ ok: true, ms: Date.now() - t0, jobs: agenda.jobs, due: agenda.due, errors: agenda.errors }), 21_600);
   } catch (err) {
@@ -1122,9 +1122,10 @@ function runP22WakeProbe(): boolean {
 function workRuns(scan?: ReturnType<RunIO['scan']>): void {
   try {
     const io = runIO();
-    const { pointers, orphans } = scan ?? io.scan();
+    const { pointers, orphans, expired } = scan ?? io.scan(Date.now());
+    if (expired.length) expireWaits(expired, io);
     if (orphans.length) recoverWaits(orphans, io);
-    if (!pointers.length && !orphans.length) return;
+    if (!pointers.length && !orphans.length && !expired.length) return;
     // A entrega acontece assim que CADA run fica pronto, dentro do laco do pump. Antes ela esperava o pump
     // inteiro terminar (ate 20 runs / 240 s), entao uma resposta pronta em 36 s so saia minutos depois,
     // refem do trabalho dos outros runs — o usuario lia isso como "travado no pensando...".
@@ -1139,118 +1140,193 @@ function workRuns(scan?: ReturnType<RunIO['scan']>): void {
  * aprovação, pergunta do `ask` ou o aviso do teto de custo. Sem isto a entrega só via `done`/`failed` e o Chat
  * ficava no "thinking…" para sempre; o clique (`durableChatClick`) já existia, ninguém postava o cartão.
  *
- * Uma vez por espera, e a marca mora FORA da pasta (`prompted` na autoridade): só depois do POST dar certo o
- * run sai da fila. Se o Chat falhar, o run fica na fila e o próximo claim tenta de novo (`settle`), até
- * `MAX_ATTEMPTS`. O destino é o da autoridade, nunca o do arquivo. Nada é gravado sem conferir a assinatura
- * antes: `io.save` re-assina o que recebe, e gravar um arquivo adulterado o tornaria legítimo.
+ * Uma vez por espera, e a marca mora FORA da pasta (`prompted` na autoridade). O POST é IDEMPOTENTE: o
+ * `requestId` é derivado da espera (e, na aprovação, da credencial), então repetir depois de uma falha —
+ * inclusive uma falha DEPOIS do POST, ao gravar a marca — devolve a mesma mensagem em vez de criar outra.
+ * O destino é o da autoridade, nunca o do arquivo. Nada é gravado sem conferir a assinatura antes.
  */
 function promptInChat(run: DurableRun, io: RunIO): void {
-  const espera = waitKey(run);
-  const autoridade = io.authority(run.runId);
-  if (!espera || autoridade?.prompted === espera) return;
-  const alvo = authorizedDelivery(run.delivery, autoridade);
-  if (!alvo.ok) {
+  const wait = waitKey(run);
+  const authority = io.authority(run.runId);
+  if (!wait || authority?.prompted === wait) return;
+  const target = authorizedDelivery(run.delivery, authority);
+  if (!target.ok) {
     // Destino divergente ou sem registro não é falha passageira: desiste já, com o motivo, como a entrega final.
-    if (io.untampered(run)) io.save(deliveryGivenUp(run, `Chat card refused: ${alvo.reason}`, Date.now()));
+    if (io.untampered(run)) io.save(deliveryGivenUp(run, `Chat card refused: ${target.reason}`, Date.now()));
     io.dequeue(run.runId);
     return;
   }
   if (!io.untampered(run)) throw new Error('Chat card refused: the task file was changed outside gasclaw');
+  const lease = io.leaseOf(run.runId); // o ponteiro do claim que trouxe o run até aqui
   const now = Date.now();
   let message: { text: string; cardsV2: unknown[] };
+  let seed = `${run.runId}|${wait}`;
   if (run.status === 'waiting' && run.pending?.kind === 'approval') {
-    // Credencial NOVA a cada cartão que sai: o hash de uma anterior não devolve o token, e um cartão que
-    // nunca chegou ao Chat não tem clique a preservar. Gravada ANTES do POST, para o clique achá-la.
-    const token = newToken();
-    io.save({ ...run, approval: issueGrant(run.pending, run.user, hashToken(token), now), updatedAt: now });
-    message = approvalCard({ token, pending: run.pending, folderId: run.folderId, runId: run.runId }, run.answer ?? 'This action needs your approval.');
+    const card = approvalToken(io, run, now);
+    seed += `|${card.issuedAt}`; // credencial nova = mensagem nova; a mesma credencial = a mesma mensagem
+    message = approvalCard({ token: card.token, pending: run.pending, folderId: run.folderId, runId: run.runId }, run.answer ?? 'This action needs your approval.');
   } else if (run.status === 'waiting' && run.pending?.kind === 'ask') {
-    message = approvalCard({ token: '', pending: run.pending, folderId: run.folderId, runId: run.runId }, run.answer ?? 'I need an answer.', espera);
+    const earlier = openAsks(run.session).filter((id) => id !== run.runId);
+    const note = earlier.length ? '\n\nAnother question of mine is still open in this chat: your next typed message answers that one first.' : '';
+    message = approvalCard({ token: '', pending: run.pending, folderId: run.folderId, runId: run.runId }, (run.answer ?? 'I need an answer.') + note, wait);
   } else {
     message = continueCard(run);
   }
-  // Se o POST (ou qualquer passo aqui) falhar, o ponteiro segue arrendado pelo claim que trouxe o run até
-  // aqui (`settle`): nenhuma outra execução posta junto, e a próxima tentativa vem quando o arrendamento
-  // vencer — uma queda breve do Chat não gasta as `MAX_ATTEMPTS` em segundos.
-  createAsChatApp({ space: alvo.space, ...(alvo.thread ? { thread: alvo.thread } : {}), requestId: Utilities.getUuid(), message });
-  io.markPrompted(run.runId, espera);
-  io.dequeue(run.runId);
-  // A pergunta aberta desta conversa: a próxima mensagem DIGITADA do dono responde a ela (`acceptChatMessage`).
-  if (run.pending?.kind === 'ask' && run.status === 'waiting') PropertiesService.getScriptProperties().setProperty(openAskKey(run.session), run.runId);
+  // Se o POST (ou qualquer passo aqui) falhar, o ponteiro segue arrendado pelo claim (`settle`): nenhuma outra
+  // execução posta junto, e a próxima tentativa vem quando o arrendamento vencer.
+  createAsChatApp({ space: target.space, ...(target.thread ? { thread: target.thread } : {}), requestId: stableRequestId(hashToken(seed)), message });
+  io.markPrompted(run.runId, wait, now);
+  io.release(run.runId, lease); // só apaga o ponteiro se ainda for o do claim: um clique no meio já o regravou
+  // A pergunta entra na FILA de perguntas digitáveis desta conversa (a mais antiga responde primeiro).
+  if (run.pending?.kind === 'ask' && run.status === 'waiting') {
+    const list = openAsks(run.session);
+    if (!list.includes(run.runId)) setOpenAsks(run.session, [...list, run.runId]);
+  }
+}
+
+/**
+ * O token do cartão de aprovação. Reaproveita o da última tentativa quando a credencial gravada ainda é a
+ * dele (o cache é atalho: o hash no run decide), para o POST repetido ser o MESMO cartão. Senão emite uma
+ * credencial nova — gravada antes do POST, para o clique achá-la.
+ */
+function approvalToken(io: RunIO, run: DurableRun, now: number): { token: string; issuedAt: number } {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get(`cardtok:${run.runId}`);
+  const g = run.approval;
+  if (cached && g && g.pendingKey === run.pending!.key && now >= g.issuedAt && now < g.expiresAt && hashToken(cached) === g.tokenHash) return { token: cached, issuedAt: g.issuedAt };
+  const token = newToken();
+  const grant = issueGrant(run.pending!, run.user, hashToken(token), now);
+  io.save({ ...run, approval: grant, updatedAt: now });
+  cache.put(`cardtok:${run.runId}`, token, 21_600);
+  return { token, issuedAt: grant.issuedAt };
 }
 
 /**
  * A mensagem DIGITADA responde a pergunta aberta desta conversa (a mesma regra do caminho síncrono, agora no
- * run durável). Só vale para quem pediu o run, só enquanto ele espera aquele `ask`, e só com o arquivo
- * conferido — `enqueue` re-assina. O run volta à fila; o gatilho retoma e entrega a resposta.
+ * run durável). Com mais de uma aberta, responde a MAIS ANTIGA — e o cartão das seguintes avisa isso. Só vale
+ * para quem pediu o run, só enquanto ele espera aquele `ask`, e sob `io.resume` (trava + assinatura).
  */
 function answerOpenAsk(session: string, user: string, text: string, messageName?: string): boolean {
-  const props = PropertiesService.getScriptProperties();
   const cache = CacheService.getScriptCache();
   if (messageName && cache.get(`askans:${messageName}`)) return true; // o Chat reentregou a mesma resposta
-  const runId = props.getProperty(openAskKey(session));
-  if (!runId) return false;
-  const out = runIO().resume(session.slice(0, session.indexOf(':')), runId, (r) => {
-    if (r.session !== session || r.status !== 'waiting' || r.pending?.kind !== 'ask') return GONE;
-    if (r.user !== user.toLowerCase()) return 'not yours'; // outra pessoa no espaço: é mensagem comum
-    const decision = decisionFrom(r.pending, { answer: text });
-    return decision ? withDecision(r, decision, Date.now()) : 'invalid';
-  }, Date.now());
-  if ('error' in out) {
-    if (out.error === GONE || out.error === 'I could not find that task') props.deleteProperty(openAskKey(session)); // já respondida por outro caminho
-    return false;
+  const list = openAsks(session);
+  const keep = [...list];
+  let answered = false;
+  for (const runId of list) {
+    const out = runIO().resume(session.slice(0, session.indexOf(':')), runId, (r) => {
+      if (r.session !== session || r.status !== 'waiting' || r.pending?.kind !== 'ask') return GONE;
+      if (r.user !== user.toLowerCase()) return 'not yours'; // outra pessoa no espaço: não é dela
+      const decision = decisionFrom(r.pending, { answer: text });
+      return decision ? withDecision(r, decision, Date.now()) : 'invalid';
+    }, Date.now());
+    if (!('error' in out)) {
+      keep.splice(keep.indexOf(runId), 1);
+      answered = true;
+      break;
+    }
+    if (out.error === GONE || out.error === 'I could not find that task') keep.splice(keep.indexOf(runId), 1); // já respondida
+    else if (out.error !== 'not yours') break; // resposta inválida ou trava ocupada: vira mensagem comum
   }
-  props.deleteProperty(openAskKey(session));
-  if (messageName) cache.put(`askans:${messageName}`, '1', 600);
-  return true;
+  if (keep.length !== list.length) setOpenAsks(session, keep);
+  if (answered && messageName) cache.put(`askans:${messageName}`, '1', 600);
+  return answered;
 }
 
-/** Onde fica o run cuja pergunta (`ask`) está aberta numa conversa do Chat. */
+/** As perguntas digitáveis abertas numa conversa do Chat, da mais antiga à mais nova. */
 const openAskKey = (session: string) => `ASKRUN:${session}`;
+function openAsks(session: string): string[] {
+  const raw = PropertiesService.getScriptProperties().getProperty(openAskKey(session));
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [String(v)];
+  } catch {
+    return [raw]; // formato da primeira versão: um runId só
+  }
+}
+function setOpenAsks(session: string, list: string[]): void {
+  const props = PropertiesService.getScriptProperties();
+  if (list.length) props.setProperty(openAskKey(session), JSON.stringify(list));
+  else props.deleteProperty(openAskKey(session));
+}
 
 /** O aviso do teto com o botão Continue. O clique chega a `durableChatClick`, que confere quem clicou. */
 function continueCard(run: DurableRun): { text: string; cardsV2: unknown[] } {
-  const texto = escapeCard(run.answer ?? budgetNotice(run));
+  const text = escapeCard(run.answer ?? budgetNotice(run));
   const parameters = [{ key: 'folderId', value: run.folderId }, { key: 'runId', value: run.runId }, { key: 'wait', value: waitKey(run) ?? '' }, { key: 'decision', value: 'continue' }];
-  return { text: 'The task reached its cost limit.', cardsV2: [{ cardId: 'budget', card: { header: { title: 'Cost limit reached' }, sections: [{ widgets: [{ textParagraph: { text: texto } }, { buttonList: { buttons: [{ text: 'Continue', onClick: { action: { function: 'onCardClick', parameters } } }] } }] }] } }] };
+  return { text: 'The task reached its cost limit.', cardsV2: [{ cardId: 'budget', card: { header: { title: 'Cost limit reached' }, sections: [{ widgets: [{ textParagraph: { text } }, { buttonList: { buttons: [{ text: 'Continue', onClick: { action: { function: 'onCardClick', parameters } } }] } }] }] } }] };
 }
 
 /**
- * Esperas do Chat que ficaram sem cartão e FORA da fila — os runs parados antes deste conserto (o de
- * 2026-09-21 é um deles). A lista vem da mesma leitura de Properties que o tique já fazia; aqui só se abre o
- * Drive para os poucos que aparecerem, e cada um é tratado UMA vez: ou volta à fila (e o pump posta o cartão),
- * ou fica marcado como visto. No máximo 3 por tique, para um lote antigo não comer o tique do dono.
+ * Acha o run de uma autoridade sem ponteiro. Pasta por pasta (nas antigas, sem `folderId`, entre os agentes
+ * cadastrados), parando na primeira que o tem: uma pasta apagada de outro agente não esconde o run. Pasta
+ * que falha tem três tiques de chance; depois `gone` — senão o tique abriria o Drive para sempre por ela.
+ */
+function findWaitRun(o: OrphanWait, io: RunIO): DurableRun | 'retry' | 'gone' {
+  let failed = false;
+  for (const f of o.folderId ? [o.folderId] : store.listAgents().map((a) => a.folderId)) {
+    try {
+      const run = io.load(f, o.runId);
+      if (run?.runId === o.runId) return run;
+    } catch {
+      failed = true;
+    }
+  }
+  if (!failed) return 'gone';
+  const cache = CacheService.getScriptCache();
+  const n = Number(cache.get(`waitscan:${o.runId}`) ?? 0) + 1;
+  if (n >= 3) return 'gone';
+  cache.put(`waitscan:${o.runId}`, String(n), 21_600);
+  return 'retry';
+}
+
+/**
+ * Esperas do Chat que ficaram sem cartão e FORA da fila — os runs parados antes do ADR-047 (o de 2026-09-21 é
+ * um deles). A lista vem da mesma leitura de Properties que o tique já fazia; o Drive só abre para as poucas
+ * que aparecerem, e cada uma é tratada UMA vez: volta à fila (e o pump posta o cartão) ou fica marcada.
+ * No máximo 3 por tique, para um lote antigo não comer o tique do dono.
  */
 function recoverWaits(orphans: OrphanWait[], io: RunIO): void {
-  const cache = CacheService.getScriptCache();
   for (const o of orphans.slice(0, 3)) {
-    // Pasta por pasta, parando na primeira que tem o run: uma pasta apagada (ou sem acesso) de outro agente
-    // não pode esconder o run das outras.
-    let run: DurableRun | null = null;
-    let falhou = false;
-    for (const f of o.folderId ? [o.folderId] : store.listAgents().map((a) => a.folderId)) {
-      try {
-        run = io.load(f, o.runId);
-      } catch {
-        falhou = true;
-      }
-      if (run?.runId === o.runId) break;
-      run = null;
-    }
-    if (!run && falhou) {
-      // Drive fora OU pasta que não volta mais: três tiques de chance, depois não olha de novo — senão o
-      // tique ocioso abriria o Drive para sempre por uma pasta apagada.
-      const n = Number(cache.get(`waitscan:${o.runId}`) ?? 0) + 1;
-      if (n < 3) cache.put(`waitscan:${o.runId}`, String(n), 21_600);
-      else io.markPrompted(o.runId, 'handled');
-      continue;
-    }
     try {
-      if (run && isFinished(run) && io.untampered(run)) io.forget(o.runId); // entrega desistida que deixou a autoridade para trás
-      else if (run && waitKey(run) && run.delivery?.status === 'pending' && io.untampered(run)) io.enqueue(run, Date.now()); // conferido antes: `enqueue` re-assina
-      else io.markPrompted(o.runId, 'handled'); // não há cartão a mandar (ou o arquivo não confere): não olha de novo
+      const run = findWaitRun(o, io);
+      if (run === 'retry') continue;
+      if (run !== 'gone' && isFinished(run) && io.untampered(run)) io.forget(o.runId); // entrega desistida que deixou a autoridade para trás
+      else if (run !== 'gone' && waitKey(run) && run.delivery?.status === 'pending' && io.untampered(run)) io.enqueue(run, Date.now()); // conferido antes: `enqueue` re-assina
+      else io.markPrompted(o.runId, 'handled', Date.now()); // não há cartão a mandar (ou o arquivo não confere): não olha de novo
     } catch (err) {
       console.warn(`wait recovery failed: ${redactMsg(err)}`); // Properties cheias ou fora: tenta no próximo tique
+    }
+  }
+}
+
+/** O que o dono lê quando uma espera expira. */
+const WAIT_EXPIRED = `I waited ${WAIT_TTL_MS / 86_400_000} days for your answer and stopped this task. Ask me again if you still need it.`;
+
+/**
+ * Esperas paradas há mais que `WAIT_TTL_MS` (ADR-047): o run vira `failed` com o motivo e a autoridade sai das
+ * Script Properties. Veio do Chat: o motivo é ENTREGUE lá (o run volta à fila só para isso, e a entrega
+ * esquece a autoridade). Da tela: grava e esquece. Arquivo adulterado ou sumido: só esquece — sem a
+ * autoridade, nada mais nele pode ser aprovado. No máximo 3 por tique, pelo mesmo motivo da varredura.
+ */
+function expireWaits(expired: OrphanWait[], io: RunIO): void {
+  for (const o of expired.slice(0, 3)) {
+    try {
+      const run = findWaitRun(o, io);
+      if (run === 'retry') continue;
+      if (run === 'gone' || !waitKey(run) || !io.untampered(run)) {
+        io.forget(o.runId);
+        continue;
+      }
+      const now = Date.now();
+      const failed: DurableRun = { ...run, status: 'failed', answer: WAIT_EXPIRED, error: 'expired waiting for the owner', approval: undefined, updatedAt: now };
+      if (failed.delivery?.status === 'pending' && io.authority(o.runId)?.space) io.enqueue(failed, now);
+      else {
+        io.save(failed);
+        io.forget(o.runId);
+      }
+    } catch (err) {
+      console.warn(`wait expiry failed: ${redactMsg(err)}`);
     }
   }
 }
@@ -1956,12 +2032,16 @@ export function drainRuns() {
       // sonhando e gastando cota — o oposto do que arquivar significa — e a chave de emergência não
       // pararia justamente o que roda sozinho, que é o que ela existe para parar.
       if (!mayAct(a.folderId, 'dream').ok) continue;
-      // O maior passo já medido vira a estimativa do próximo tique (revisão F9): sem guardá-lo, cada tique
-      // apostava de novo nos 90 s e o passo de 130 s começado tarde morria no teto, pago e perdido.
-      const est = Number(props.getProperty('DREAMSTEP_MS')) || DREAM_STEP_ESTIMATE_MS;
-      const r = tickDream(a.folderId, d, inicio + 330_000, est);
-      if ((r.longestStepMs ?? 0) > est) props.setProperty('DREAMSTEP_MS', String(r.longestStepMs));
+      // A estimativa do passo é POR AGENTE (modelo e cenários diferem) e esquece: o maior passo dos últimos
+      // `DREAM_STEP_WINDOW` tiques medidos, com teto (`stepEstimate`). A chave termina em `:<pasta>`, então
+      // `forgetAgentProps` a apaga junto com o agente.
+      const key = `DREAMSTEP_MS:${a.folderId}`;
+      const window = parseStepWindow(props.getProperty(key));
+      const r = tickDream(a.folderId, d, inicio + 330_000, stepEstimate(window));
+      if (r.longestStepMs) props.setProperty(key, JSON.stringify(nextStepWindow(window, r.longestStepMs)));
     }
+    // A chave global da F9 valia para todos os agentes e só crescia: sai uma vez.
+    if (props.getProperty('DREAMSTEP_MS') !== null) props.deleteProperty('DREAMSTEP_MS');
   }));
   return drained ?? { n: 0, ms: 0, oldest: null };
 }

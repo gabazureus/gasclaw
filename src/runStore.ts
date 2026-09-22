@@ -6,7 +6,7 @@
 import { redeemGrant, type GrantResult } from './approval';
 import { claimable, parseStatus } from './agentCaps';
 import type { Decision } from './agent';
-import { AUTH_PREFIX, authKey, claim, isFinished, nextClaimable, nextExhausted, parseRun, pointerOf, queueKey, runAuthority, splitRunQueue, type DurableRun, type OrphanWait, type RunAuthority, type RunPointer } from './run';
+import { AUTH_PREFIX, authKey, claim, isFinished, nextClaimable, nextExhausted, parseRun, pointerOf, queueKey, runAuthority, splitRunQueue, type DurableRun, type OrphanWait, type RunAuthority, type RunPointer, WAIT_TTL_MS } from './run';
 
 const CACHE_S = 21_600; // 6 h: só acelera; quando expira, o run volta do Drive
 const CACHE_MAX = 90_000;
@@ -105,9 +105,17 @@ export type RunIO = {
    * o tique já fazia para a fila. Tique ocioso continua sem abrir o Drive (P22/ADR-027): uma espera cujo cartão
    * já foi postado tem `prompted` e nem entra na lista.
    */
-  scan: () => { pointers: RunPointer[]; orphans: OrphanWait[] };
+  scan: (now: number) => { pointers: RunPointer[]; orphans: OrphanWait[]; expired: OrphanWait[] };
   /** Registra (fora da pasta) que o cartão desta espera foi ao Chat — ou que a varredura já a tratou. */
-  markPrompted: (runId: string, key: string) => void;
+  markPrompted: (runId: string, key: string, now: number) => void;
+  /** O arrendamento atual do ponteiro deste run (o do claim que o trouxe até aqui), se houver. */
+  leaseOf: (runId: string) => number | undefined;
+  /**
+   * Tira o run da fila SÓ se o ponteiro ainda é o do claim (`leaseUntil` igual), sob a trava. Um clique que
+   * chegou enquanto o cartão saía já regravou o ponteiro (sem arrendamento) — apagá-lo deixaria o run
+   * `queued` sem ponteiro, parado para sempre.
+   */
+  release: (runId: string, leaseUntil: number | undefined) => void;
   /** Autoridade deste run (ADR-029): destino da entrega e assinatura do estado que nós gravamos. */
   authority: (runId: string) => RunAuthority | null;
   /** Esquece a autoridade de um run que acabou de vez. Só assim o `A:` não se acumula nas Properties. */
@@ -179,7 +187,7 @@ export function runIO(
     try {
       const a = JSON.parse(raw) as Partial<RunAuthority>;
       return typeof a.auth === 'string' && a.auth
-        ? { auth: a.auth, ...(typeof a.space === 'string' ? { space: a.space } : {}), ...(typeof a.thread === 'string' ? { thread: a.thread } : {}), ...(typeof a.folderId === 'string' ? { folderId: a.folderId } : {}), ...(typeof a.prompted === 'string' ? { prompted: a.prompted } : {}) }
+        ? { auth: a.auth, ...(typeof a.space === 'string' ? { space: a.space } : {}), ...(typeof a.thread === 'string' ? { thread: a.thread } : {}), ...(typeof a.folderId === 'string' ? { folderId: a.folderId } : {}), ...(typeof a.prompted === 'string' ? { prompted: a.prompted } : {}), ...(Number.isFinite(a.at) ? { at: Number(a.at) } : {}) }
         : null;
     } catch {
       return null;
@@ -203,7 +211,7 @@ export function runIO(
         ? { space: r.delivery.space, ...(r.delivery.thread ? { thread: r.delivery.thread } : {}) }
         : {};
     // `prompted` sobrevive às gravações: é ele que diz à varredura que esta espera já tem cartão no Chat.
-    setProp(authKey(r.runId), JSON.stringify({ ...destino, auth: sign(runAuthority(r)), folderId: r.folderId, ...(antes?.prompted ? { prompted: antes.prompted } : {}) } satisfies RunAuthority));
+    setProp(authKey(r.runId), JSON.stringify({ ...destino, auth: sign(runAuthority(r)), folderId: r.folderId, at: r.updatedAt, ...(antes?.prompted ? { prompted: antes.prompted } : {}) } satisfies RunAuthority));
   };
 
   /**
@@ -223,18 +231,34 @@ export function runIO(
     return !!a && a.auth === sign(runAuthority(r));
   };
 
-  const scan: RunIO['scan'] = () => {
-    const tudo = props.getProperties();
-    const pointers = splitRunQueue(tudo);
-    const naFila = new Set(pointers.map((p) => p.runId));
-    const orphans = Object.keys(tudo)
-      .filter((k) => k.startsWith(AUTH_PREFIX) && !naFila.has(k.slice(AUTH_PREFIX.length)))
-      .flatMap((k) => {
-        const a = parseAuthority(tudo[k]); // do mesmo mapa: nenhuma leitura a mais por registro
-        // Sem destino = run da tela (não há Chat para onde mandar); com `prompted` = já tratado.
-        return a?.space && !a.prompted ? [{ runId: k.slice(AUTH_PREFIX.length), ...(a.folderId ? { folderId: a.folderId } : {}) }] : [];
-      });
-    return { pointers, orphans };
+  const scan: RunIO['scan'] = (now) => {
+    const all = props.getProperties();
+    const pointers = splitRunQueue(all);
+    const queued = new Set(pointers.map((p) => p.runId));
+    const orphans: OrphanWait[] = [];
+    const expired: OrphanWait[] = [];
+    for (const k of Object.keys(all)) {
+      const runId = k.slice(AUTH_PREFIX.length);
+      if (!k.startsWith(AUTH_PREFIX) || queued.has(runId)) continue;
+      const a = parseAuthority(all[k]); // do mesmo mapa: nenhuma leitura a mais por registro
+      if (!a) continue;
+      const w = { runId, ...(a.folderId ? { folderId: a.folderId } : {}) };
+      // Parada há mais que WAIT_TTL_MS (Chat ou tela): expira. Senão, espera do Chat nunca tratada: cartão.
+      // Sem destino = run da tela (não há Chat para onde mandar); com `prompted` = já tratada.
+      if (a.at !== undefined && now - a.at > WAIT_TTL_MS) expired.push(w);
+      else if (a.space && !a.prompted) orphans.push(w);
+    }
+    return { pointers, orphans, expired };
+  };
+
+  const release: RunIO['release'] = (runId, leaseUntil) => {
+    if (!lock.tryLock(CLAIM_LOCK_MS)) return; // fica na fila: o próximo claim vê `prompted` e só limpa
+    try {
+      const p = splitRunQueue(props.getProperties()).find((x) => x.runId === runId);
+      if (p && p.leaseUntil === leaseUntil) props.deleteProperty(queueKey(runId));
+    } finally {
+      lock.releaseLock();
+    }
   };
 
   return {
@@ -243,10 +267,13 @@ export function runIO(
     untampered,
     pointers,
     scan,
-    markPrompted: (runId, key) => {
+    markPrompted: (runId, key, now) => {
       const a = readAuthority(runId);
-      if (a) setProp(authKey(runId), JSON.stringify({ ...a, prompted: key } satisfies RunAuthority));
+      // `at` só nasce aqui quando o registro é antigo (sem ele): assim até a espera legada tem prazo para expirar.
+      if (a) setProp(authKey(runId), JSON.stringify({ ...a, prompted: key, at: a.at ?? now } satisfies RunAuthority));
     },
+    leaseOf: (runId) => splitRunQueue(props.getProperties()).find((x) => x.runId === runId)?.leaseUntil,
+    release,
     authority: readAuthority,
     forget: (runId) => props.deleteProperty(authKey(runId)),
     resume: (folderId, runId, apply, now) => {

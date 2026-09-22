@@ -108,7 +108,7 @@ describe('pumpOnce: um passo por execução', () => {
     // o `after` do gatilho: posta o cartão e marca a espera como enviada
     const posta = (r: DurableRun) => {
       if (r.status !== 'waiting') return;
-      h.io.markPrompted(r.runId, waitKey(r)!);
+      h.io.markPrompted(r.runId, waitKey(r)!, NOW);
       h.io.dequeue(r.runId);
     };
     const tocados = pump(h.d, 10, Infinity, posta);
@@ -121,7 +121,7 @@ describe('pumpOnce: um passo por execução', () => {
     const h = harness(pedeAprovacao);
     h.io.enqueue(mk({ delivery: entregaChat }), NOW);
     const r = pumpOnce(h.d)!;
-    h.io.markPrompted('r1', waitKey(r)!);
+    h.io.markPrompted('r1', waitKey(r)!, NOW);
     h.tick(LEASE_MS + 1); // o arrendamento do claim que parou a espera venceu
     expect(pumpOnce(h.d)?.status).toBe('waiting');
     expect(h.queued()).toBe(false);

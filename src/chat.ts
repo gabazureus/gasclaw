@@ -81,8 +81,8 @@ export function chatTurn(i: ChatTurnInput): ChatTurnResult {
   // O snapshot do run durável guarda o estado do `runTurn` COM o system na frente (o ticket do Chat é que o
   // corta). Sem tirar o velho aqui, toda retomada depois de um clique mandava DOIS system prompts ao modelo —
   // o dobro de tokens de instrução, pagos dentro do teto de US$ 0,10 do run (auditoria de 2026-09-22).
-  const antigas = i.resume?.messages[0]?.role === 'system' ? i.resume.messages.slice(1) : (i.resume?.messages ?? []);
-  const resume = i.resume ? { ...i.resume, messages: [{ role: 'system' as const, content: withEngineRules(system, i.kit.tools.length > 0) }, ...antigas] } : undefined;
+  const previous = i.resume?.messages[0]?.role === 'system' ? i.resume.messages.slice(1) : (i.resume?.messages ?? []);
+  const resume = i.resume ? { ...i.resume, messages: [{ role: 'system' as const, content: withEngineRules(system, i.kit.tools.length > 0) }, ...previous] } : undefined;
   const turn = runTurn({
     system,
     history: [...ritualMsgs, ...i.history],

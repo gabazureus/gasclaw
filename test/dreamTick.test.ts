@@ -5,6 +5,7 @@
 // passo refeito depois de a execução morrer, e ciclo que some em silêncio.
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { stubGas, type GasEnv } from './gasEnv';
+import { DREAM_STEP_CAP_MS, DREAM_STEP_ESTIMATE_MS, nextStepWindow, parseStepWindow, stepEstimate } from '../src/dreamTick';
 
 let env: GasEnv;
 const mod = () => import('../src/dreamTick');
@@ -240,5 +241,25 @@ describe('withDreamLease: um tique de sonho por vez', () => {
     let rodou = false;
     expect(m.withDreamLease(1_000, 400_000, () => void (rodou = true))).toBe(false);
     expect(rodou).toBe(false);
+  });
+});
+
+describe('estimativa do passo do sonho: janela por agente, com teto', () => {
+  test('janela guarda só as últimas medidas e ignora tique sem passo', () => {
+    expect(nextStepWindow([1, 2, 3, 4, 5], 6)).toEqual([2, 3, 4, 5, 6]);
+    expect(nextStepWindow([1, 2], undefined)).toEqual([1, 2]);
+    expect(nextStepWindow([1, 2], 0)).toEqual([1, 2]);
+  });
+  test('estimativa: nunca abaixo da conservadora, nunca acima do teto', () => {
+    expect(stepEstimate([])).toBe(DREAM_STEP_ESTIMATE_MS);
+    expect(stepEstimate([30_000])).toBe(DREAM_STEP_ESTIMATE_MS);
+    expect(stepEstimate([120_000, 100_000])).toBe(120_000);
+    expect(stepEstimate([10 * 60_000])).toBe(DREAM_STEP_CAP_MS);
+  });
+  test('valor podre nas Properties vale janela vazia', () => {
+    expect(parseStepWindow('lixo')).toEqual([]);
+    expect(parseStepWindow('{"a":1}')).toEqual([]);
+    expect(parseStepWindow('[1,"x",-3,2]')).toEqual([1, 2]);
+    expect(parseStepWindow(null)).toEqual([]);
   });
 });
