@@ -50,6 +50,8 @@
 | Ask | Pergunta do agente ao usuário; a próxima mensagem ou o botão responde | tool `ask`, `Tickets.open` | Só quem perguntou responde |
 | Aprovação durável | Consentimento pendente para uma tool dentro de um run durável | `DurableRun.approval`, `RunIO.decide` | Fonte da verdade no Drive; vale 24 h; ligada à pendência e ao solicitante; expirar não executa nem refaz o turno |
 | Credencial de aprovação | Segredo opaco entregue no card para responder uma aprovação durável | `ApprovalGrant`, `issueGrant`/`redeemGrant` | Uso único; só o hash fica no Drive; o cache da tela é atalho descartável |
+| Espera do Chat | Run do Chat parado esperando o dono: aprovação, resposta do `ask` ou teto de custo | `waitKey`, `waitLabel`, `promptInChat` | Fica na fila até o cartão sair; a marca `prompted` mora na autoridade `A:`, fora da pasta (ADR-047) |
+| Varredura das esperas | Acha esperas do Chat sem cartão e fora da fila (as paradas antes do ADR-047) | `RunIO.scan`, `recoverWaits` | Mesma leitura de Properties do tique; abre o Drive só para candidatas, no máximo 3 por tique, uma vez cada |
 | Ticket legado | Snapshot completo de uma pergunta `ask` guardado no CacheService | `Ticket`, `cacheTickets` | 10 min; aprovações de tools não dependem mais dele |
 | Kill switch | Property que pausa todos os agentes | `RUNTIME_ENABLED`, `setEnabled` | `./gasclaw down` |
 | Chave de idempotência | `runId:step:callId` de cada tool já executada no turno | `TurnResult.done`, `DurableRun.done` | Persiste no checkpoint do run; P4 provou uma execução de efeito em três execuções GAS |

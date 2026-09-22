@@ -1,7 +1,7 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, e se já foi resolvido.
-> **Atualizado em:** 2026-09-21 · **2161 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
+> **Atualizado em:** 2026-09-22 · **2314 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
 > · **Auditoria:** seis ✅ eram falsos. Critério: *algum módulo importa isto, e o símbolo aparece em `dist/_motor.js`?*
 > · **P22 aprovada 4/4** · P24 **aprovada por inteiro** · P25 **reprovada** (sem combustível)
 > · **P27 medida e REPROVADA** (o filho executa, o motor recusa o token dele: 401 da plataforma)
@@ -250,7 +250,33 @@ dependências das guardas desprotegidas. Todos foram consertados, com teste.
 sonho guarda o prompt inteiro em cada chave; um patch pode montar o nome de uma guarda sem escrevê-lo
 (`"assert"+"Owner"`); com a identidade do app, `findDirectMessage` só aceita o id numérico da conta; `DREAMSTEP_MS` só cresce e é global — um passo lento fora da curva encolhe para sempre a janela do sonho em todo agente (sem decaimento, até haver medida para calibrá-lo).
 
-### POCs
+### Incidente de 2026-09-21 — o pedido do Chat que ficou no "thinking…" ([ADR-047](docs/adr/047-espera-do-chat-tem-cartao.md))
+
+O dono pediu no Chat (DM com o app do dev, que segue o sucessor coroado) uma auditoria da semana. O run
+durável parou em `waiting` pedindo aprovação de `tasks.create` (trace `20260921-222832-fc90`, que dizia
+**`ok`**), e nenhum cartão chegou. Causa: a entrega só agia em `done`/`failed`.
+
+| # | Achado | Causa-raiz | Estado |
+|---|---|---|:--:|
+| I1 | nenhum cartão numa espera | a entrega ignorava `waiting`/`paused` | ✅ 3ab7d54 |
+| I2 | trace `ok` num run parado | `finish` só conhecia ok/erro | ✅ status `waiting` + passo `aguardando: …` |
+| I3 | cartão com uma chance só | o `settle` soltava a espera ANTES do POST; a marca ficava no cache | ✅ fila até o cartão sair, `prompted` na autoridade, nova tentativa a cada 5 min |
+| I4 | o run de ontem nunca receberia o cartão | já estava fora da fila | ✅ varredura das esperas sobre a leitura de Properties que o tique já fazia |
+| I5 | `ask` retomava FORA do run durável | o cartão usava o ticket de 10 min do caminho síncrono | ✅ botões com pasta e run; a resposta digitada responde a pergunta aberta |
+| I6 | resposta final duas vezes depois do Approve | o cartão era trocado pela resposta e a entrega mandava de novo | ✅ a continuação sai pela entrega, e o cartão só confirma |
+| I7 | dois system prompts em cada retomada | o snapshot já guardava o system | ✅ `chatTurn` descarta o velho |
+| I8 | texto do aviso de teto sem escape no cartão | `continueCard` montava o HTML cru | ✅ |
+| R1 | **(revisão, ALTA)** run sem destino adotava o do arquivo | `writeAuthority` só fixava o destino quando a 1ª gravação tinha um; `delivery` não é assinado | ✅ fixado na 1ª gravação |
+| R2 | dois gatilhos sobrepostos postavam dois cartões | a espera voltava à fila sem arrendamento antes do POST | ✅ fica com o arrendamento do claim |
+| R3 | falha fora do POST gastava as 4 tentativas em segundos | só o POST adiava | ✅ qualquer falha espera o arrendamento vencer |
+| R4 | clique duplo no `ask` reaplicava a resposta; `runDecide` adotava arquivo editado | resposta sem credencial não tinha trava nem assinatura | ✅ `RunIO.resume` |
+| R5 | botão de pergunta antiga respondia a nova | o botão não dizia de qual espera era | ✅ `wait` no botão |
+| R6 | pasta apagada de outro agente travava a varredura | uma exceção abortava a busca | ✅ pasta por pasta, 3 tiques de chance |
+
+Testes: 2279 → **2314**, tsc limpo. **30 mutações**: 28 pegas e 2 equivalentes (destino tirado do arquivo,
+desistência sem conferir assinatura: uma guarda anterior já cobre cada uma). Revisão: security-scanner +
+complexity-reviewer; limites que ficaram estão no ADR-047. Publicação: ver abaixo.
+
 
 | POC | Pergunta | Status |
 |---|---|---|

@@ -10,6 +10,16 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 
 ## [Não publicado]
 
+> 💬 **Pedido no Chat que precisa de você não fica mais no "thinking…" (ADR-047):** quando o agente
+> para para pedir aprovação, fazer uma pergunta ou avisar que chegou ao teto de custo, o cartão chega na
+> conversa: **Approve/Deny**, um botão por opção da pergunta (ou responda digitando), ou **Continue**.
+> Depois do clique, a resposta final, ou o próximo cartão, chega como mensagem nova, uma vez só. Se o
+> Google Chat estiver fora, o gasclaw tenta de novo a cada ~6 min, sem mandar cartão repetido. Os pedidos que já estavam parados
+> recebem o cartão sozinhos no primeiro minuto depois da publicação. O `./gasclaw trace` passa a mostrar
+> `waiting` (e o que falta) em vez de `ok` para um run que parou esperando você. Consertos juntos: a
+> retomada mandava o prompt do agente duas vezes ao modelo (custava o dobro das instruções), só quem
+> fez o pedido pode aprovar, responder ou mandar continuar, e um clique duplo conta uma vez.
+
 > 📬 **O Reach out passa a te procurar de verdade (F9, ADR-045):** a resposta de um job agendado chega
 > na **sua conversa direta com o app no Google Chat**. Antes ela ficava só no trace, e nada te avisava.
 > Um job que falha também manda o motivo. O botão **Open in Google Chat** abre a SUA conversa, nunca a

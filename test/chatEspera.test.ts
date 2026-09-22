@@ -572,6 +572,24 @@ describe('respostas sem credencial passam pela trava e pela assinatura', () => {
     expect(env.fetched('openrouter.ai')).toHaveLength(1);
   });
 
+  // O cache é atalho: se ele ficou velho (gravação grande demais para ele, falha do CacheService), a resposta
+  // não pode decidir por ele — a decisão lê o Drive.
+  test('cache velho mostrando a pergunta ainda aberta não reaplica a resposta', async () => {
+    runIO().enqueue(esperandoResposta(), 1000);
+    const m = await import('../src/main');
+    m.drainRuns();
+    const chave = Object.keys(env.cache).find((k) => k.startsWith('r:') && k.includes('r-ask'))!;
+    const velho = env.cache[chave];
+    const [c] = cartoes(env);
+    const clique = { type: 'CARD_CLICKED', user: { email: 'dono@x.com' }, space: { name: 'spaces/AAA' }, common: { parameters: params(botoes(c)[0]) } };
+    env.llm = [{ content: 'marquei' }, { content: 'marquei de novo' }];
+    m.onCardClick(clique as never);
+    env.cache[chave] = velho;
+    const segundo = m.onCardClick(clique as never) as { text?: string };
+    expect(segundo.text).toMatch(/already answered/);
+    expect(env.fetched('openrouter.ai')).toHaveLength(1);
+  });
+
   test('Continue num arquivo adulterado: recusa e NÃO re-assina', async () => {
     runIO().enqueue(pausado(), 1000);
     const m = await import('../src/main');
