@@ -230,7 +230,7 @@ coroado), pela [P36](poc/p36-capacidades-no-real/README.md). Spec:
 |---|---|---|---|
 | A1 | tsc limpo, suíte verde | ✅ | **2271/2271** depois da auditoria final (2206 no fechamento), tsc sem erro |
 | A2 | cada conserto com teste que falha sem ele | ✅ (corrigido na auditoria final) | a auditoria final rodou **65 mutações** sobre o diff da F9: 43 pegas e **22 passavam** (entre elas o prazo medido do sonho, o arrendamento, `DREAMSTEP_MS`, `LASTWAKE`, as validações do `findDirectMessage`, 3 regras do crivo e as travas do `GASCLAW_ENGINE_URL`). 20 ganharam teste que as pega; 2 são equivalentes (sem mudança observável) |
-| A3 | health do coroado 10/10 | ✅ **10/10** | dev v173, sucessor v20 |
+| A3 | health do coroado 10/10 | ✅ **10/10** | dev v173, sucessor v20; de novo 10/10 depois da auditoria final (dev v175, sucessor v22) |
 | A4 | o lado certo do CAP vence | ✅ **decisão do dono: opção A** | as 4 capacidades estavam no **sucessor**, e o pai só tinha Succeed. O `inherit` que a verificação sugeria **apagaria 3 das 4**, e não foi rodado. Decisão: depois da coroa vale o painel do sucessor, e a 10ª só exige que ele devolva as permissões, informando a diferença para o pai |
 | D1 | Dream | ✅ recusa honesta | "no real failures to dream about": não há falha agrupada em 30 dias. Consertos: portão com `:`, placar, prazo + arrendamento, estimativa guardada |
 | R1 | Reach out | ✅ | disparou uma vez no tique certo; a resposta chegou ao Chat do dono com recibo (79 s). Antes, morria no trace ([ADR-045](docs/adr/045-reach-out-entrega-ao-dono.md)). Fora da lista: nada age, e a pergunta chega ao dono |

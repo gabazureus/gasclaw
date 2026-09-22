@@ -1352,5 +1352,36 @@
         "note": "tabela crit\u00e9rio\u2192evid\u00eancia em PROGRESS e P36; decis\u00e3o do dono isolada com recomenda\u00e7\u00e3o"
       }
     }
+  },
+  {
+    "phase": "Review (auditoria final F9)",
+    "summary": "Auditoria da F9 e da branch: 2 strings que mentiam (resumo do health, Reach out sem condi\u00e7\u00e3o) + 1 detalhe enganoso (patch no coroado), 22 muta\u00e7\u00f5es v\u00e1cuas (20 cobertas, 2 equivalentes), docs/\u00edndices/gloss\u00e1rio/ADR-046 alinhados; publicado v175/sucessor v22, health 10/10.",
+    "scores": {
+      "correctness": {
+        "score": 9,
+        "note": "2271/2271, tsc 0; health 10/10 lido no real ap\u00f3s publicar; nenhum defeito de l\u00f3gica novo achado, s\u00f3 textos"
+      },
+      "design": {
+        "score": 8,
+        "note": "consertos m\u00ednimos; DREAMSTEP_MS s\u00f3 cresce e \u00e9 global \u2014 registrado como limite, sem decaimento sem medida"
+      },
+      "testing": {
+        "score": 9,
+        "note": "65 muta\u00e7\u00f5es; 22 passavam (A2 anterior dizia todas pegas); 20 cobertas, cada uma vista vermelha; 2 equivalentes"
+      },
+      "safety": {
+        "score": 9,
+        "note": "travas de GASCLAW_ENGINE_URL agora testadas; lista PROTEGIDAS nome a nome; inherit n\u00e3o rodado; main intocada"
+      },
+      "clarity": {
+        "score": 8,
+        "note": "UBIQUITOUS_LANGUAGE com F7\u2013F9, ADR-046, tracks.md renderiza, hub sem links quebrados; identificadores pt-BR novos ficaram como d\u00edvida"
+      }
+    },
+    "recommendations": {
+      "design": "medir a distribui\u00e7\u00e3o de passos do sonho e decidir decaimento ou teto para DREAMSTEP_MS",
+      "clarity": "renomear identificadores pt-BR da F9 (abreRegex, PROTEGIDAS, capsLado, maiorPasso) numa passada pr\u00f3pria",
+      "testing": "rodar muta\u00e7\u00e3o sobre o diff em cada fechamento de fase, n\u00e3o s\u00f3 contar as muta\u00e7\u00f5es escolhidas pelo autor"
+    }
   }
 ]
