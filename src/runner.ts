@@ -30,12 +30,17 @@ export type StepDeps = {
  */
 function settle(d: StepDeps, r: DurableRun, progressed: boolean): DurableRun {
   // Um run do Chat que parou esperando o dono fica na fila ATÉ o cartão dele sair (incidente de 2026-09-21):
-  // sem isto, um POST que falhasse deixava a espera fora da fila e sem cartão, para sempre. Não trava a fila
-  // como antes: o cartão sai no `after` desta mesma volta e o run deixa a fila; se o Chat estiver fora, as
-  // tentativas contam (`progressed` não zera um run parado) e `MAX_ATTEMPTS` corta.
+  // sem isto, um POST que falhasse deixava a espera fora da fila e sem cartão, para sempre. O ponteiro fica
+  // com o ARRENDAMENTO deste claim: outra execução do gatilho não o pega enquanto o cartão sai (seriam dois
+  // cartões, e o segundo invalidaria a credencial do primeiro). O cartão sai no `after` e o run deixa a fila;
+  // se qualquer coisa falhar, o arrendamento vence em LEASE_MS e o próximo claim tenta de novo — uma
+  // tentativa por arrendamento, contadas, até `MAX_ATTEMPTS`.
   const espera = r.delivery?.status === 'pending' ? waitKey(r) : undefined;
-  const aguardandoCartao = !!espera && d.io.authority(r.runId)?.prompted !== espera;
-  const aguardandoEntrega = aguardandoCartao || (r.delivery?.status === 'pending' && (r.status === 'done' || r.status === 'failed'));
+  if (espera && d.io.authority(r.runId)?.prompted !== espera) {
+    d.io.save(r);
+    return r;
+  }
+  const aguardandoEntrega = r.delivery?.status === 'pending' && (r.status === 'done' || r.status === 'failed');
   // `progressed` zera as tentativas, e isso só vale para um run que ainda TRABALHA. Um run terminal está na
   // fila apenas pela entrega: zerar ali fazia uma entrega impossível (o 400 da v83) girar para sempre, porque
   // `MAX_ATTEMPTS` nunca chegava. Aqui a tentativa conta de verdade.

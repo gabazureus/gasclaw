@@ -95,6 +95,12 @@ export type RunIO = {
   decide: (folderId: string, runId: string, request: ApprovalAttempt, now: number) => GrantResult | { kind: 'rejected'; error: string };
   pointers: () => RunPointer[];
   /**
+   * A resposta do dono a uma espera SEM credencial (pergunta do `ask`, teto de custo): sob a trava, lendo o
+   * Drive e conferindo a assinatura ANTES de `enqueue` re-assinar. `apply` decide (devolve o run seguinte, ou
+   * o motivo da recusa). Sem a trava, um clique duplo reaplicava a mesma resposta sobre um passo já dado.
+   */
+  resume: (folderId: string, runId: string, apply: (r: DurableRun) => DurableRun | string, now: number) => DurableRun | { error: string };
+  /**
    * A fila E as esperas do Chat que podem ter ficado sem cartão, numa leitura só das Properties — a mesma que
    * o tique já fazia para a fila. Tique ocioso continua sem abrir o Drive (P22/ADR-027): uma espera cujo cartão
    * já foi postado tem `prompted` e nem entra na lista.
@@ -188,8 +194,11 @@ export function runIO(
    */
   const writeAuthority = (r: DurableRun) => {
     const antes = readAuthority(r.runId);
-    const destino = antes?.space
-      ? { space: antes.space, ...(antes.thread ? { thread: antes.thread } : {}) }
+    // Fixado na PRIMEIRA gravação, com ou sem destino. Um run que nasceu sem entrega (tela, proativo sem DM)
+    // não ganha destino depois: `delivery` não é assinado, e adotá-lo do arquivo numa gravação seguinte
+    // deixava quem edita a pasta escolher para onde o cartão e a resposta vão (auditoria de 2026-09-22).
+    const destino = antes
+      ? antes.space ? { space: antes.space, ...(antes.thread ? { thread: antes.thread } : {}) } : {}
       : r.delivery
         ? { space: r.delivery.space, ...(r.delivery.thread ? { thread: r.delivery.thread } : {}) }
         : {};
@@ -240,6 +249,24 @@ export function runIO(
     },
     authority: readAuthority,
     forget: (runId) => props.deleteProperty(authKey(runId)),
+    resume: (folderId, runId, apply, now) => {
+      if (!lock.tryLock(CLAIM_LOCK_MS)) return { error: 'answers are busy: try again in a few seconds' };
+      try {
+        const run = loadFresh(folderId, runId);
+        if (!run) return { error: 'I could not find that task' };
+        // `apply` primeiro: um run que já acabou perdeu a autoridade (`forget`), e o clique atrasado nele deve
+        // ouvir "já respondida", não "adulterado". Nada é gravado antes da assinatura conferida.
+        const next = apply(run);
+        if (typeof next === 'string') return { error: next };
+        if (!untampered(run)) return { error: 'the task file was changed outside gasclaw' };
+        const prev = splitRunQueue(props.getProperties()).find((p) => p.runId === runId);
+        persist(next);
+        setProp(queueKey(runId), JSON.stringify({ ...pointerOf(next, prev?.at ?? now), attempts: 0 }));
+        return next;
+      } finally {
+        lock.releaseLock();
+      }
+    },
     decide: (folderId, runId, request, now) => {
       if (!lock.tryLock(CLAIM_LOCK_MS)) return { kind: 'rejected', error: 'approvals are busy: click again in a few seconds' };
       try {

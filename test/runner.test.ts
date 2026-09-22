@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TurnResult } from '../src/agent';
-import { markInflight, MAX_ATTEMPTS, newRun, queueKey, RUN_BUDGET_USD, waitKey, type DurableRun } from '../src/run';
+import { LEASE_MS, markInflight, MAX_ATTEMPTS, newRun, queueKey, RUN_BUDGET_USD, waitKey, type DurableRun } from '../src/run';
 import { runIO, type RunFiles } from '../src/runStore';
 import { pump, pumpById, pumpOnce, type StepDeps, type StepOutcome } from '../src/runner';
 import { deliveryDue, sendChatDelivery } from '../src/chatDelivery';
@@ -89,6 +89,18 @@ describe('pumpOnce: um passo por execução', () => {
     expect(h.queued()).toBe(true);
   });
 
+  // Dois gatilhos se sobrepõem (um pump dura até 240 s, o gatilho é de 1 min). Se a espera voltasse à fila
+  // SEM arrendamento antes de o cartão sair, a outra execução a pegaria e postaria um segundo cartão — cuja
+  // credencial nova invalida a do primeiro.
+  it('espera sem cartão continua ARRENDADA: outra execução não a pega enquanto o cartão sai', () => {
+    const h = harness(pedeAprovacao);
+    h.io.enqueue(mk({ delivery: entregaChat }), NOW);
+    pumpOnce(h.d);
+    h.tick(1_000);
+    expect(pumpOnce(h.d)).toBeNull();
+    expect(h.spy).toHaveBeenCalledTimes(1);
+  });
+
   it('com o cartão postado a espera sai da fila e não afoga os outros runs', () => {
     const h = harness((r) => (r.runId === 'r1' ? pedeAprovacao() : { turn: turn({ text: 'outro pronto' }) }));
     h.io.enqueue(mk({ delivery: entregaChat }), NOW);
@@ -110,7 +122,7 @@ describe('pumpOnce: um passo por execução', () => {
     h.io.enqueue(mk({ delivery: entregaChat }), NOW);
     const r = pumpOnce(h.d)!;
     h.io.markPrompted('r1', waitKey(r)!);
-    h.tick(1);
+    h.tick(LEASE_MS + 1); // o arrendamento do claim que parou a espera venceu
     expect(pumpOnce(h.d)?.status).toBe('waiting');
     expect(h.queued()).toBe(false);
     expect(pumpOnce(h.d)).toBeNull();
