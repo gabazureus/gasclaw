@@ -1,34 +1,26 @@
 // Pedido do dono (2026-09-21): "não consigo diferenciar o que é um agente do outro, preciso que fique
 // identificado junto de gasclaw no topo o nome do agente, um id".
 //
-// Com a F7 existem DOIS motores servindo o MESMO agente — o titular e o sucessor. O nome do agente é
-// igual nos dois (`gasclaw-assistente`, porque o sucessor serve o mesmo agente), então o nome SOZINHO
-// não diferencia nada. O que diferencia é o MOTOR: o id dele, e se é titular ou sucessor.
+// Dev e prod servem o MESMO agente, com o mesmo nome — então o nome SOZINHO não diferencia nada.
+// O que diferencia é o MOTOR: o id curto dele.
 import { describe, expect, test } from 'vitest';
 import { engineIdentity, shortId } from '../src/identity';
 
 describe('engineIdentity: o topo do painel diz qual motor é este', () => {
-  test('titular: nome do agente e o id do motor', () => {
-    const i = engineIdentity('1b93M1aw9_NuPxXfsZvifBIlUF', 'gasclaw-assistente', null);
-    expect(i.role).toBe('incumbent');
+  test('nome do agente e o id do motor', () => {
+    const i = engineIdentity('1b93M1aw9_NuPxXfsZvifBIlUF', 'gasclaw-assistente');
     expect(i.line).toBe('gasclaw-assistente · engine 1b93M1aw');
   });
 
-  // O CASO QUE O DONO NÃO CONSEGUIA DISTINGUIR: mesmo agente, outro motor.
-  test('sucessor: diz que é sucessor, o id DELE e de quem ele sucede', () => {
-    const i = engineIdentity('1w3Pju8vyj9y1ZgBIZZDDtgRAX', 'gasclaw-assistente', '1b93M1aw9_NuPxXfsZvifBIlUF');
-    expect(i.role).toBe('successor');
-    expect(i.line).toBe('gasclaw-assistente · successor 1w3Pju8v · of 1b93M1aw');
-  });
-
-  test('titular e sucessor do MESMO agente saem com rótulos diferentes', () => {
-    const a = engineIdentity('1b93M1aw9_NuPx', 'gasclaw-assistente', null).line;
-    const b = engineIdentity('1w3Pju8vyj9y1Z', 'gasclaw-assistente', '1b93M1aw9_NuPx').line;
+  // O CASO QUE O DONO NÃO CONSEGUIA DISTINGUIR: mesmo agente, outro motor (dev e prod).
+  test('dois motores do MESMO agente saem com rótulos diferentes', () => {
+    const a = engineIdentity('1b93M1aw9_NuPx', 'gasclaw-assistente').line;
+    const b = engineIdentity('1w3Pju8vyj9y1Z', 'gasclaw-assistente').line;
     expect(a).not.toBe(b);
   });
 
   test('sem agente, diz isso em vez de ficar em branco', () => {
-    expect(engineIdentity('1b93M1aw9_NuPx', null, null).line).toBe('no agent · engine 1b93M1aw');
+    expect(engineIdentity('1b93M1aw9_NuPx', null).line).toBe('no agent · engine 1b93M1aw');
   });
 
   test('o id curto são os 8 primeiros caracteres', () => {

@@ -26,12 +26,16 @@ describe('o turno do agente reserva espaço para a resposta', () => {
     expect(corpo.reasoning!.max_tokens).toBeLessThan(corpo.max_tokens);
   });
 
-  // Trava no fonte: todo turno de agente (Chat, Test, persona, eval, caixa de areia) passa a reserva. Um
-  // ponto novo que esquecesse voltaria a devolver resposta vazia num modelo que raciocina.
+  // Trava no fonte: todo turno de agente (Chat, Test, persona, eval) passa a reserva. Um ponto novo
+  // que esquecesse voltaria a devolver resposta vazia num modelo que raciocina.
+  //
+  // Eram 5 pontos; a caixa de areia do sonho/sucessor saiu desta branch e levou o quinto junto. O piso
+  // acompanha o que EXISTE — deixá-lo em 5 faria um teste vermelho por remoção correta, e baixá-lo sem
+  // dizer por quê esconderia que a contagem mudou.
   test('nenhuma chamada de turno com teto de conversa fica sem a reserva', () => {
     const fonte = readFileSync('src/main.ts', 'utf8');
     const turnos = [...fonte.matchAll(/complete\([^;\n]*(?:CHAT_MAX_TOKENS|, 1000,)[^;\n]*\)/g)].map((x) => x[0]);
-    expect(turnos.length).toBeGreaterThanOrEqual(5);
+    expect(turnos.length).toBeGreaterThanOrEqual(4);
     for (const t of turnos) expect(t).toContain('TURN_REASONING');
   });
 });

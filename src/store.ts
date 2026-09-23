@@ -1,14 +1,5 @@
 import type { AgentEntry } from './chat';
 import type { Message } from './llm';
-import { agentsWith, enabledWith, parseSeed, type Seed } from './seed';
-
-/**
- * A semente que o pai escreve no projeto de um SUCESSOR (P33). Num motor comum ela não existe, e tudo
- * segue a regra de sempre. Lida por `typeof` porque é uma variável global de outro arquivo do projeto.
- */
-declare const GASCLAW_SEED: unknown;
-const seed = (): Seed | null => parseSeed(typeof GASCLAW_SEED === 'undefined' ? null : GASCLAW_SEED);
-
 const props = () => PropertiesService.getScriptProperties();
 const cache = () => CacheService.getScriptCache();
 const SIX_HOURS = 21_600;
@@ -24,9 +15,15 @@ export const setOwner = (email: string): void => {
   props().setProperty('OWNER', email.toLowerCase());
 };
 
-// Num SUCESSOR recém-implantado as Properties estão vazias e o agente mora no pai: a semente diz
-// qual agente servir, até o dono gravar a lista dele no painel.
-export const listAgents = (): AgentEntry[] => agentsWith(props().getProperty('AGENTS'), seed());
+/** Os agentes deste motor. Lista ilegível conta como nenhuma — nunca como a lista de outro. */
+export const listAgents = (): AgentEntry[] => {
+  try {
+    const v: unknown = JSON.parse(props().getProperty('AGENTS') ?? '[]');
+    return Array.isArray(v) ? (v as AgentEntry[]) : [];
+  } catch {
+    return [];
+  }
+};
 
 /** Script Properties: 9 KB por valor. Mesma margem que o `usage.ts` usa, pelo mesmo motivo. */
 const AGENTS_MAX = 8_000;
@@ -43,15 +40,8 @@ export const saveAgents = (agents: AgentEntry[]): void => {
   props().setProperty('AGENTS', raw);
 };
 
-// Com semente, o sucessor nasce PARADO e só liga com um "true" explícito — a coroa. Sem ela, a regra
-// de sempre. Era `RUNTIME_ENABLED !== 'false'`, que num projeto novo quer dizer LIGADO.
-export const isEnabled = (): boolean => enabledWith(props().getProperty('RUNTIME_ENABLED'), seed());
-/** Este motor é um agente SUCESSOR (tem a semente que o pai escreveu)? Um motor comum nunca é. */
-export const isSuccessor = (): boolean => seed() !== null;
-/** De quem este motor é sucessor — o scriptId do pai, que a semente carrega. `null` num motor comum. */
-export const successorOf = (): string | null => seed()?.parent ?? null;
-/** O endereço do web app do pai, que a semente carrega — para o hub levar de volta a ele. */
-export const parentUrl = (): string | null => seed()?.parentUrl ?? null;
+/** Ligado salvo desligamento explícito: num projeto novo, o motor nasce ligado. */
+export const isEnabled = (): boolean => props().getProperty('RUNTIME_ENABLED') !== 'false';
 export const setEnabled = (on: boolean): void => {
   props().setProperty('RUNTIME_ENABLED', String(on));
 };

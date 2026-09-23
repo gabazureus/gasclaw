@@ -10,7 +10,7 @@
 // enxergaria o próprio juiz. Agora a frase é literal — se o cenário não estiver no build, ele não existe
 // para o motor.
 
-import { familyOf, judgeIsIndependent } from './dream';
+import { familyOf, judgeIsIndependent } from './models';
 
 /**
  * O JUIZ, fixado noutra família (decisão do dono, F10): juiz e avaliado no mesmo modelo é auto-elogio —

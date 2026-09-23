@@ -22,31 +22,19 @@ export function panelList(env: string, appUrl: string, siblingUrl: string): Pane
   return ORDER.map((e) => ({ env: e, url: e === here ? appUrl : siblingUrl, current: e === here })).filter((p) => isPanelUrl(p.url));
 }
 
-// ---------- Os motores que servem este agente (F7) ----------
+// ---------- O motor que serve este agente ----------
 
 /**
- * Com a F7, um agente pode ser servido por mais de um MOTOR: o titular e os sucessores. O hub listava
- * só ambientes; o dono pediu a lista de todos, inclusive os sucessores, com o caminho de um ao outro.
+ * O hub lista o MOTOR deste agente com o caminho para o painel dele. A lista de sucessores saiu com a
+ * sucessão (branch `consertos-e-reach-out`); a forma de lista fica porque o hub já a desenha e porque
+ * ambientes (dev/prod) continuam sendo mais de um painel para o mesmo agente.
  */
-export type EngineLink = { role: 'incumbent' | 'successor'; engine: string; agent: string; url: string | null; current: boolean };
+export type EngineLink = { role: 'incumbent'; engine: string; agent: string; url: string | null; current: boolean };
 
 const curto = (id: string) => String(id ?? '').trim().slice(0, 8);
 
-/**
- * O titular primeiro, os sucessores depois — e o atual marcado. No titular, `successors` vem do registro
- * dele; no sucessor, o pai vem da SEMENTE. Mesmo invariante dos ambientes: só painel do Apps Script
- * vira link, e o resto aparece sem link em vez de sumir.
- */
-export function engineLinks(x: { agent: string; self: string; selfUrl: string; parent: string | null; parentUrl: string | null; successors: { scriptId: string; url: string }[] }): EngineLink[] {
+/** Só painel do Apps Script vira link; o resto aparece sem link em vez de sumir. */
+export function engineLinks(x: { agent: string; self: string; selfUrl: string }): EngineLink[] {
   const link = (u: string | null) => (u && isPanelUrl(u) ? u : null);
-  if (x.parent) {
-    return [
-      { role: 'incumbent', engine: curto(x.parent), agent: x.agent, url: link(x.parentUrl), current: false },
-      { role: 'successor', engine: curto(x.self), agent: x.agent, url: link(x.selfUrl), current: true },
-    ];
-  }
-  return [
-    { role: 'incumbent', engine: curto(x.self), agent: x.agent, url: link(x.selfUrl), current: true },
-    ...x.successors.map((s): EngineLink => ({ role: 'successor', engine: curto(s.scriptId), agent: x.agent, url: link(s.url), current: false })),
-  ];
+  return [{ role: 'incumbent', engine: curto(x.self), agent: x.agent, url: link(x.selfUrl), current: true }];
 }

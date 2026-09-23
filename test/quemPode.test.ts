@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 // QUEM pode, não só O QUE acontece.
 //
 // A auditoria por mutação do ciclo 3 achou o maior buraco da suíte: apagar `assertOwner()` de
-// `setAgentCapability` e de `passBaton` deixava os 1762 testes VERDES. Os testes provavam o que o ato
-// faz — o singleton, a ordem das escritas, o arquivamento — e nunca perguntavam quem pode fazê-lo.
+// `setAgentCapability` deixava os 1762 testes VERDES. Os testes provavam o que o ato faz — o estado
+// gravado, a ordem das escritas, o arquivamento — e nunca perguntavam quem pode fazê-lo.
 //
 // Num projeto onde a pasta do agente é compartilhável e o painel é a autoridade, "quem" é metade do
 // desenho. A outra metade estava sem rede.
@@ -29,22 +29,15 @@ afterEach(() => vi.unstubAllGlobals());
 type Motor = Record<string, (...a: unknown[]) => unknown>;
 const acoes: [string, (m: Motor) => unknown][] = [
   ['setAgentCapability', (m) => m.setAgentCapability('fa', 'dream', true)],
-  ['passBaton', (m) => m.passBaton('fa', 'fb', 5)],
-  ['writeSuccessor', (m) => m.writeSuccessor('fa', '')],
-  ['successorOptions', (m) => m.successorOptions('fa')],
-  ['evaluateSuccessor', (m) => m.evaluateSuccessor('x')],
-  ['crownSuccessor', (m) => m.crownSuccessor('x')],
-  ['successorHealth', (m) => m.successorHealth('x')],
-  ['rebaseSuccessor', (m) => m.rebaseSuccessor('x')],
-  ['inheritSuccessor', (m) => m.inheritSuccessor('x')],
   ['chatLink', (m) => m.chatLink()],
-  ['syncSuccessor', (m) => m.syncSuccessor('x')],
-  ['successionState', (m) => m.successionState()],
-  ['writeAutomation', (m) => m.writeAutomation('fa', [])],
-  ['automationOptions', (m) => m.automationOptions('fa')],
   ['setAgentSchedule', (m) => m.setAgentSchedule('fa', [])],
   ['setAgentAutoApprove', (m) => m.setAgentAutoApprove('fa', [])],
-  ['forgetChild', (m) => m.forgetChild('x')],
+  ['approveAccess', (m) => m.approveAccess('fa', { tools: ['gmail.send'] })],
+  ['removeAccess', (m) => m.removeAccess('fa')],
+  ['setAgentTool', (m) => m.setAgentTool('fa', 'gmail.send', true)],
+  ['setAgentModel', (m) => m.setAgentModel('fa', null)],
+  ['setRuntimeEnabled', (m) => m.setRuntimeEnabled(false)],
+  ['createAgent', (m) => m.createAgent('novo')],
   ['removeAgent', (m) => m.removeAgent('fa')],
 ];
 
@@ -64,10 +57,9 @@ describe('quem NÃO é o dono não muda poder nenhum', () => {
   test('e o estado NÃO muda: recusar depois de gravar é recusar tarde demais', async () => {
     env.activeUser = 'estranho@x.com';
     env.props['CAP:fa'] = JSON.stringify([]);
-    env.props['CREATOR'] = 'fb';
-    const antes = { cap: env.props['CAP:fa'], creator: env.props['CREATOR'], status: env.props['STATUS:fa'] };
+    const antes = { cap: env.props['CAP:fa'], agents: env.props['AGENTS'], status: env.props['STATUS:fa'] };
     const m = await import('../src/main');
-    for (const tentar of [() => m.setAgentCapability('fa', 'create', true), () => m.passBaton('fa', 'fb', 5)]) {
+    for (const tentar of [() => m.setAgentCapability('fa', 'initiative', true), () => m.removeAgent('fa'), () => m.setRuntimeEnabled(false)]) {
       try {
         tentar();
       } catch {
@@ -75,8 +67,9 @@ describe('quem NÃO é o dono não muda poder nenhum', () => {
       }
     }
     expect(env.props['CAP:fa']).toBe(antes.cap);
-    expect(env.props['CREATOR']).toBe(antes.creator);
+    expect(env.props['AGENTS']).toBe(antes.agents);
     expect(env.props['STATUS:fa']).toBe(antes.status);
+    expect(env.props['RUNTIME_ENABLED']).toBeUndefined();
   });
 
   // CONTROLE POSITIVO: sem ele, os dez acima ficariam verdes se TODAS as funções lançassem por
@@ -91,13 +84,11 @@ describe('quem NÃO é o dono não muda poder nenhum', () => {
 
 // D6 — `./gasclaw down` NÃO PARAVA O QUE GASTA DINHEIRO.
 //
-// Achado rodando, não lendo: com o motor pausado (`enabled: false`), `swarm run` seguiu até o
-// OpenRouter. Quem recusou foi a fatura, não a nossa guarda — o gerador teria escrito e implantado
-// um projeto com o dono acreditando que tinha parado tudo.
+// Achado rodando, não lendo: com o motor pausado (`enabled: false`), o que agia sozinho seguia
+// agindo. Quem recusou foi a fatura, não a nossa guarda.
 //
-// `store.isEnabled()` era lido pela CONVERSA e pelo CICLO DE SONHO, e por mais nada. O `mayAct` — o
-// ponto único que governa `dream`, `initiative`, `succeed` e `create` — não o consultava. A chave
-// geral parava o que fala e deixava correr o que paga.
+// `store.isEnabled()` era lido pela CONVERSA e por mais nada. O `mayAct` — o ponto único que governa
+// o despertar — não o consultava. A chave geral parava o que fala e deixava correr o que paga.
 describe('a chave de parada do dono vale para TUDO que age sozinho', () => {
   const main = readFileSync('src/main.ts', 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '')

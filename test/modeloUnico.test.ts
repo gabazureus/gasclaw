@@ -3,13 +3,13 @@
 // O dono pediu `gpt-6-luna` para tudo. Duas exceções foram DECIDIDAS por ele, e são estruturais:
 // - o JUIZ fica noutra família (`deepseek-v4-flash-0731`): juiz e avaliado no mesmo modelo é auto-elogio.
 //   `judgeIsIndependent` existia com teste e ZERO chamadores — a regra não valia em lugar nenhum.
-// - quem ESCREVE o sucessor fica num modelo forte (`gpt-5.6-sol`): código plausível e quebrado vira
-//   projeto implantado com os escopos do dono.
+//
+// A segunda exceção era `CODEGEN_MODEL` (quem escrevia o sucessor). Ela saiu com o codegen nesta
+// branch: sem gerador de código não há segundo modelo a fixar, e a ADR-048 foi corrigida para dizê-lo.
 import { describe, expect, test } from 'vitest';
 import { DEFAULT_MODEL } from '../src/workspace';
-import { CODEGEN_MODEL } from '../src/codegen';
 import { JUDGE_MODEL, judgeFor } from '../src/judgeSet';
-import { familyOf, judgeIsIndependent } from '../src/dream';
+import { familyOf, judgeIsIndependent } from '../src/models';
 
 describe('os modelos fixados da F10', () => {
   test('o padrão do motor é o modelo do dono, fixado — nunca roteamento automático', () => {
@@ -17,15 +17,10 @@ describe('os modelos fixados da F10', () => {
     expect(familyOf(DEFAULT_MODEL)).toBe('openai');
   });
 
-  test('quem escreve o sucessor é um modelo FIXADO, e não o do agente', () => {
-    expect(CODEGEN_MODEL).toBe('openai/gpt-5.6-sol');
-    expect(CODEGEN_MODEL).not.toBe(DEFAULT_MODEL);
-  });
-
-  test('o juiz é de outra família que o agente E que o escritor do sucessor', () => {
+  test('o juiz é de outra família que o agente', () => {
     expect(JUDGE_MODEL).toBe('deepseek/deepseek-v4-flash-0731');
+    expect(familyOf(JUDGE_MODEL)).not.toBe(familyOf(DEFAULT_MODEL));
     expect(judgeIsIndependent(DEFAULT_MODEL, JUDGE_MODEL).ok).toBe(true);
-    expect(judgeIsIndependent(CODEGEN_MODEL, JUDGE_MODEL).ok).toBe(true);
   });
 });
 

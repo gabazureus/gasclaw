@@ -4,6 +4,32 @@ import { DEFAULT_MODEL } from './workspace';
 
 export type ModelInfo = { id: string; ctx: number; inM: number; outM: number; tools: boolean; free: boolean };
 
+// ---------- Família do modelo, e a independência do juiz (ADR-048) ----------
+//
+// Moravam em `dream.ts`, que saiu com o ciclo de sonho. A regra NÃO era do sonho: ela vale para
+// qualquer par gerador/juiz, e é ela que `judgeSet.judgeFor` aplica em produção.
+
+/**
+ * A família é o que vem antes da barra no id do OpenRouter (`anthropic/claude-…` → `anthropic`).
+ */
+export const familyOf = (modelId: string): string => String(modelId ?? '').split('/')[0].toLowerCase().trim();
+
+/**
+ * O juiz não pode ser da mesma família do gerador: o viés de auto-preferência está medido
+ * (arXiv:2410.21819 e 2604.06996). Se um modelo gera e um juiz da mesma família decide, parte do
+ * delta é parentesco e não qualidade.
+ */
+export function judgeIsIndependent(generatorModel: string, judgeModel: string): { ok: boolean; reason: string } {
+  const g = familyOf(generatorModel);
+  const j = familyOf(judgeModel);
+  if (!g || !j) return { ok: false, reason: 'cannot tell the model families apart: refusing' };
+  // `openrouter/auto` pode rotear para QUALQUER família, inclusive a do gerador — e a P23 mediu que
+  // ele de fato escolhe sozinho. Um juiz que pode virar parente não é independente.
+  if (j === 'openrouter') return { ok: false, reason: 'the judge must be a pinned model: auto routing can land on the generator family' };
+  if (g === j) return { ok: false, reason: `judge and generator are both ${g}: self-preference bias` };
+  return { ok: true, reason: '' };
+}
+
 const perM = (x: unknown) => Math.max(0, Math.round(Number(x ?? 0) * 1e6 * 1e4) / 1e4 || 0); // negativo = preço variável (openrouter/auto)
 
 /** `/api/v1/models` reduzido ao que a tela usa (cabe no cache de 100 KB). */
