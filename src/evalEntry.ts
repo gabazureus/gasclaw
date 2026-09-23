@@ -34,13 +34,6 @@ export type EvalEnv = {
   zone?: { timeZone: string; offset: string };
   /** A chave geral do dono (`./gasclaw disable`). Ausente = ligado, para o harness de teste. */
   enabled?: () => boolean;
-  /**
-   * Modo CAIXA DE AREIA: ninguém está olhando, então nada do cenário concede poder.
-   *
-   * Ligado só no ciclo de sonho. No `./gasclaw eval` o dono digitou o comando, e o que o cenário pede
-   * é o que ele quis rodar — tratar os dois iguais confundiria "o dono mandou" com "a pasta pediu".
-   */
-  sandboxed?: boolean;
 };
 export type EvalResult = Report & { replies: string[]; ms: number; errors: string[]; grade?: { grade: number; reason: string }; cleanup?: { removed: number; missing: number; failed: string[] } };
 
@@ -67,11 +60,10 @@ function memoryTickets(): Tickets {
 }
 
 /**
- * O que o sucessor precisa para RODAR um cenário — e nada do gabarito (P34).
+ * O cenário sem o GABARITO: o bastante para rodar, e nada do critério.
  *
- * O sucessor tem o código que o Opus reescreveu. Se ele recebesse o critério do juiz, a rubrica ou as
- * verificações, um patch malicioso poderia ler o critério e responder para agradar. O esperado nunca
- * atravessa: é a mesma regra do CSV da F6, agora para agentes.
+ * Quem responde não pode ler o que o juiz espera — senão responde para agradar, e a nota deixa de
+ * medir qualidade. É a separação que mantém `runEval` = rodar + julgar como dois atos.
  */
 export type RunSpec = Omit<Scenario, 'judge' | 'rubric' | 'checks' | 'set'>;
 
@@ -80,46 +72,12 @@ export const toRunSpec = (s: Scenario): RunSpec => {
   return run;
 };
 
-/**
- * O RunSpec que chega pela REDE, conferido (P34). O pai é confiável, mas a porta do sucessor recebe
- * JSON de uma requisição HTTP: malformado vira `null`, nunca um eval que roda qualquer coisa. E só os
- * campos de RODAR atravessam — um `judge`/`checks`/`rubric` que chegue junto é DESCARTADO, para o
- * gabarito não entrar nem pela porta de trás.
- */
-export function parseRunSpec(raw: string | null | undefined): RunSpec | null {
-  let o: Record<string, unknown>;
-  try {
-    const v = JSON.parse(String(raw ?? '')) as unknown;
-    if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
-    o = v as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-  if (typeof o.name !== 'string' || !o.name.trim()) return null;
-  if (o.channel !== 'chat' && o.channel !== 'tela') return null;
-  if (!Array.isArray(o.turns) || o.turns.length === 0 || !o.turns.every((t) => t === null || typeof t === 'string')) return null;
-  if (o.steps !== undefined && !(Number.isInteger(o.steps) && (o.steps as number) >= 1 && (o.steps as number) <= 50)) return null;
-  if (o.tools !== undefined && !(Array.isArray(o.tools) && o.tools.every((t) => typeof t === 'string'))) return null;
-  if (o.model !== undefined && typeof o.model !== 'string') return null;
-  return {
-    name: o.name,
-    channel: o.channel,
-    ...(o.model !== undefined ? { model: o.model as string } : {}),
-    ...(o.tools !== undefined ? { tools: o.tools as string[] } : {}),
-    ...(o.steps !== undefined ? { steps: o.steps as number } : {}),
-    resetMemory: o.resetMemory === true,
-    turns: o.turns as (string | null)[],
-    script: Array.isArray(o.script) ? (o.script as RunSpec['script']) : [],
-  } as RunSpec;
-}
-
-/** O que aconteceu quando o cenário rodou — sem veredito nenhum. É isto que o sucessor devolve ao pai. */
+/** O que aconteceu quando o cenário rodou — sem veredito nenhum. */
 export type RunTrace = { name: string; turns: TurnOutcome[]; convo: { user: string; reply: string }[]; events: ToolEvent[]; cleanup?: EvalResult['cleanup']; t0: number; model: string };
 
 /**
- * `runEval` = `runSpec` + `judgeRun`, e o comportamento é o de sempre. As duas metades existem
- * separadas para o PAI julgar o sucessor com o próprio juiz (P34): o avaliado responde, quem julga é
- * outro — se o juiz morasse no código que o Opus reescreveu, o Opus poderia reescrever o juiz.
+ * `runEval` = `runSpec` + `judgeRun`. As duas metades ficam separadas porque quem RESPONDE não pode
+ * ser quem JULGA: o gabarito só existe do lado do juiz, e o juiz vem de outra família (ADR-048).
  */
 export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalResult {
   const s = parseScenario(md);
@@ -156,20 +114,16 @@ export function runSpec(runSpec: RunSpec, env: EvalEnv, modelOverride?: string):
   if (s.resetMemory) env.memory.write('');
   const spec = env.agent();
   const model = s.model ?? modelOverride ?? spec.config.model;
-  // INTERSECTA, NÃO SUBSTITUI (ciclo 3, 2026-09-20). Era `s.tools ?? spec.access.tools`: o frontmatter
-  // do cenário — que vem da pasta COMPARTILHÁVEL — trocava a lista que o dono aprovou no painel.
-  // `allowedTools` filtra só contra o REGISTRO, então isto era literalmente a "união disfarçada de
-  // filtro" que o cabeçalho do `subagent.ts` escreveu para não cometer, e que `subagentTools` existe
-  // por causa dela.
+  // QUEM MANDOU RODAR É O DONO. `./gasclaw eval e6-agenda` é ele digitando o comando: os tools do
+  // cenário SÃO a intenção dele, e por isso valem como pedidos. `allowedTools` ainda filtra contra o
+  // REGISTRO, então um nome inventado no frontmatter não vira ferramenta.
   //
-  // A distinção que importa e que eu quase achatei: quando o DONO digita `./gasclaw eval e6-agenda`,
-  // os tools do cenário SÃO a intenção dele — ele escolheu rodar aquilo. Quando o SONHO roda sozinho,
-  // a cada minuto, não são: ali o frontmatter da pasta compartilhável estaria concedendo `calendar`,
-  // `drive` e `gmail` na OAuth do dono, sem ninguém olhando.
-  //
-  // Por isso a interseção vale só no modo `sandboxed`, que é o do sonho. Aplicá-la nos dois quebraria
-  // o harness manual — e foi o que 17 testes me disseram, corretamente.
-  const allow = s.tools ? (env.sandboxed ? s.tools.filter((t) => spec.access.tools.includes(t)) : s.tools) : spec.access.tools;
+  // Havia um modo `sandboxed` que INTERSECTAVA com o que o dono aprovou no painel, para o caso em que
+  // o eval rodava SOZINHO (o ciclo de sonho, a cada minuto): ali o frontmatter da pasta compartilhável
+  // estaria concedendo `calendar`, `drive` e `gmail` na OAuth do dono sem ninguém olhando. Esse
+  // caminho autônomo saiu desta branch, e com ele o único produtor da bandeira — que fica registrada
+  // aqui em vez de sobreviver como um interruptor que ninguém liga.
+  const allow = s.tools ?? spec.access.tools;
   const base = env.tickets ?? memoryTickets();
   let lastToken = '';
   let lastDecision = 'approve';
@@ -203,8 +157,7 @@ export function runSpec(runSpec: RunSpec, env: EvalEnv, modelOverride?: string):
       let turn: TurnResult | undefined;
       const d: ChatDeps = {
         // A CHAVE GERAL DO DONO VALE AQUI TAMBÉM. Era `() => true` fixo, então `./gasclaw disable` —
-        // o interruptor que se puxa numa emergência — não alcançava o caminho autônomo do sonho.
-        // Duas grafias para a mesma intenção é a deriva que o `mayAct` existe para acabar.
+        // o interruptor que se puxa numa emergência — não alcançava o eval.
         enabled: () => env.enabled?.() ?? true,
         owner: () => env.owner,
         apiKey: () => env.apiKey ?? 'roteiro',

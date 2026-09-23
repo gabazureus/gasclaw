@@ -20,9 +20,8 @@
     /* O unico botao destrutivo da linha nao pode ter o mesmo peso visual dos outros quatro. */
     button.danger { background: #fff; color: #8a1c1c; box-shadow: inset 0 0 0 1px #e0bcbc; }
     button.danger:hover { background: #fdf3f3; }
-    /* Tabela dos projetos filhos: densidade em vez de um cartao por item. Com 3 filhos o cartao ja
-       empurra o resto da tela para baixo, e a comparacao entre eles — que e o que o dono faz ali —
-       vira rolagem. */
+    /* Tabela em vez de um cartao por item: densidade. Com poucos itens o cartao ja empurra o resto
+       da tela para baixo, e a comparacao entre eles vira rolagem. */
     table.list { width: 100%; border-collapse: collapse; font-size: 14px; }
     table.list th { text-align: left; font-weight: 600; color: #6b6b66; border-bottom: 1px solid #e3e1db; padding: 6px 8px 6px 0; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
     table.list td { padding: 8px 8px 8px 0; border-bottom: 1px solid #f0efea; vertical-align: top; }
@@ -251,12 +250,11 @@
     // ambiente sempre à vista: evita mexer no prod achando que é o dev (P21)
     $('envName').textContent = s.env;
     $('envBadge').className = 'env ' + s.env;
-    // QUAL MOTOR É ESTE: nome do agente + id do motor, e se é o sucessor (e de quem). Só textContent: o
-    // nome do agente vem de uma Property e não pode virar marcação.
+    // QUAL MOTOR É ESTE: nome do agente + id do motor. Só textContent: o nome do agente vem de uma
+    // Property e não pode virar marcação.
     if (s.identity) {
       $('identity').textContent = s.identity.line;
-      $('identity').className = 'identity ' + s.identity.role;
-      $('identity').title = s.identity.role === 'successor' ? 'This is a SUCCESSOR engine of ' + s.identity.parent + '. It serves the same agent as its parent.' : 'This is the incumbent engine serving this agent.';
+      $('identity').title = 'The engine that answers for this agent in this environment.';
     }
     $('scriptLink').href = s.scriptUrl;
     $('scriptLink').hidden = false; // como os outros links: só aparece depois de ter destino
@@ -265,11 +263,8 @@
     if (typeof fillAgents === 'function') fillAgents();
     $('secretInfo').textContent = s.cliSecretAt ? 'CLI secret registered on ' + new Date(s.cliSecretAt).toLocaleString('en-US') : 'CLI secret not registered yet (run ./gasclaw up)';
     $('resetSecret').disabled = !s.cliSecretAt;
-    // Lista PLANA, agentes e projetos filhos um embaixo do outro.
-    //
-    // Aninhar o filho dentro do pai seria mentir sobre a relação: um filho PODE SUCEDER e virar o
-    // principal, e aí a árvore teria que ser redesenhada. O parentesco é temporário; a existência não.
-    // Por isso o vínculo aparece como MARCADOR na linha, não como hierarquia na tela.
+    // Os ARQUIVADOS vêm numa seção própria, depois da lista: sumir da lista de agentes é diferente
+    // de deixar de existir.
     loadChildren();
     $('agents').replaceChildren(...s.agents.map((a, i) => {
       const box = document.createElement('div');
@@ -776,7 +771,7 @@
   //
   // Cada capacidade é aprovada UMA A UMA (ADR-038): ter uma não dá outra. E o texto de cada uma diz a
   // consequência, não o nome bonito — quem liga precisa saber o que está ligando ANTES do clique, que é
-  // a mesma regra da tela de projetos filhos.
+  // a mesma regra de qualquer outra concessão do painel.
   function showAgentSettings(folderId, holder) {
     holder.textContent = 'Loading settings…';
     Promise.all([quiet('agentCapabilities', folderId), quiet('agentModel', folderId)])

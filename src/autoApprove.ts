@@ -37,13 +37,11 @@ export const NEVER_AUTO: readonly string[] = [
   //   a caixa de entrada → um e-mail de terceiro contém texto que o modelo obedece → ele repassa para
   //   outro agente, que age. Nenhum card em ponto nenhum do caminho.
   //
-  // O registro já argumentava que `agent.create` é `always` e não `once` porque "um `once` faria o
-  // dono aprovar o primeiro sem saber que aprovava o quinto". A lista de auto-aprovação fazia PIOR:
-  // aprovava o quinto, o centésimo e todos os seguintes, num run que ninguém está olhando.
+  // A lista de auto-aprovação aprovava o quinto repasse, o centésimo e todos os seguintes, num run
+  // que ninguém está olhando.
   //
-  // O critério de `NEVER_AUTO` é irreversibilidade para TERCEIROS. Criar agente cria pasta no Drive e
-  // superfície permanente; mandar mensagem faz OUTRO agente agir. As duas se qualificam sem esforço.
-  'agent.create',
+  // O critério de `NEVER_AUTO` é irreversibilidade para TERCEIROS: mandar mensagem faz OUTRO agente
+  // agir. (`agent.create` também estava aqui, pelo mesmo critério; ela saiu do registro nesta branch.)
   'agent.message',
   // `sheets.append` é o exemplo que o cabeçalho DESTE módulo usa para explicar por que a linguagem de
   // predicados foi reprovada — `id` livre e 20.000 caracteres de `rows` — e ele seguia auto-aprovável.

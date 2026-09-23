@@ -21,10 +21,11 @@ describe('o que nunca se auto-aprova', () => {
 
   // A lista CRESCEU na revisão de segurança de 2026-09-20, e a asserção é exaustiva de propósito:
   // acrescentar uma tool irreversível e esquecer de proibi-la aqui tem de quebrar um teste, não
-  // passar despercebido. `agent.create` e `agent.message` entraram porque fechavam o único caminho
-  // em que conteúdo de terceiro virava ação sem nenhum clique.
-  test('e a lista é exatamente estas sete', () => {
-    expect([...NEVER_AUTO].sort()).toEqual(['agent.create', 'agent.message', 'calendar.create', 'calendar.update', 'gmail.send', 'memory.remove', 'sheets.append']);
+  // passar despercebido. `agent.message` entrou porque fechava o único caminho em que conteúdo de
+  // terceiro virava ação sem nenhum clique. (`agent.create` estava aqui pelo mesmo critério e saiu
+  // junto com a ferramenta: proibir a auto-aprovação de algo que não existe não protege nada.)
+  test('e a lista é exatamente estas seis', () => {
+    expect([...NEVER_AUTO].sort()).toEqual(['agent.message', 'calendar.create', 'calendar.update', 'gmail.send', 'memory.remove', 'sheets.append']);
   });
 });
 

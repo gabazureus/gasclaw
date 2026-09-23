@@ -34,7 +34,7 @@ import { pump, pumpById, type StepDeps } from './runner';
 import { runIO, type RunIO } from './runStore';
 import { flushMemory } from './tools/memoryFlush';
 import { cliAuthorized, MUTATING, validSecret } from './cli';
-import { evalAction, judgeRun, parseRunSpec, runSpec, toRunSpec, type EvalEnv, type RunTrace } from './evalEntry';
+import { evalAction } from './evalEntry';
 import { pocP11 } from '../poc/p11-free/harness';
 import { pocP18 } from '../poc/p18-sessoes/harness';
 import { sessionMessages } from './session';
@@ -193,15 +193,11 @@ function mutate(action: string, p: Record<string, string>): unknown {
   // F10: o MODELO do agente pela CLI, mesma autoridade do painel (o dono, provado pelo segredo; ADR-021/022).
   // Sem isto, "um modelo só" dependia de clique — e depois do setup nada deve depender de operação manual.
   if (action === 'model') return setAgentModel(p.folder || (defaultAgent()?.folderId ?? ''), p.model ?? null);
-  // A CORRIDA DO ENXAME PELA CLI (F6). Mesma autoridade do painel — o dono, provado pelo segredo —
-  // por outra porta, como já vale para `tools` (ADR-021/022). Sem isto, conduzir uma corrida de 24 h
-  // exigiria o dono clicando em cada geração, e o pedido era acompanhar, não operar.
   // `capability` entra aqui pelo MESMO argumento que `tools` (ADR-021/022): o segredo prova o dono, e
   // é o dono que decide. A guarda continua inteira — `setAgentCapability` mantém `assertOwner`, o
   // nome válido, o `missing`, o lock e o trace. O que muda é a porta, não quem pode abrir.
-  // SEM PASTA DECLARADA, O AGENTE PADRÃO. A CLI lia `SWARM_FOLDER` e os comandos do README não a
-  // mencionavam: quem copiou o comando recebeu "unknown agent". Eu testei a CLI só do jeito que eu a
-  // uso — com a variável exportada. Com um agente só, que é o caso comum, pedir o id era pedir o óbvio.
+  // SEM PASTA DECLARADA, O AGENTE PADRÃO. Com um agente só, que é o caso comum, pedir o id era pedir
+  // o óbvio — e quem copiou o comando do README sem declarar a pasta recebia "unknown agent".
   const pasta = p.folder || defaultAgent()?.folderId || '';
   if (action === 'capability') return setAgentCapability(pasta, p.cap ?? '', p.on === '1');
   return { ok: false, status: 400, error: `unknown action: ${action}` };
@@ -251,10 +247,9 @@ export function doPost(e: GoogleAppsScript.Events.DoPost) {
     const props = PropertiesService.getScriptProperties();
     const stored = props.getProperty('CLI_SECRET');
     // A ROTA `childkey` FOI REMOVIDA (2026-09-20, ADR-040 opção 4). Ela era o único ponto do projeto
-    // que devolvia a chave do OpenRouter por HTTP. A P27 mediu que o filho não consegue alcançá-la —
-    // o Google recusa o token de outro projeto antes de chegar aqui —, então ela não servia a ninguém
-    // além de quem já é o dono, e continuava sendo a porta que se abriria sozinha no dia em que o
-    // `access` do manifesto mudasse. Filhos agora são só `automation`, que nunca precisam de chave.
+    // que devolvia a chave do OpenRouter por HTTP. A P27 mediu que ela não servia a ninguém além de
+    // quem já era o dono, e continuava sendo a porta que se abriria sozinha no dia em que o `access`
+    // do manifesto mudasse.
     if (action === 'setsecret') {
       // primeira vez: o dono grava o segredo gerado no PC; depois, só quem já tem o segredo atual
       if (!validSecret(p.secret ?? '')) return json({ ok: false, status: 400, error: 'invalid secret: use 64 hexadecimal characters (openssl rand -hex 32)' });
@@ -404,17 +399,7 @@ function toolsOfAgent(name: string): string[] {
   }
 }
 
-/**
- * Nasce um AGENTE novo: pasta própria no Drive, papel escrito, e NADA MAIS.
- *
- * Sem ferramenta, sem acesso, sem capacidade — `effectiveAccess(null)` já fecha tudo por padrão, e é
- * o dono quem abre no painel, uma a uma. A squad é feita de EXECUTORES, não de criadores: um agente
- * criado com a capacidade `create` faria a multiplicação virar cadeia, e uma cadeia não tem fundo.
- *
- * O singleton do criador também protege isto por forma do dado: `CREATOR` é UMA Property com UM
- * folderId, então não existe estado com dois criadores.
- */
-/** Porta de teste: `bornAgent` recebe um `AgentSpec` inteiro e o teste só precisa de nome e pasta. */
+/** Porta de teste: `relayToAgent` recebe um `AgentSpec` inteiro e o teste só precisa de nome e pasta. */
 export const __test_relay = (nome: string, folderId: string, to: string, text: string): string =>
   relayToAgent({ name: nome, folderId } as AgentSpec, to, text);
 
@@ -579,8 +564,6 @@ export function onMessage(e: ChatEvent) {
     startP2Event(e.space.name, undefined, runIO()); // sem thread: tudo no fluxo do espaco
     return {}; // `pensando...` ja foi criado como o app e confirmado por message.name na POC
   }
-  // P35 (só no dev, só LÊ): com que identidade este onMessage roda, e se ela alcança o sucessor coroado.
-  // É a pergunta que decide se o Chat pode seguir o motor coroado sem passo manual no console.
   const d = chatDeps();
   if (e.type === 'MESSAGE') {
     // Sem a identidade do app no Chat não existe entrega posterior: o caminho assíncrono deixaria o usuário
@@ -718,7 +701,7 @@ function stepDeps(budgetMs = STEP_BUDGET_MS, io = runIO()): StepDeps {
         // ITEM 24 — A LIGAÇÃO QUE FALTAVA. A auditoria de 2026-09-20 encontrou `recordFailure` com ZERO
         // call sites: o contador existia, tinha teste verde, e nada o alimentava. Eu vinha lendo o trace
         // vazio como "falta uso real do agente"; era o contador que nunca tinha sido ligado — e foi isso
-        // que travou o ciclo de sonho esperando um dado que não tinha como chegar.
+        // que travou quatro itens esperando um dado que não tinha como chegar.
         //
         // Aqui, e não no `agent.ts`: contar é efeito em Script Properties, e o turno é núcleo.
         // Só quando o passo NÃO está pendente: um run esperando o clique do dono não falhou, está esperando.
@@ -1637,17 +1620,7 @@ export function archivedAgents() {
   };
 }
 
-/**
- * Os projetos filhos e o estado REAL de autorização de cada um.
- *
- * A P24 mediu no dev v96 que um filho criado, escrito e implantado pela API **não executa** até o dono
- * consentir — e que a tela de consentimento do Google vem com **código 200**. Por isso aqui o estado não é
- * guardado nem deduzido: ele é **conferido**, chamando a URL do filho e lendo o que volta. Guardar
- * "autorizado" seria afirmar hoje o que foi verdade ontem.
- *
- * O painel não consegue consentir pelo dono (não há API para isso, e é bom que não haja). O que ele pode
- * fazer é mostrar O QUE O FILHO PEDE antes do clique, e levar o dono até o lugar certo.
- */
+/** O prompt vigente do agente (os papéis da pasta, já resolvidos) e o modelo que vale para ele. */
 export function agentPrompt(folderId: string) {
   assertOwner();
   const { name, roles } = agentRoles(folderId);
@@ -1773,10 +1746,10 @@ export function drainRuns() {
  *
  * A guarda estava escrita à mão em oito lugares, em duas grafias, e quatro delas PULAVAM o
  * congelamento de emergência. A deriva já era concreta e visível ao dono: com a chave desligada,
- * `successorOptions` (o read-model) dizia `can: true` e `writeSuccessor` (a ação) recusava — a tela
- * prometendo o que o motor não honra, que é o defeito desta rodada inteira em terceira forma.
+ * o read-model dizia `can: true` e a ação recusava — a tela prometendo o que o motor não honra, que
+ * é o defeito daquela rodada inteira em terceira forma.
  *
- * A DECISÃO continua pura e continua em `agentCaps.ts`/`family.ts`. O que faltava era um lugar só
+ * A DECISÃO continua pura e continua em `agentCaps.ts`. O que faltava era um lugar só
  * de LEITURA — sem ele, endurecer um sítio deixa os irmãos para trás, e o próximo revisor
  * redescobre o mesmo buraco.
  */
@@ -1785,12 +1758,11 @@ function mayAct(folderId: string, cap: Capability): { ok: boolean; reason: strin
   const id = String(folderId ?? '').trim();
   if (!id) return { ok: false, reason: 'unknown agent' };
   // D6 — A CHAVE DE PARADA DO DONO, que NÃO ERA LIDA AQUI. Achado rodando: com o motor pausado,
-  // `swarm run` foi até o OpenRouter, e quem recusou foi a fatura. `store.isEnabled()` era lido pela
-  // conversa e pelo ciclo de sonho, e por mais nada — então `./gasclaw down` parava o que FALA e
-  // deixava correr o que PAGA e implanta.
+  // o que agia sozinho foi até o OpenRouter, e quem recusou foi a fatura. `store.isEnabled()` era lido
+  // pela conversa e por mais nada — então `./gasclaw down` parava o que FALA e deixava correr o que PAGA.
   //
   // Vem ANTES de status e de capacidade porque parado é parado: um agente pausado que recusasse por
-  // "succeed is off" mandaria o dono ligar uma capacidade que não é o problema.
+  // "initiative is off" mandaria o dono ligar uma capacidade que não é o problema.
   if (!store.isEnabled()) return { ok: false, reason: 'everything is paused: run `./gasclaw up` (or turn the runtime back on in the panel) before acting' };
   const status = parseStatus(props.getProperty(`STATUS:${id}`));
   if (status !== 'active') return { ok: false, reason: `this agent is ${status}` };
@@ -2031,13 +2003,6 @@ export function setAgentField(folderId: string, name: string, value: unknown) {
 }
 
 /**
- * O que o sonho precisa do mundo. Tudo que é decisão mora no núcleo; aqui só se entrega o Drive, o
- * modelo e o relógio.
- *
- * O gerador roda em MODELO GRÁTIS por decisão (D4): o ciclo de sonho não gasta dinheiro para descobrir
- * se o laço funciona. A geração de CÓDIGO é a exceção declarada, e não passa por aqui.
- */
-/**
  * Conta o que deu errado num turno. Chamada pelo passo do run durável — é ESTA a fiação do item 24.
  *
  * Nunca lança: um defeito na contagem não pode derrubar a resposta ao dono. Falhar em contar uma falha
@@ -2149,13 +2114,6 @@ export function pocUrlFetchTimeout() {
 
 // ---------- POCs automáticas: ./gasclaw poc <id> [etapa] → doGet?action=poc ----------
 
-/**
- * Sonda da POC P24 (só no build dev): o token DO SCRIPT consegue criar, escrever e implantar um
- * projeto Apps Script filho? Mede o que só o dev responde; não cria nada em produção.
- *
- * A guarda `mayWriteProject` é chamada ANTES de qualquer escrita: depois que `script.projects`
- * entrou no manifesto, ela é a única coisa separando o filho do motor.
- */
 function pocP28(step?: string): unknown {
   const props = PropertiesService.getScriptProperties();
   const agentes = store.listAgents();
@@ -2204,8 +2162,9 @@ export function chatLink() {
 }
 
 /**
- * P36 (F9) — as quatro capacidades medidas NO MOTOR QUE RESPONDE (o coroado), pelo caminho real de cada
- * uma. Só o dono (a CLI com o segredo). Cada passo que muda algo tem o seu passo de desfazer.
+ * P36 (F9) — o Reach out medido NO MOTOR QUE RESPONDE, pelo caminho real: a agenda arma um job de
+ * verdade, o worker o dispara, e os passos de leitura mostram o run, a entrega no Chat e as esperas
+ * (ADR-047). Só o dono (a CLI com o segredo), e o passo que muda a agenda tem o seu passo de desfazer.
  */
 function pocP36(step?: string, params: Record<string, string> = {}): unknown {
   const ag = defaultAgent();
