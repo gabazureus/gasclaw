@@ -43,7 +43,7 @@ export function enqueue(run: Run): void {
     const e = queueEntry(run);
     props().setProperties({ [`${QUEUE_PREFIX}${e.id}`]: JSON.stringify(e), [`${TERMINAL_PREFIX}${e.id}`]: JSON.stringify(terminalSnapshot(run)) });
     props().deleteProperty(`${RUNNING_PREFIX}${e.id}`);
-    cache().remove('obs:props');
+    cache().removeAll(['obs:props', EMPTY_KEY]);
     const full = JSON.stringify(redact(run));
     if (full.length < 95_000) cache().put(`qjson:${run.id}`, full, 21_600);
   } catch (err) {
@@ -64,7 +64,7 @@ export function enqueueOnce(run: Run, markerKey: string, markerValue: string): b
     return false;
   }
   try {
-    cache().remove('obs:props');
+    cache().removeAll(['obs:props', EMPTY_KEY]);
     const full = JSON.stringify(redact(run));
     if (full.length < 95_000) cache().put(`qjson:${run.id}`, full, 21_600);
   } catch (err) {
@@ -115,7 +115,25 @@ export type DrainResult = { drained: number; ms: number; rows: boolean; json: nu
  * repete nem derruba a drenagem. De quebra, ela passa a rodar também quando a fila está vazia: antes ficava
  * depois do `return` do caminho sem entradas, ou seja, uma instalação parada nunca limpava os arquivos.
  */
+/**
+ * Marca de FILA VAZIA (5 min). O tique de 1 min cai aqui sempre, e com a fila vazia tudo o que a drenagem
+ * fazia era tomar o ScriptLock **global** — o mesmo que a aprovação toma — e ler as Properties inteiras
+ * para achar zero entradas. Medido no dev (2026-09-22, N=13): o tique ocioso levava 577–1616 ms, 5 delas
+ * acima do critério de 1000 ms da ADR-027, e a drenagem era 285–652 ms disso.
+ *
+ * Quem enfileira apaga a marca na MESMA execução (`enqueue`, `enqueueOnce`, e a própria drenagem quando
+ * devolve entradas à fila), então ela nunca esconde trabalho novo. O prazo curto é o limite do estrago se
+ * uma dessas remoções falhar: no pior caso a linha sai cinco tiques depois, e nada se perde — a fila mora
+ * nas Properties, não no cache.
+ */
+const EMPTY_KEY = 'obs:empty';
+
 export function drain(max = 200, inline = false): DrainResult {
+  const t0 = Date.now();
+  if (cache().get(EMPTY_KEY)) {
+    if (!inline) cleanupRunsDaily();
+    return record({ drained: 0, ms: Date.now() - t0, rows: true, json: 0 });
+  }
   const out = drainLocked(max);
   if (!inline && !out.skipped) cleanupRunsDaily();
   return out;
@@ -127,7 +145,10 @@ function drainLocked(max: number): DrainResult {
   if (!lock.tryLock(5_000)) return { drained: 0, ms: Date.now() - t0, rows: false, json: 0, skipped: 'outra drenagem em andamento' };
   try {
     const entries = splitQueue(props().getProperties()).slice(0, max);
-    if (!entries.length) return record({ drained: 0, ms: Date.now() - t0, rows: true, json: 0 });
+    if (!entries.length) {
+      cache().put(EMPTY_KEY, '1', 300); // nada a drenar: o próximo tique ocioso sai sem lock e sem leitura
+      return record({ drained: 0, ms: Date.now() - t0, rows: true, json: 0 });
+    }
     const store = ensureRunStore();
     const fresh = entries.filter((e) => !e.rowDone); // quem só espera o JSON não repete linha nem uso
     // 1) todas as linhas numa chamada só
@@ -167,7 +188,7 @@ function drainLocked(max: number): DrainResult {
     const done = settle(entries, res.map((r) => r.getResponseCode()));
     for (const id of done.remove) props().deleteProperty(`${QUEUE_PREFIX}${id}`);
     for (const e of done.retry) props().setProperty(`${QUEUE_PREFIX}${e.id}`, JSON.stringify(e)); // o JSON volta na próxima drenagem
-    cache().removeAll(['obs:props', ...done.remove.map((id) => `qjson:${id}`)]);
+    cache().removeAll(['obs:props', EMPTY_KEY, ...done.remove.map((id) => `qjson:${id}`)]);
     dailyLimitsRow(store.sheetId);
     return record({ drained: entries.length, ms: Date.now() - t0, rows, json: entries.length - done.retry.length });
   } catch (err) {
