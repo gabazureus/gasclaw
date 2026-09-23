@@ -4,6 +4,12 @@
 // continua existindo nesta branch. `archivedAgents` herdou o lugar dela, e este teste existe porque
 // código novo sem teste é exatamente o que uma remoção não pode deixar para trás.
 //
+// RESSALVA HONESTA, e ela é o motivo de este comentário existir: nesta branch **nada grava**
+// `archived`. O único escritor era o `passBaton` da sucessão. O estado continua sendo LIDO pelos
+// portões que valem (`mayAct`, `defaultAgent`, `claimable`) porque um ambiente vindo da branch
+// anterior tem `STATUS:<pasta>` gravado — e desonrá-lo ressuscitaria um agente aposentado. Num
+// ambiente novo esta lista vem vazia; é o primeiro caso abaixo, e ele é resultado, não defeito.
+//
 // O que ele protege: arquivar NÃO APAGA. O agente some da lista de agentes, e sumir da tela é
 // diferente de deixar de existir — a pasta do Drive continua lá, e o dono precisa enxergá-la.
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';

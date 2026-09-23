@@ -1,5 +1,4 @@
-import { judgeFor, namesOf, scenarioMd, SCENARIOS } from './judgeSet';
-import { parseScenario } from './eval';
+import { namesOf, scenarioMd, SCENARIOS } from './judgeSet';
 import { cluster, failProp, failuresFrom, hasMaterial, parseFailures, serializeFailures, withFailure, type Failure } from './failureLog';
 import { mergeAcrossGenerations, originLabel, parseSchema, validateValues, type ConfigField } from './agentConfig';
 import { AUTO_NOTE, cleanAutoList, mayAutoApprove, NEVER_AUTO, noReplySpan, onProactiveBlock } from './autoApprove';
@@ -16,7 +15,7 @@ import { pocP20 } from '../poc/p20-approval/harness';
 import { pocP22, TICK_REQ as P22_TICK_REQ, TICK_RESULT as P22_TICK_RESULT, WAKE_REQ as P22_WAKE_REQ, WAKE_RESULT as P22_WAKE_RESULT } from '../poc/p22-proatividade/harness';
 import { dueAgenda, evaluateAgenda, syntheticAgenda } from '../poc/p22-proatividade/probe';
 import { deliverP2Probe, pocP2, startP2Event } from '../poc/p2-chat-async/harness';
-import { chatAppAvailable, createAsChatApp, ownerDmAsChatApp, spacesAsChatApp } from './chatApiGas';
+import { chatAppAvailable, createAsChatApp, ownerDmAsChatApp } from './chatApiGas';
 import { acceptChatMessage } from './chatAsync';
 import { authorizedDelivery, deliveryDue, deliveryGivenUp, newChatDelivery, sendChatDelivery, stableRequestId } from './chatDelivery';
 import { pocP6 } from '../poc/p6-docs-nativos/harness';
@@ -44,13 +43,13 @@ import { bootstrapIO } from './tools/bootstrapStore';
 import { skillsIO } from './tools/skillsStore';
 import { isFree } from './freeModels';
 import { runFree } from './freeRun';
-import { complete, type Completion, type EmptyCompletionError, type Message, type Reasoning, type ToolDef } from './llm';
+import { complete, type Message, type Reasoning, type ToolDef } from './llm';
 import { gasGoogle, zone } from './tools/googleHttp';
 import { offsetMinutes } from './agenda';
 import { folderModel, getOverride, listModels as openRouterModels, type ModelInfo, setOverride, validateChoice } from './models';
 import * as observe from './observe';
 import * as runlog from './runlog';
-import { CAPABILITIES, can, accessAfterArchive, capsEnabled, effectiveCapabilities, forgetAgentProps, isRunnable, parseCapabilities, parseStatus, type Capability } from './agentCaps';
+import { CAPABILITIES, can, capsEnabled, effectiveCapabilities, forgetAgentProps, isRunnable, parseCapabilities, parseStatus, type Capability } from './agentCaps';
 import { engineIdentity } from './identity';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
@@ -1608,6 +1607,14 @@ export function setAgentCapability(folderId: string, cap: string, on: boolean) {
  *
  * Herdou o lugar do `listChildren`, que saiu com os projetos filhos e a sucessão. O que ele mostrava
  * de vivo era justamente esta lista.
+ *
+ * **NESTA BRANCH NADA ESCREVE `archived`, e isso precisa estar escrito.** O único escritor era o
+ * `passBaton` da sucessão, que saiu. O estado continua sendo LIDO em três portões que valem —
+ * `mayAct` (agente arquivado não age), `defaultAgent` (não atende o Chat) e `claimable` (o pump não
+ * o reivindica) — porque um ambiente que veio da branch anterior TEM chaves `STATUS:<pasta>`
+ * gravadas, e desonrá-las seria ressuscitar um agente que o dono aposentou. Num ambiente novo esta
+ * lista vem vazia, e a seção do painel não aparece: é honesto, não é defeito. Se o dono quiser
+ * arquivar daqui, é uma função a MAIS, não uma que tirei.
  */
 export function archivedAgents() {
   assertOwner();

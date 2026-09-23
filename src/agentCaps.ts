@@ -56,6 +56,13 @@ export const newbornCapabilities = (): Capability[] => [];
  * continua sendo remoção de verdade; arquivar preserva a linhagem, que é justamente o que o
  * registro de evolução quer guardar.
  */
+/**
+ * NESTA BRANCH nada GRAVA `archived`: o único escritor era o `passBaton` da sucessão, que saiu.
+ * O estado continua sendo LIDO — `isRunnable`, `claimable`, `accessAfterArchive` e o `mayAct` do
+ * `main` — porque um ambiente vindo da branch anterior tem chaves `STATUS:<pasta>` gravadas, e
+ * desonrá-las ressuscitaria um agente que o dono aposentou. Ler sem escrever é o estado correto
+ * aqui; o que não pode é o portão sumir junto com quem o acionava.
+ */
 export type AgentStatus = 'active' | 'archived';
 
 export const parseStatus = (raw: string | null | undefined): AgentStatus => (raw === 'archived' ? 'archived' : 'active');
