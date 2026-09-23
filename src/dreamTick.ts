@@ -70,13 +70,13 @@ export type TickResult = { cycleId: string | null; steps: number; status: string
  * pior, contamina o placar com repetição.
  */
 /**
- * Estimativa CONSERVADORA de um passo (agente + juiz), usada até haver um passo measured neste tique.
- * minimal: ponto de partida declarado, não calibrado — o maior passo measured no tique a substitui se for maior.
+ * Estimativa CONSERVADORA de um passo (agente + juiz), usada até haver um passo medido neste tique.
+ * minimal: ponto de partida declarado, não calibrado — o maior passo medido no tique a substitui se for maior.
  */
 export const DREAM_STEP_ESTIMATE_MS = 90_000;
 
 /**
- * Quantos tiques COM passo measured a estimativa lembra. Um passo fora da curva (o modelo lento numa hora ruim)
+ * Quantos tiques COM passo medido a estimativa lembra. Um passo fora da curva (o modelo lento numa hora ruim)
  * pesa por 5 tiques com sonho e então sai — antes ele valia para sempre, porque a estimativa só crescia.
  */
 export const DREAM_STEP_WINDOW = 5;

@@ -633,7 +633,7 @@ const GONE = 'gone';
  *
  * O run SEM entrega (tela, caminho síncrono) segue retomando na hora: ali quem espera é uma página aberta.
  */
-const trabalhoDoGatilho = (r: DurableRun): DurableRun => (r.delivery ? r : pumpById(stepDeps(CHAT_BUDGET_MS), r.runId) ?? r);
+const triggerDoesTheWork = (r: DurableRun): DurableRun => (r.delivery ? r : pumpById(stepDeps(CHAT_BUDGET_MS), r.runId) ?? r);
 
 /** Clique de aprovação do Chat: ator vem do evento autenticado, nunca dos parâmetros do card. */
 function durableChatClick(e: ChatEvent): ChatReply {
@@ -659,14 +659,14 @@ function durableChatClick(e: ChatEvent): ChatReply {
       return { text: `Cannot answer this: ${out.error}.` }; // mantém o card de outra pessoa intacto
     }
     if (!carryOn) setOpenAsks(out.session, openAsks(out.session).filter((id) => id !== out.runId)); // pergunta respondida
-    done = trabalhoDoGatilho(out);
+    done = triggerDoesTheWork(out);
     ack = carryOn ? 'Cost limit raised. I am carrying on with the task.' : `Answer recorded: ${String(p.answer).replace(/[<>]/g, '').slice(0, 200)}. I am carrying on with the task.`;
   } else {
     const replacement = newToken();
     const out = decideChatApproval(io, p, e.user.email, replacement, Date.now());
     if (out.kind === 'rejected') return { text: `Cannot answer this: ${out.error}.` }; // mantém o card de outra pessoa intacto
     if (out.kind === 'refreshed') return updateCard(approvalCard({ token: replacement, pending: out.run.pending!, folderId: out.run.folderId, runId: out.run.runId }, out.run.answer ?? 'This action still needs your approval.'));
-    done = trabalhoDoGatilho(out.run);
+    done = triggerDoesTheWork(out.run);
     ack = p.decision === 'approve' ? 'Approved. I am carrying on with the task.' : 'Denied. I am carrying on without it.';
   }
   if (done.delivery) {
@@ -952,7 +952,7 @@ export function runState(runId: string, approvalToken?: string) {
 }
 
 /**
- * A resposta do usuário a um run parado: aprovar/negar uma ferramenta, responder uma pergunta, ou mandar carryOn
+ * A resposta do usuário a um run parado: aprovar/negar uma ferramenta, responder uma pergunta, ou mandar continuar
  * depois do teto de custo. Devolve o run à fila e já tenta terminar na hora.
  */
 export function runDecide(runId: string, params: Record<string, string>) {
@@ -1166,6 +1166,10 @@ function promptInChat(run: DurableRun, io: RunIO): void {
     io.dequeue(run.runId);
     return;
   }
+  // SEGUNDA porta. A primeira é o claim (`runner.ts`, `c.tampered`), que chega antes e é mais forte: recusa o
+  // run inteiro. Esta fica porque `promptInChat` não é obrigada a ser chamada só de lá — e porque o passo
+  // seguinte GRAVA o run (`approvalToken` → `io.save`), e gravar RE-ASSINA: um arquivo adulterado viraria
+  // legítimo. Apagá-la não quebra teste nenhum (a primeira porta mata os mutantes); é decisão, não descuido.
   if (!io.untampered(run)) throw new Error('Chat card refused: the task file was changed outside gasclaw');
   const lease = io.leaseOf(run.runId); // o ponteiro do claim que trouxe o run até aqui
   const now = Date.now();

@@ -299,7 +299,7 @@ export function runIO(
       try {
         const run = loadFresh(folderId, runId); // autorização sempre lê a fonte da verdade
         if (!run) return { kind: 'rejected', error: 'I could not find that task' };
-        // ESTADO ANTES DE ASSINATURA (achado ao vivo, 2026-09-23): um run que ACABOU perdeu a autoridade
+        // ESTADO ANTES DE ASSINATURA (achado ao vivo, 2026-09-22): um run que ACABOU perdeu a autoridade
         // (`forget`), e sem ela a conferência não tem com o que comparar — o clique atrasado num cartão velho
         // ouvia "mudou por fora", uma acusação falsa. Leitura pura: nada é gravado e nada é executado aqui.
         // O caminho do `ask` (`resume`) já fazia assim; este conferia antes e acusava.

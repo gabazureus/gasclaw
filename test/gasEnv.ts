@@ -95,6 +95,14 @@ function route(env: GasEnv, url: string): ReturnType<typeof res> {
   // A LISTA de modelos vem antes do ramo de completions, senao ela roubaria uma resposta da fila `env.llm`
   // e todo teste que conta chamadas ao modelo passaria a medir outra coisa. O turno consulta esta lista para
   // conferir o `model` pedido pela pasta (ADR-034); `listModels` guarda 6 h no cache.
+  // O MESMO motivo do `/api/v1/models` logo acima, e ele faltava aqui: `/api/v1/key` é a leitura de crédito
+  // (`keyInfo`, cache de 10 min), não uma chamada paga. Enquanto caía no ramo genérico, ela consumia uma
+  // resposta da fila `env.llm` — então todo teste que contava chamadas ao modelo media "requisições ao
+  // OpenRouter", e um teste que enfileirava N respostas na verdade tolerava N-1 turnos. `test/sucessorAgente.test.ts`
+  // já contornava isso por fora; aqui o contorno vira regra.
+  if (url.includes('/api/v1/key')) {
+    return res(200, JSON.stringify({ data: { limit: null, usage: 0, usage_daily: 0, is_free_tier: false } }));
+  }
   if (url.includes('/api/v1/models')) {
     const info = (id: string, tools: boolean) => ({ id, context_length: 8000, pricing: { prompt: '0.000001', completion: '0.000002' }, supported_parameters: tools ? ['tools'] : [] });
     return res(200, JSON.stringify({ data: env.models ?? [info('openrouter/auto', true), info('test/model', true), info('gratis/modelo:free', true)] }));

@@ -74,7 +74,7 @@ export function recordResult(t: Tally, s: DreamStep, passed: boolean): Tally {
  */
 export function eliminated(t: Tally): string[] {
   const out = new Set<string>();
-  // O candidato é um PROMPT e tem ':' — cortar no primeiro ':' nunca o achava. Ele fica entre o prefix
+  // O candidato é um PROMPT e tem ':' — cortar no primeiro ':' nunca o achava. Ele fica entre o prefixo
   // e o ÚLTIMO ':', porque o cenário é nome de arquivo de `evals/` (build.mjs), sem ':'.
   const prefix = 'gate:';
   for (const [key, v] of Object.entries(t)) {
