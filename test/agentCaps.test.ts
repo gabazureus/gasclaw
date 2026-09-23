@@ -9,7 +9,7 @@
 // opt-in, fail-closed por inteiro, e o congelamento global — continua provado aqui e no
 // `agentSecurity.test.ts`.
 import { describe, expect, test } from 'vitest';
-import { accessAfterArchive, can, CAPABILITIES, capabilityTag, isRunnable, newbornCapabilities, parseCapabilities, parseStatus } from '../src/agentCaps';
+import { can, CAPABILITIES, isRunnable, parseCapabilities, parseStatus } from '../src/agentCaps';
 
 describe('capacidades: a etiqueta é a identidade, não o cargo', () => {
   test('a capacidade desta branch é esta, e não existe papel especial', () => {
@@ -24,25 +24,12 @@ describe('capacidades: a etiqueta é a identidade, não o cargo', () => {
     }
   });
 
-  test('a etiqueta do painel mostra o que está ligado, em ordem estável', () => {
-    expect(capabilityTag(parseCapabilities('["initiative"]'))).toEqual(['initiative']);
-    expect(capabilityTag([])).toEqual([]);
-  });
-
-  test('agente novo nasce sem poder nenhum: criar e habilitar são atos separados', () => {
-    expect(newbornCapabilities()).toEqual([]);
-  });
 });
 
 describe('ciclo de vida: arquivado é um terceiro estado, e NÃO roda', () => {
   test('arquivado não atende turno, não vira run, não é elegível a gatilho', () => {
     expect(isRunnable('active')).toBe(true);
     expect(isRunnable('archived')).toBe(false);
-  });
-
-  test('arquivar limpa as FERRAMENTAS e preserva as PESSOAS: a conversa continua legível', () => {
-    const antes = { users: ['ana@x.com'], tools: ['now', 'gmail.send'] };
-    expect(accessAfterArchive(antes)).toEqual({ users: ['ana@x.com'], tools: [] });
   });
 
   test('estado ausente ou lixo é ATIVO, não arquivado: arquivar é ato explícito', () => {

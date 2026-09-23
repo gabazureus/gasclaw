@@ -21,7 +21,7 @@
 ## C1 — dev v148
 
 ```json
-{ "scriptId": "1w3Pju8vyj9y1ZgBIZZDDtgRAXuBOljQ8ZyOPU-kOOUFcwtVlwB7MHb0W",
+{ "scriptId": "SCRIPT_ID_DEV_REDACTED",
   "files": 8, "ms": 16591,
   "improvements": "the P32 patch no longer applies ... expected once the fix has been ported to src
                    and published: the parent code already carries it" }

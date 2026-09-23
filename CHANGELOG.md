@@ -10,6 +10,17 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 
 ## [Não publicado]
 
+> 🧠 **O agente guarda o que se repete como SKILL, não como código.** Ao fim de uma tarefa que vai
+> acontecer de novo, ele propõe o passo a passo em texto; você aprova pelo card e ele vira
+> `skills/<nome>/SKILL.md` na pasta do agente, entra no índice do prompt e é lido sob demanda. É
+> texto, nunca código: o que muda é o que o agente LÊ da próxima vez, nunca o que o motor executa.
+> **Escrever skill é só do dono** — quem aprova um card é quem pediu, então deixar isso aberto a
+> qualquer pessoa da lista era deixá-la escrever na sua pasta e aprovar a si mesma. Nada é
+> sobrescrito em silêncio: substituir uma skill existente exige pedido explícito. Quando a pasta
+> passa do que o prompt consegue carregar, o índice **diz quantas ficaram de fora** em vez de
+> escondê-las.
+
+
 > ✂️ **Esta branch é os consertos e o Reach out — sem o auto-aprimoramento.** `consertos-e-reach-out`
 > leva tudo o que foi arrumado e medido, MENOS o que o agente usava para se reescrever ou se
 > multiplicar. **Saíram:** o **Sonho** (o agente reescrevendo o próprio prompt e se medindo contra o

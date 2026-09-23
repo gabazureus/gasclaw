@@ -35,19 +35,17 @@ dois caminhos. **O que falta é a escrita:** hoje só o dono cria uma skill, edi
 **A skill proposta pelo agente.** No fim de uma tarefa que se repete, o agente propõe o procedimento como
 skill; o dono aprova; a skill passa a existir na pasta e aparece no índice.
 
-1. **Tool `skill.write`**, aprovação **`always`** (todo uso pede o clique do dono — é escrita na pasta dele).
-   Argumentos: `name` (as mesmas regras de `SKILL_NAME`), `description` (uma linha, ≤ 200) e `body`
-   (≤ `SKILL_BODY_MAX`). O cartão mostra **nome, descrição e o corpo inteiro** — o dono aprova o que vai ler
-   depois, não um resumo.
-2. **Nunca sobrescreve em silêncio.** Skill que já existe só é substituída com `replace: true`, e o cartão
-   diz que é substituição, mostrando o que sai e o que entra.
+1. **Tool `skill.write`**, aprovação **`always`** e **`ownerOnly`** (todo uso pede o clique, e só o dono
+   pede — é escrita na pasta dele, e quem aprova um card é quem pediu). Argumentos: `name` (as mesmas regras
+   de `SKILL_NAME`), `description` (uma linha, ≤ `SKILL_DESCRIPTION_MAX`) e `body` (≤ `SKILL_BODY_MAX`).
+   O cartão mostra nome, descrição e o **começo** do corpo — ver "O que ficou aberto".
+2. **Nunca sobrescreve em silêncio.** Skill que já existe só é substituída com `replace: true`.
 3. **Núcleo puro decide, casca grava:** validação de nome, descrição, tamanho e frontmatter em `skills.ts`;
    `skillsStore` cria `skills/<nome>/SKILL.md` e invalida o cache do índice.
 4. **A skill é dado, sempre.** O corpo entra no turno pelo `read_skill`, com a mesma moldura de hoje ("isto é
    instrução do dono, não código"). Uma skill não ganha ferramenta nova, não muda aprovação e não agenda nada:
    quem agenda é o Reach out, e quem aprova ferramenta é o dono.
-5. **O painel lista e apaga.** A pasta continua sendo a verdade; o painel mostra as skills com a descrição e
-   permite remover (a pasta do Drive nunca é apagada em silêncio — remove-se o arquivo da skill).
+5. ~~**O painel lista e apaga.**~~ **Não foi feito** — ver "O que ficou aberto".
 
 ## Critérios de aceite
 
@@ -59,7 +57,31 @@ skill; o dono aprova; a skill passa a existir na pasta e aparece no índice.
 | S4 | Skill existente não é sobrescrita sem `replace: true` | teste |
 | S5 | O corpo continua fora do prompt até o `read_skill` | teste do prompt (só o índice) |
 | S6 | Nada executa: o corpo da skill nunca vira código | teste + ADR-002 |
-| S7 | Suíte e `tsc` verdes; a cobertura de tool→eval inclui `skill.write` | `vitest`, `tsc`, eval novo |
+| S7 | Suíte e `tsc` verdes; a cobertura de tool→eval inclui `skill.write` | `vitest`, `tsc`, `evals/skill-escreve.md` + catraca em `evalCobertura.test.ts` |
+| S8 | Só o dono escreve skill; o motor recusa antes do card | `test/ownerOnly.test.ts` |
+| S9 | A fiação existe de verdade (apagar `skillWrite` do `chatDeps` fica vermelho) | `test/skillNaPasta.test.ts`, pelo `__test_chatDeps` |
+
+## O que ficou aberto (auditoria de 2026-09-23)
+
+Três promessas do §"O que esta spec acrescenta" não foram implementadas. Estão aqui em vez de apagadas,
+porque duas delas o dono sente no uso:
+
+1. **O cartão mostra só os primeiros 300 caracteres do corpo** (`LONG_FIELDS`/`PREVIEW` em `agent.ts`),
+   com `… (+N chars)`. O cartão é honesto sobre o corte, mas o dono aprova até 6.000 caracteres tendo
+   lido 300 — e o texto aprovado vira instrução no prompt de todo turno seguinte. **Decisão do dono:**
+   mostrar o corpo inteiro exige baixar o teto de escrita (um `textParagraph` do Chat não serve 6.000
+   caracteres, e a escapada de `&`/`<`/`>` ainda multiplica o tamanho); manter 6.000 exige aceitar a
+   prévia. Nada foi mexido sem essa decisão.
+2. **A substituição não mostra "o que sai".** `approvalText` só desenha os ARGUMENTOS; o corpo da skill
+   que está lá não é lido nem exibido. Hoje `replace: true` aparece como um argumento cru.
+3. **O painel não lista nem apaga skills.** `SkillsIO` não tem `delete`, e `settings.html` não menciona
+   skills. A mensagem do teto, que mandava "remove one in the panel", foi corrigida para apontar a pasta
+   — mas apagar uma skill continua sendo operação manual no Drive, contra o "zero operação manual" do
+   `CLAUDE.md`.
+
+Além disso: o teto da pasta (30 skills) **não é** o teto do índice (1.500 caracteres, ~6 skills no pior
+caso). O índice passou a dizer `(+N more skill(s) not shown here)` em vez de cortar em silêncio, mas a
+diferença entre os dois tetos continua sendo uma escolha por decidir.
 
 ## Fora do escopo
 

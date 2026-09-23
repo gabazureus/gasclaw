@@ -46,11 +46,6 @@ export const setEnabled = (on: boolean): void => {
   props().setProperty('RUNTIME_ENABLED', String(on));
 };
 
-export function getHistory(key: string): Message[] {
-  const raw = cache().get(`h:${key}`);
-  return raw ? JSON.parse(raw) : [];
-}
-
 // minimal: histórico volátil (6 h) no Cache; sessões persistentes no Drive entram na F1.
 export function saveHistory(key: string, history: Message[]): void {
   const h = [...history];

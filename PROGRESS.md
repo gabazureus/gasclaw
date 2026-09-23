@@ -297,7 +297,7 @@ rc=0 e suíte verde.
 | R2 | Sucessão (escrever, avaliar de fora, health, coroa, rebase, sync, herança, semente) | ✅ removido | `succession.ts`, `successor.ts`, `patch.ts`, `guards.ts`, `seed.ts` + ~11 arquivos de teste |
 | R3 | Geração de código, filhos e enxame | ✅ removido | `codegen.ts`, `children.ts`, `swarm.ts`, `fitness.ts`, `family.ts`, `budget.ts` |
 | R4 | Capacidades: sobra `initiative` | ✅ | `CAPABILITIES = ['initiative']`; `CREATOR`, `canSucceed`, linhagem e intervalo entre gerações fora do `agentCaps.ts` |
-| R5 | Tool `agent.create` fora do registro; `agent.message` e `persona` ficam | ✅ | catálogo de 26 → **25 ferramentas**, conferido pelo `readmeFerramentas.test.ts` contra os dois READMEs |
+| R5 | Tool `agent.create` fora do registro; `agent.message` e `persona` ficam | ✅ | catálogo de 26 → **25 ferramentas**, conferido pelo `readmeFerramentas.test.ts` contra os dois READMEs. **Voltou a 26** em c8a72e9, com a `skill.write` no lugar da geração de código |
 | R6 | CLI: `swarm` e `succession` fora; `MUTATING` de 21 → 9 ações | ✅ | `cli.test.ts` prova que a lista do shell e a do TypeScript continuam iguais |
 | R7 | Painel: sonho, sucessor, automação, linhagem e projetos filhos fora | ✅ | a tabela de **arquivados** ficou, servida por `archivedAgents()` (código novo, com teste próprio) |
 | R8 | `CODEGEN_MODEL` fora; `DEFAULT_MODEL` e o juiz de fora ficam | ✅ | [ADR-048](docs/adr/048-um-modelo-so-e-o-juiz-de-fora.md) corrigida; `modeloUnico.test.ts` segue provando a independência do juiz |
@@ -486,7 +486,7 @@ A porcentagem de cada fase é a média simples dos itens dela.
 | Conversas no Drive e resumo automático | ⏳ | 10 | ❌ Não | tudo (pode usar Sheets, se a P6 passar) | spec#6; plano#D.F1.1 |
 | Memória: `remember`, `memory/AAAA-MM-DD.md`, `MEMORY.md` (inspirada em Eve/OpenClaw) | ⏳ | 10 | ❌ Não | tudo; primeira tool, exige suporte a tool calls no `llm` | spec#3, #6; plano#D.F1.2 |
 | Ritual de estreia `BOOTSTRAP.md` | ⏳ | 10 | ❌ Não | tudo | plano#D.F1.3 |
-| Skills (`read_skill`) | ⏳ | 10 | ❌ Não | tudo | plano#D.F1.4 |
+| Skills (`read_skill` + `skill.write`) | ✅ | 100 | ✅ Sim | leitura e escrita na pasta; escrever é só do dono e passa pelo card | plano#D.F1.4; spec#skills |
 | Vários agentes, cada espaço do Chat ligado ao seu | 🟡 | 20 | ❌ Não | a lista com ⭐ já existe; falta o vínculo por espaço | plano#D.F1.5 |
 | Grupos do Google em `users` | ⏳ | 10 | ❌ Não | tudo | plano#D.F1.6 |
 | Deploy seguro: divergência, poda de versões, rollback automático | ⏳ | 10 | ❌ Não | tudo; o rollback automático no CI depende da Task 10 | spec#9; plano#D.F1.7 |

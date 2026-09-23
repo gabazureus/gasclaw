@@ -43,12 +43,6 @@ export function parseCapabilities(raw: string | null | undefined): Capability[] 
 
 export const can = (caps: readonly Capability[], cap: Capability): boolean => caps.includes(cap);
 
-/** A etiqueta do painel: o que está ligado neste agente. Vazio = agente comum. */
-export const capabilityTag = (caps: readonly Capability[]): string[] => CAPABILITIES.filter((c) => caps.includes(c));
-
-/** Um agente recém-gerado nasce SEM PODER NENHUM. Gerar e habilitar são atos separados. */
-export const newbornCapabilities = (): Capability[] => [];
-
 // ---------- Ciclo de vida ----------
 
 /**
@@ -58,8 +52,8 @@ export const newbornCapabilities = (): Capability[] => [];
  */
 /**
  * NESTA BRANCH nada GRAVA `archived`: o único escritor era o `passBaton` da sucessão, que saiu.
- * O estado continua sendo LIDO — `isRunnable`, `claimable`, `accessAfterArchive` e o `mayAct` do
- * `main` — porque um ambiente vindo da branch anterior tem chaves `STATUS:<pasta>` gravadas, e
+ * O estado continua sendo LIDO pelos três portões que o consultam — `isRunnable`, `claimable` e o
+ * `mayAct` do `main` — porque um ambiente vindo da branch anterior tem chaves `STATUS:<pasta>` gravadas, e
  * desonrá-las ressuscitaria um agente que o dono aposentou. Ler sem escrever é o estado correto
  * aqui; o que não pode é o portão sumir junto com quem o acionava.
  */
@@ -70,27 +64,11 @@ export const parseStatus = (raw: string | null | undefined): AgentStatus => (raw
 /** Arquivado NÃO RODA: não atende turno, não vira run, não é elegível para gatilho nem para entrega. */
 export const isRunnable = (status: AgentStatus): boolean => status === 'active';
 
-/**
- * Arquivar limpa as FERRAMENTAS (um agente que não roda não precisa de ferramenta aprovada) e
- * PRESERVA as pessoas: a conversa continua legível por quem já podia lê-la. O dono entra de
- * qualquer forma — `canUse` já o deixa passar com acesso vazio.
- */
-export const accessAfterArchive = (a: { users: string[]; tools: string[] }): { users: string[]; tools: string[] } => ({ users: a.users, tools: [] });
-
 export type Verdict = { ok: boolean; reason: string };
 const no = (reason: string): Verdict => ({ ok: false, reason });
 const yes: Verdict = { ok: true, reason: '' };
 
 // ---------- Esquecer um agente por inteiro (ADR-040 §C) ----------
-
-/**
- * Prefixos de Script Property presos a um `folderId`. Remover um agente precisa apagar TODOS —
- * `removeAgent` apagava só `ACCESS:`, e `MODEL:`/`STEPS:` sobravam.
- *
- * Com capacidade na jogada isso deixa de ser sobra e vira ressurreição: `ensureFolderPath` reusa a
- * primeira pasta com o mesmo nome, então remover e recriar devolveria as capacidades **sem um clique**.
- */
-export const AGENT_PROP_PREFIXES = ['ACCESS', 'CAP', 'MODEL', 'STEPS', 'STATUS', 'CFG'] as const;
 
 /**
  * As chaves a apagar quando um agente sai. Recebe as chaves existentes para não depender de
@@ -100,18 +78,10 @@ export const AGENT_PROP_PREFIXES = ['ACCESS', 'CAP', 'MODEL', 'STEPS', 'STATUS',
 export const forgetAgentProps = (keys: readonly string[], folderId: string): string[] =>
   folderId ? keys.filter((k) => k.endsWith(`:${folderId}`) && k.slice(0, k.length - folderId.length - 1).length > 0) : [];
 
-// ---------- §F: arquivar encerra o que está em voo ----------
-
-/**
- * Arquivar não é só impedir o que vem depois — é **encerrar o que está em voo**. Sem isto, o agente
- * arquivado continuaria dono de um lease (o pump o retomaria) e o card dele seguiria aprovável por
- * 24 h: o antecessor agiria em paralelo com o sucessor, que é exatamente o que a substituição 1→1
- * existe para evitar.
- */
-export const RUN_CLOSED_ON_ARCHIVE = 'this agent was archived while the task was open; nothing else will run on it';
-
-/** Um run pertence a um agente que saiu? Então ele não pode continuar. */
-export const runSurvivesArchive = (runFolderId: string, archivedFolderId: string): boolean => runFolderId !== archivedFolderId;
+// §F (encerrar o run em voo ao arquivar) SAIU com a sucessão: nesta branch ninguém GRAVA `archived`,
+// então não existe o instante "arquivou com run aberto" que a regra cobria. As duas funções ficaram
+// sem chamador e com teste verde — o disfarce exato de "pronto e não está" —, então foram removidas
+// junto com os testes. Se a escrita de `archived` voltar, a regra volta COM a fiação.
 
 /**
  * Um agente não-ativo nunca é reivindicável pelo pump. Vale para `claimNext` e `claimById`: os dois

@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { capsEnabled, claimable, effectiveCapabilities, isRunnable, RUN_CLOSED_ON_ARCHIVE, runSurvivesArchive, forgetAgentProps, parseCapabilities, type Capability } from '../src/agentCaps';
+import { capsEnabled, claimable, effectiveCapabilities, isRunnable, forgetAgentProps, parseCapabilities, type Capability } from '../src/agentCaps';
 import { newRun, parseRun, RUN_UNSIGNED_FIELDS } from '../src/run';
 import { subagentDoneKey, subagentGrants, canDelegate, foreignMessage, mayRelay, MAX_RELAY_HOPS, relaySpan, subagentTools } from '../src/subagent';
 
@@ -171,17 +171,9 @@ describe('CONTROLE 10 — §E: sub-agente não herda aprovação do pai', () => 
   });
 });
 
-describe('CONTROLE 11 — §F: arquivar encerra o que está em voo', () => {
-  test('run do agente arquivado não sobrevive; de outro agente, sim', () => {
-    expect(runSurvivesArchive('f1', 'f1')).toBe(false);
-    expect(runSurvivesArchive('f2', 'f1')).toBe(true);
-  });
-
-  test('o recado do encerramento é honesto sobre o que aconteceu', () => {
-    expect(RUN_CLOSED_ON_ARCHIVE).toContain('archived');
-    expect(RUN_CLOSED_ON_ARCHIVE).toContain('nothing else will run');
-  });
-
+// §F saiu com a sucessão (nesta branch ninguém grava `archived`); `claimable` continua, porque ele é
+// lido de verdade pelo `runStore`.
+describe('CONTROLE 11 — o pump não reivindica agente não-ativo', () => {
   test('agente não-ativo não é reivindicável pelo pump (senão arquivar seria cosmético)', () => {
     expect(claimable('active')).toBe(true);
     expect(claimable(undefined)).toBe(true); // ausente = ativo, como o parseStatus

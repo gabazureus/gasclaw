@@ -286,9 +286,6 @@ export function nextClaimable(queue: RunPointer[], now: number): RunPointer | nu
 export const nextExhausted = (queue: RunPointer[], now: number): RunPointer | null =>
   queue.find((p) => exhausted(p) && leaseExpired(p, now)) ?? null;
 
-// ---------- orçamento ----------
-
-export const remainingUsd = (r: DurableRun): number => Math.max(0, r.budget.capUsd - r.budget.usedUsd);
 export const overBudget = (r: DurableRun): boolean => r.budget.usedUsd >= r.budget.capUsd;
 
 export const charge = (r: DurableRun, usd: number): DurableRun =>

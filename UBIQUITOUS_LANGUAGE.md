@@ -34,7 +34,7 @@
 | Usuários do agente | E-mails que podem conversar com o agente além do dono | `AgentConfig.users`, `canUse` | Comparação em minúsculas |
 | Dono | Conta que publica o web app; única que abre a tela e recebe a memória | Property `OWNER`, `assertOwner` | Hoje = conta do usuário (ADR-008) |
 | Memória | Fatos duráveis sobre o dono, em `MEMORY.md` (ou Doc `MEMORY`) na pasta do agente | `tools/memory`, `memoryIO` | Só na DM do dono; entra como mensagem do usuário, não no system |
-| Skill **(planejado)** | `skills/<nome>/SKILL.md`; só nome+descrição no prompt, corpo lido sob demanda | — | — |
+| Skill | `skills/<nome>/SKILL.md` na pasta do agente; só nome+descrição no prompt, corpo lido sob demanda | `skills.ts`, `skillsIO`, tools `read_skill` e `skill.write` | Escrever é **só do dono** e sempre pede o card; o índice avisa quando não cabe tudo |
 | Ritual de estreia **(planejado)** | Execução única de `BOOTSTRAP.md` na primeira conversa | — | Arquivo é apagado ao concluir |
 | Compromisso **(planejado)** | Uma linha de `jobs.md`: quando acordar e o que fazer. **Única fonte de despertar** | — | Gramática fechada e legível, não cron completo (G2) |
 | Heartbeat **(planejado)** | Um compromisso cujo horário vem do frontmatter e cuja intenção é o corpo de `HEARTBEAT.md` | — | **Não é máquina separada**: é uma linha da agenda (G1) |
