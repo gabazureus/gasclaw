@@ -232,8 +232,8 @@ export function runIO(
    * `claimable` existia em `agentCaps.ts` com um docstring dizendo "vale para `claimNext` e
    * `claimById`: os dois consultam o estado antes de tomar o run, senão o arquivamento seria só
    * cosmético" — e tinha ZERO importadores. Era cosmético mesmo: o antecessor arquivado continuava
-   * dono de lease, o pump retomava os runs dele, e o card dele seguia clicável pela janela inteira.
-   * O antecessor agia em paralelo com o sucessor, que é o que a substituição 1→1 existe para evitar.
+   * dono de lease, o pump retomava os runs dele, e o card dele seguia clicável pela janela inteira —
+   * ou seja, um agente que o dono tirou de cena continuava agindo.
    */
   const agenteAtivo = (folderId: string): boolean => claimable(parseStatus(props.getProperties()[`STATUS:${folderId}`] ?? null));
 

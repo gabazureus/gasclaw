@@ -150,9 +150,8 @@ describe('guarda de deriva: campo novo no DurableRun não passa despercebido', (
     status: 'waiting', snapshot: { messages: [], step: 0, queue: [] }, pending: pendente,
     approval: issueGrant(pendente, 'dono@x.com', HASH, NOW), decision: { approved: true },
     done: {}, granted: [], inflight: { name: 'gmail.send', at: NOW },
-    // ADR-040 §D e §B: os dois nascem ASSINADOS (não estão em RUN_UNSIGNED_FIELDS), que é o ponto.
-    // `subagent` só protege a profundidade se sobreviver ao checkpoint E não puder ser forjado no
-    // arquivo; `candidateSeal` prende o candidato que o card está propondo ao run que o propôs.
+    // ADR-040 §D: o campo nasce ASSINADO (não está em RUN_UNSIGNED_FIELDS), que é o ponto.
+    // `subagent` só protege a profundidade se sobreviver ao checkpoint E não puder ser forjado no arquivo.
     // `originAgent` (§A) e o mais grave dos tres: sem assinatura, apagar o campo editando o arquivo faria
     // um run RELAIADO por outro agente passar por pedido do dono — e `isOwner` liberaria as ferramentas
     // do Google. Nao e "permissivo" como o `subagent` ausente: e escalonamento de privilegio.
@@ -160,7 +159,7 @@ describe('guarda de deriva: campo novo no DurableRun não passa despercebido', (
     // pode ser auto-aprovado E o que acontece quando algo precisa de clique. Apagá-lo editando o
     // arquivo transformaria um run que NINGUÉM pediu num run comum, com o dono do outro lado — e é
     // exatamente aí que a auto-aprovação deixaria de ser a exceção e viraria a regra.
-    subagent: 'pesquisador', candidateSeal: 'sha256-do-candidato', originAgent: 'coordenador', proactive: true,
+    subagent: 'pesquisador', originAgent: 'coordenador', proactive: true,
     delivery: { kind: 'google-chat', space: 'spaces/AAA', requestId: '123e4567-e89b-42d3-a456-426614174000', notBefore: NOW, status: 'pending' },
     budget: { usedUsd: 0, capUsd: 0.1 }, answer: 'pronto', error: 'x', startedAt: NOW, updatedAt: NOW,
   };

@@ -124,8 +124,8 @@ export function validateValues(fields: readonly ConfigField[], values: Record<st
  * geração não declara vira **órfão** — e ele é PRESERVADO, nunca apagado em silêncio.
  *
  * Por quê preservar: o valor é do DONO, não do agente. Descartar seria o agente apagando uma
- * escolha humana ao mutar, e uma reversão de bastão devolveria a geração antiga sem a configuração
- * dela. Preservar custa bytes; descartar custa confiança.
+ * escolha humana ao mutar, e desfazer a edição do esquema devolveria a pasta sem a configuração que
+ * já estava lá. Preservar custa bytes; descartar custa confiança.
  */
 export type MergedConfig = { active: Record<string, string | number | boolean>; orphans: Record<string, string | number | boolean> };
 

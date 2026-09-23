@@ -46,9 +46,8 @@ export const can = (caps: readonly Capability[], cap: Capability): boolean => ca
 // ---------- Ciclo de vida ----------
 
 /**
- * Três estados, e `archived` é distinto de removido. Remover (`removeAgent`) continua existindo e
- * continua sendo remoção de verdade; arquivar preserva a linhagem, que é justamente o que o
- * registro de evolução quer guardar.
+ * Dois estados, e `archived` é distinto de removido. Remover (`removeAgent`) continua existindo e
+ * continua sendo remoção de verdade; arquivar tira o agente de cena preservando a pasta e o histórico.
  */
 /**
  * NESTA BRANCH nada GRAVA `archived`: o único escritor era o `passBaton` da sucessão, que saiu.

@@ -159,12 +159,6 @@ export type DurableRun = {
    * pudesse apagar editando o arquivo transformaria um run não supervisionado num run comum.
    */
   proactive?: boolean;
-  /**
-   * SHA-256 do candidato (e do placar) que o card está propondo (ADR-040 §B). O arquivo mora fora
-   * do run; sem o selo aqui — onde a assinatura o protege — trocar o `.md` durante as 24 h do card
-   * mantém o run íntegro e o dono aprova o diff de ontem promovendo o texto de hoje.
-   */
-  candidateSeal?: string;
   delivery?: ChatDelivery;
   budget: { usedUsd: number; capUsd: number };
   answer?: string;
@@ -390,7 +384,6 @@ export function parseRun(raw: string | null | undefined): DurableRun | null {
       // Só o `true` LITERAL sobrevive: qualquer outra coisa (string 'true', 1, objeto) vira ausente.
       // Errar para "não é proativo" é errar para o lado em que o motor PERGUNTA em vez de assumir.
       ...(o.proactive === true ? { proactive: true } : {}),
-      ...(typeof o.candidateSeal === 'string' && o.candidateSeal ? { candidateSeal: o.candidateSeal } : {}),
       ...(parseChatDelivery(o.delivery) ? { delivery: parseChatDelivery(o.delivery) } : {}),
       budget: { usedUsd: Number(o.budget?.usedUsd) || 0, capUsd: Number(o.budget?.capUsd) || RUN_BUDGET_USD },
       ...(typeof o.answer === 'string' ? { answer: o.answer } : {}),

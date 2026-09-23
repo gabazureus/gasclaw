@@ -29,12 +29,12 @@ export function panelList(env: string, appUrl: string, siblingUrl: string): Pane
  * sucessão (branch `consertos-e-reach-out`); a forma de lista fica porque o hub já a desenha e porque
  * ambientes (dev/prod) continuam sendo mais de um painel para o mesmo agente.
  */
-export type EngineLink = { role: 'incumbent'; engine: string; agent: string; url: string | null; current: boolean };
+export type EngineLink = { role: 'engine'; engine: string; agent: string; url: string | null; current: boolean };
 
 const curto = (id: string) => String(id ?? '').trim().slice(0, 8);
 
 /** Só painel do Apps Script vira link; o resto aparece sem link em vez de sumir. */
 export function engineLinks(x: { agent: string; self: string; selfUrl: string }): EngineLink[] {
   const link = (u: string | null) => (u && isPanelUrl(u) ? u : null);
-  return [{ role: 'incumbent', engine: curto(x.self), agent: x.agent, url: link(x.selfUrl), current: true }];
+  return [{ role: 'engine', engine: curto(x.self), agent: x.agent, url: link(x.selfUrl), current: true }];
 }

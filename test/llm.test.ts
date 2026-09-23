@@ -121,7 +121,7 @@ describe('reasoning: limitar o pensamento para sobrar orçamento para a resposta
   });
 
   test('com `reasoning`, ele vai no corpo do pedido', () => {
-    const { init } = buildRequest('k', 'm', [{ role: 'user', content: 'oi' }], 16000, [], undefined, { max_tokens: 8000 });
+    const { init } = buildRequest('k', 'm', [{ role: 'user', content: 'oi' }], 16000, [], { max_tokens: 8000 });
     expect(JSON.parse(init.payload).reasoning).toEqual({ max_tokens: 8000 });
   });
 });

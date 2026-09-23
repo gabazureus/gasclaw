@@ -18,10 +18,9 @@ export const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const wire = (m: Message) => (m.tool_calls?.length && !m.content ? { ...m, content: null } : m);
 
 /**
- * `temperature` é opcional e entra por último de propósito: a assinatura antiga continua valendo,
- * e quem não pede temperatura manda exatamente a mesma requisição de antes. Ela existe para o ciclo
- * de sonho gerar candidatos DIFERENTES entre si (decisão do usuário: variar temperatura, não
- * modelo, para isolar a variável — o que melhorou foi o prompt, não o motor que o escreveu).
+ * `temperature` SAIU com o ciclo de sonho (o único chamador que a passava). Ficava um buraco posicional
+ * permanentemente `undefined` no meio da assinatura, que todo chamador vivo tinha de pular para alcançar
+ * `reasoning` — interface vazando um resto de máquina removida.
  */
 /**
  * O orçamento de RACIOCÍNIO, separado do da resposta (achado na P32).
@@ -33,14 +32,14 @@ const wire = (m: Message) => (m.tool_calls?.length && !m.content ? { ...m, conte
  */
 export type Reasoning = { max_tokens?: number; effort?: 'low' | 'medium' | 'high'; exclude?: boolean };
 
-export function buildRequest(apiKey: string, model: string, messages: Message[], maxTokens: number, tools: ToolDef[] = [], temperature?: number, reasoning?: Reasoning): { url: string; init: Init } {
+export function buildRequest(apiKey: string, model: string, messages: Message[], maxTokens: number, tools: ToolDef[] = [], reasoning?: Reasoning): { url: string; init: Init } {
   return {
     url: OPENROUTER_URL,
     init: {
       method: 'post',
       contentType: 'application/json',
       headers: { Authorization: `Bearer ${apiKey}`, 'X-Title': 'gasclaw' },
-      payload: JSON.stringify({ model, messages: messages.map(wire), max_tokens: maxTokens, ...(tools.length ? { tools } : {}), ...(Number.isFinite(temperature) ? { temperature } : {}), ...(reasoning ? { reasoning } : {}) }),
+      payload: JSON.stringify({ model, messages: messages.map(wire), max_tokens: maxTokens, ...(tools.length ? { tools } : {}), ...(reasoning ? { reasoning } : {}) }),
       muteHttpExceptions: true,
     },
   };
@@ -87,8 +86,8 @@ const gasHttp: Http = (url, init) => {
   return { code: res.getResponseCode(), body: res.getContentText() };
 };
 
-export function complete(apiKey: string, model: string, messages: Message[], maxTokens: number, http: Http = gasHttp, tools: ToolDef[] = [], temperature?: number, reasoning?: Reasoning): Completion {
-  const { url, init } = buildRequest(apiKey, model, messages, maxTokens, tools, temperature, reasoning);
+export function complete(apiKey: string, model: string, messages: Message[], maxTokens: number, http: Http = gasHttp, tools: ToolDef[] = [], reasoning?: Reasoning): Completion {
+  const { url, init } = buildRequest(apiKey, model, messages, maxTokens, tools, reasoning);
   const res = http(url, init);
   return parseResponse(res.code, res.body);
 }

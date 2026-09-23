@@ -835,10 +835,10 @@
             ff.append(linha);
           });
           // Órfão: valor que o dono configurou e a geração atual não declara mais. Some da tela seria
-          // apagar escolha humana em silêncio — e ele volta a valer se o bastão voltar.
+          // apagar escolha humana em silêncio — e ele volta a valer se o campo voltar ao esquema.
           const orf = Object.entries(cf.orphans || {});
           if (orf.length) {
-            ff.append(el('p', { className: 'muted', textContent: 'Kept from an earlier generation, not used by this one: ' + orf.map(([k, v]) => k + ' = ' + v).join(' · ') }));
+            ff.append(el('p', { className: 'muted', textContent: 'In the folder, not used by this agent: ' + orf.map(([k, v]) => k + ' = ' + v).join(' · ') }));
           }
           box.append(ff);
         }).catch(() => {}); // um esquema ruim não pode derrubar a tela de configuração inteira

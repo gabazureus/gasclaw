@@ -51,7 +51,7 @@ describe('engineLinks: o motor que serve este agente, e onde você está', () =>
 
   test('o motor atual, marcado como atual, com o link do painel dele', () => {
     const l = engineLinks({ agent: 'gasclaw-assistente', self: '1b93M1aw9_Nu', selfUrl: PAI });
-    expect(l.map((e) => [e.role, e.engine, e.current, e.url])).toEqual([['incumbent', '1b93M1aw', true, PAI]]);
+    expect(l.map((e) => [e.role, e.engine, e.current, e.url])).toEqual([['engine', '1b93M1aw', true, PAI]]);
   });
 
   // O MESMO INVARIANTE DO HUB DE AMBIENTES: só painel do Apps Script vira link.

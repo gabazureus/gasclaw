@@ -157,7 +157,7 @@ function mutate(action: string, p: Record<string, string>): unknown {
       // C1 da P16: o eval e o juiz chamam o modelo pelo trace (llm_call), para o custo entrar no medido
       const r = t.step('eval', () =>
         evalAction(p.md ?? '', ownerEmail(), model, (m: string, messages: Message[], tools: ToolDef[]) =>
-          t.step('llm_call', () => complete(store.getApiKey() ?? '', m, messages, 1000, undefined, tools, undefined, TURN_REASONING), llmInfo(m, messages), true),
+          t.step('llm_call', () => complete(store.getApiKey() ?? '', m, messages, 1000, undefined, tools, TURN_REASONING), llmInfo(m, messages), true),
         ),
       );
       t.end({ answer: JSON.stringify(r).slice(0, 500) });
@@ -354,7 +354,7 @@ function runPersona(spec: AgentSpec, name: string, task: string): string {
       // A persona NÃO herda a memória nem o Google do pai: ela é um papel para pensar, não uma
       // segunda identidade com as mesmas chaves.
       ctx: { now: nowText, ownerDm: false, memory: memoryIO(spec.folderId, zone().timeZone) },
-      llm: (m: Message[], defs: ToolDef[]) => complete(key, spec.config.model, m, 1000, undefined, defs, undefined, TURN_REASONING),
+      llm: (m: Message[], defs: ToolDef[]) => complete(key, spec.config.model, m, 1000, undefined, defs, TURN_REASONING),
       runId: `${spec.folderId}:${span ?? name}`,
       steps: p.steps,
       deadlineMs: Date.now() + 60_000,
@@ -459,7 +459,7 @@ function chatDeps(): ChatDeps {
     compact: (k, llm) => void compactSession(sessionIO(folderOf(k)), k, llm),
     // ADR-025: `model: free` vira rodízio entre os gratuitos; qualquer outro id continua indo direto ao complete()
     llm: (key, model, messages, tools) => {
-      const call = (id: string) => complete(key, id, messages, CHAT_MAX_TOKENS, undefined, tools, undefined, TURN_REASONING);
+      const call = (id: string) => complete(key, id, messages, CHAT_MAX_TOKENS, undefined, tools, TURN_REASONING);
       return isFree(model) ? runFree(call, { tools: (tools ?? []).length > 0 }) : call(model);
     },
     toolkit: (spec, ownerDm) => ({
@@ -1354,7 +1354,7 @@ export function removeAgent(folderId: string) {
   // ADR-040 §C: apaga TODA chave presa a este folderId, não só `ACCESS:`. Antes, `MODEL:` e `STEPS:`
   // sobravam; com capacidade e carimbo de intervalo na jogada, sobra vira RESSURREIÇÃO — remover e
   // recriar a pasta com o mesmo nome (`ensureFolderPath` reusa a primeira homônima) devolveria os
-  // poderes sem um clique, e o carimbo apagado zeraria a trava de custo da geração.
+  // poderes sem um clique.
   const props = PropertiesService.getScriptProperties();
   for (const key of forgetAgentProps(Object.keys(props.getProperties()), folderId)) props.deleteProperty(key);
   return settingsState();
@@ -1515,8 +1515,8 @@ function setTools(folder: string, set: string) {
 
 /**
  * O conjunto-juiz que veio NO BUNDLE. Serve ao painel e, principalmente, prova que ele existe do lado do
- * motor — sem isto o ciclo de sonho não enxergaria o próprio juiz, e a frase "o juiz vem do build" seria
- * aspiracional. O `holdout` aparece na contagem mas NUNCA no plano de um ciclo.
+ * motor — sem isto a frase "o juiz vem do build" seria aspiracional. O `holdout` entra na contagem, mas
+ * nenhum eval o roda: ele existe para medir sem ser otimizado contra.
  */
 export function judgeSet() {
   assertOwner();
@@ -1551,7 +1551,7 @@ const CAP_TEXT: Record<Capability, { label: string; what: string; missing: strin
 
 const capsProp = (folderId: string) => `CAP:${folderId}`;
 
-/** As capacidades de um agente, com o texto que explica cada uma e quem é o criador designado hoje. */
+/** As capacidades de um agente, com o texto que explica cada uma. */
 export function agentCapabilities(folderId: string) {
   assertOwner();
   const props = PropertiesService.getScriptProperties();
@@ -1692,7 +1692,7 @@ export function testAgent(folderId: string, text: string) {
     const spec = t.step('resolve_agent', () => loadAgentForTurn(folderId), agentInfo(folderId));
     // ADR-025: o teste da tela e o burst da POC P11 passam pelo mesmo caminho do Chat, rodízio incluído
     const model = spec.config.model;
-    const call = (id: string, m: Message[]) => complete(key, id, m, CHAT_MAX_TOKENS, undefined, [], undefined, TURN_REASONING);
+    const call = (id: string, m: Message[]) => complete(key, id, m, CHAT_MAX_TOKENS, undefined, [], TURN_REASONING);
     const out = reply(spec, [], text, (m) =>
       t.step('llm_call', () => (isFree(model) ? runFree((id) => call(id, m), { tools: false }) : call(model, m)), llmInfo(model, m), true),
     );

@@ -32,7 +32,7 @@ const AGENTS_MAX = 8_000;
  * A lista INTEIRA de agentes mora num único valor. Sem guarda, passar do teto lança exceção crua do
  * runtime e quebra o painel — e a lista anterior continuaria gravada, deixando o dono sem entender
  * o que aconteceu. Enquanto criar agente era ato manual do dono isso era hipótese; com um agente criador
- * montando squad (ADR-038) é caminho normal, então a recusa é honesta e diz o que fazer.
+ * criando vários agentes é caminho normal, então a recusa é honesta e diz o que fazer.
  */
 export const saveAgents = (agents: AgentEntry[]): void => {
   const raw = JSON.stringify(agents);

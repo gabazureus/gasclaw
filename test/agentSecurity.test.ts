@@ -138,20 +138,16 @@ describe('CONTROLE 8 — a profundidade sobrevive ao checkpoint (ADR-040 §D)', 
   });
 
   test('o campo sobrevive à ida e volta pelo Drive — a whitelist do parseRun o conhece', () => {
-    const run = { ...newRun({ runId: 'r1', folderId: 'f1', session: 's', user: 'a@x.com', text: 'oi', now: 1 }), subagent: 'pesquisador', candidateSeal: 'abc123' };
+    const run = { ...newRun({ runId: 'r1', folderId: 'f1', session: 's', user: 'a@x.com', text: 'oi', now: 1 }), subagent: 'pesquisador' };
     const voltou = parseRun(JSON.stringify(run));
     expect(voltou?.subagent).toBe('pesquisador'); // sem isto, voltaria indefinido = permissivo
     expect(canDelegate(voltou?.subagent)).toBe(false);
   });
 
-  test('o selo do candidato também sobrevive (ADR-040 §B)', () => {
-    const run = { ...newRun({ runId: 'r2', folderId: 'f1', session: 's', user: 'a@x.com', text: 'oi', now: 1 }), candidateSeal: 'sha-do-candidato' };
-    expect(parseRun(JSON.stringify(run))?.candidateSeal).toBe('sha-do-candidato');
-  });
-
-  test('os dois campos entram na ASSINATURA por padrão (não estão na lista de não assinados)', () => {
+  // O `candidateSeal` SAIU com a sucessão: o único produtor era o card do candidato, e um campo que
+  // ninguém grava, com teste que o fixa, faz o próximo leitor implementar contra fantasma.
+  test('`subagent` entra na ASSINATURA por padrão (não está na lista de não assinados)', () => {
     expect([...RUN_UNSIGNED_FIELDS]).not.toContain('subagent');
-    expect([...RUN_UNSIGNED_FIELDS]).not.toContain('candidateSeal');
   });
 });
 

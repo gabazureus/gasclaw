@@ -44,6 +44,7 @@ const token = (): string => {
 
 export const createAsChatApp = (input: { space: string; thread?: string; requestId: string; message: ChatMessage }) => createChatMessage(token(), input, gasHttp);
 export const getAsChatApp = (name: string) => getChatMessage(token(), name, gasHttp);
+/** Os espaços em que ESTE app do Chat está. Único chamador hoje: a POC P2 (o `src/` não o usa). */
 export const spacesAsChatApp = () => listChatSpaces(token(), gasHttp);
 /** A conversa direta do dono do script (quem roda: no gatilho e no painel, o dono) com o app. */
 export const ownerDmAsChatApp = () => findDirectMessage(token(), accountId(ScriptApp.getOAuthToken(), gasHttp), gasHttp);
