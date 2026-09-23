@@ -251,8 +251,9 @@ describe('2b. ask: a resposta volta ao MESMO run durável', () => {
     m.drainRuns();
     const [c] = cartoes(env);
     expect(params(botoes(c)[0])).toMatchObject({ folderId: FOLDER, runId: 'r-ask', answer: 'terça 10h' });
-    env.llm = [{ content: 'marquei terça 10h' }];
+    env.llm = [{ content: 'marquei terça 10h' }, { content: 'marquei terça 10h' }];
     m.onCardClick({ type: 'CARD_CLICKED', user: { email: 'dono@x.com' }, space: { name: 'spaces/AAA' }, common: { parameters: params(botoes(c)[0]) } } as never);
+    m.drainRuns(); // o clique só registra; quem retoma é o gatilho
     const r = salvo(env, 'r-ask')!;
     expect(r.status).toBe('done');
     expect(postados(env).some((p) => p.text?.includes('marquei terça 10h'))).toBe(true); // a resposta chegou ao espaço
@@ -300,18 +301,39 @@ describe('2c. depois do Approve: a resposta final chega, e a próxima aprovaçã
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  test('Approve: o run termina e a resposta final é POSTADA no espaço (uma vez)', async () => {
+  // INCIDENTE DE 2026-09-22, ao vivo: o clique RETOMAVA o turno ali mesmo. O Chat dá 30 s para responder um
+  // clique, e o turno do agente (modelo + ferramenta) não cabe: a execução morreu, o Chat mostrou "gasclaw
+  // não processou sua solicitação" em vermelho, e o gatilho pegou o MESMO run em paralelo — os dois
+  // interrompidos, um no meio de uma chamada PAGA. O clique agora só registra a decisão.
+  test('o clique NÃO faz o trabalho na janela do Chat: só registra, e o run volta para a fila', async () => {
+    runIO().enqueue(base('r-janela'), 1000);
+    env.llm = [pedeTarefa('Verificar alerta')];
+    const m = await import('../src/main');
+    m.drainRuns();
+    const [c] = cartoes(env);
+    const antes = env.fetched('openrouter.ai').length;
+    env.llm = [{ content: 'tarefa criada' }];
+    const out = m.onCardClick(aprovarClique(c) as never) as { text?: string; cardsV2?: unknown[] };
+    expect(env.fetched('openrouter.ai')).toHaveLength(antes); // nenhum modelo chamado no clique
+    expect(out.cardsV2).toEqual([]);
+    expect(out.text).toMatch(/carrying on/i);
+    expect(salvo(env, 'r-janela')?.status).toBe('queued');
+    expect(env.props[`Q:r-janela`] ?? env.props[`q:r-janela`] ?? JSON.stringify(env.props)).toContain('r-janela'); // ponteiro na fila
+  });
+
+  test('Approve: o gatilho seguinte termina o run e a resposta final é POSTADA uma vez', async () => {
     runIO().enqueue(base('r-fluxo'), 1000);
     env.llm = [pedeTarefa('Verificar alerta')];
     const m = await import('../src/main');
     m.drainRuns();
     const [c] = cartoes(env);
     env.route = (url) => (url.includes('tasks.googleapis.com') ? { code: 200, body: JSON.stringify({ id: 't1', title: 'Verificar alerta' }) } : null);
-    env.llm = [{ content: 'tarefa criada' }];
+    env.llm = [{ content: 'tarefa criada' }, { content: 'tarefa criada' }]; // o turno e o resumo da sessão
     const out = m.onCardClick(aprovarClique(c) as never) as { text?: string; cardsV2?: unknown[] };
     expect(out.cardsV2).toEqual([]); // o cartão perde os botões
+    m.drainRuns(); // é o gatilho que faz o trabalho
     expect(salvo(env, 'r-fluxo')?.status).toBe('done');
-    m.drainRuns(); // o gatilho seguinte não entrega de novo
+    m.drainRuns(); // e o gatilho seguinte não entrega de novo
     expect(postados(env).filter((p) => p.text?.includes('tarefa criada'))).toHaveLength(1);
   });
 
@@ -322,8 +344,9 @@ describe('2c. depois do Approve: a resposta final chega, e a próxima aprovaçã
     m.drainRuns();
     const [c] = cartoes(env);
     env.route = (url) => (url.includes('tasks.googleapis.com') ? { code: 200, body: JSON.stringify({ id: 't1', title: 'Primeira' }) } : null);
-    env.llm = [pedeTarefa('Segunda')];
+    env.llm = [pedeTarefa('Segunda'), pedeTarefa('Segunda')];
     m.onCardClick(aprovarClique(c) as never);
+    m.drainRuns(); // o trabalho é do gatilho
     const r = salvo(env, 'r-dupla')!;
     expect(r.status).toBe('waiting');
     expect(cartoes(env).map((x) => x.cardId)).toEqual(['approval', 'approval']);
@@ -341,7 +364,8 @@ describe('2c. depois do Approve: a resposta final chega, e a próxima aprovaçã
     env.route = (url) => (url.includes('tasks.googleapis.com') ? { code: 200, body: JSON.stringify({ id: 't1', title: 'X' }) } : null);
     env.llm = [{ content: 'feito' }];
     m.onCardClick(aprovarClique(c) as never);
-    const ultima = env.fetched('openrouter.ai').map((x) => JSON.parse(String(x.init.payload)) as { messages: { role: string }[] }).pop()!;
+    m.drainRuns();
+    const ultima = env.fetched('openrouter.ai').filter((x) => String(x.init.payload ?? '').startsWith('{')).map((x) => JSON.parse(String(x.init.payload)) as { messages: { role: string }[] }).pop()!;
     expect(ultima.messages.filter((x) => x.role === 'system')).toHaveLength(1);
   });
 });
@@ -456,10 +480,11 @@ describe('2d/2f. o que acontece em volta de uma espera', () => {
     const m = await import('../src/main');
     m.drainRuns();
     const [c] = cartoes(env);
-    env.llm = [{ content: 'ok, não criei' }];
+    env.llm = [{ content: 'ok, não criei' }, { content: 'ok, não criei' }];
     const negar = { type: 'CARD_CLICKED', user: { email: 'dono@x.com' }, space: { name: 'spaces/AAA' }, common: { parameters: params(botoes(c)[1]) } };
     const out = m.onCardClick(negar as never) as { text?: string };
     expect(out.text).toMatch(/Denied/);
+    m.drainRuns();
     expect(salvo(env, 'r-aprova')?.decision).toBeUndefined(); // consumida pelo passo
     expect(postados(env).some((p) => p.text?.includes('ok, não criei'))).toBe(true);
   });
@@ -569,11 +594,15 @@ describe('respostas sem credencial passam pela trava e pela assinatura', () => {
     m.drainRuns();
     const [c] = cartoes(env);
     const clique = { type: 'CARD_CLICKED', user: { email: 'dono@x.com' }, space: { name: 'spaces/AAA' }, common: { parameters: params(botoes(c)[0]) } };
-    env.llm = [{ content: 'marquei' }, { content: 'marquei de novo' }];
+    env.llm = [{ content: 'marquei' }, { content: 'marquei' }]; // o turno e o resumo da sessão
     m.onCardClick(clique as never);
     const segundo = m.onCardClick(clique as never) as { text?: string };
     expect(segundo.text).toMatch(/already answered/);
-    expect(env.fetched('openrouter.ai')).toHaveLength(1);
+    m.drainRuns(); // o passo é do gatilho, e roda UMA vez
+    // O oráculo é a RESPOSTA entregue uma vez, não o número de chamadas: o gatilho também resume a sessão.
+    // Se o segundo clique tivesse reaplicado a resposta, o passo rodaria de novo e a resposta sairia duas vezes.
+    expect(salvo(env, 'r-ask')?.status).toBe('done');
+    expect(postados(env).filter((p) => p.text === 'marquei')).toHaveLength(1);
   });
 
   // O cache é atalho: se ele ficou velho (gravação grande demais para ele, falha do CacheService), a resposta
@@ -586,12 +615,16 @@ describe('respostas sem credencial passam pela trava e pela assinatura', () => {
     const velho = env.cache[chave];
     const [c] = cartoes(env);
     const clique = { type: 'CARD_CLICKED', user: { email: 'dono@x.com' }, space: { name: 'spaces/AAA' }, common: { parameters: params(botoes(c)[0]) } };
-    env.llm = [{ content: 'marquei' }, { content: 'marquei de novo' }];
+    env.llm = [{ content: 'marquei' }, { content: 'marquei' }]; // o turno e o resumo da sessão
     m.onCardClick(clique as never);
     env.cache[chave] = velho;
     const segundo = m.onCardClick(clique as never) as { text?: string };
     expect(segundo.text).toMatch(/already answered/);
-    expect(env.fetched('openrouter.ai')).toHaveLength(1);
+    m.drainRuns(); // o passo é do gatilho, e roda UMA vez
+    // O oráculo é a RESPOSTA entregue uma vez, não o número de chamadas: o gatilho também resume a sessão.
+    // Se o segundo clique tivesse reaplicado a resposta, o passo rodaria de novo e a resposta sairia duas vezes.
+    expect(salvo(env, 'r-ask')?.status).toBe('done');
+    expect(postados(env).filter((p) => p.text === 'marquei')).toHaveLength(1);
   });
 
   test('Continue num arquivo adulterado: recusa e NÃO re-assina', async () => {

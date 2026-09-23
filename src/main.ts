@@ -623,6 +623,18 @@ const updateCard = (body: Omit<ChatReply, 'actionResponse'>): ChatReply => ({ ac
  * acabou também cai aqui: `apply` o recusa antes da assinatura, que ele não tem mais. */
 const GONE = 'gone';
 
+/**
+ * O TRABALHO É DO GATILHO quando o run tem entrega do Chat (incidente de 2026-09-22, ao vivo).
+ *
+ * Retomar o turno aqui gastava a janela de 30 s que o Chat dá a um clique: o turno (modelo + ferramenta)
+ * não cabe, a execução morria, e o Chat mostrava "gasclaw não processou sua solicitação" em vermelho —
+ * com o gatilho pegando o MESMO run em paralelo e os dois sendo interrompidos, um no meio de uma chamada
+ * paga. A decisão já deixou o run `queued` com ponteiro na fila: o worker de 1 minuto continua dali.
+ *
+ * O run SEM entrega (tela, caminho síncrono) segue retomando na hora: ali quem espera é uma página aberta.
+ */
+const trabalhoDoGatilho = (r: DurableRun): DurableRun => (r.delivery ? r : pumpById(stepDeps(CHAT_BUDGET_MS), r.runId) ?? r);
+
 /** Clique de aprovação do Chat: ator vem do evento autenticado, nunca dos parâmetros do card. */
 function durableChatClick(e: ChatEvent): ChatReply {
   const p = e.common?.parameters ?? {};
@@ -647,21 +659,19 @@ function durableChatClick(e: ChatEvent): ChatReply {
       return { text: `Cannot answer this: ${out.error}.` }; // mantém o card de outra pessoa intacto
     }
     if (!carryOn) setOpenAsks(out.session, openAsks(out.session).filter((id) => id !== out.runId)); // pergunta respondida
-    done = pumpById(stepDeps(CHAT_BUDGET_MS), out.runId) ?? out;
+    done = trabalhoDoGatilho(out);
     ack = carryOn ? 'Cost limit raised. I am carrying on with the task.' : `Answer recorded: ${String(p.answer).replace(/[<>]/g, '').slice(0, 200)}. I am carrying on with the task.`;
   } else {
     const replacement = newToken();
     const out = decideChatApproval(io, p, e.user.email, replacement, Date.now());
     if (out.kind === 'rejected') return { text: `Cannot answer this: ${out.error}.` }; // mantém o card de outra pessoa intacto
     if (out.kind === 'refreshed') return updateCard(approvalCard({ token: replacement, pending: out.run.pending!, folderId: out.run.folderId, runId: out.run.runId }, out.run.answer ?? 'This action still needs your approval.'));
-    done = pumpById(stepDeps(CHAT_BUDGET_MS), out.run.runId) ?? out.run;
+    done = trabalhoDoGatilho(out.run);
     ack = p.decision === 'approve' ? 'Approved. I am carrying on with the task.' : 'Denied. I am carrying on without it.';
   }
   if (done.delivery) {
-    // Run do caminho assíncrono: o que vem depois do clique (a resposta final, OU o cartão da próxima espera)
-    // sai pelo MESMO caminho do gatilho — uma mensagem nova no espaço, com recibo. O cartão clicado só
-    // confirma e perde os botões; se o passo ainda não terminou, o gatilho segue e entrega depois.
-    deliverIfDue(done, io);
+    // Run do caminho assíncrono: o clique SÓ registrou a decisão; quem retoma é o gatilho, e o que vier
+    // depois (a resposta final OU o cartão da próxima espera) sai como mensagem nova no espaço, com recibo.
     return updateCard({ text: ack, cardsV2: [] });
   }
   // Aprovação legada (caminho síncrono, sem entrega): o próprio cartão mostra o que vem depois.
