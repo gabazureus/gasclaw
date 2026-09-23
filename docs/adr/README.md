@@ -51,3 +51,4 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [045](045-reach-out-entrega-ao-dono.md) | O Reach out entrega a resposta na conversa direta DO DONO (a P36 mediu que ela morria no trace) | aceita |
 | [046](046-depois-da-coroa-vale-o-painel-do-sucessor.md) | Depois da coroa vale o painel do sucessor: a 10ª checagem só exige que ele devolva as permissões (opção A do dono) | aceita |
 | [047](047-espera-do-chat-tem-cartao.md) | Toda espera do Chat recebe o cartão: fila até sair, marca fora da pasta, varredura das antigas, `ask` durável | aceita |
+| [048](048-um-modelo-so-e-o-juiz-de-fora.md) | Um modelo para conversar (gpt-6-luna), outro para escrever o sucessor (gpt-5.6-sol), um terceiro para julgar (deepseek-v4-flash) | aceita |

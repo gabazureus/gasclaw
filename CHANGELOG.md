@@ -10,6 +10,13 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 
 ## [Não publicado]
 
+> 🧠 **Um modelo só para conversar, e um juiz de fora ([ADR-048](docs/adr/048-um-modelo-so-e-o-juiz-de-fora.md)):**
+> o agente passa a usar **gpt-6-luna** (metade do preço do anterior), quem escreve o sucessor usa
+> **gpt-5.6-sol** (2,5× mais barato que o Opus) e quem **julga** é de outra família
+> (**deepseek-v4-flash**) — juiz e avaliado no mesmo modelo é auto-elogio, e essa regra existia no
+> código sem ser aplicada em lugar nenhum. Agora `./gasclaw model <id>` troca o modelo do agente sem
+> clique, e cada ferramenta do agente tem pelo menos um cenário de avaliação.
+
 > 💬 **Pedido no Chat que precisa de você não fica mais no "thinking…" (ADR-047):** quando o agente
 > para para pedir aprovação, fazer uma pergunta ou avisar que chegou ao teto de custo, o cartão chega na
 > conversa: **Approve/Deny**, um botão por opção da pergunta (ou responda digitando), ou **Continue**.

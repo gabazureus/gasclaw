@@ -9,7 +9,7 @@
 // é só o ponto de partida.
 export const TEMPLATES: Record<string, string> = {
   'AGENTS.md': `---
-model: openrouter/auto   # any OpenRouter model id, e.g. anthropic/claude-sonnet-5
+model: openai/gpt-6-luna   # any OpenRouter model id, e.g. anthropic/claude-sonnet-5
 users: [{{OWNER}}]       # e-mails allowed to talk to this agent
 # tools: [now, memory, ask]   # uncomment to suggest tools (approve them in the gasclaw panel)
 ---

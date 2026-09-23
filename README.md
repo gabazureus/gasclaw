@@ -185,7 +185,7 @@ All files go into the prompt in this order. A missing file becomes `(missing)` i
 
 ```markdown
 ---
-model: openrouter/auto        # any OpenRouter model id
+model: openai/gpt-6-luna      # any OpenRouter model id
 users: [ana@example.com, joao@example.com]
 ---
 # Rules
@@ -195,7 +195,7 @@ users: [ana@example.com, joao@example.com]
 
 Supported frontmatter:
 
-- `model:` an OpenRouter model id. Defaults to `openrouter/auto`. A model chosen for the agent on the gasclaw screen takes precedence.
+- `model:` an OpenRouter model id. Defaults to `openai/gpt-6-luna` ([ADR-048](docs/adr/048-um-modelo-so-e-o-juiz-de-fora.md)). A model chosen for the agent on the gasclaw screen — or with `./gasclaw model <id>` — takes precedence. `openrouter/auto` is still selectable, but an agent on it cannot be evaluated: the judge must be from another family, and auto routing can land on it.
 - `users: [email, email]` on a single line. The owner always has access; an empty list means owner only.
 - `tools: [now, memory, ask]` the tools the agent may use (`memory` enables `memory.save`, `memory.read`, and `memory.remove`). No list means no tools.
 - `steps:` maximum model calls per turn, from 1 to 50 (default 10).

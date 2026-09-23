@@ -186,7 +186,7 @@ Exemplo de `AGENTS.md`:
 
 ```markdown
 ---
-model: openrouter/auto        # qualquer id de modelo do OpenRouter
+model: openai/gpt-6-luna      # qualquer id de modelo do OpenRouter
 users: [ana@exemplo.com, joao@exemplo.com]
 ---
 # Regras
@@ -196,7 +196,7 @@ users: [ana@exemplo.com, joao@exemplo.com]
 
 Frontmatter aceito:
 
-- `model:` id de modelo do OpenRouter. O padrão é `openrouter/auto`. Um modelo escolhido para o agente na tela gasclaw tem precedência.
+- `model:` id de modelo do OpenRouter. O padrão é `openai/gpt-6-luna` ([ADR-048](docs/adr/048-um-modelo-so-e-o-juiz-de-fora.md)). Um modelo escolhido na tela gasclaw — ou com `./gasclaw model <id>` — tem precedência. `openrouter/auto` continua escolhível, mas um agente nele não consegue ser avaliado: o juiz tem de ser de outra família, e o roteamento automático pode cair nela.
 - `users: [e-mail, e-mail]` numa linha só. O dono sempre tem acesso; lista vazia significa só o dono.
 - `tools: [now, memory, ask]` as ferramentas que o agente pode usar (`memory` libera `memory.save`, `memory.read` e `memory.remove`). Sem lista, nenhuma ferramenta.
 - `steps:` máximo de chamadas ao modelo por turno, de 1 a 50 (padrão 10).

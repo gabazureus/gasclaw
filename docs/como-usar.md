@@ -48,7 +48,7 @@ Todos entram no prompt nesta ordem; um arquivo que falte vira `(missing)`, sem e
 **`AGENTS.md`** — regras. O frontmatter no topo é a configuração e não vai para o prompt:
 ```markdown
 ---
-model: openrouter/auto        # qualquer id do OpenRouter, ex.: anthropic/claude-sonnet-5
+model: openai/gpt-6-luna      # qualquer id do OpenRouter, ex.: anthropic/claude-sonnet-5
 users: [ana@empresa.com, joao@empresa.com]
 ---
 # Regras
@@ -73,7 +73,7 @@ Gabriel, time de vendas. Prefere respostas em tópicos.
 ```
 
 **Frontmatter aceito** (no começo do `AGENTS.md`, entre linhas `---`):
-- `model:` id do OpenRouter. Sem ele, vale `openrouter/auto`.
+- `model:` id do OpenRouter. Sem ele, vale `openai/gpt-6-luna` (ADR-048). Também dá para trocar com `./gasclaw model <id>`.
 - `users: [e-mail, e-mail]`, numa linha só. O dono sempre tem acesso; lista vazia = só o dono. Grupos ainda não funcionam.
 - `tools: [now, memory, ask]`: as ferramentas que o agente pode usar (`memory` libera `memory.save`, `memory.read` e `memory.remove`, este último com aprovação). Sem lista, nenhuma ferramenta.
 - `steps:` máximo de chamadas ao modelo por turno, de 1 a 50 (padrão 10).
