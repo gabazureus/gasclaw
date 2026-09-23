@@ -1878,7 +1878,9 @@ function tickProactive(): void {
     console.warn('tickProactive: could not read the clock; skipping this tick without touching the stamps');
     return;
   }
-  const congelamento = props.getProperty('CAPS_ENABLED');
+  // A chave de emergência NÃO é lida aqui: quem a lê é `mayAct`, logo abaixo, no mesmo tique.
+  // (Havia uma leitura solta de `CAPS_ENABLED` nesta linha, sem nenhum uso — ela vinha de antes e
+  // fazia parecer que o congelamento era aplicado aqui. Ler sem usar é pior que não ler.)
   for (const a of store.listAgents()) {
     const { jobs } = parseSchedule(props.getProperty(schedProp(a.folderId)));
 
