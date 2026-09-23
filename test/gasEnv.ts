@@ -55,6 +55,14 @@ function makeDrive(env: GasEnv) {
         if (!folders.has(childId)) folders.set(childId, folder(childId, child));
         return folders.get(childId)!;
       },
+      // Iterar as subpastas é como o índice das skills LÊ a pasta (`skills/<nome>/SKILL.md`): sem isto,
+      // todo caminho que varre subpastas passava batido no stub e só quebrava no motor real.
+      // Iterar subpastas é como o índice das skills lê a pasta; `any` aqui porque o stub é recursivo.
+      getFolders: () => {
+        const filhas = [...folders.entries()].filter(([k]) => k.startsWith(prefix) && !k.slice(prefix.length).includes('/')).map(([, f]) => f) as unknown[];
+        let i = 0;
+        return { hasNext: () => i < filhas.length, next: () => filhas[i++] };
+      },
       getFilesByName: (file: string) => {
         const key = prefix + file;
         let taken = false;

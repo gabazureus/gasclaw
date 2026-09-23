@@ -469,6 +469,8 @@ function chatDeps(): ChatDeps {
         ownerDm,
         memory: memoryIO(spec.folderId, zone().timeZone),
         skill: (name: string) => skillsIO(spec.folderId).body(name),
+        // A skill que o agente propõe (tool `skill.write`, aprovada pelo dono): escreve na pasta DELE.
+        skillWrite: (name: string, md: string, replace: boolean) => skillsIO(spec.folderId).write(name, md, replace),
         persona: (name: string, task: string) => runPersona(spec, name, task),
         relay: (to: string, text: string) => relayToAgent(spec, to, text),
         google: gasGoogle,

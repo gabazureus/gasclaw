@@ -172,12 +172,12 @@ describe('ação `tools` da CLI: liga a lista inteira de uma vez', () => {
     env.props['CLI_SECRET'] = 'f'.repeat(64);
   });
 
-  test('set=all liga todas as 23 e set=none desliga todas, sem tocar nas pessoas', async () => {
+  test('set=all liga todas as 26 e set=none desliga todas, sem tocar nas pessoas', async () => {
     const m = await main();
     m.setAgentUser('f1', 'ana@x.com', true);
     const tudo = await post({ action: 'tools', set: 'all' });
     expect(tudo.ok).toBe(true);
-    expect(tudo.enabled).toHaveLength(25);
+    expect(tudo.enabled).toHaveLength(26);
     expect(tudo.users).toEqual(['ana@x.com']); // ligar ferramenta não mexe em quem conversa
     const nada = await post({ action: 'tools', set: 'none' });
     expect(nada.enabled).toEqual([]);
@@ -207,7 +207,7 @@ describe('ação `tools` da CLI: liga a lista inteira de uma vez', () => {
     await post({ action: 'tools', set: 'all' });
     const r = await post({ action: 'tools', set: '' });
     expect(r.ok).toBe(false);
-    expect(access().tools).toHaveLength(25);
+    expect(access().tools).toHaveLength(26);
   });
 });
 

@@ -29,6 +29,8 @@ export type EvalEnv = {
   tickets?: Tickets; // padrão: em memória (testes); no dev, o CacheService real
   newToken?: () => string;
   skill?: (name: string) => string | null; // corpo das skills (delivery 3); no dev vem do skillsIO da pasta do agente
+  /** Escreve uma skill na pasta do agente do eval (tool `skill.write`), para o cenário exercitar o caminho real. */
+  skillWrite?: (name: string, md: string, replace: boolean) => 'created' | 'replaced' | 'exists' | 'full';
   bootstrap?: { read: () => string | null; consume: () => void }; // ritual de estreia (delivery 4)
   google?: Google; // ferramentas do Workspace (E6); o runner também usa para apagar os dados de teste
   zone?: { timeZone: string; offset: string };
@@ -168,7 +170,7 @@ export function runSpec(runSpec: RunSpec, env: EvalEnv, modelOverride?: string):
         llm: (_k, _m, m, defs = []) => llm(m, defs),
         toolkit: (_s, ownerDm) => ({
           tools,
-          ctx: { now: env.now, ownerDm, memory: env.memory, google: env.google, skill: env.skill, ...env.zone },
+          ctx: { now: env.now, ownerDm, memory: env.memory, google: env.google, skill: env.skill, skillWrite: env.skillWrite, ...env.zone },
           steps,
           bootstrap: env.bootstrap && {
             read: () => {
@@ -306,6 +308,7 @@ export function evalAction(md: string, owner: string, model?: string, llm?: Eval
       tickets: cacheTickets(),
       newToken,
       skill: (name) => skillsIO(folder.getId()).body(name),
+      skillWrite: (name: string, md: string, replace: boolean) => skillsIO(folder.getId()).write(name, md, replace),
       bootstrap: bootstrapIO(folder.getId()),
       google: gasGoogle,
       zone: zone(),

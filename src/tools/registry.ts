@@ -1,7 +1,7 @@
 // Lista fechada de tools (ADR-002): nova tool exige deploy; o frontmatter `tools:` do AGENTS só escolhe entre estas.
 import type { ToolDef } from '../llm';
 import { CALENDAR_TOOLS } from './calendar';
-import { SKILL_NAME, skillBody } from '../skills';
+import { SKILL_NAME, skillBody, skillMarkdown, validateSkill } from '../skills';
 import { CONTACTS_TOOLS } from './contacts';
 import { DRIVE_TOOLS } from './driveTools';
 import { GMAIL_TOOLS } from './gmail';
@@ -17,7 +17,7 @@ export type Schema = { type: 'object'; properties: Record<string, Prop>; require
 /** memory: MEMORY.md (read/write) + notas do dia (day/saveDay/today) + recall pronto; day/saveDay/today/recall são opcionais para contextos simples. */
 export type MemoryCtx = { read: () => string; write: (text: string) => void; assertWritable?: () => void; day?: (date: string) => string; saveDay?: (date: string, text: string) => void; today?: () => string; recall?: () => string };
 /** skill: corpo de uma skill sob demanda (skills/<nome>/SKILL.md); é texto, nunca executa (ADR-002). */
-export type ToolCtx = { now: () => string; ownerDm: boolean; memory: MemoryCtx; google?: Google; timeZone?: string; offset?: string; isOwner?: boolean; /** Agente que originou o turno, quando ele veio por repasse (ADR-040 §A): o card precisa dizer quem pediu. */ originAgent?: string; skill?: (name: string) => string | null; /** Delega a uma PERSONA declarada em `subagents/<nome>.md` da própria pasta (ADR-039); ausente nos canais que não a montam. */ persona?: (name: string, task: string) => string; /** Manda uma mensagem a OUTRO agente (ADR-040 §A); ausente nos canais que não a montam. */ relay?: (to: string, text: string) => string; beforeEffect?: () => void };
+export type ToolCtx = { now: () => string; ownerDm: boolean; memory: MemoryCtx; google?: Google; timeZone?: string; offset?: string; isOwner?: boolean; /** Agente que originou o turno, quando ele veio por repasse (ADR-040 §A): o card precisa dizer quem pediu. */ originAgent?: string; skill?: (name: string) => string | null; /** Grava uma skill na pasta do agente (tool `skill.write`); ausente nos canais que não a montam. */ skillWrite?: (name: string, md: string, replace: boolean) => 'created' | 'replaced' | 'exists' | 'full'; /** Delega a uma PERSONA declarada em `subagents/<nome>.md` da própria pasta (ADR-039); ausente nos canais que não a montam. */ persona?: (name: string, task: string) => string; /** Manda uma mensagem a OUTRO agente (ADR-040 §A); ausente nos canais que não a montam. */ relay?: (to: string, text: string) => string; beforeEffect?: () => void };
 /** ownerOnly: só o dono usa (e aprova); o motor recusa antes de qualquer card. */
 export type Tool = { name: string; description: string; parameters: Schema; approval: Approval; run: (args: Record<string, unknown>, ctx: ToolCtx) => string; ownerOnly?: boolean };
 
@@ -106,6 +106,36 @@ export const TOOLS: Tool[] = [
       const md = ctx.skill(name);
       if (md === null) throw new Error(`não existe a skill "${name}"`);
       return skillBody(name, md);
+    },
+  },
+  // A SKILL PROPOSTA PELO AGENTE, no lugar de gerar código (2026-09-23). `always`: é escrita na pasta do
+  // dono, e o card mostra o corpo INTEIRO — ele aprova o que vai ler depois, não um resumo. Continua sendo
+  // TEXTO: o que muda é o que o agente LÊ na próxima vez, nunca o que o motor executa (ADR-002).
+  {
+    name: 'skill.write',
+    description: 'Saves a repeatable procedure as a skill of this agent (text, never code). Use it at the end of a task that will happen again. The owner approves before the skill exists.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'short name, lowercase letters and hyphens', maxLength: 40 },
+        description: { type: 'string', description: 'one line saying what it is for', maxLength: 200 },
+        body: { type: 'string', description: 'the steps, in markdown', maxLength: 6000 },
+        replace: { type: 'boolean', description: 'true only to replace a skill that already exists' },
+      },
+      required: ['name', 'description', 'body'],
+      additionalProperties: false,
+    },
+    approval: 'always',
+    run: (a, ctx) => {
+      const proposta = { name: String(a.name ?? '').trim().toLowerCase(), description: String(a.description ?? ''), body: String(a.body ?? '') };
+      const erro = validateSkill(proposta);
+      if (erro) throw new Error(erro);
+      if (!ctx.skillWrite) throw new Error('skill writing is not available in this channel');
+      const replace = a.replace === true;
+      const out = ctx.skillWrite(proposta.name, skillMarkdown(proposta), replace);
+      if (out === 'exists') throw new Error(`the skill "${proposta.name}" already exists: ask again with replace: true to replace it`);
+      if (out === 'full') throw new Error('this agent already has the maximum number of skills: remove one in the panel first');
+      return out === 'replaced' ? `replaced the skill "${proposta.name}".` : `saved the skill "${proposta.name}". It is in the index from the next turn on.`;
     },
   },
   {
