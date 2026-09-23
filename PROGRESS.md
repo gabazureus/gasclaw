@@ -267,11 +267,14 @@ Spec: [auditoria final e modelo único](docs/specs/2026-09-23-auditoria-final-e-
 | C | Um modelo por papel | ✅ no código | agente e padrão `openai/gpt-6-luna`; sucessor `openai/gpt-5.6-sol`; juiz `deepseek/deepseek-v4-flash-0731` — os três ids conferidos no catálogo do OpenRouter |
 | C1 | A independência do juiz passa a VALER | ✅ | `judgeIsIndependent` tinha teste e ZERO chamadores; agora `judgeFor` decide nos dois lugares onde se julga, e recusa também gerador com roteamento automático |
 | D | `./gasclaw model <id>` | ✅ | troca o modelo do agente sem clique, com a autoridade do painel (ADR-021/022) |
-| E | Publicar, medir o "depois", trocar o modelo do agente vivo, `eval --all`, health 10/10 | ⛔ **bloqueado** | a credencial do clasp exige novo login do dono (`invalid_rapt`); nada disso roda sem publicar |
+| E | Publicar, medir o "depois", trocar o modelo do agente vivo, `eval --all`, health 10/10 | ✅ | dev **v184**, sucessor **v30**, health **10/10**; agente em `openai/gpt-6-luna` |
+| E1 | **Tique depois dos consertos** | ✅ **12 amostras** | min **354** · mediana **653** · máx 987 · 0 acima de 1000 ms (antes: 466 · 763 · 961). Drenagem da fila 329 → **263 ms** |
+| E2 | `./gasclaw eval --all` no motor que responde | ✅ **42 cenários** | os 2 que reprovaram eram dos CENÁRIOS novos (liam e-mail e planilha por id fixo que não existe): viraram erro honesto e passam. 3 reprovações de transporte ("a resposta se perdeu") passaram ao repetir |
+| E3 | O modelo novo e o juiz no motor real | ✅ | `usage` do dia: **69 req** em `openai/gpt-6-luna` e **27 req** em `deepseek/deepseek-v4-flash-0731` (o juiz, de outra família) |
 
-**Custo antes da troca:** 2026-09-22, 3 requisições em `openai/gpt-5.6-luna`, 21.579 tokens, US$ 0,0065.
-Pelos preços do catálogo, o mesmo tráfego em `gpt-6-luna` custa cerca de metade (entrada US$ 0,10/M contra
-US$ 0,20; saída US$ 0,50/M contra US$ 1,20).
+**Custo medido, antes e depois:** 22/09 em `gpt-5.6-luna`, 21.579 tokens por US$ 0,0065 — **US$ 0,300 por
+milhão**. 23/09 em `gpt-6-luna`, 60.219 tokens por US$ 0,0099 — **US$ 0,164 por milhão**, uma queda de **45%**
+(a mistura entrada/saída explica a diferença para os preços de tabela).
 
 ### Incidente de 2026-09-21 — o pedido do Chat que ficou no "thinking…" ([ADR-047](docs/adr/047-espera-do-chat-tem-cartao.md))
 
