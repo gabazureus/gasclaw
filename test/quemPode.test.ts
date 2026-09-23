@@ -28,7 +28,7 @@ afterEach(() => vi.unstubAllGlobals());
 /** As ações que MUDAM poder. Cada uma tem de recusar quem não é o dono. */
 type Motor = Record<string, (...a: unknown[]) => unknown>;
 const acoes: [string, (m: Motor) => unknown][] = [
-  ['setAgentCapability', (m) => m.setAgentCapability('fa', 'dream', true)],
+  ['setAgentCapability', (m) => m.setAgentCapability('fa', 'initiative', true)],
   ['chatLink', (m) => m.chatLink()],
   ['setAgentSchedule', (m) => m.setAgentSchedule('fa', [])],
   ['setAgentAutoApprove', (m) => m.setAgentAutoApprove('fa', [])],
@@ -77,8 +77,8 @@ describe('quem NÃO é o dono não muda poder nenhum', () => {
   test('controle positivo: o DONO consegue', async () => {
     env.activeUser = 'dono@x.com';
     const m = await import('../src/main');
-    expect(() => m.setAgentCapability('fa', 'dream', true)).not.toThrow();
-    expect(JSON.parse(env.props['CAP:fa'] ?? '[]')).toContain('dream');
+    expect(() => m.setAgentCapability('fa', 'initiative', true)).not.toThrow();
+    expect(JSON.parse(env.props['CAP:fa'] ?? '[]')).toContain('initiative');
   });
 });
 

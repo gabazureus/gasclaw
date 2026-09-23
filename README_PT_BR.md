@@ -208,7 +208,7 @@ Depois, procure o app no Google Chat (`gasclaw dev`, ou `gasclaw` em prod), mand
 
 ## O que o seu agente faz
 
-**26 ferramentas hoje**, agrupadas como o painel agrupa. O painel mostra o catálogo inteiro com um
+**25 ferramentas hoje**, agrupadas como o painel agrupa. O painel mostra o catálogo inteiro com um
 liga/desliga por ferramenta — e **tudo começa desligado até você aprovar** ([ADR-021](docs/adr/021-acesso-aprovado-no-painel.md)).
 
 | Grupo | O que cobre |

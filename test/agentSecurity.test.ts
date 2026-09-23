@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { capsEnabled, claimable, effectiveCapabilities, isRunnable, RUN_CLOSED_ON_ARCHIVE, runSurvivesArchive, dreamLockKey, emptyLoopHealth, loopIsDeadWeight, promotionRate, revert, capsAfterCreation, capsAfterSuccession, forgetAgentProps, INTERVAL_STAMP_SURVIVES_REMOVAL, parseCapabilities, type Capability } from '../src/agentCaps';
+import { capsEnabled, claimable, effectiveCapabilities, isRunnable, RUN_CLOSED_ON_ARCHIVE, runSurvivesArchive, forgetAgentProps, parseCapabilities, type Capability } from '../src/agentCaps';
 import { newRun, parseRun, RUN_UNSIGNED_FIELDS } from '../src/run';
 import { subagentDoneKey, subagentGrants, canDelegate, foreignMessage, mayRelay, MAX_RELAY_HOPS, relaySpan, subagentTools } from '../src/subagent';
 
@@ -38,36 +38,10 @@ describe('CONTROLE 1 — capacidade nunca se autoconcede (propriedade estrutural
   });
 });
 
-describe('CONTROLE 2 — o texto gerado pelo Opus é NÃO CONFIÁVEL como qualquer outro', () => {
-  // "Foi o nosso modelo que escreveu" não é procedência: o material de entrada veio da pasta
-  // compartilhável. Quem controla a entrada controla a saída.
-  const sucessorPedindoOMundo = '["dream","initiative","succeed","create"]';
-
-  test('sucessor cujo markdown pede tudo, com antecessor sem nada, nasce com NADA', () => {
-    expect(capsAfterSuccession([], parseCapabilities(sucessorPedindoOMundo))).toEqual([]);
-  });
-
-  test('sucessor nunca nasce com MAIS que o antecessor — só com igual ou menos', () => {
-    const antecessor: Capability[] = ['dream', 'succeed'];
-    const nascido = capsAfterSuccession(antecessor, parseCapabilities(sucessorPedindoOMundo));
-    expect(nascido).toEqual(['dream', 'succeed']);
-    expect(nascido.every((c) => antecessor.includes(c))).toBe(true);
-  });
-
-  test('sucessor pode pedir MENOS, e isso vale (só desce, nunca sobe)', () => {
-    expect(capsAfterSuccession(['dream', 'succeed'], ['dream'])).toEqual(['dream']);
-  });
-
-  test('agente CRIADO não herda nada do criador: `create` não é fábrica de poder', () => {
-    expect(capsAfterCreation()).toEqual([]);
-  });
-
-  test('markdown malicioso no lugar da lista de capacidades não concede nada', () => {
-    for (const lixo of ['["create"] ; DROP', '{"create":true}', '["CREATE"]', 'create']) {
-      expect(capsAfterSuccession(['create'], parseCapabilities(lixo))).toEqual([]);
-    }
-  });
-});
+// CONTROLE 2 saiu com a SUCESSÃO. Ele provava que o markdown escrito pelo modelo não concede
+// capacidade (`capsAfterSuccession`/`capsAfterCreation`): sem sucessor e sem criação, não há ato de
+// herança para proteger. A propriedade irmã — "a pasta compartilhável não concede ferramenta" —
+// continua provada no CONTROLE 3, e "a lista corrompida não aprova nada", no CONTROLE 5.
 
 describe('CONTROLE 3 — sub-agente: interseção nunca união', () => {
   test('pasta do pai pedindo ferramenta que o pai não tem não concede nada', () => {
@@ -107,14 +81,18 @@ describe('CONTROLE 4 — mensagem entre agentes: entrada não confiável e sem l
 });
 
 describe('CONTROLE 5 — menor privilégio: nenhum poder implícito', () => {
-  test('ter `create` não dá `initiative`, `dream` nem `succeed` de graça', () => {
-    const caps = parseCapabilities('["create"]');
-    expect(caps).toEqual(['create']);
-    for (const outra of ['dream', 'initiative', 'succeed'] as Capability[]) expect(caps.includes(outra)).toBe(false);
+  test('aprovar é ato explícito: sem a capacidade na lista, o agente não a tem', () => {
+    const caps = parseCapabilities('["initiative"]');
+    expect(caps).toEqual(['initiative']);
+    expect(parseCapabilities('[]')).toEqual([]);
   });
 
+  // FAIL-CLOSED POR INTEIRO, e não "descarta o nome ruim": uma lista meio aceita daria ao dono a
+  // impressão de ter aprovado uma coisa quando aprovou outra. Os nomes que saíram desta branch
+  // (`dream`, `succeed`, `create`) agora caem aqui, como qualquer nome inventado.
   test('cada capacidade é aprovada uma a uma, e a lista corrompida não aprova nenhuma', () => {
-    expect(parseCapabilities('["create","succeed","inventada"]')).toEqual([]);
+    expect(parseCapabilities('["initiative","inventada"]')).toEqual([]);
+    for (const saiu of ['["dream"]', '["succeed"]', '["create"]', '["initiative","create"]']) expect(parseCapabilities(saiu)).toEqual([]);
   });
 });
 
@@ -150,10 +128,6 @@ describe('CONTROLE 7 — capacidade não ressuscita por reuso de folderId (ADR-0
     expect(forgetAgentProps(keys, '')).toEqual([]);
   });
 
-  test('o carimbo do intervalo é apagado junto — decisão explícita, registrada', () => {
-    expect(INTERVAL_STAMP_SURVIVES_REMOVAL).toBe(false);
-    expect(forgetAgentProps(['LASTGEN:f1'], 'f1')).toEqual(['LASTGEN:f1']);
-  });
 });
 
 describe('CONTROLE 8 — a profundidade sobrevive ao checkpoint (ADR-040 §D)', () => {
@@ -181,29 +155,10 @@ describe('CONTROLE 8 — a profundidade sobrevive ao checkpoint (ADR-040 §D)', 
   });
 });
 
-describe('CONTROLE 9 — buracos fechados após a pesquisa do sinal fraco', () => {
-  test('a promoção guarda o prompt anterior: reverter é operação, não arqueologia', () => {
-    const p = { at: 1, role: 'novo papel', previousRole: 'papel de antes', seal: 'sha' };
-    expect(revert(p)).toBe('papel de antes');
-  });
-
-  test('a métrica do laço distingue "nunca rodou" de "rodou e nunca promoveu"', () => {
-    expect(promotionRate(emptyLoopHealth())).toBe(null); // null, não 0: 0 enganaria
-    expect(promotionRate({ cycles: 4, promotions: 1, gateFailures: 0, ties: 3 })).toBe(0.25);
-  });
-
-  test('vinte ciclos sem uma promoção é peso morto, e o número existe para alguém ver', () => {
-    expect(loopIsDeadWeight({ cycles: 20, promotions: 0, gateFailures: 2, ties: 18 })).toBe(true);
-    expect(loopIsDeadWeight({ cycles: 20, promotions: 1, gateFailures: 0, ties: 19 })).toBe(false);
-    expect(loopIsDeadWeight({ cycles: 3, promotions: 0, gateFailures: 0, ties: 3 })).toBe(false); // cedo demais
-  });
-
-  test('a trava de ciclo é por agente e segue o formato das chaves presas ao folderId', () => {
-    expect(dreamLockKey('f1')).toBe('DREAMLOCK:f1');
-    // …e por isso é apagada junto quando o agente sai (CONTROLE 7)
-    expect(forgetAgentProps([dreamLockKey('f1')], 'f1')).toEqual(['DREAMLOCK:f1']);
-  });
-});
+// CONTROLE 9 saiu com o SONHO. Ele media a saúde do laço de auto-aprimoramento (promoção
+// reversível, taxa de promoção, peso morto) e a trava `DREAMLOCK:` por agente. Sem laço, não há
+// laço para medir. A propriedade geral que ele instanciava — chave presa ao folderId é apagada com
+// o agente — continua provada no CONTROLE 7.
 
 describe('CONTROLE 10 — §E: sub-agente não herda aprovação do pai', () => {
   test('`granted` do sub-agente é sempre vazio', () => {

@@ -177,7 +177,7 @@ describe('ação `tools` da CLI: liga a lista inteira de uma vez', () => {
     m.setAgentUser('f1', 'ana@x.com', true);
     const tudo = await post({ action: 'tools', set: 'all' });
     expect(tudo.ok).toBe(true);
-    expect(tudo.enabled).toHaveLength(26);
+    expect(tudo.enabled).toHaveLength(25);
     expect(tudo.users).toEqual(['ana@x.com']); // ligar ferramenta não mexe em quem conversa
     const nada = await post({ action: 'tools', set: 'none' });
     expect(nada.enabled).toEqual([]);
@@ -207,7 +207,7 @@ describe('ação `tools` da CLI: liga a lista inteira de uma vez', () => {
     await post({ action: 'tools', set: 'all' });
     const r = await post({ action: 'tools', set: '' });
     expect(r.ok).toBe(false);
-    expect(access().tools).toHaveLength(26);
+    expect(access().tools).toHaveLength(25);
   });
 });
 
@@ -239,8 +239,8 @@ describe('a lista de modelos acompanha o campo que a usa', () => {
 });
 
 // Um interruptor que liga e não faz nada é pior que um interruptor ausente: o dono acha que aprovou um
-// poder e não aprovou nada. Os núcleos existem (dream.ts, agentCaps.ts), mas o CICLO não — então
-// enquanto a peça não existir, a capacidade recusa, e recusa DIZENDO O QUE FALTA.
+// poder e não aprovou nada. Enquanto a peça não existir, a capacidade recusa — e recusa DIZENDO O QUE
+// FALTA. Nesta branch sobrou uma capacidade (`initiative`), e a guarda vale inteira para ela.
 describe('capacidade sem mecanismo não liga, e explica por quê', () => {
   const html = () => readFileSync('src/settings.html', 'utf8');
   const main = () => readFileSync('src/main.ts', 'utf8');
@@ -264,21 +264,19 @@ describe('capacidade sem mecanismo não liga, e explica por quê', () => {
   // resposta do Reach out fica só no trace. O texto do painel prometia a entrega sem condição.
   test('o texto do Reach out diz quando a resposta NÃO chega ao Chat', () => {
     const cap = main().slice(main().indexOf('const CAP_TEXT'), main().indexOf('const capsProp'));
-    const reach = cap.slice(cap.indexOf('initiative: {'), cap.indexOf('succeed: {'));
+    const reach = cap.slice(cap.indexOf('initiative: {'));
     expect(reach).toMatch(/otherwise[^']*trace/);
   });
 
   test('toda capacidade declarada PRONTA tem o mecanismo fiado no bundle', () => {
     const cap = main().slice(main().indexOf('const CAP_TEXT'), main().indexOf('const capsProp'));
-    for (const nome of ['dream', 'initiative', 'succeed', 'create']) expect(cap).toContain(`${nome}: {`);
+    for (const nome of ['initiative']) expect(cap).toContain(`${nome}: {`);
+    // As que saíram não podem voltar como TEXTO sem mecanismo: o painel prometeria um poder que o
+    // motor não tem, que é o defeito exato que este bloco existe para barrar.
+    for (const saiu of ['dream', 'succeed', 'create']) expect(cap).not.toContain(`${saiu}: {`);
     const bundle = readFileSync('dist/_motor.js', 'utf8');
     /** O símbolo que PROVA que a capacidade existe de verdade, e não só como texto na tela. */
-    const MECANISMO: Record<string, string> = {
-      dream: 'tickDream(',
-      initiative: 'tickProactive(',
-      succeed: 'generateSuccessor(',
-      create: 'bornAgent(',
-    };
+    const MECANISMO: Record<string, string> = { initiative: 'tickProactive(' };
     for (const [nome, simbolo] of Object.entries(MECANISMO)) {
       const pronta = new RegExp(`${nome}: \\{[^}]*missing: null`, 's').test(cap);
       if (!pronta) continue;

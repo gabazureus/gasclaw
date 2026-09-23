@@ -50,10 +50,7 @@ import { offsetMinutes } from './agenda';
 import { folderModel, getOverride, listModels as openRouterModels, type ModelInfo, setOverride, validateChoice } from './models';
 import * as observe from './observe';
 import * as runlog from './runlog';
-import {
-  CAPABILITIES, can, canSucceed, capsAfterSuccession, creatorOf, DEFAULT_INTERVAL_MS, bestHeirOf, forgetAgentProps, intervalOf, mayGenerate,
-  accessAfterArchive, capsAfterCreatorMoved, capsEnabled, clearCreator, DREAM_LOCK_PREFIX, effectiveCapabilities, isRunnable, nextGeneration, parseCapabilities, parseStatus, setCreator, type Capability, type LineageEntry,
-} from './agentCaps';
+import { CAPABILITIES, can, accessAfterArchive, capsEnabled, effectiveCapabilities, forgetAgentProps, isRunnable, parseCapabilities, parseStatus, type Capability } from './agentCaps';
 import { engineIdentity } from './identity';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
@@ -1558,34 +1555,12 @@ export function judgeSet() {
  * aprovou coisa nenhuma. Quando a peça ficar pronta, é este campo que vira `null`, num lugar só.
  */
 const CAP_TEXT: Record<Capability, { label: string; what: string; missing: string | null }> = {
-  dream: {
-    label: 'Dream',
-    what: 'Rewrites its own prompt and scores itself against the judge set. Costs quota; nothing takes effect without your click.',
-    // O ciclo EXISTE: `dreamTick` está fiado no gatilho, o juiz veio no build e a contagem de falhas
-    // roda. O que ainda não há é MATERIAL — e isso o próprio ciclo diz ao recusar começar, o que é
-    // diferente de a capacidade não existir.
-    missing: null,
-  },
   initiative: {
     label: 'Reach out',
     // O texto ANTIGO dizia que o desenho tinha sido reprovado e não tinha medição. Era verdade em
     // 17/09 e deixou de ser: a P22 passou 4 de 4, e a F3a foi construída com o buraco real tapado —
     // a agenda saiu da pasta compartilhável e veio para cá.
     what: 'Wakes up on the schedule YOU set below and acts without being asked, then sends you the answer in your direct conversation with this app in Google Chat (once this engine has its Chat app identity and you have talked to the app; otherwise the answer stays in the trace). It only uses tools you put on the auto-approve list; anything else makes the run fail and say so there, instead of waiting for a click nobody is there to give.',
-    missing: null,
-  },
-  succeed: {
-    label: 'Succeed',
-    // A capacidade é ESCREVER o sucessor, e isso funciona. Coroar é outro ato, humano, e continua
-    // sendo — a ressalva foi para o `what`, onde ela informa, em vez de ficar no `missing`, onde
-    // bloqueava a capacidade inteira por causa de uma decisão que nunca foi da máquina.
-    // ADR-043: o sucessor é o AGENTE por patch, com os mesmos escopos — não mais código "mais estreito".
-    what: 'Writes a successor: this same agent, improved by a patch that Opus 5 writes, deployed as its own Apps Script project with the same permissions. It is born paused and judged from outside against this engine. Writing is not crowning: passing the baton is your click in Projects, and only once its health checks pass.',
-    missing: null,
-  },
-  create: {
-    label: 'Create agents',
-    what: 'Creates NEW agents that are not successors, each with its own Drive folder. Every one is born with no tools, no access and no capabilities until you approve them. This one multiplies, so only ONE agent in the environment can have it.',
     missing: null,
   },
 };
@@ -1602,25 +1577,20 @@ export function agentCapabilities(folderId: string) {
   // Uma chave que ninguém vê se está ligada é pior que não ter: produz confiança falsa nos dois sentidos.
   const congelado = !capsEnabled(props.getProperty('CAPS_ENABLED'));
   const caps = effectiveCapabilities(aprovadas, props.getProperty('CAPS_ENABLED'));
-  const creator = creatorOf(props.getProperty('CREATOR'), store.listAgents());
   return {
     folderId,
     // `on` é o EFETIVO (o que vale agora); `approved` é o que o dono marcou. Mostrar só um dos dois
     // esconderia metade do estado: congelado, a tela mostraria tudo desligado sem dizer por quê.
     capabilities: CAPABILITIES.map((c) => ({ name: c, on: can(caps, c), approved: can(aprovadas, c), label: CAP_TEXT[c].label, what: CAP_TEXT[c].what, missing: CAP_TEXT[c].missing, available: CAP_TEXT[c].missing === null })),
     frozen: congelado,
-    frozenNote: congelado ? 'Every capability is frozen by the emergency switch. The agents keep answering; nothing evolves, creates or succeeds until it is turned back on.' : '',
-    creator,
-    isCreator: creator === folderId,
+    frozenNote: congelado ? 'Every capability is frozen by the emergency switch. The agents keep answering; nothing acts on its own until it is turned back on.' : '',
   };
 }
 
 /**
  * Liga ou desliga UMA capacidade. Só o dono, só nome da lista fechada.
  *
- * `create` é SINGLETON por forma do dado: uma Property `CREATOR` com UM folderId. Ligar aqui aponta o
- * criador para este agente — e, como não há dois lugares onde escrever, o anterior deixa de ser criador
- * sem que ninguém precise lembrar de desligá-lo. O estado ruim não é evitado: ele não é representável.
+ * A lista fechada é a guarda: um nome fora de `CAPABILITIES` é recusado antes de qualquer escrita.
  */
 export function setAgentCapability(folderId: string, cap: string, on: boolean) {
   assertOwner();
@@ -1639,18 +1609,6 @@ export function setAgentCapability(folderId: string, cap: string, on: boolean) {
         const atual = parseCapabilities(props.getProperty(capsProp(folderId)));
         const proximo = on ? [...new Set([...atual, cap as Capability])] : atual.filter((c) => c !== cap);
         props.setProperty(capsProp(folderId), JSON.stringify(proximo));
-        if (cap === 'create') {
-          if (on) {
-            // O ANTECESSOR perde a capacidade junto com o bastão. Sem isto, `CREATOR` apontava para B
-            // e a lista de A continuava dizendo `create` — e o portão do motor, que lia a lista,
-            // deixava os dois passarem. O singleton só existia de um dos lados.
-            const anterior = props.getProperty('CREATOR');
-            if (anterior && anterior !== folderId) {
-              props.setProperty(capsProp(anterior), JSON.stringify(capsAfterCreatorMoved(parseCapabilities(props.getProperty(capsProp(anterior))))));
-            }
-            props.setProperty('CREATOR', setCreator(folderId));
-          } else if (props.getProperty('CREATOR') === folderId) props.deleteProperty('CREATOR');
-        }
       }),
     () => ({ folderId, cap, on }),
   );
@@ -2237,7 +2195,7 @@ function pocP36(step?: string, params: Record<string, string> = {}): unknown {
   const agora = new Date();
   const minutos = Number(Utilities.formatDate(agora, tz, 'HH')) * 60 + Number(Utilities.formatDate(agora, tz, 'mm'));
   if (step === 'status') {
-    return { pass: true, enabled: store.isEnabled(), agent: ag.name, capsApproved: parseCapabilities(props.getProperty(`CAP:${id}`)), capsEffective: effectiveCapabilities(parseCapabilities(props.getProperty(`CAP:${id}`)), props.getProperty('CAPS_ENABLED')), creator: creatorOf(props.getProperty('CREATOR'), store.listAgents()), tools: approvedOf(id)?.tools ?? [], autoApprove: agentSchedule(id).autoApprove, schedule: parseSchedule(props.getProperty(schedProp(id))).jobs, seen: props.getProperty(seenProp(id)), nowMinute: minutos, mayAct: { initiative: mayAct(id, 'initiative') } };
+    return { pass: true, enabled: store.isEnabled(), agent: ag.name, capsApproved: parseCapabilities(props.getProperty(`CAP:${id}`)), capsEffective: effectiveCapabilities(parseCapabilities(props.getProperty(`CAP:${id}`)), props.getProperty('CAPS_ENABLED')), tools: approvedOf(id)?.tools ?? [], autoApprove: agentSchedule(id).autoApprove, schedule: parseSchedule(props.getProperty(schedProp(id))).jobs, seen: props.getProperty(seenProp(id)), nowMinute: minutos, mayAct: { initiative: mayAct(id, 'initiative') } };
   }
   // R1 — um job daqui a 2 min na agenda REAL; o worker dispara pelo caminho de sempre. A agenda anterior fica guardada.
   if (step === 'wake') {
