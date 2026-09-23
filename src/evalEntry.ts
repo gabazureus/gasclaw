@@ -15,7 +15,7 @@ import { memoryIO } from './tools/memoryStore';
 import { skillsIO } from './tools/skillsStore';
 import { allowedTools, findTool, TOOLS, type ToolCtx } from './tools/registry';
 import { webClick, webSend } from './webchat';
-import { agentFolderPath, ensureFolderPath, loadAgent, seedAgent, withAccess, type Access, type AgentSpec } from './workspace';
+import { agentFolderPath, DEFAULT_MODEL, ensureFolderPath, loadAgent, seedAgent, withAccess, type Access, type AgentSpec } from './workspace';
 
 export type EvalEnv = {
   owner: string;
@@ -321,6 +321,16 @@ export const EVAL_ACCESS: Access = { users: [], tools: ['now', 'memory', 'ask', 
 export const evalLlm = (key: string | null, traced?: EvalEnv['llm']): EvalEnv['llm'] => traced ?? ((m, messages, defs) => complete(key ?? '', m, messages, 1000, undefined, defs));
 
 /** Liga o runEval no GAS: agente próprio em Meu Drive/gasclaw/agents/eval (criado/reusado sozinho). */
+/**
+ * O modelo do eval quando ninguém pediu um: o do MOTOR, não o da pasta de teste.
+ *
+ * Achado ao vivo (dev v181): a pasta `agentes/eval` é semeada pelo motor e ficou com `openrouter/auto`
+ * de uma semeadura antiga; sem `--model`, TODO cenário rodava nele — e o juiz recusa gerador de
+ * roteamento automático, porque ele pode cair na família do juiz. A pasta do eval é caixa de areia do
+ * motor, não escolha do dono: o padrão certo é o do motor. O que o dono pedir no comando vence.
+ */
+export const modelForEval = (pedido: string | undefined, _daPasta: string): string => pedido ?? DEFAULT_MODEL;
+
 export function evalAction(md: string, owner: string, model?: string, llm?: EvalEnv['llm']): EvalResult {
   const folder = ensureFolderPath(agentFolderPath('eval'));
   if (!folder.getFilesByName('AGENTS.md').hasNext()) folder.createFile('AGENTS.md', EVAL_AGENTS, 'text/markdown');
@@ -347,6 +357,6 @@ export function evalAction(md: string, owner: string, model?: string, llm?: Eval
       google: gasGoogle,
       zone: zone(),
     },
-    model,
+    modelForEval(model, ''),
   );
 }

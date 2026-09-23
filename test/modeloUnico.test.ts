@@ -43,3 +43,21 @@ describe('judgeFor: a independência do juiz é APLICADA, não só testada', () 
     expect(() => judgeFor('openrouter/auto')).toThrow();
   });
 });
+
+// ACHADO AO VIVO (2026-09-23, dev v181): `./gasclaw eval --all` travou em TODOS os cenários com
+// "no independent judge for openrouter/auto". Os evals rodam numa pasta PRÓPRIA (`agentes/eval`),
+// semeada antes desta rodada com `model: openrouter/auto` — e sem `--model` era esse valor que valia.
+// A pasta do eval é caixa de areia do motor, não escolha do dono: sem modelo pedido, vale o do motor.
+describe('o eval sem --model usa o modelo do MOTOR, não o que a pasta de teste diz', () => {
+  test('runSpec cai no padrão do motor quando ninguém pediu modelo', async () => {
+    const { modelForEval } = await import('../src/evalEntry');
+    expect(modelForEval(undefined, 'openrouter/auto')).toBe(DEFAULT_MODEL);
+    expect(modelForEval(undefined, 'openai/gpt-6-luna')).toBe(DEFAULT_MODEL);
+  });
+
+  test('o que o dono pediu no comando vence o padrão', () => {
+    return import('../src/evalEntry').then(({ modelForEval }) => {
+      expect(modelForEval('test/model', 'openrouter/auto')).toBe('test/model');
+    });
+  });
+});
