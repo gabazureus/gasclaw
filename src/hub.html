@@ -16,7 +16,6 @@
   .err { color: #b3261e; font-weight: 600; }
   h2 { font-size: 1.05rem; margin-top: 1.4rem; }
   .role { font-size: .75rem; font-weight: 600; padding: .05em .45em; border-radius: .35em; background: #e5e5e0; }
-  .role.successor { background: #b45309; color: #fff; }
 </style>
 </head>
 <body>
@@ -25,8 +24,8 @@
   <p id="msg" role="status" aria-live="polite">Loading…</p>
   <!-- role="list": o WebKit descarta a semântica de lista quando list-style some, e aqui a contagem é o conteúdo -->
   <ul id="panels" role="list"></ul>
-  <h2 id="enginesTitle" hidden>Engines serving this agent</h2>
-  <p class="muted" id="enginesNote" hidden>The same agent can be served by more than one engine: the incumbent, and the successors it wrote. A successor stays paused until you crown it.</p>
+  <h2 id="enginesTitle" hidden>Engine serving this agent</h2>
+  <p class="muted" id="enginesNote" hidden>The engine that answers for this agent, and the address of its panel.</p>
   <ul id="engines" role="list"></ul>
   <p class="muted">Environments are isolated: this hub only keeps the path from one to the other — no data crosses over.</p>
 </main>
@@ -55,15 +54,15 @@ function render(s) {
     }
     return li;
   }));
-  // OS MOTORES que servem este agente: titular e sucessores. Só textContent e href — o nome do agente vem
-  // de uma Property e não pode virar marcação.
+  // O MOTOR que serve este agente. Só textContent e href — o nome do agente vem de uma Property e
+  // não pode virar marcação.
   const engines = s.engines || [];
   $('enginesTitle').hidden = $('enginesNote').hidden = engines.length === 0;
   $('engines').replaceChildren(...engines.map((e) => {
     const li = document.createElement('li');
     const tag = document.createElement('span');
     tag.className = 'role ' + e.role;
-    tag.textContent = e.role === 'successor' ? 'successor' : 'incumbent';
+    tag.textContent = e.role;
     li.append(tag, document.createTextNode(' ' + e.agent + ' · engine ' + e.engine + ' '));
     if (e.url) {
       const a = document.createElement('a');

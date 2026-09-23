@@ -813,8 +813,6 @@
           // ou obra em andamento — e a diferença entre as três muda o que ela faz a seguir.
           if (c.missing) fs.append(el('p', { className: 'muted', textContent: 'Missing: ' + c.missing }));
         });
-        // Só UM agente no ambiente cria outros: dizer quem é evita procurar por que o botão não aparece.
-        if (caps.creator) fs.append(el('p', { className: 'muted', textContent: caps.isCreator ? 'This is the agent that creates others.' : 'Another agent is the one that creates others — turning this on moves that role here.' }));
         box.append(fs);
 
         // Campos que o AGENTE declarou. Um agente que nunca mutou não declara nenhum, e aí a seção não
@@ -850,16 +848,9 @@
           box.append(ff);
         }).catch(() => {}); // um esquema ruim não pode derrubar a tela de configuração inteira
 
-        // O sucessor é CÓDIGO NOVO, não um prompt melhor. A seção só existe quando `succeed` está
-        // ligada: oferecer o botão a quem não ligou a capacidade seria a tela contradizendo a caixinha
-        // logo acima dela.
-        if (caps.capabilities.some((c) => c.name === 'succeed' && c.on)) showSuccessor(folderId, box);
-        // A automação usa a MESMA capacidade: as duas escrevem código com o Opus, e o teto do dia é um só.
-        if (caps.capabilities.some((c) => c.name === 'succeed' && c.on)) showAutomation(folderId, box);
-        // As telas que faltavam (itens 35 e 36). Cada uma só aparece quando a capacidade está ligada:
-        // uma seção permanentemente vazia ensina menos que a ausência dela.
-        if (caps.capabilities.some((c) => c.name === 'succeed' && c.on)) showLineage(folderId, box);
-        if (caps.capabilities.some((c) => c.name === 'dream' && c.on)) showDreamBoard(folderId, box);
+        // A agenda só aparece com a capacidade LIGADA: uma seção permanentemente vazia ensina menos
+        // que a ausência dela, e oferecer a agenda a quem não ligou o Reach out seria a tela
+        // contradizendo a caixinha logo acima.
         if (caps.capabilities.some((c) => c.name === 'initiative' && c.on)) showSchedule(folderId, box);
 
         const fm = document.createElement('fieldset');
@@ -880,212 +871,6 @@
         holder.replaceChildren(box);
       })
       .catch((e) => { holder.textContent = e.message; });
-  }
-
-  // ----- Escrever uma AUTOMAÇÃO: o Opus escreve um projeto pequeno, o dono escolhe o que ele herda -----
-  //
-  // Era o "Write a successor" até a ADR-043: o que ele produz é uma ferramenta, não o agente melhorado.
-  // Duas coisas ficam VISÍVEIS antes do clique, porque as duas custam: o gasto do dia contra o teto
-  // (o gerador é o modelo mais caro do projeto) e os escopos, um a um. Escolher escopo por caixinha é
-  // o que impede a automação de nascer com tudo que o motor tem — e é o dono decidindo, não o modelo.
-  function showAutomation(folderId, box) {
-    quiet('automationOptions', folderId).then((o) => {
-      const fs = document.createElement('fieldset');
-      fs.append(el('legend', { textContent: 'Write an automation' }), el('p', { className: 'muted', textContent: o.note }));
-      fs.append(el('p', { className: 'muted', textContent: 'Code generation today: ' + money(o.budget.spentToday) + ' of ' + money(o.budget.cap) + ', across every agent.' }));
-      if (o.scopesError) fs.append(el('p', { className: 'err', textContent: 'Could not read this engine\u2019s own scopes: ' + o.scopesError }));
-      if (!o.can) fs.append(el('p', { className: 'muted', textContent: o.reason }));
-      if (!o.interval.ok) fs.append(el('p', { className: 'muted', textContent: o.interval.reason }));
-
-      const marcadas = [];
-      o.scopes.forEach((sc) => {
-        const linha = el('div', { className: 'tool' });
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.id = 'succ-' + folderId + '-' + sc.split('/').pop();
-        cb.value = sc;
-        marcadas.push(cb);
-        linha.append(cb, el('label', { htmlFor: cb.id, textContent: sc.split('/').pop() }));
-        fs.append(linha);
-      });
-      // Nunca TODOS: sucessão estreita, e o motor recusa um pedido que iguale o conjunto do pai. Dizer
-      // isso aqui evita o dono marcar tudo e levar uma recusa depois de esperar a geração.
-      fs.append(el('p', { className: 'muted', textContent: 'Pick fewer than ' + o.scopes.length + ': an automation narrows what it can do, it never matches the parent.' }));
-
-      const goal = document.createElement('input');
-      goal.id = 'succ-goal-' + folderId;
-      goal.placeholder = o.material || 'what should it do better?';
-      fs.append(el('label', { htmlFor: goal.id, textContent: o.material ? 'Real failures found: \u201c' + o.material + '\u201d. Add a goal of your own (optional)' : 'No failure cluster yet \u2014 say what it should do better' }), goal);
-
-      const b = button('Write it with ' + o.generator, () => {
-        const escolhidos = marcadas.filter((c) => c.checked).map((c) => c.value);
-        b.disabled = true;
-        $('msg').textContent = 'Writing the automation\u2026 this calls the most expensive model in the project, so it takes a while.';
-        call('writeAutomation', folderId, escolhidos, goal.value)
-          .then((r) => {
-            b.disabled = false;
-            if (!r.ok) { $('msg').className = 'err'; $('msg').textContent = r.reason; return; }
-            // O que o dono precisa fazer A SEGUIR, dito no momento em que ele pode fazer: o filho não
-            // executa antes do clique de autorização, e ele aparece na lista de projetos filhos.
-            $('msg').textContent = 'Automation written (' + money(r.costUsd) + '). It does not run until you authorize it \u2014 find it in the child projects list below.';
-            quiet('listChildren').then(showChildren).catch(() => {}); // o filho recém-escrito aparece na lista sem recarregar a tela
-          })
-          .catch((e) => { b.disabled = false; $('msg').className = 'err'; $('msg').textContent = e.message; });
-      });
-      b.disabled = !o.can || !o.interval.ok;
-      fs.append(b);
-      box.append(fs);
-    }).catch(() => {}); // a seção da automação não pode derrubar a tela de configuração inteira
-  }
-
-  // ----- Escrever o SUCESSOR (F7, ADR-043): o PRÓPRIO agente, melhorado por patch -----
-  //
-  // Os escopos aparecem TODOS marcados e travados: o sucessor é este agente melhorado, e não um diferente
-  // dele (pedido do dono, 2026-09-21). Abaixo do botão, cada sucessor escrito com o que o dono precisa
-  // para decidir: a explicação, as trocas, a nota da avaliação de fora — e só então a coroa.
-  function showSuccessor(folderId, box) {
-    quiet('successorOptions', folderId).then((o) => {
-      const fs = document.createElement('fieldset');
-      fs.append(el('legend', { textContent: 'Write a successor' }), el('p', { className: 'muted', textContent: o.note }));
-      fs.append(el('p', { className: 'muted', textContent: 'Code generation today: ' + money(o.budget.spentToday) + ' of ' + money(o.budget.cap) + ', across every agent.' }));
-      if (o.scopesError) fs.append(el('p', { className: 'err', textContent: 'Could not read this engine\u2019s own scopes: ' + o.scopesError }));
-      if (!o.can) fs.append(el('p', { className: 'muted', textContent: o.reason }));
-      if (!o.interval.ok) fs.append(el('p', { className: 'muted', textContent: o.interval.reason }));
-      o.scopes.forEach((sc) => {
-        const linha = el('div', { className: 'tool' });
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.checked = true;
-        cb.disabled = true;
-        cb.id = 'heir-' + folderId + '-' + sc.split('/').pop();
-        linha.append(cb, el('label', { htmlFor: cb.id, textContent: sc.split('/').pop() }));
-        fs.append(linha);
-      });
-      fs.append(el('p', { className: 'muted', textContent: 'All ' + o.scopes.length + ' scopes, as this engine has them: the successor is this agent improved, not a different one.' }));
-      const goal = document.createElement('input');
-      goal.id = 'heir-goal-' + folderId;
-      goal.placeholder = o.material || 'optional: what should it fix or do better?';
-      fs.append(el('label', { htmlFor: goal.id, textContent: 'Your goal for this improvement (optional \u2014 without one, it fixes one real defect it can point to in the code)' }), goal);
-      const b = button('Write it with ' + o.generator, () => {
-        b.disabled = true;
-        $('msg').className = '';
-        $('msg').textContent = 'Writing the successor\u2026 ' + o.generator + ' reads this engine\u2019s whole code, so it takes a minute or two.';
-        call('writeSuccessor', folderId, goal.value)
-          .then((r) => {
-            b.disabled = false;
-            if (!r.ok) { $('msg').className = 'err'; $('msg').textContent = r.reason + (r.costUsd ? ' (' + money(r.costUsd) + ' spent)' : ''); return; }
-            $('msg').textContent = 'Successor written (' + money(r.costUsd) + '). ' + r.next;
-            showAgentSettings(folderId, box.parentNode || box);
-          })
-          .catch((e) => { b.disabled = false; $('msg').className = 'err'; $('msg').textContent = e.message; });
-      });
-      b.disabled = !o.can || !o.interval.ok;
-      fs.append(b);
-      (o.successors || []).slice().reverse().forEach((r) => fs.append(successorCard(r, folderId, box)));
-      box.append(fs);
-    }).catch(() => {}); // a seção do sucessor não pode derrubar a tela de configuração inteira
-  }
-
-  // Um sucessor escrito: o que ele muda, por quê, a nota — e os dois botões na ordem em que valem.
-  function successorCard(r, folderId, box) {
-    const c = el('div', { className: 'limit' });
-    const estado = r.crownedAt ? 'crowned ' + new Date(r.crownedAt).toLocaleString() : r.evaluation ? 'evaluated' : 'not evaluated yet';
-    c.append(el('div', { className: 'row' }, el('strong', { textContent: new Date(r.at).toLocaleString() + ' \u00b7 ' + r.changes.length + ' change(s) \u00b7 ' + money(r.costUsd) }), el('span', { className: 'badge' + (r.crownedAt ? ' gasclaw' : ''), textContent: estado })));
-    c.append(el('p', { textContent: r.explanation }));
-    const a = el('a', { href: r.url, target: '_blank', textContent: 'open the successor panel' });
-    c.append(el('p', { className: 'muted' }, a, document.createTextNode(' \u00b7 ' + r.scriptId.slice(0, 10))));
-    // O DIFF, troca por troca: é linha a linha que o dono concorda ou não.
-    const d = el('details', {});
-    d.append(el('summary', { textContent: 'what it changes in the code' }));
-    r.changes.forEach((t) => {
-      d.append(el('p', { className: 'muted', textContent: t.file }));
-      d.append(el('pre', { className: 'err', textContent: '\u2212 ' + t.find }));
-      d.append(el('pre', { className: 'muted', textContent: '+ ' + t.replace }));
-    });
-    c.append(d);
-    if (r.evaluation) {
-      const e = r.evaluation;
-      c.append(el('p', { className: 'muted', textContent: 'Judged by THIS engine: successor ' + e.successorPasses + '/' + e.k + ' \u00b7 this engine ' + e.incumbentPasses + '/' + e.k + (e.complete ? '' : ' \u00b7 incomplete') }));
-      e.rows.forEach((x) => c.append(el('p', { className: 'muted', textContent: x.name + ': successor ' + (x.successor === null ? 'no answer' + (x.error ? ' (' + x.error + ')' : '') : x.successor ? 'pass' : 'fail') + ' \u00b7 this engine ' + (x.incumbent ? 'pass' : 'fail') })));
-    }
-    if (!r.crownedAt) {
-      if (r.verdict && !r.verdict.ok) c.append(el('p', { className: 'muted', textContent: r.verdict.reason }));
-      const ev = button('Evaluate it from here', () => {
-        ev.disabled = true;
-        $('msg').className = '';
-        $('msg').textContent = 'Evaluating\u2026 this engine sends each scenario to the successor and judges both answers itself. Pause the successor first.';
-        call('evaluateSuccessor', r.scriptId).then((x) => {
-          ev.disabled = false;
-          if (!x.ok) { $('msg').className = 'err'; $('msg').textContent = x.reason; return; }
-          $('msg').textContent = 'Evaluated: successor ' + x.evaluation.successorPasses + '/' + x.evaluation.k + ', this engine ' + x.evaluation.incumbentPasses + '/' + x.evaluation.k + '.';
-          showAgentSettings(folderId, box.parentNode || box);
-        }).catch((err) => { ev.disabled = false; $('msg').className = 'err'; $('msg').textContent = err.message; });
-      });
-      c.append(ev, el('p', { className: 'muted', textContent: 'The crown is in Projects, below: it unlocks only when every health check passes.' }));
-    }
-    return c;
-  }
-
-  // ----- Item 36: o DreamBoard — o placar que o dono lê antes de trocar o titular -----
-  //
-  // O número NUNCA aparece sozinho. `sees` diz o que aquele k consegue enxergar, porque 12 contra 9 sem
-  // essa frase convida a ler vantagem aritmética como vantagem real — o mesmo erro que o desenho antigo
-  // do ciclo cometia somando notas de uma execução cada.
-  function showDreamBoard(folderId, box) {
-    quiet('agentDream', folderId).then((d) => {
-      const fs = document.createElement('fieldset');
-      fs.append(el('legend', { textContent: 'Dream cycle' }));
-      if (!d.cycleId) {
-        // Recusar por falta de material é o estado HONESTO, não um defeito. Dizer isso evita que a
-        // pessoa procure o problema no lugar errado.
-        fs.append(el('p', { className: 'muted', textContent: d.material ? 'No cycle running. Real failures found: \u201c' + d.material + '\u201d' : 'No cycle running, and no real failure to dream about yet. It refuses to start without material \u2014 a cycle with an invented problem would invent the fix and the score too.' }));
-        box.append(fs);
-        return;
-      }
-      const b = d.board || {};
-      fs.append(el('p', { className: 'muted', textContent: 'Cycle ' + b.cycleId + ' \u00b7 ' + b.status + ' \u00b7 step ' + b.done + ' of ' + b.total }));
-      // A frase que impede a leitura errada do placar.
-      fs.append(el('p', { className: 'muted', textContent: 'k = ' + b.k + ': ' + b.sees + '. A candidate only wins with a statistical advantage, never an arithmetic one.' }));
-      if (b.error) fs.append(el('p', { className: 'err', textContent: b.error }));
-      (b.rows || []).forEach((r) => {
-        const linha = el('div', { className: 'limit' });
-        const placar = r.runs ? r.passes + '/' + r.runs + ' vs ' + r.incumbentPasses + ' (incumbent)' : 'not run yet';
-        linha.append(el('div', { className: 'row' }, el('strong', { textContent: r.label }), el('span', { className: 'badge' + (r.wins ? ' gasclaw' : ''), textContent: r.wins ? 'beats the incumbent' : 'not enough to switch' })));
-        linha.append(el('p', { className: 'muted', textContent: placar }));
-        // O DIFF, e só ele: o prompt inteiro não se lê, e é linha a linha que o dono concorda ou não.
-        const d2 = el('details', {});
-        d2.append(el('summary', { textContent: 'what it changed' }));
-        (r.removed || []).forEach((l) => d2.append(el('p', { className: 'err', textContent: '\u2212 ' + l })));
-        (r.added || []).forEach((l) => d2.append(el('p', { className: 'muted', textContent: '+ ' + l })));
-        linha.append(d2);
-        fs.append(linha);
-      });
-      box.append(fs);
-    }).catch(() => {});
-  }
-
-  // ----- Item 35: a linhagem e o mandato -----
-  //
-  // "Ele evoluiu" só é verificável se houver geração, pai, filho, delta e custo. Sem essa tabela, a
-  // frase é fé; com ela, é registro.
-  function showLineage(folderId, box) {
-    Promise.all([quiet('lineage'), quiet('mandateFor', folderId)]).then(([lin, m]) => {
-      const fs = document.createElement('fieldset');
-      fs.append(el('legend', { textContent: 'Lineage and mandate' }));
-      fs.append(el('p', { className: 'muted', textContent: m.active ? 'Mandate active: ' + m.mandate.left + ' succession(s) left, until ' + new Date(m.mandate.until).toLocaleDateString() + '.' : 'No mandate: every succession needs your click. (' + (m.reason || '') + ')' }));
-      // O mandato EXPIRA, e é isso que separa "ele vai evoluindo" de "você aprovou uma vez e delegou
-      // para sempre". A tela diz isso antes do botão, não depois.
-      fs.append(el('p', { className: 'muted', textContent: 'A mandate is an evolution budget with a deadline, not a permanent switch. It shrinks with each use and expires on its own.' }));
-      const entradas = (lin.entries || []).filter((e) => e.parent === folderId || e.child === folderId);
-      if (!entradas.length) fs.append(el('p', { className: 'muted', textContent: 'Nothing yet: no successor written, no baton passed.' }));
-      entradas.slice(-10).reverse().forEach((e) => {
-        const linha = el('div', { className: 'limit' });
-        linha.append(el('div', { className: 'row' }, el('strong', { textContent: 'generation ' + e.generation + ' \u00b7 ' + e.kind }), el('span', { className: 'badge', textContent: money(e.costUsd || 0) })));
-        linha.append(el('p', { className: 'muted', textContent: new Date(e.at).toLocaleString() + ' \u00b7 ' + e.summary + (e.delta === null ? ' \u00b7 no measured delta' : ' \u00b7 delta ' + e.delta) }));
-        fs.append(linha);
-      });
-      box.append(fs);
-    }).catch(() => {});
   }
 
   // ----- Item 28: a agenda, que mora AQUI e não na pasta -----
@@ -1125,184 +910,41 @@
     }).catch(() => {});
   }
 
-  // ----- Projetos filhos: onde o dono autoriza um especialista -----
+  // ----- Agentes arquivados -----
   //
-  // O painel NÃO consegue consentir pelo dono: não existe API para isso, e é bom que não exista — foi a
-  // P24 que mediu esse portão. O que a tela faz é mostrar O QUE O FILHO PEDE e levar o dono até lá.
-  const CHILD_STATE_CLASS = { authorized: 'badge', 'needs-consent': 'badge gasclaw', 'not-deployed': 'badge', unknown: 'badge' };
-
-  // ----- Os AGENTES sucessores: health, rebase e a COROA (o portão humano da F7) -----
-  //
-  // A coroa só destrava depois de um health que passou em TUDO, lido agora. O clique confirma o que vai
-  // acontecer: este motor para e o sucessor passa a responder. Nada aqui coroa sozinho.
-  function successorTable(heirs) {
-    const box = el('div', {});
-    box.append(el('h2', { textContent: 'Successor agents' }));
-    box.append(el('p', { className: 'muted', textContent: 'The same agent, improved by a patch, in a project of its own. It answers only after you crown it here \u2014 and the crown unlocks only when every health check passes.' }));
-    const t = el('table', { className: 'list' });
-    const head = el('tr', {});
-    ['Successor', 'Status', ''].forEach((h) => head.append(el('th', { textContent: h })));
-    t.append(head);
-    heirs.slice().reverse().forEach((r) => {
-      const tr = el('tr', {});
-      const nome = el('td', {}, el('strong', { textContent: new Date(r.at).toLocaleString() + ' \u00b7 ' + r.scriptId.slice(0, 10) }));
-      nome.append(el('div', { className: 'muted', textContent: r.explanation.slice(0, 160) + (r.explanation.length > 160 ? '\u2026' : '') }));
-      tr.append(nome);
-      const estado = r.crownedAt ? 'crowned' : r.evaluation ? (r.evaluation.at >= r.at ? 'evaluated' : 'evaluate again') : 'not evaluated';
-      tr.append(el('td', {}, el('span', { className: 'badge' + (r.crownedAt ? ' gasclaw' : ''), textContent: estado })));
-      const acts = el('td', { className: 'acts' });
-      const abrir = el('a', { className: 'btn', textContent: 'Open', href: r.url });
-      abrir.target = '_blank'; abrir.rel = 'noopener';
-      const codigo = el('a', { className: 'btn', textContent: 'Code', href: r.editorUrl });
-      codigo.target = '_blank'; codigo.rel = 'noopener';
-      acts.append(abrir, ' ', codigo, ' ');
-      const detalhe = el('tr', {});
-      const celula = el('td', {});
-      celula.colSpan = 3;
-      detalhe.append(celula);
-      if (!r.crownedAt) {
-        const coroa = button('Crown it', () => {
-          if (!confirm('Crowning PAUSES this engine and leaves the successor answering for this agent.\n\nCrown it?')) return;
-          coroa.disabled = true;
-          call('crownSuccessor', r.scriptId).then((x) => {
-            if (!x.ok) { coroa.disabled = false; $('msg').className = 'err'; $('msg').textContent = x.reason; return; }
-            $('msg').className = '';
-            $('msg').textContent = 'Crowned. ' + x.next;
-            quiet('listChildren').then(showChildren).catch(() => {});
-          }).catch((e) => { coroa.disabled = false; $('msg').className = 'err'; $('msg').textContent = e.message; });
-        });
-        coroa.disabled = true; // só o health destrava
-        const rebase = button('Rebase', () => {
-          rebase.disabled = true;
-          $('msg').className = '';
-          $('msg').textContent = 'Rebasing\u2026 the same patch on this engine\u2019s current code, no model call.';
-          call('rebaseSuccessor', r.scriptId).then((x) => {
-            rebase.disabled = false;
-            $('msg').className = x.ok ? '' : 'err';
-            $('msg').textContent = x.ok ? 'Rebased. ' + x.next : x.reason;
-            quiet('listChildren').then(showChildren).catch(() => {});
-          }).catch((e) => { rebase.disabled = false; $('msg').className = 'err'; $('msg').textContent = e.message; });
-        });
-        rebase.hidden = true; // aparece quando a checagem de código diz que este motor mudou
-        const saude = button('Health', () => {
-          saude.disabled = true;
-          celula.replaceChildren(el('p', { className: 'muted', textContent: 'Checking the successor\u2026' }));
-          call('successorHealth', r.scriptId).then((h) => {
-            saude.disabled = false;
-            celula.replaceChildren();
-            (h.checks || []).forEach((c) => celula.append(el('p', { className: c.ok ? 'muted' : 'err', textContent: (c.ok ? '\u2713 ' : '\u2717 ') + c.label + ' \u2014 ' + c.detail })));
-            if (!h.checks || !h.checks.length) celula.append(el('p', { className: 'err', textContent: h.reason || 'no answer' }));
-            // A coroa pela metade: o sucessor já responde e só "paused" reprova. Coroar aqui termina os dois motores.
-            celula.append(el('p', { className: h.ok || h.halfCrowned ? '' : 'muted', textContent: h.ok ? 'Ready: you can crown it.' : h.halfCrowned ? 'The successor is already answering and every other check passes: two engines are serving this agent. Crowning pauses this engine and ends that.' : 'Not ready: the crown stays locked until every check passes.' }));
-            coroa.disabled = !(h.ok || h.halfCrowned);
-            const codigoFalhou = (h.checks || []).some((c) => c.id === 'code' && !c.ok);
-            rebase.hidden = !codigoFalhou;
-          }).catch((e) => { saude.disabled = false; celula.replaceChildren(el('p', { className: 'err', textContent: e.message })); });
-        });
-        acts.append(saude, ' ', rebase, ' ', coroa);
-      }
-      tr.append(acts);
-      t.append(tr, detalhe);
-    });
-    box.append(t);
-    return box;
-  }
-
-  function showChildren(x) {
-    const list = x.children || [];
+  // Arquivar não apaga: as conversas seguem legíveis e a pasta segue no Drive. A tela mostra isso
+  // porque sumir da lista de agentes é diferente de deixar de existir — e era a única parte viva da
+  // antiga tela de projetos, que saiu com os filhos e a sucessão.
+  function showArchived(x) {
     const gone = x.archived || [];
-    const heirs = x.successors || [];
     [...document.querySelectorAll('[data-child]')].forEach((n) => n.remove());
-    // Nada para mostrar ⇒ nada aparece. Uma seção vazia permanente ensina menos que a ausência dela.
-    if (!list.length && !gone.length && !heirs.length) return;
+    // Nada arquivado ⇒ nada aparece. Uma seção vazia permanente ensina menos que a ausência dela.
+    if (!gone.length) return;
 
     const sec = el('section', {});
     sec.dataset.child = 'table';
-    sec.append(el('h2', { textContent: 'Projects and archived agents' }));
-
-    const ajuda = el('details', {});
-    ajuda.append(
-      el('summary', { textContent: 'What am I looking at?' }),
-      // Os TRES nomes, com a unica diferenca que muda a decisao do dono em primeiro lugar: credencial.
-      el('p', { className: 'muted', textContent: 'A child project is always an automation: code only \u2014 no folder, no prompt, no model, and no API key. Children that reason are not projects at all: a persona lives inside this agent\u2019s own folder and runs inside its turn, and a new agent gets its own folder but runs in this same engine. Neither one is ever handed a key.' }),
-      el('p', { className: 'muted', textContent: 'Google will not let a child project run until you authorize it: one click, once. This panel cannot do it for you \u2014 it can only show what the project is asking for and take you there.' }),
-      el('p', { className: 'muted', textContent: '\u201cForget\u201d only removes it from this list. The project stays in your Google account until you delete it there.' }),
-    );
-    sec.append(ajuda);
-
-    if (heirs.length) sec.append(successorTable(heirs));
-
-    // TABELA e nao cartoes: com tres filhos os cartoes ja empurram o resto da tela para baixo, e a
-    // comparacao entre eles — que e o que o dono faz aqui — vira rolagem. Numa tabela, o tipo e o
-    // estado de cada um ficam na mesma coluna, e a diferenca se le de cima para baixo.
-    if (list.length) {
-      const t = el('table', { className: 'list' });
-      const thead = el('tr', {});
-      ['Name', 'Kind', 'Status', 'Scopes', ''].forEach((h) => thead.append(el('th', { textContent: h })));
-      t.append(thead);
-      list.forEach((c) => {
-        const tr = el('tr', {});
-        tr.title = c.kindWhat;
-        const nome = el('td', {}, el('strong', { textContent: c.title }));
-        if (c.reason) nome.append(el('div', { className: 'muted', textContent: c.reason }));
-        tr.append(nome);
-        tr.append(el('td', {}, el('span', { className: 'badge', textContent: c.kindLabel })));
-        tr.append(el('td', {}, el('span', { className: CHILD_STATE_CLASS[c.state] || 'badge', textContent: c.stateLabel })));
-        // Escopo e o que o dono precisa LER antes de autorizar: fica em coluna propria, nao espremido
-        // numa linha de detalhe junto do motivo.
-        tr.append(el('td', { className: 'muted', textContent: c.scopes.length ? c.scopes.map((v) => v.split('/').pop()).join(', ') : 'no scope declared' }));
-        const acts = el('td', { className: 'acts' });
-        if (c.url) {
-          // O rotulo diz o que o clique FAZ neste estado: 'Authorize it' quando falta consentir,
-          // 'Open it' quando ja esta autorizado. Um rotulo fixo faria o dono procurar um botao
-          // 'Authorize' que nunca existiu — foi exatamente o que aconteceu na v96.
-          const abrir = el('a', { className: 'btn', textContent: c.state === 'authorized' ? 'Open' : 'Authorize', href: c.url });
-          abrir.target = '_blank'; abrir.rel = 'noopener';
-          acts.append(abrir, ' ');
-        }
-        const editor = el('a', { className: 'btn', textContent: 'Code', href: c.editorUrl });
-        editor.target = '_blank'; editor.rel = 'noopener';
-        acts.append(editor, ' ');
-        const esquecer = button('Forget', () => {
-          if (!confirm('Forget \u201c' + c.title + '\u201d?\n\nThe Apps Script project is NOT deleted \u2014 it stays in your Google account.')) return;
-          call('forgetChild', c.scriptId).then(showChildren);
-        });
-        esquecer.className = 'danger';
-        acts.append(esquecer);
-        tr.append(acts);
-        t.append(tr);
-      });
-      sec.append(t);
-    }
-
-    // ARQUIVADOS numa tabela propria. Eles somem da lista de agentes ao serem arquivados, e sumir da
-    // tela e diferente de deixar de existir: os chats seguem legiveis, a pasta segue no Drive, e um
-    // antecessor arquivado e a PROVA de que a sucessao aconteceu.
-    if (gone.length) {
-      sec.append(el('h2', { textContent: 'Archived agents' }));
-      sec.append(el('p', { className: 'muted', textContent: 'They stopped answering and no trigger reaches them. Their chats are still readable and their Drive folder is untouched.' }));
-      const t2 = el('table', { className: 'list' });
-      const h2 = el('tr', {});
-      ['Name', '', ''].forEach((h) => h2.append(el('th', { textContent: h })));
-      t2.append(h2);
-      gone.forEach((a) => {
-        const tr = el('tr', { className: 'gone' });
-        tr.append(el('td', {}, el('strong', { textContent: a.name })));
-        tr.append(el('td', { className: 'muted', textContent: 'archived' }));
-        const acts = el('td', { className: 'acts' });
-        const drive = el('a', { className: 'btn', textContent: 'Drive', href: a.driveUrl });
-        drive.target = '_blank'; drive.rel = 'noopener';
-        acts.append(drive);
-        tr.append(acts);
-        t2.append(tr);
-      });
-      sec.append(t2);
-    }
+    sec.append(el('h2', { textContent: 'Archived agents' }));
+    sec.append(el('p', { className: 'muted', textContent: 'They stopped answering and no trigger reaches them. Their chats are still readable and their Drive folders are untouched.' }));
+    const t2 = el('table', { className: 'list' });
+    const h2 = el('tr', {});
+    ['Name', '', ''].forEach((h) => h2.append(el('th', { textContent: h })));
+    t2.append(h2);
+    gone.forEach((a) => {
+      const tr = el('tr', { className: 'gone' });
+      tr.append(el('td', {}, el('strong', { textContent: a.name })));
+      tr.append(el('td', { className: 'muted', textContent: 'archived' }));
+      const acts = el('td', { className: 'acts' });
+      const drive = el('a', { className: 'btn', textContent: 'Drive', href: a.driveUrl });
+      drive.target = '_blank'; drive.rel = 'noopener';
+      acts.append(drive);
+      tr.append(acts);
+      t2.append(tr);
+    });
+    sec.append(t2);
     $('agents').append(sec);
   }
-  // Conferir a autorização custa uma chamada por filho, então roda junto do desenho da lista, não em laço.
   function loadChildren() {
-    quiet('listChildren').then(showChildren).catch(() => {}); // lista de agentes não cai por causa de um filho
+    quiet('archivedAgents').then(showArchived).catch(() => {}); // a lista de agentes não cai por causa disto
   }
 
   // ----- Balão do gráfico: o valor por modelo sem precisar abrir a tabela -----

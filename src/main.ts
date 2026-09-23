@@ -1617,6 +1617,27 @@ export function setAgentCapability(folderId: string, cap: string, on: boolean) {
 }
 
 /**
+ * Os agentes ARQUIVADOS, para a tela.
+ *
+ * Eles somem da lista de agentes ao serem arquivados, e sumir da tela é diferente de deixar de
+ * existir: as conversas continuam legíveis e a pasta continua no Drive. Esconder isso faria o dono
+ * achar que arquivar apagou o agente — e arquivar não apaga nada.
+ *
+ * Herdou o lugar do `listChildren`, que saiu com os projetos filhos e a sucessão. O que ele mostrava
+ * de vivo era justamente esta lista.
+ */
+export function archivedAgents() {
+  assertOwner();
+  const props = PropertiesService.getScriptProperties();
+  return {
+    archived: store
+      .listAgents()
+      .filter((a) => parseStatus(props.getProperty(`STATUS:${a.folderId}`)) === 'archived')
+      .map((a) => ({ name: a.name, folderId: a.folderId, driveUrl: `https://drive.google.com/drive/folders/${a.folderId}` })),
+  };
+}
+
+/**
  * Os projetos filhos e o estado REAL de autorização de cada um.
  *
  * A P24 mediu no dev v96 que um filho criado, escrito e implantado pela API **não executa** até o dono

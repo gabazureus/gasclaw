@@ -189,8 +189,8 @@ script_url() { # $1 id da implantacao · $2 exec|dev
 }
 exec_url() { script_url "$1" exec; }
 dev_url()  { script_url "$1" dev; }
-# GASCLAW_ENGINE_URL: fala com OUTRO motor do dono (o sucessor coroado, que é quem responde depois da
-# coroa). Só leitura, poc e trace fazem sentido ali; o segredo da CLI é registrado nele na primeira vez.
+# GASCLAW_ENGINE_URL: fala com OUTRO motor do dono (o de prod a partir do PC do dev, por exemplo).
+# Só leitura, poc e trace fazem sentido ali; o segredo da CLI é registrado nele na primeira vez.
 # O token do Google vai no primeiro salto: a URL só pode ser um web app do Apps Script (revisão F9).
 # (validada no início do script, antes de qualquer comando: um `die` aqui dentro morreria só no subshell de `$(url)`).
 url() { if [ -n "${GASCLAW_ENGINE_URL:-}" ]; then printf '%s' "$GASCLAW_ENGINE_URL"; else exec_url "$(var "DEPLOY_ID_$UP")"; fi; }
@@ -277,7 +277,7 @@ remote_to() { # $1 URL base (…/exec ou …/dev) · $2 "acao&a=b" (já no forma
   [ -n "$t" ] || t=$(gcloud auth print-access-token 2>/dev/null) || return 1
   # Espelho do MUTATING de src/cli.ts. São duas listas porque o shell não lê o TS; se divergirem, a ação sai por
   # GET e o web app responde 405 — foi o que aconteceu com `tools`. Mexeu lá, mexe aqui.
-  case " eval poc enable disable drain step tools capability model battery interval budget succeed automate evaluate rebase sync inherit succession measure lineage " in
+  case " eval poc enable disable drain step tools capability model " in
     *" $action "*) # M1: ação com efeito → POST; parâmetros no corpo; token e segredo pelo stdin, nunca em argv nem na URL
       # `return 1`, nunca `die`: quem chama guarda com `|| true` e `die` faz `exit`, que `|| true` NAO captura.
       # Com o `2>&1` do chamador engolindo a mensagem, o ./gasclaw up morria mudo aqui e pulava health,
@@ -604,10 +604,7 @@ cmd_up() {
   deploy
   ensure_cli_secret # ADR-022 (a): logo depois do deploy, antes de qualquer outra chamada ao web app
   authorize
-  # Um motor que entregou o agente a um sucessor coroado RECUSA o enable (fica parado). Dizer isso aqui
-  # evita o health abaixo parecer defeito: parado, neste caso, e o estado certo.
-  local en; en=$(remote enable 2>/dev/null || true)
-  case "$en" in *'crowned successor'*) warn "this engine stays paused: it handed the agent to its crowned successor (take it back in the panel if you mean to)" ;; esac
+  remote enable >/dev/null 2>&1 || true
   health
   # Uma leitura so, usada para as duas conferencias.
   local limits
@@ -817,108 +814,6 @@ cmd_model() { # o modelo do agente: ./gasclaw model <id do OpenRouter|--folder> 
 console.log(`model: ${r.override ?? r.fromFolder} (${r.override ? "set here" : "from the agent folder"})`)})'
 }
 
-cmd_swarm() { # a corrida do enxame (F6): ./gasclaw swarm <battery|interval|budget|run|measure|status>
-  local sub="${1:-}"; shift || true
-  local folder="${SWARM_FOLDER:-}"
-  case "$sub" in
-    capability) # ./gasclaw swarm capability <nome> on|off  — mesma autoridade do painel, provada pelo segredo
-      [ -n "${2:-}" ] || die "usage: ./gasclaw swarm capability <name> on|off"
-      remote "capability&cap=$1&on=$([ "$2" = on ] && echo 1 || echo 0)${folder:+&folder=$folder}" | swarm_print ;;
-    battery) # ./gasclaw swarm battery <arquivo.json>  — declara o que é "melhor" (portão H5)
-      [ -f "${1:-}" ] || die "usage: ./gasclaw swarm battery <file.json>"
-      # A bateria tem aspas, virgulas e quebras de linha: vai codificada, senao quebra a query do POST.
-      local enc; enc=$(node -e 'process.stdout.write(encodeURIComponent(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")))))' "$1")
-      remote "battery&set=$enc${folder:+&folder=$folder}" | swarm_print ;;
-    interval) # ./gasclaw swarm interval <minutos>  — o piso de 60 min e do nucleo, nao daqui
-      [ -n "${1:-}" ] || die "usage: ./gasclaw swarm interval <minutes>"
-      remote "interval&ms=$(( $1 * 60000 ))${folder:+&folder=$folder}" | swarm_print ;;
-    budget) # ./gasclaw swarm budget <codegen> <family> <horas> | ./gasclaw swarm budget end
-      if [ "${1:-}" = end ]; then remote "budget&end=1" | swarm_print; else
-        [ -n "${3:-}" ] || die "usage: ./gasclaw swarm budget <codegenUsd> <familyUsd> <hours> | end"
-        remote "budget&codegen=$1&family=$2&hours=$3" | swarm_print; fi ;;
-    run) # ./gasclaw swarm run "<objetivo>"  — GASTA OPUS e implanta um projeto filho
-      [ -n "${1:-}" ] || die "usage: ./gasclaw swarm run \"<goal>\" [scope,scope]"
-      # SWARM_TOKENS baixa o teto de tokens desta geracao (nunca sobe: o maximo vem do crivo). Serve para
-      # caber no credito da chave, ou no tamanho esperado do filho. Vazio = o maximo que o crivo aceita.
-      remote "automate&goal=$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$1")&scopes=${2:-https://www.googleapis.com/auth/userinfo.email}${SWARM_TOKENS:+&tokens=$SWARM_TOKENS}${folder:+&folder=$folder}" | swarm_print ;;
-    measure) # ./gasclaw swarm measure <scriptId>  — so mede filho JA autorizado pelo dono
-      [ -n "${1:-}" ] || die "usage: ./gasclaw swarm measure <scriptId>"
-      remote "measure&child=$1" | swarm_print ;;
-    status) remote "lineage" | swarm_lineage ;;
-    *) die "usage: ./gasclaw swarm capability <name> on|off | battery <file> | interval <min> | budget <c> <f> <h>|end | run \"<goal>\" | measure <id> | status" ;;
-  esac
-}
-
-# Uma RECUSA do servidor ("succeed is off for this agent") e um RESULTADO, nao um crash: ela diz o que
-# o dono precisa fazer. Sair com 1 fazia o `set -e` matar o script com "stopped unexpectedly near line
-# 808" — escondendo a frase util atras de um erro que parece defeito nosso. Mesma regra do runner de POC.
-swarm_print() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{let r;try{r=JSON.parse(s)}catch{console.error(s.slice(0,200));return}
-if(r.ok===false||r.measured===false){console.log("refused: "+(r.error||r.reason));return}
-console.log(JSON.stringify(r,null,1))})'; }
-
-swarm_lineage() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);
-const cg=(r.entries||[]).filter((e)=>e.kind==="codegen");
-if(!cg.length){console.log("no generation yet");process.exit(0)}
-console.log("gen  child                 passes   rate    delta     cost");
-for(const e of cg){const rate=Number.isInteger(e.passes)&&e.k?(e.passes/e.k):null;
-console.log(`${String(e.generation).padEnd(4)} ${e.child.slice(0,20).padEnd(21)} ${rate===null?"not measured":String(e.passes)+"/"+e.k} ${rate===null?"      ":("   "+(rate*100).toFixed(0)+"%").padStart(7)} ${e.delta===null||e.delta===undefined?"     -":(e.delta>=0?"+":"")+e.delta.toFixed(3)}  US$ ${(e.costUsd||0).toFixed(2)}`)}
-const t=cg.reduce((a,e)=>a+(e.costUsd||0),0);console.log(`\ntotal spent: US$ ${t.toFixed(2)}`)})'; }
-
-cmd_succession() { # o AGENTE sucessor (F7, ADR-043): ./gasclaw succession write|status|evaluate|pull
-  # A COROA NAO ESTA AQUI, de proposito: e o portao humano, e o dono coroa no painel, lendo o diff, a
-  # explicacao e a nota. A CLI escreve, avalia e traz o patch de volta — nunca troca o motor sozinha.
-  local sub="${1:-}"; shift || true
-  local folder="${SWARM_FOLDER:-}"
-  case "$sub" in
-    write) # ./gasclaw succession write ["<objetivo>"]  — GASTA OPUS: le o proprio codigo e implanta o sucessor parado
-      remote "succeed&goal=$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]||""))' "${1:-}")${folder:+&folder=$folder}" | swarm_print ;;
-    status) remote "succession" | succession_print ;;
-    evaluate) # ./gasclaw succession evaluate <scriptId>  — o pai julga o sucessor de fora (ele precisa estar PARADO)
-      [ -n "${1:-}" ] || die "usage: ./gasclaw succession evaluate <scriptId>"
-      remote "evaluate&child=$1" | swarm_print ;;
-    health) # ./gasclaw succession health <scriptId>  — as 10 checagens da coroa, lidas agora
-      [ -n "${1:-}" ] || die "usage: ./gasclaw succession health <scriptId>"
-      remote "successorhealth&child=$1" | succession_health ;;
-    rebase) # ./gasclaw succession rebase <scriptId>  — o MESMO patch sobre o codigo atual deste motor, sem Opus
-      [ -n "${1:-}" ] || die "usage: ./gasclaw succession rebase <scriptId>"
-      remote "rebase&child=$1" | swarm_print ;;
-    inherit) # ./gasclaw succession inherit <scriptId>  — entrega ao sucessor as permissoes, capacidades e agenda do pai (nunca segredo)
-      [ -n "${1:-}" ] || die "usage: ./gasclaw succession inherit <scriptId>"
-      remote "inherit&child=$1" | swarm_print ;;
-    sync) # ./gasclaw succession sync <scriptId>  — leva o build ATUAL deste motor ao sucessor COROADO (sem Opus, sem patch)
-      [ -n "${1:-}" ] || die "usage: ./gasclaw succession sync <scriptId>"
-      remote "sync&child=$1" | swarm_print ;;
-    pull) # ./gasclaw succession pull [scriptId]  — traz o patch COROADO para succession/, para ser portado ao src
-      remote "succession" | succession_pull "${1:-}" ;;
-    *) die "usage: ./gasclaw succession write [\"<goal>\"] | status | health <scriptId> | evaluate <scriptId> | rebase <scriptId> | sync <scriptId> | inherit <scriptId> | pull [scriptId]" ;;
-  esac
-}
-
-succession_health() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);
-if(!r.checks||!r.checks.length){console.log("refused: "+(r.error||r.reason));return}
-for(const c of r.checks)console.log(`${c.ok?"PASS":"FAIL"}  ${c.label} — ${c.detail}`);
-console.log(r.crowned?(r.ok?"\nhealthy: the crowned successor answers for the agent with the code of this engine; its own panel holds the settings":"\nattention: the crowned successor needs work (see the failed checks)"):(r.ok?"\nready: crown it in the panel (Projects)":"\nnot ready: the crown stays locked until every check passes"))})'; }
-
-succession_print() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);
-if(r.ok===false){console.log("refused: "+(r.error||r.reason));return}
-const l=r.successors||[];if(!l.length){console.log("no successor written yet");return}
-for(const x of l){const e=x.evaluation;
-console.log(`${x.scriptId}  ${new Date(x.at).toISOString().slice(0,16)}  ${x.changes.length} change(s)  US$ ${x.costUsd.toFixed(2)}  ${x.crownedAt?"CROWNED":e?`successor ${e.successorPasses}/${e.k} vs ${e.incumbentPasses}/${e.k}`:"not evaluated"}`);
-console.log("  "+x.explanation);if(!x.crownedAt&&x.verdict)console.log("  crown: "+(x.verdict.ok?`allowed (${x.verdict.standing}) — crown it in the panel`:x.verdict.reason));console.log("  "+x.url)}})'; }
-
-# O PATCH VOLTA PARA O REPOSITORIO (decisao 3 da ADR-043). O Opus fez patch no BUNDLE; sem portar para
-# src/*.ts, o proximo `up` apagaria a melhoria. O arquivo em succession/ e o registro do que foi coroado
-# e o roteiro do porte — que e feito com teste e mutacao, pelo fluxo normal, nunca aplicando o patch as cegas.
-succession_pull() { node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);const fs=require("fs");
-if(r.ok===false){console.log("refused: "+(r.error||r.reason));return}
-const want=process.argv[1];const l=(r.successors||[]).filter((x)=>want?x.scriptId===want:x.crownedAt);
-if(!l.length){console.log(want?"no successor with that id":"no crowned successor yet: crown one in the panel first");return}
-const x=l.sort((a,b)=>b.at-a.at)[0];fs.mkdirSync("succession",{recursive:true});
-const f=`succession/${new Date(x.at).toISOString().slice(0,10)}-${x.scriptId.slice(0,12)}.json`;
-fs.writeFileSync(f,JSON.stringify({scriptId:x.scriptId,url:x.url,model:x.model,at:new Date(x.at).toISOString(),crownedAt:x.crownedAt?new Date(x.crownedAt).toISOString():null,costUsd:x.costUsd,explanation:x.explanation,evaluation:x.evaluation,changes:x.changes},null,2)+"\n");
-console.log(`wrote ${f}`);console.log(x.explanation);for(const c of x.changes){console.log(`\n--- ${c.file}\n- ${c.find.split("\n").join("\n- ")}\n+ ${c.replace.split("\n").join("\n+ ")}`)}
-console.log("\nnext: port each change to src/*.ts with a failing test first — the bundle is generated, and the next up would erase it")})' "$1"; }
-
 cmd_rollback() {
   lock_dev # B4
   local d cur
@@ -1116,11 +1011,9 @@ gasclaw — agents that live in your Google Drive, running on Google Apps Script
   ./gasclaw eval <scenario|--all> [--model id]  run evals/*.md on dev (exit != 0 on failure)
   ./gasclaw tools all|none|<a,b,c> [folder]     turn the agent's tools on and off
   ./gasclaw model [<openrouter id>] [folder]    set the agent's model (no id: back to the one in AGENTS.md)
-  ./gasclaw swarm <sub>       the swarm run: battery, interval, budget, run, measure, status
-  ./gasclaw succession <sub>  the successor agent: write, status, health, evaluate, rebase, sync, inherit, pull (you crown it in the panel)
   ./gasclaw onboard           guided setup menu (the default before anything is published)
 
-  GASCLAW_ENGINE_URL=<web app URL> ./gasclaw poc|trace ...  talk to your crowned successor instead (up, down, restart, ship and rollback refuse)
+  GASCLAW_ENGINE_URL=<web app URL> ./gasclaw poc|trace ...  talk to another engine of yours (up, down, restart, ship and rollback refuse)
 TXT
 }
 
@@ -1135,7 +1028,7 @@ case "${GASCLAW_ENGINE_URL:-}" in *[$'\n\r']*) die "GASCLAW_ENGINE_URL must be a
 [ -z "${GASCLAW_ENGINE_URL:-}" ] || printf '%s' "$GASCLAW_ENGINE_URL" | grep -qE '^https://script\.google\.com/(a/macros/[A-Za-z0-9.-]+|macros)/s/[A-Za-z0-9_-]+/(exec|dev)$' \
   || die "GASCLAW_ENGINE_URL must be an Apps Script web app URL (https://script.google.com/.../macros/s/<id>/exec)"
 case "$CMD" in
-  up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs|eval|limits|usage|tools|model|swarm|succession|onboard) "cmd_$CMD" "$@" ;;
+  up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs|eval|limits|usage|tools|model|onboard) "cmd_$CMD" "$@" ;;
   # Sem argumento: quem ainda nao publicou nao quer uma lista de 15 comandos, quer saber por onde comecar.
   # Quem ja publicou ja sabe, e a lista e mais util. O `help` explicito sempre mostra a lista.
   '') if [ -n "$(var "DEPLOY_ID_$UP")" ]; then cmd_help; else cmd_onboard; fi ;;
