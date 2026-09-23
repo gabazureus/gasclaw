@@ -1,5 +1,8 @@
 # Spec — F8: o filho herda TUDO do pai, e o Chat segue o motor coroado
 
+> ⛔ **NÃO VALE na branch `consertos-e-reach-out`.** O que esta spec desenhou saiu dessa branch com o
+> auto-aprimoramento. Ela fica como registro do que foi construído e medido na `evolucao-f5-f8`.
+
 - **Data:** 2026-09-21 · **Status:** aceita pelo dono (decisões A–K no PROGRESS), nada implementado além do item A
 - **Base:** [ADR-043](../adr/043-sucessor-e-um-agente.md) · spec anterior: [sucessão por patch](2026-09-21-sucessao-por-patch.md)
 - **Pedido do dono (verbatim):** *"o filho deve ter as memórias do pai, tudo do pai, retomar o chat a partir do pai"*

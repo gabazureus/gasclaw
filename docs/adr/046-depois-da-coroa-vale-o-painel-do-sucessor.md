@@ -1,5 +1,10 @@
 # ADR-046 — Depois da coroa, vale o painel do sucessor
 
+> ⛔ **NÃO VALE na branch `consertos-e-reach-out`.** A área desta decisão saiu inteira dessa branch
+> (auto-aprimoramento: sonho, sucessão, criar agentes e geração de código). A ADR fica como
+> **registro do que foi decidido e por quê** — apagá-la esconderia o raciocínio, e a decisão
+> continua valendo na `evolucao-f5-f8`, onde a área existe.
+
 - **Data:** 2026-09-21
 - **Status:** aceita (decisão do dono, opção A da F9)
 - **Relaciona:** [ADR-043](043-sucessor-e-um-agente.md), [ADR-044](044-chat-segue-o-coroado.md), [P36](../../poc/p36-capacidades-no-real/README.md), [spec F9](../specs/2026-09-21-fechamento-da-branch.md)

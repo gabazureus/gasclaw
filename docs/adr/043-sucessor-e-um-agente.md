@@ -1,5 +1,10 @@
 # ADR-043 — O sucessor é um AGENTE, e o Opus melhora o código dele por patch
 
+> ⛔ **NÃO VALE na branch `consertos-e-reach-out`.** A área desta decisão saiu inteira dessa branch
+> (auto-aprimoramento: sonho, sucessão, criar agentes e geração de código). A ADR fica como
+> **registro do que foi decidido e por quê** — apagá-la esconderia o raciocínio, e a decisão
+> continua valendo na `evolucao-f5-f8`, onde a área existe.
+
 - **Data:** 2026-09-21
 - **Status:** aceita · **Fases 0, 1 e 2 implementadas** (dev v152) — P32, P33 e P34 passaram antes da fiação; a primeira geração real espera o teto do dia
 - **Supera em parte:** [ADR-041](041-sucessor-como-codigo.md) (o que o sucessor é)

@@ -1,5 +1,7 @@
 # ADR-039 — Sub-agente é declaração, não código
 
+> ⚠️ **VALE EM PARTE na branch `consertos-e-reach-out`.** A persona (o sub-agente como DECLARAÇÃO) continua inteira. O que saiu é a moldura de geração de código em volta dela — a alternativa "sub-agente como JavaScript" deixou de ter contra o que ser comparada.
+
 Status: **Aceito** · 2026-09-19
 Relaciona: [ADR-002](002-agente-pasta-sem-codigo.md) (a decisão fundadora),
 [ADR-021](021-acesso-aprovado-no-painel.md) (a pasta sugere, o painel aprova),

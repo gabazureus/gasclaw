@@ -1,5 +1,7 @@
 # ADR-015 — Escopos OAuth mínimos: gatilho de 1 min, ferramentas do Workspace e painel de limites
 
+> ⚠️ **VALE EM PARTE na branch `consertos-e-reach-out`.** A decisão sobre escopos mínimos vale. As passagens que dizem "toda capacidade futura nasce num FILHO, com consentimento próprio" descrevem um caminho que não existe nesta branch — aqui uma capacidade nova nasceria no próprio motor.
+
 - **Status:** Aceito · 2026-09-15 · decisão do usuário: uma única reautorização no dev · prod ainda não recebeu
 
 ## Contexto

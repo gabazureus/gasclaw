@@ -1,5 +1,8 @@
 # Spec — Enxame: 15 filhos em 24 h, gerados e implantados pelo Opus 5
 
+> ⛔ **NÃO VALE na branch `consertos-e-reach-out`.** O que esta spec desenhou saiu dessa branch com o
+> auto-aprimoramento. Ela fica como registro do que foi construído e medido na `evolucao-f5-f8`.
+
 - **Data:** 2026-09-20 · **Status:** P29 medida (C1, C2, C4 verdes; C3 aguarda o dono) · D1 e D3 consertados
 - **Pedido do usuário (verbatim):** *"criando filhos, eu dou a permissão, vamos criar até 15
   agentes e rodar por 24 horas, para ele ir replicando e evoluindo o código com Opus 5 e

@@ -242,126 +242,70 @@ Two rules worth knowing before you share an agent:
 
 ## Capabilities: what an agent may become
 
-Every agent starts as a plain assistant. Four capabilities can be turned on **one at a time**, in the
-panel — turning one on never turns another on, and each says what it costs before you click.
+Every agent starts as a plain assistant. One capability can be turned on in the panel — and it says
+what it costs before you click.
+
+> **This branch carries the fixes and Reach out, not self-improvement.** Three capabilities that
+> existed on the previous branch — **Dream** (the agent rewriting its own prompt), **Succeed**
+> (writing its own successor) and **Create agents** — were removed here, together with code
+> generation and the swarm. What is below is what the engine actually does.
 
 ```
             ┌─────────────────────────────────────────────────────────┐
             │  EMERGENCY SWITCH  ·  one key, whole environment         │
             │  off  ⇒ every capability below is frozen.                │
-            │         Agents keep answering. Nothing evolves,          │
-            │         creates, succeeds or wakes up on its own.        │
+            │         Agents keep answering. Nothing wakes up          │
+            │         on its own.                                      │
             └───────────────────────────┬─────────────────────────────┘
                                         │ every gate reads it
-     ┌──────────────┬───────────────────┼───────────────────┬──────────────────┐
-     │              │                   │                   │                  │
- ┌───▼────┐   ┌─────▼──────┐     ┌──────▼──────┐     ┌──────▼───────┐          │
- │ Dream  │   │ Reach out  │     │   Succeed   │     │Create agents │          │
- ├────────┤   ├────────────┤     ├─────────────┤     ├──────────────┤          │
- │rewrites│   │wakes up on │     │patches THIS │     │creates NEW   │          │
- │its own │   │a schedule  │     │agent with   │     │agents, each  │          │
- │prompt, │   │YOU set and │     │Opus 5; you  │     │with its own  │          │
- │scores  │   │answers in  │     │crown it     │     │Drive folder  │          │
- │against │   │your Chat DM│     │once it is   │     │and NOTHING   │          │
- │a judge │   │            │     │judged from  │     │else          │          │
- │set     │   │            │     │outside      │     │              │          │
- └────────┘   └────────────┘     └─────────────┘     └──────┬───────┘          │
-                                                            │                  │
-                                            only ONE agent in the environment  │
-                                            can have this one — it multiplies  │
-                                                            └──────────────────┘
+                                  ┌─────▼──────┐
+                                  │ Reach out  │
+                                  ├────────────┤
+                                  │wakes up on │
+                                  │a schedule  │
+                                  │YOU set and │
+                                  │answers in  │
+                                  │your Chat DM│
+                                  └────────────┘
 ```
 
-**Nothing here acts without a gate.** Every autonomous loop asks the same question — *may this agent
-act?* — and that question reads three things at once: the capability you approved, the agent's
-lifecycle (archived agents do nothing), and the emergency switch.
+**Nothing here acts without a gate.** The autonomous loop asks — *may this agent act?* — and that
+question reads three things at once: the capability you approved, the agent's lifecycle (archived
+agents do nothing), and the emergency switch. The switch and the gate are the same ones the removed
+capabilities used; they did not go away with them.
 
-## Three shapes, and only one of them is a project of its own
+## Two shapes, and neither is a project of its own
 
 "Sub-agent" meant two incompatible things, and the ambiguity hid the only difference that matters:
 **whether an API key is involved** ([ADR-042](docs/adr/042-automation-subagente-persona.md)). The
-answer is now the same for all three — **no key ever leaves this project**:
+answer is the same for both — **no key ever leaves this project**:
 
 ```
-  PERSONA                     AUTOMATION                  NEW AGENT
-  ───────                     ──────────                  ─────────
-  a role in a markdown file   an Apps Script project      a Drive folder with a
-  inside THIS agent's folder  of its own — code only      prompt of its own
-  runs as a step inside       no folder, no prompt,       talks, reasons, holds a
-  the parent's turn           no model                    conversation
-  ┌──────────────────────┐    ┌──────────────────────┐    ┌──────────────────────┐
-  │ folder?      no      │    │ folder?      no      │    │ folder?      YES     │
-  │ API key?     NO      │    │ API key?     NO      │    │ API key?     NO*     │
-  │ own scopes?  no      │    │ own scopes?  YES     │    │ own scopes?  no      │
-  │ own project? no      │    │ own project? YES     │    │ own project? no      │
-  └──────────────────────┘    └──────────────────────┘    └──────────────────────┘
-  the cheap way to            the cheap way to grow       * it runs in THIS engine
-  recombine what you have     in capability                 and reads the key here.
-                                                            Nothing is handed over.
+  PERSONA                     AGENT
+  ───────                     ─────
+  a role in a markdown file   a Drive folder with a
+  inside THIS agent's folder  prompt of its own
+  runs as a step inside       talks, reasons, holds a
+  the parent's turn           conversation
+  ┌──────────────────────┐    ┌──────────────────────┐
+  │ folder?      no      │    │ folder?      YES     │
+  │ API key?     NO      │    │ API key?     NO*     │
+  │ own scopes?  no      │    │ own scopes?  no      │
+  │ own project? no      │    │ own project? no      │
+  └──────────────────────┘    └──────────────────────┘
+  the cheap way to            * it runs in THIS engine
+  recombine what you have       and reads the key here.
+                                Nothing is handed over.
 ```
 
-**A child project never gets the key, and there is no code left that could hand it one.** The engine
-used to have a route that delivered the OpenRouter key to a child that proved its identity with a
-per-child secret. We measured it (P27): a child cannot reach that route at all — Google refuses a
-token issued for another project, with a 401, before the call gets anywhere near our code. So the
-owner chose option 4 of [ADR-040](docs/adr/040-isolamento-e-privilegio.md), and the route, the
-secret, the delivery window and the re-arm button were **removed**, not switched off.
-
-What that costs is worth stating plainly: **a child cannot have both its own OAuth scopes and a
-model.** An automation gets narrower scopes than the engine and cannot reason; a new agent reasons
-but runs under the engine's scopes. Nothing that existed was lost — both shapes already worked — but
-that fourth quadrant is closed, and it stays closed while the key stays here.
+**A third shape existed on the previous branch — the AUTOMATION: an Apps Script project of its own,
+code only, written by a model.** It went out with code generation, and so did the `agent.create`
+tool that let an agent make another agent. **You** still create agents, in the panel; what no longer
+exists is the engine creating them for you.
 
 A persona gets the **intersection** of what it declares, what the tool registry knows, and what you
 approved for the parent — and then only the tools that need no approval, because from inside a tool
 there is no path to an approval card. It never reaches your Gmail, Drive or Calendar.
-
-## The swarm: automations that climb a ladder
-
-An agent with the `succeed` capability can also ask Opus 5 to write the **code** of an **automation** — a
-small project of its own, a tool, not a successor — deploy it, and then measure it. Each generation starts from the best measured child, not from the prompt —
-that is what makes it a ladder instead of fifteen coin flips.
-
-```
-   YOU                    THE ENGINE                       A CHILD
-   ───                    ──────────                       ───────
-   declare what           asks Opus 5 for the code   ──►   its own Apps Script project
-   "better" means         of the next generation           code only: no model, no key
-   (the battery)                  │                              │
-        │                         │ creates + deploys            │
-        │                         ▼                              │
-        │                   Google refuses to run it ──────►  YOU CLICK ONCE
-        │                                                        │
-        └──────── the engine sends each case's INPUT ────────────►│
-                  and compares the OUTPUT itself                  │
-                  (the child never sees the expected value)  ◄────┘
-                                  │
-                                  ▼
-                       passes/k · delta · wins?
-                   the next generation starts from the best
-```
-
-**The child never grades itself.** It receives an input and answers with its output; the engine holds
-the expected value and does the comparison. A child that returns `{"ok":true,"score":100}` scores
-zero — those fields are not read. That is deliberate: a self-graded loop does not improve, and this
-project cites the measurement that shows it.
-
-**Six commands, and nothing is hardcoded** — every id comes from your own environment:
-
-```bash
-./gasclaw swarm capability succeed on          # approve the capability (one agent at a time)
-./gasclaw swarm battery my-battery.json        # declare what "better" means
-./gasclaw swarm interval 60                    # minutes between generations (floor: 60)
-./gasclaw swarm budget 15 18 24                # US$ caps for 24h — they expire on their own
-./gasclaw swarm run "<what the child must do>"  # one generation (this spends Opus)
-./gasclaw swarm status                          # the ladder
-```
-
-The battery is a JSON list of `{ "input": "...", "expected": "..." }`. It lives in a Script Property,
-never in the Drive folder: the folder is shareable, and whoever can edit it would be writing the exam.
-
-`./gasclaw swarm budget end` returns the caps early; otherwise they return by themselves when the
-window closes. `./gasclaw down` stops every autonomous capability, including the one that spends.
 
 ## Agents talking to each other
 
@@ -417,103 +361,14 @@ run nobody is supervising.
                           │
                           ├─ tool is on YOUR auto-approve list ───► runs
                           │   (gmail.send, calendar.update/create,
-                          │    memory.remove, sheets.append,
-                          │    agent.create, agent.message are
-                          │    NEVER on it, whatever you put there)
+                          │    memory.remove, sheets.append and
+                          │    agent.message are NEVER on it,
+                          │    whatever you put there)
                           │
                           └─ anything else ───────────────────────► FAILS, and says why
                                                                      never waits for a click
                                                                      nobody is there to give
 ```
-
-## Succession: the successor is THIS agent, improved
-
-The successor is always an **agent**, never an automation ([ADR-043](docs/adr/043-sucessor-e-um-agente.md)).
-Opus 5 receives this engine's own code, returns a **small patch** with an explanation of what it
-improves, and the patched engine is deployed as another Apps Script project — same scopes, born paused.
-
-```
-  THIS AGENT (the parent)                                THE SUCCESSOR AGENT
-  ───────────────────────                                ───────────────────
-  reads its own code  ── GET projects/{self}/content
-  (+ your goal, if you give one)
-          │
-          ▼
-  Opus 5 → { what it improves and why,
-             [ { file, exact excerpt, replacement } ] }       ← a patch, never a rewrite
-          │
-          ▼
-  every excerpt must match EXACTLY ONCE · the manifest
-  and the seed are untouchable · GUARD SCREEN: does the
-  patch weaken assertOwner, NEVER_AUTO, mayWriteProject,
-  mayAct, isEnabled or the tool registry?  ── yes ──►  refused, nothing deployed
-          │ no                                           (the cost is still counted)
-          ▼
-  deploys it, BORN PAUSED  ────────────────────────────►  same 17 scopes, no key inside
-                                                          you: link GCP, authorize, paste the key
-                                                          (once — the next generations reuse it)
-          │
-          ▼
-  EVALUATES IT FROM OUTSIDE: sends each scenario  ◄────  it only answers; it never grades itself
-  and judges both answers with ITS OWN judge
-          │
-          ▼
-  you read: the change + the explanation + the score ──► CROWN (panel) ──► this engine pauses,
-                                                                           the successor answers
-          │
-          ▼
-  ./gasclaw succession pull ──► the change is ported to src/*.ts with a test — or the next `up` erases it
-```
-
-**The crown unlocks only when the successor's health passes every check**, read at that moment in
-**Projects → Successor agents → Health**: you authorized it · its seed names this engine as the parent ·
-it is paused · the OpenRouter key is pasted · no scope awaits consent · it reads the agent folder in Drive
-(this is where an unlinked GCP project shows up) · its 1-minute worker exists or can be created · its code
-is this engine's **current** code plus the patch (if this engine changed since, **Rebase** re-applies the
-same patch without calling the model) · it was judged from outside **after** its last write, not worse · it hands over the parent's permissions and capabilities (once crowned, it only has to report them: its own panel counts, and the check shows how they differ from this engine).
-
-**The crown is your click, in the panel, and nowhere else.** The panel shows every scope checked and
-locked (the successor is this agent, not a different one), the diff change by change, the explanation,
-and the score from the outside evaluation. A successor that scores **worse** than this engine cannot
-be crowned; a tie can, and the panel says it is a tie — the scenarios do not exercise every defect a
-code patch fixes, and the decision is yours.
-
-**After the crown, point Google Chat at the successor once** ([ADR-044](docs/adr/044-chat-segue-o-coroado.md)):
-Chat sends messages to the Deployment ID set in the Cloud console, and that is the parent's. In the dev
-project: *Chat API → Configuration → Connection settings → Apps Script project → Deployment ID* = the
-successor's (the `AKfy…` part of its `/s/…/exec` URL). An automatic relay was measured and rejected: 17.4 s
-round trip against a 10 s bar (P35).
-
-**The next generation reuses the paused successor**, same project and address: the GCP link, the
-authorization and the key belong to the project, not to the code. A successor that is **running**
-never receives new code — you pause it first.
-
-```bash
-./gasclaw succession write "<optional goal>"   # Opus reads the code and deploys the successor (spends Opus)
-./gasclaw succession evaluate <scriptId>        # this engine judges it from outside (pause it first)
-./gasclaw succession status                     # change, explanation, score, crown
-./gasclaw succession health <scriptId>          # the 10 checks that unlock the crown (and keep a crowned one honest)
-./gasclaw succession rebase <scriptId>          # the same patch on this engine's current code (no model call)
-./gasclaw succession inherit <scriptId>         # hand the agent's settings over (never the key or secrets)
-./gasclaw succession sync <scriptId>            # this engine's current build to the CROWNED successor (no model call)
-./gasclaw succession pull                       # brings the crowned patch to succession/ to port to src
-```
-
-After the crown, the engine that answers is the successor. `succession inherit` copies **this** engine's
-settings over the successor's. After the crown, the successor's panel is the one that counts: the 10th health
-check shows how it differs from this engine, without failing, so read it before you inherit. To read or measure the crowned successor itself, point
-the CLI at it (`up`, `down`, `restart`, `ship` and `rollback` refuse while it is set; every other command goes to that engine, so keep it to reads, `trace` and `poc`):
-
-```bash
-export GASCLAW_ENGINE_URL="https://script.google.com/a/macros/<domain>/s/<successor Deployment ID>/exec"
-./gasclaw poc p36 status && ./gasclaw trace
-unset GASCLAW_ENGINE_URL
-```
-
-The panel also shows the **lineage** (generation, parent, child, delta, cost) and, while a dream cycle is
-running, a **DreamBoard** with the line-by-line diff of what each candidate changed and a scoreboard
-that states *what the number can actually see* — a candidate only wins with a statistical advantage,
-never an arithmetic one.
 
 ## CLI reference
 
@@ -537,8 +392,6 @@ Every command accepts `--prod`; without it, the command targets dev.
 | `./gasclaw usage [YYYY-MM-DD]` | Cost per model: last 7 days, or the 24 hours of one day |
 | `./gasclaw eval <scenario\|--all> [--model id]` | Runs `evals/*.md` in dev (non-zero exit on failure) |
 | `./gasclaw tools all\|none\|<a,b,c> [folder]` | Turns the agent's tools on and off |
-| `./gasclaw swarm <sub>` | The swarm run: battery, interval, budget, run, measure, status |
-| `./gasclaw succession <sub>` | The successor agent: write, status, health, evaluate, rebase, sync, inherit, pull (you crown it in the panel) |
 | `./gasclaw onboard` | Guided setup menu (the default before anything is published) |
 
 ## Roadmap

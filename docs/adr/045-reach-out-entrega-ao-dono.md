@@ -1,5 +1,7 @@
 # ADR-045 — O Reach out entrega a resposta na conversa direta do dono
 
+> ⚠️ **VALE EM PARTE na branch `consertos-e-reach-out`.** A decisão vale por inteiro. As referências ao "motor coroado" e à ADR-044 são históricas: aqui só existe um motor.
+
 - **Data:** 2026-09-21
 - **Status:** aceita
 - **Relaciona:** [ADR-027](027-gatilho-worker.md), [ADR-044](044-chat-segue-o-coroado.md), [P22](../../poc/p22-proatividade/README.md), [P36](../../poc/p36-capacidades-no-real/README.md)

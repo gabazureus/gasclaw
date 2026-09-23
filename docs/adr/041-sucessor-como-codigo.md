@@ -1,5 +1,10 @@
 # ADR-041 — O sucessor é código novo, não um prompt melhor
 
+> ⛔ **NÃO VALE na branch `consertos-e-reach-out`.** A área desta decisão saiu inteira dessa branch
+> (auto-aprimoramento: sonho, sucessão, criar agentes e geração de código). A ADR fica como
+> **registro do que foi decidido e por quê** — apagá-la esconderia o raciocínio, e a decisão
+> continua valendo na `evolucao-f5-f8`, onde a área existe.
+
 - **Data:** 2026-09-20
 - **Status:** aceita
 - **Contexto:** [ADR-038](038-capacidades-e-linhagem.md) (capacidades e linhagem),

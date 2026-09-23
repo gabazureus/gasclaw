@@ -10,6 +10,28 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 
 ## [Não publicado]
 
+> ✂️ **Esta branch é os consertos e o Reach out — sem o auto-aprimoramento.** `consertos-e-reach-out`
+> leva tudo o que foi arrumado e medido, MENOS o que o agente usava para se reescrever ou se
+> multiplicar. **Saíram:** o **Sonho** (o agente reescrevendo o próprio prompt e se medindo contra o
+> juiz), a **Sucessão** inteira (escrever o sucessor, avaliá-lo de fora, o health, a coroa, o rebase,
+> o sync, a herança), **Criar agentes** (a capacidade, o singleton do criador e a ferramenta
+> `agent.create`) e a **geração de código** (automações, projetos filhos, o enxame, o teto familiar e
+> a linhagem). Com eles saíram os comandos `./gasclaw swarm` e `./gasclaw succession`, cinco seções do
+> painel e `CODEGEN_MODEL`.
+>
+> **O que você continua tendo**, tudo provado por teste: o **Reach out** inteiro — a agenda, o
+> despertar no gatilho de 1 min, a auto-aprovação, a falha honesta e a **entrega na sua conversa
+> direta do Google Chat** ([ADR-045](docs/adr/045-reach-out-entrega-ao-dono.md)); a **espera do Chat
+> com cartões** ([ADR-047](docs/adr/047-espera-do-chat-tem-cartao.md)) com a fila de perguntas, o
+> prazo de 7 dias e o `waiting` no trace; o **run durável** mais robusto; **um modelo só e o juiz de
+> fora** ([ADR-048](docs/adr/048-um-modelo-so-e-o-juiz-de-fora.md)) com `./gasclaw model <id>`; os
+> **evals**; o **painel**; e o sistema de **capacidades** — agora com uma só (`initiative`), mas com
+> a chave de emergência e o portão do agente arquivado inteiros.
+>
+> **O que você perde de concreto:** o agente não se reescreve, não escreve sucessor, não cria outros
+> agentes e não gera código. As decisões dessas áreas continuam registradas nas ADRs e nas POCs,
+> marcadas como não valendo aqui — o histórico não foi apagado.
+
 > 🧠 **Um modelo só para conversar, e um juiz de fora ([ADR-048](docs/adr/048-um-modelo-so-e-o-juiz-de-fora.md)):**
 > o agente passa a usar **gpt-6-luna** (metade do preço do anterior), quem escreve o sucessor usa
 > **gpt-5.6-sol** (2,5× mais barato que o Opus) e quem **julga** é de outra família

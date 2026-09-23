@@ -1,5 +1,7 @@
 # ADR-047 — Toda espera do Chat recebe o cartão, e a marca fica fora da pasta
 
+> ⚠️ **VALE EM PARTE na branch `consertos-e-reach-out`.** A decisão vale por inteiro. Só a **decisão 16** (a janela `DREAMSTEP_MS` do tique de sonho) saiu junto com o sonho.
+
 - **Data:** 2026-09-22
 - **Status:** aceita (conserto do incidente de 2026-09-21; tarefa alinhada com o dono)
 - **Emenda:** [ADR-028](028-aprovacao-duravel.md) — item 7 (`ask` no ticket de 10 min) e a consequência

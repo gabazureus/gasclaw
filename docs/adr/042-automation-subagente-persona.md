@@ -1,5 +1,7 @@
 # ADR-042 — Três coisas diferentes chamadas "sub-agente"
 
+> ⚠️ **VALE EM PARTE na branch `consertos-e-reach-out`.** Das três formas, duas ficam: **persona** e **agente**. A **automação** (projeto filho só com código) saiu com a geração de código.
+
 - **Data:** 2026-09-20
 - **Status:** aceita
 - **Contexto:** [ADR-039](039-subagente-e-declaracao.md), [ADR-040](040-isolamento-e-privilegio.md),

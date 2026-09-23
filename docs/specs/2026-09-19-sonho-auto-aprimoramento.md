@@ -1,5 +1,8 @@
 # Spec: F5 — o sonho (auto-aprimoramento por evolução de prompt)
 
+> ⛔ **NÃO VALE na branch `consertos-e-reach-out`.** O que esta spec desenhou saiu dessa branch com o
+> auto-aprimoramento. Ela fica como registro do que foi construído e medido na `evolucao-f5-f8`.
+
 > Escrita depois do gate de alinhamento de 2026-09-19 (D1–D6 em
 > `conductor/tracks/f5-sonho/decisions.md`). Vocabulário em
 > `UBIQUITOUS_LANGUAGE.md`, seção *Auto-aprimoramento — o sonho*.

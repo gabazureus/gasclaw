@@ -1,5 +1,8 @@
 # Spec — F9: fechar a branch `evolucao-f5-f8` com as quatro capacidades funcionando
 
+> ⛔ **NÃO VALE na branch `consertos-e-reach-out`.** O que esta spec desenhou saiu dessa branch com o
+> auto-aprimoramento. Ela fica como registro do que foi construído e medido na `evolucao-f5-f8`.
+
 - **Data:** 2026-09-21
 - **Branch:** `evolucao-f5-f8`, que guarda F5–F8. A `main` voltou ao `e4b8006`, antes das capacidades.
 - **Pedido do dono:** "verifique se todas estão funcionando, rode tudo que precisar, auditorias,

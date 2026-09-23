@@ -243,126 +243,73 @@ Duas regras que valem saber antes de compartilhar um agente:
 
 ## Capacidades: no que um agente pode se tornar
 
-Todo agente começa como assistente comum. Quatro capacidades podem ser ligadas **uma a uma**, no
-painel — ligar uma nunca liga outra, e cada uma diz o que custa antes do clique.
+Todo agente começa como assistente comum. Uma capacidade pode ser ligada no painel — e ela diz o que
+custa antes do clique.
+
+> **Esta branch leva os consertos e o Reach out, não o auto-aprimoramento.** Três capacidades que
+> existiam na branch anterior — **Sonho** (o agente reescrevendo o próprio prompt), **Suceder**
+> (escrever o próprio sucessor) e **Criar agentes** — foram removidas aqui, junto com a geração de
+> código e o enxame. O que está abaixo é o que o motor de fato faz.
 
 ```
             ┌─────────────────────────────────────────────────────────┐
             │  CHAVE DE EMERGÊNCIA  ·  uma só, ambiente inteiro        │
             │  desligada  ⇒  toda capacidade abaixo congela.           │
-            │               Os agentes seguem atendendo. Nada evolui,  │
-            │               cria, sucede ou acorda sozinho.            │
+            │               Os agentes seguem atendendo. Nada acorda   │
+            │               sozinho.                                   │
             └───────────────────────────┬─────────────────────────────┘
                                         │ todo portão a consulta
-     ┌──────────────┬───────────────────┼───────────────────┬──────────────────┐
-     │              │                   │                   │                  │
- ┌───▼────┐   ┌─────▼──────┐     ┌──────▼──────┐     ┌──────▼───────┐          │
- │ Sonho  │   │  Procurar  │     │   Suceder   │     │ Criar agentes│          │
- ├────────┤   ├────────────┤     ├─────────────┤     ├──────────────┤          │
- │reescre-│   │acorda numa │     │melhora ESTE │     │cria agentes  │          │
- │ve o    │   │agenda que  │     │agente com o │     │NOVOS, cada   │          │
- │próprio │   │VOCÊ marca e│     │Opus 5; você │     │um com pasta  │          │
- │prompt e│   │responde na │     │o coroa      │     │própria e     │          │
- │se mede │   │sua conversa│     │depois de    │     │NADA além     │          │
- │contra o│   │direta do   │     │julgado de   │     │disso         │          │
- │juiz    │   │Chat        │     │fora         │     │              │          │
- └────────┘   └────────────┘     └─────────────┘     └──────┬───────┘          │
-                                                            │                  │
-                                             só UM agente do ambiente pode ter │
-                                             esta — ela multiplica             │
-                                                            └──────────────────┘
+                                  ┌─────▼──────┐
+                                  │  Procurar  │
+                                  ├────────────┤
+                                  │acorda numa │
+                                  │agenda que  │
+                                  │VOCÊ marca e│
+                                  │responde na │
+                                  │sua conversa│
+                                  │direta do   │
+                                  │Chat        │
+                                  └────────────┘
 ```
 
-**Nada aqui age sem um portão.** Todo laço autônomo faz a mesma pergunta — *este agente pode agir?* —
-e essa pergunta lê três coisas de uma vez: a capacidade que você aprovou, o ciclo de vida do agente
-(arquivado não faz nada) e a chave de emergência.
+**Nada aqui age sem um portão.** O laço autônomo faz a mesma pergunta — *este agente pode agir?* —
+e ela lê três coisas de uma vez: a capacidade que você aprovou, o ciclo de vida do agente (arquivado
+não faz nada) e a chave de emergência. A chave e o portão são os mesmos que as capacidades removidas
+usavam; eles não saíram junto.
 
-## Três formas, e só uma delas é um projeto próprio
+## Duas formas, e nenhuma delas é um projeto próprio
 
 "Sub-agente" significava duas coisas incompatíveis, e a ambiguidade escondia a única diferença que
 importa: **se há chave de API em jogo** ([ADR-042](docs/adr/042-automation-subagente-persona.md)).
-A resposta agora é a mesma para as três — **nenhuma chave sai deste projeto**:
+A resposta é a mesma para as duas — **nenhuma chave sai deste projeto**:
 
 ```
-  PERSONA                     AUTOMAÇÃO                   AGENTE NOVO
-  ───────                     ─────────                   ───────────
-  um papel num markdown       um projeto Apps Script      uma pasta no Drive com
-  DENTRO da pasta deste       próprio — só código         prompt próprio
+  PERSONA                     AGENTE
+  ───────                     ──────
+  um papel num markdown       uma pasta no Drive com
+  DENTRO da pasta deste       prompt próprio
   agente
-  roda como um passo          sem pasta, sem prompt,      conversa, raciocina,
-  dentro do turno do pai      sem modelo                  mantém um diálogo
-  ┌──────────────────────┐    ┌──────────────────────┐    ┌──────────────────────┐
-  │ pasta?       não     │    │ pasta?       não     │    │ pasta?       SIM     │
-  │ chave?       NÃO     │    │ chave?       NÃO     │    │ chave?       NÃO*    │
-  │ escopos?     não     │    │ escopos?     SIM     │    │ escopos?     não     │
-  │ projeto?     não     │    │ projeto?     SIM     │    │ projeto?     não     │
-  └──────────────────────┘    └──────────────────────┘    └──────────────────────┘
-  o jeito barato de           o jeito barato de           * ele roda NESTE motor e
-  recombinar o que já há      crescer em capacidade         lê a chave aqui dentro.
-                                                            Nada é entregue.
+  roda como um passo          conversa, raciocina,
+  dentro do turno do pai      mantém um diálogo
+  ┌──────────────────────┐    ┌──────────────────────┐
+  │ pasta?       não     │    │ pasta?       SIM     │
+  │ chave?       NÃO     │    │ chave?       NÃO*    │
+  │ escopos?     não     │    │ escopos?     não     │
+  │ projeto?     não     │    │ projeto?     não     │
+  └──────────────────────┘    └──────────────────────┘
+  o jeito barato de           * ele roda NESTE motor e
+  recombinar o que já há        lê a chave aqui dentro.
+                                Nada é entregue.
 ```
 
-**Projeto filho nunca recebe a chave, e não sobrou código capaz de entregar uma.** O motor tinha uma
-rota que entregava a chave do OpenRouter ao filho que provasse identidade com um segredo próprio.
-Medimos (P27): o filho não alcança essa rota — o Google recusa, com 401, um token emitido para outro
-projeto, antes de a chamada chegar perto do nosso código. O dono escolheu então a opção 4 da
-[ADR-040](docs/adr/040-isolamento-e-privilegio.md), e a rota, o segredo, a janela de entrega e o
-botão de rearme foram **removidos**, não desligados.
-
-O que isso custa merece ser dito sem rodeio: **um filho não pode ter escopos OAuth próprios E um
-modelo ao mesmo tempo.** A automação tem escopos mais estreitos que o motor e não raciocina; o agente
-novo raciocina, mas roda com os escopos do motor. Nada do que existia se perdeu — as duas formas já
-funcionavam —, mas esse quarto quadrante está fechado, e segue fechado enquanto a chave ficar aqui.
+**Havia uma terceira forma na branch anterior — a AUTOMAÇÃO: um projeto Apps Script próprio, só
+código, escrito por um modelo.** Ela saiu com a geração de código, e junto saiu a ferramenta
+`agent.create`, que deixava um agente criar outro. **Você** continua criando agentes no painel; o
+que deixou de existir é o motor criando por você.
 
 A persona recebe a **interseção** do que declara, do que o registro de ferramentas conhece e do que
 você aprovou para o pai — e, dentro disso, só as ferramentas que não pedem aprovação, porque de
 dentro de uma ferramenta não existe caminho até o card. Ela nunca alcança seu Gmail, Drive ou Agenda.
-
-## O enxame: automações que sobem uma escada
-
-Um agente com a capacidade `succeed` também pode pedir ao Opus 5 o **código** de uma **automação** — um
-projeto pequeno e próprio, uma ferramenta, não um sucessor —, implantá-la e depois medi-la. Cada geração parte do melhor filho medido, não do prompt — é isso que faz disto uma
-escada em vez de quinze sorteios.
-
-```
-   VOCÊ                   O MOTOR                          UM FILHO
-   ────                   ───────                          ────────
-   declara o que é        pede ao Opus 5 o código    ──►   projeto Apps Script próprio
-   "melhor"               da próxima geração               só código: sem modelo, sem chave
-   (a bateria)                    │                              │
-        │                         │ cria + implanta              │
-        │                         ▼                              │
-        │                 o Google recusa executar ──────►  VOCÊ CLICA UMA VEZ
-        │                                                        │
-        └──────── o motor manda a ENTRADA de cada caso ──────────►│
-                  e compara a SAÍDA ele mesmo                     │
-                  (o filho nunca vê o esperado)              ◄────┘
-                                  │
-                                  ▼
-                       acertos/k · delta · venceu?
-                   a próxima geração parte do melhor
-```
-
-**O filho não se dá nota.** Ele recebe uma entrada e responde com a saída dele; quem guarda o
-esperado e compara é o motor. Um filho que devolve `{"ok":true,"score":100}` tira zero — esses campos
-não são lidos. É deliberado: laço auto-avaliado não melhora, e este projeto cita a medição que mostra isso.
-
-**Seis comandos, e nada fixo no código** — todo id vem do ambiente de quem roda:
-
-```bash
-./gasclaw swarm capability succeed on          # aprova a capacidade (um agente por vez)
-./gasclaw swarm battery minha-bateria.json     # declara o que é "melhor"
-./gasclaw swarm interval 60                    # minutos entre gerações (piso: 60)
-./gasclaw swarm budget 15 18 24                # tetos em US$ por 24h — eles expiram sozinhos
-./gasclaw swarm run "<o que o filho deve fazer>" # uma geração (isto GASTA Opus)
-./gasclaw swarm status                           # a escada
-```
-
-A bateria é uma lista JSON de `{ "input": "...", "expected": "..." }`. Ela mora numa Script Property,
-nunca na pasta do Drive: a pasta é compartilhável, e quem pudesse editá-la estaria escrevendo a prova.
-
-`./gasclaw swarm budget end` devolve os tetos antes da hora; se não, eles voltam sozinhos quando a
-janela fecha. `./gasclaw down` para toda capacidade autônoma, inclusive a que gasta.
 
 ## Agentes conversando entre si
 
@@ -419,102 +366,14 @@ está supervisionando.
                           ├─ ferramenta na SUA lista de auto-  ───► roda
                           │   aprovação (gmail.send,
                           │   calendar.update/create,
-                          │   memory.remove, sheets.append,
-                          │   agent.create, agent.message
-                          │   NUNCA entram, ponha o que puser)
+                          │   memory.remove, sheets.append e
+                          │   agent.message NUNCA entram,
+                          │   ponha o que puser)
                           │
                           └─ qualquer outra ──────────────────────► FALHA, e diz por quê
                                                                      nunca espera um clique que
                                                                      ninguém está lá para dar
 ```
-
-## Sucessão: o sucessor é ESTE agente, melhorado
-
-O sucessor é sempre um **agente**, nunca uma automação ([ADR-043](docs/adr/043-sucessor-e-um-agente.md)).
-O Opus 5 recebe o código deste motor, devolve um **patch pequeno** com a explicação do que melhora, e
-o motor com o patch é implantado como outro projeto Apps Script — mesmos escopos, nascendo parado.
-
-```
-  ESTE AGENTE (o pai)                                    O AGENTE SUCESSOR
-  ───────────────────                                    ─────────────────
-  lê o próprio código  ── GET projects/{eu}/content
-  (+ o seu objetivo, se você der um)
-          │
-          ▼
-  Opus 5 → { o que melhora e por quê,
-             [ { arquivo, trecho exato, substituto } ] }      ← patch, nunca reescrita
-          │
-          ▼
-  cada trecho casa EXATAMENTE UMA vez · o manifesto e a
-  semente são intocáveis · CRIVO DE GUARDAS: o patch
-  enfraquece assertOwner, NEVER_AUTO, mayWriteProject,
-  mayAct, isEnabled ou o registro de tools?  ── sim ──►  recusa, nada é implantado
-          │ não                                          (o custo conta mesmo assim)
-          ▼
-  implanta, NASCENDO PARADO  ──────────────────────────►  os mesmos 17 escopos, nenhuma chave dentro
-                                                          você: vincula o GCP, autoriza, cola a chave
-                                                          (uma vez — as próximas gerações reusam)
-          │
-          ▼
-  AVALIA DE FORA: manda cada cenário  ◄────────────────  ele só responde; nunca se julga
-  e julga as duas respostas com o juiz DELE
-          │
-          ▼
-  você lê: a troca + a explicação + a nota ──► COROA (painel) ──► este motor para,
-                                                                  o sucessor responde
-          │
-          ▼
-  ./gasclaw succession pull ──► a mudança é portada para src/*.ts com teste — senão o próximo `up` a apaga
-```
-
-**A coroa só destrava quando o health do sucessor passa em todas as checagens**, lidas naquele momento
-em **Projects → Successor agents → Health**: você o autorizou · a semente dele aponta este motor como pai ·
-ele está parado · a chave do OpenRouter está colada · nenhum escopo espera consentimento · ele lê a pasta
-do agente no Drive (é aqui que um GCP não vinculado aparece) · o worker de 1 minuto existe ou pode ser
-criado · o código dele é o código **atual** deste motor mais o patch (se este motor mudou, **Rebase**
-reaplica o mesmo patch sem chamar o modelo) · ele foi julgado de fora **depois** da última escrita, sem nota pior · ele recebe as permissões e capacidades do pai (depois da coroa, só precisa devolvê-las: vale o painel dele, e a checagem mostra a diferença para este motor).
-
-**A coroa é o seu clique, no painel, e em nenhum outro lugar.** O painel mostra todos os escopos
-marcados e travados (o sucessor é este agente, não um diferente dele), o diff troca por troca, a
-explicação e a nota da avaliação de fora. Um sucessor com nota **pior** que a deste motor não pode ser
-coroado; um empate pode, e o painel diz que é empate — os cenários não exercitam todo defeito que um
-patch de código conserta, e a decisão é sua.
-
-**Depois da coroa, reaponte o Google Chat para o sucessor uma vez** ([ADR-044](docs/adr/044-chat-segue-o-coroado.md)):
-o Chat manda as mensagens para o Deployment ID do console do Cloud, e esse é o do pai. No projeto do dev:
-*Chat API → Configuration → Connection settings → Apps Script project → Deployment ID* = o do sucessor (o
-trecho `AKfy…` da URL `/s/…/exec` dele). Um repasse automático foi medido e reprovado: 17,4 s de ida e
-volta contra um limiar de 10 s (P35).
-
-**A próxima geração reusa o sucessor parado**, mesmo projeto e endereço: o vínculo do GCP, a
-autorização e a chave são do projeto, não do código. Um sucessor **ligado** nunca recebe código novo —
-você o pausa antes.
-
-```bash
-./gasclaw succession write "<objetivo opcional>"  # o Opus lê o código e implanta o sucessor (gasta Opus)
-./gasclaw succession evaluate <scriptId>           # este motor o julga de fora (pause-o antes)
-./gasclaw succession status                        # troca, explicação, nota, coroa
-./gasclaw succession health <scriptId>             # as 10 checagens que destravam a coroa (e mantêm o coroado honesto)
-./gasclaw succession rebase <scriptId>             # o mesmo patch sobre o código atual deste motor (sem modelo)
-./gasclaw succession inherit <scriptId>            # entrega as configurações do agente (nunca a chave nem segredo)
-./gasclaw succession sync <scriptId>               # o build atual deste motor no sucessor COROADO (sem modelo)
-./gasclaw succession pull                          # traz o patch coroado para succession/ para portar ao src
-```
-
-Depois da coroa, quem responde é o sucessor. O `succession inherit` copia as configurações **deste** motor
-por cima das do sucessor. Depois da coroa, vale o painel do sucessor: a 10ª checagem mostra a diferença
-para este motor, sem reprovar — leia antes de herdar. Para ler ou medir o próprio sucessor coroado, aponte o CLI para ele (só leitura,
-`trace` e `poc`; `up`, `down`, `restart`, `ship` e `rollback` recusam enquanto ela estiver definida, e todo outro comando vai para aquele motor):
-
-```bash
-export GASCLAW_ENGINE_URL="https://script.google.com/a/macros/<domínio>/s/<Deployment ID do sucessor>/exec"
-./gasclaw poc p36 status && ./gasclaw trace
-unset GASCLAW_ENGINE_URL
-```
-
-O painel mostra também a **linhagem** (geração, pai, filho, delta, custo) e, enquanto um ciclo de sonho
-roda, um **DreamBoard** com o diff linha a linha do que cada candidato mudou e um placar que declara *o
-que o número consegue enxergar* — um candidato só vence com vantagem estatística, nunca aritmética.
 
 ## Referência do CLI
 
@@ -538,8 +397,6 @@ Todos os comandos aceitam `--prod`; sem a flag, valem para dev.
 | `./gasclaw usage [AAAA-MM-DD]` | Custo por modelo: últimos 7 dias, ou as 24 horas de um dia |
 | `./gasclaw eval <cenário\|--all> [--model id]` | Roda `evals/*.md` no dev (sai com erro se falhar) |
 | `./gasclaw tools all\|none\|<a,b,c> [pasta]` | Liga e desliga as ferramentas do agente |
-| `./gasclaw swarm <sub>` | A corrida do enxame: battery, interval, budget, run, measure, status |
-| `./gasclaw succession <sub>` | O agente sucessor: write, status, health, evaluate, rebase, sync, inherit, pull (a coroa é no painel) |
 | `./gasclaw onboard` | Menu guiado de setup (o padrão antes de qualquer publicação) |
 
 ## Roadmap

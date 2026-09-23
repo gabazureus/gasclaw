@@ -1,7 +1,14 @@
 # PROGRESS — gasclaw
 
 > Onde o gasclaw está, item por item, e se já foi resolvido.
-> **Atualizado em:** 2026-09-22 · **2326 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
+>
+> ⚠️ **ESCOPO DESTA BRANCH (`consertos-e-reach-out`):** ela leva os consertos e o **Reach out**, e
+> **não** leva o auto-aprimoramento. As seções **F5** (sonho, linhagem, filhos), **F6** (enxame),
+> **F7** (sucessor por patch) e **F8** (herança e roteamento) descrevem áreas que **não existem
+> aqui** — ficam como registro do que foi construído e medido na `evolucao-f5-f8`, não como estado
+> deste código. O que vale nesta branch está em **F11**, no fim.
+>
+> **Atualizado em:** 2026-09-23 · **1632 testes** · `tsc` limpo · build limpo · dívida de idioma **149**
 > · **Auditoria:** seis ✅ eram falsos. Critério: *algum módulo importa isto, e o símbolo aparece em `dist/_motor.js`?*
 > · **P22 aprovada 4/4** · P24 **aprovada por inteiro** · P25 **reprovada** (sem combustível)
 > · **P27 medida e REPROVADA** (o filho executa, o motor recusa o token dele: 401 da plataforma)
@@ -14,7 +21,7 @@
 > **Fontes:** [spec](docs/specs/), [ADRs](docs/adr/README.md), [CHANGELOG](CHANGELOG.md),
 > [log da wiki](docs/wiki/log.md), [pesquisa do sinal fraco](docs/pesquisa/2026-09-19-o-sinal-fraco-do-sonho.md)
 
-## F5 — Agente que evolui (sonho, linhagem, filhos)
+## F5 — Agente que evolui (sonho, linhagem, filhos) · **não vale nesta branch**
 
 **Legenda:** ✅ pronto e verificado · 🔨 em andamento · 📐 desenhado, não construído
 · ⚠️ núcleo pronto, **sem fiação** · 🔒 fechado por decisão · ❌ reprovado na medição
@@ -275,6 +282,33 @@ Spec: [auditoria final e modelo único](docs/specs/2026-09-23-auditoria-final-e-
 **Custo medido, antes e depois:** 22/09 em `gpt-5.6-luna`, 21.579 tokens por US$ 0,0065 — **US$ 0,300 por
 milhão**. 23/09 em `gpt-6-luna`, 60.219 tokens por US$ 0,0099 — **US$ 0,164 por milhão**, uma queda de **45%**
 (a mistura entrada/saída explica a diferença para os preços de tabela).
+
+### F11 — a branch dos consertos e do Reach out (2026-09-23)
+
+Spec: [skills no lugar de gerar código](docs/specs/2026-09-23-skills-no-lugar-de-gerar-codigo.md)
+
+O que esta branch é: **tudo o que foi consertado e medido, menos o que o agente usava para se
+reescrever ou se multiplicar.** A remoção foi cirúrgica e em passos commitados, cada um com `tsc`
+rc=0 e suíte verde.
+
+| # | Item | Estado | Evidência |
+|---|---|---|---|
+| R1 | Sonho (ciclo, placar, tique, estado) | ✅ removido | `dream{,Board,Cycle,Run,Store,Tick}.ts` + testes; `withDreamLease` fora do `drainRuns` |
+| R2 | Sucessão (escrever, avaliar de fora, health, coroa, rebase, sync, herança, semente) | ✅ removido | `succession.ts`, `successor.ts`, `patch.ts`, `guards.ts`, `seed.ts` + ~11 arquivos de teste |
+| R3 | Geração de código, filhos e enxame | ✅ removido | `codegen.ts`, `children.ts`, `swarm.ts`, `fitness.ts`, `family.ts`, `budget.ts` |
+| R4 | Capacidades: sobra `initiative` | ✅ | `CAPABILITIES = ['initiative']`; `CREATOR`, `canSucceed`, linhagem e intervalo entre gerações fora do `agentCaps.ts` |
+| R5 | Tool `agent.create` fora do registro; `agent.message` e `persona` ficam | ✅ | catálogo de 26 → **25 ferramentas**, conferido pelo `readmeFerramentas.test.ts` contra os dois READMEs |
+| R6 | CLI: `swarm` e `succession` fora; `MUTATING` de 21 → 9 ações | ✅ | `cli.test.ts` prova que a lista do shell e a do TypeScript continuam iguais |
+| R7 | Painel: sonho, sucessor, automação, linhagem e projetos filhos fora | ✅ | a tabela de **arquivados** ficou, servida por `archivedAgents()` (código novo, com teste próprio) |
+| R8 | `CODEGEN_MODEL` fora; `DEFAULT_MODEL` e o juiz de fora ficam | ✅ | [ADR-048](docs/adr/048-um-modelo-so-e-o-juiz-de-fora.md) corrigida; `modeloUnico.test.ts` segue provando a independência do juiz |
+| K1 | **Reach out inteiro** (agenda, `tickProactive`, `SCHEDSEEN`, `LASTWAKE`, auto-aprovação, falha honesta, entrega na DM do dono) | ✅ mantido | `portoesAutonomos.test.ts`, `proativoCard.test.ts`, `chatDelivery.test.ts`, `schedule.test.ts` |
+| K2 | **Espera do Chat com cartões** (ADR-047): fila, requestId estável, `promptedAt`, prazo de 7 dias, `waiting` no trace | ✅ mantido | `chatEspera.test.ts` (50 KB), `resumeSemDecisao.test.ts` |
+| K3 | **Run durável robusto**: relógio na autoridade, `release`/`leaseOf`, atalho de vazio no reconcile, tique ocioso barato | ✅ mantido | `runAuthority.test.ts`, `drainLock.test.ts`, `tiqueOcioso.test.ts`, `reconcileBatch.test.ts` |
+| K4 | **Evals**: todos os cenários que não dependem de criar agente | ✅ mantido | **45 embutidos** no build (saiu `agent-criar-sem-capacidade`) |
+
+**Números finais:** `tsc` rc=0 · suíte **1632/1632** · build com **56 funções globais**. A queda de
+2365 para 1632 testes é a área removida saindo junto com as provas dela — nenhum teste foi apagado
+para ficar verde, e cada commit registra qual garantia morreu com qual teste.
 
 ### Incidente de 2026-09-21 — o pedido do Chat que ficou no "thinking…" ([ADR-047](docs/adr/047-espera-do-chat-tem-cartao.md))
 

@@ -1,5 +1,10 @@
 # ADR-038 — agente com a capacidade `create`: o singleton que cria agentes, e a linhagem
 
+> ⛔ **NÃO VALE na branch `consertos-e-reach-out`.** A área desta decisão saiu inteira dessa branch
+> (auto-aprimoramento: sonho, sucessão, criar agentes e geração de código). A ADR fica como
+> **registro do que foi decidido e por quê** — apagá-la esconderia o raciocínio, e a decisão
+> continua valendo na `evolucao-f5-f8`, onde a área existe.
+
 > **Redesenho de 2026-09-19 (decisão do usuário): o nome de cargo saiu.** Não existe papel
 > especial. Existe **uma** coisa — o agente, que é uma pasta com markdown — e o que distingue
 > um do outro é o **conjunto de capacidades ligadas**, exibido como **etiqueta no painel**.

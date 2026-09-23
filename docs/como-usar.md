@@ -144,10 +144,13 @@ Todos aceitam `--prod`; sem a flag, valem para dev.
 | `./gasclaw open` | abrir a tela gasclaw |
 | `./gasclaw ship` | publicar em prod na mesma URL (depois de um `up --prod`) |
 
-**Capacidades e sucessão (F5–F9).** Dream, Reach out, Succeed e Create agents se ligam um a um no painel, por
-agente; a resposta do Reach out chega na sua conversa direta com o app no Chat. O sucessor (este agente
-melhorado por patch), a coroa, o `succession health` (10 checagens) e o `GASCLAW_ENGINE_URL` estão explicados
-no [README](../README_PT_BR.md), nas seções **"Capacidades: no que um agente pode se tornar"** e **"Sucessão: o sucessor é ESTE agente, melhorado"**.
+**Capacidades.** Nesta branch (`consertos-e-reach-out`) existe **uma**: o **Reach out**, que se liga no
+painel por agente. Com ela, o agente acorda na agenda que você marcar e a resposta chega na sua **conversa
+direta com o app no Chat**. O `GASCLAW_ENGINE_URL` (falar com outro motor seu, só leitura) e a capacidade
+estão explicados no [README](../README_PT_BR.md), na seção **"Capacidades: no que um agente pode se tornar"**.
+
+As capacidades **Dream**, **Succeed** e **Create agents**, e os comandos `./gasclaw swarm` e
+`./gasclaw succession`, **não existem aqui** — eles ficaram na branch `evolucao-f5-f8`.
 
 ## 7. Problemas comuns
 

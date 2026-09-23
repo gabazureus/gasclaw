@@ -1,5 +1,8 @@
 # Spec — F7: sucessão por patch (o sucessor é um agente)
 
+> ⛔ **NÃO VALE na branch `consertos-e-reach-out`.** O que esta spec desenhou saiu dessa branch com o
+> auto-aprimoramento. Ela fica como registro do que foi construído e medido na `evolucao-f5-f8`.
+
 - **Data:** 2026-09-21 · **Status:** Fases 0–2 **implementadas e publicadas no dev (v152)**; Fase 3 com a CLI pronta e sem patch coroado ainda
 - **Decisão:** [ADR-043](../adr/043-sucessor-e-um-agente.md)
 - **Pedido do dono (verbatim):** *"o sucessor deve ser SEMPRE um agente e nunca uma automação. Ao

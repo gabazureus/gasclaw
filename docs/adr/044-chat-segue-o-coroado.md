@@ -1,5 +1,10 @@
 # ADR-044 — Depois da coroa, o Chat é reapontado à mão (a P35 reprovou o repasse)
 
+> ⛔ **NÃO VALE na branch `consertos-e-reach-out`.** A área desta decisão saiu inteira dessa branch
+> (auto-aprimoramento: sonho, sucessão, criar agentes e geração de código). A ADR fica como
+> **registro do que foi decidido e por quê** — apagá-la esconderia o raciocínio, e a decisão
+> continua valendo na `evolucao-f5-f8`, onde a área existe.
+
 - **Data:** 2026-09-21
 - **Status:** aceita
 - **Relaciona:** [ADR-043](043-sucessor-e-um-agente.md), [ADR-006](006-chat-canal-principal.md), [P35](../../poc/p35-chat-segue-o-coroado/README.md)

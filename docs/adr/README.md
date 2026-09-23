@@ -18,7 +18,7 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [012](012-agentes-em-docs-e-sheets.md) | Agentes em Google Docs e Sheets nativos (POC P6) | Aceito |
 | [013](013-autoria-editor-e-drive.md) | Autoria em ambas as superfícies: editor do Apps Script + pasta do Drive (POC P10) | Aceito (medição); levar a prod aguarda o gate |
 | [014](014-trace-do-agente.md) | Trace do agente dentro do gasclaw (POC P14) | Aceito no dev; a gravação síncrona foi substituída pelo lote do ADR-020 |
-| [015](015-escopos-oauth.md) | Escopos OAuth mínimos: gatilho de 1 min, ferramentas do Workspace e painel de limites | Aceito; reautorização no dev feita, prod ainda não recebeu |
+| [015](015-escopos-oauth.md) | Escopos OAuth mínimos: gatilho de 1 min, ferramentas do Workspace e painel de limites | Aceito · vale em parte na `consertos-e-reach-out` (capacidade nova não nasce num filho aqui) |
 | [016](016-painel-de-limites.md) | Painel de limites na tela, no terminal e na planilha (POC P15) | Aceito no código; medição pendente |
 | [017](017-motor-de-tools-evals-e-aprovacao.md) | Motor de tools, evals e aprovação (E0, E1, E5) | Aceito no dev (E0, E1; E5 verde na v19) |
 | [018](018-modelos-e-custo.md) | Modelos por agente e custo por modelo (POC P16) | Aceito no código; medição pendente |
@@ -41,14 +41,14 @@ Formato: contexto → decisão → consequências. Nunca editar um ADR aceito; c
 | [035](035-procedencia-dos-papeis-no-painel.md) | A procedência de cada papel aparece no painel | Aceito |
 | [036](036-chegar-ao-agente-sem-digitar-o-link.md) | Chegar ao agente sem digitar o link (e por que não encurtamos) | Aceito; QR code no terminal em aberto |
 | [037](037-custo-por-mes-e-valor-por-modelo.md) | Custo por mês (dia dobrado em mês, 24 meses) e o valor de cada modelo no gráfico | Aceito |
-| [038](038-capacidades-e-linhagem.md) | Capacidades por etiqueta, ciclo de vida e linhagem verificável | Aceito |
-| [039](039-subagente-e-declaracao.md) | Sub-agente, persona e os campos que o agente declara | Aceito |
-| [040](040-isolamento-e-privilegio.md) | Isolamento entre projetos e os quatro controles contra escalonamento | Aceito |
-| [041](041-sucessor-como-codigo.md) | O sucessor é código novo (Opus 5), não um prompt melhor | Aceito; superado em parte pela [043](043-sucessor-e-um-agente.md) |
-| [042](042-automation-subagente-persona.md) | Três coisas diferentes chamadas "sub-agente": persona, automation e sub-agente | Aceito |
-| [043](043-sucessor-e-um-agente.md) | O sucessor é um AGENTE, e o Opus melhora o código dele por patch | aceita; implementada e coroada no dev |
-| [044](044-chat-segue-o-coroado.md) | Depois da coroa, o Chat é reapontado à mão (a P35 reprovou o repasse: 17,4 s > 10 s) | aceita |
+| [038](038-capacidades-e-linhagem.md) | Capacidades por etiqueta, ciclo de vida e linhagem verificável | Aceito · **não vale na branch `consertos-e-reach-out`** |
+| [039](039-subagente-e-declaracao.md) | Sub-agente, persona e os campos que o agente declara | Aceito · vale em parte na `consertos-e-reach-out` (a persona fica) |
+| [040](040-isolamento-e-privilegio.md) | Isolamento entre projetos e os quatro controles contra escalonamento | Aceito · vale em parte na `consertos-e-reach-out` (os controles do repasse ficam; os projetos filhos não existem) |
+| [041](041-sucessor-como-codigo.md) | O sucessor é código novo (Opus 5), não um prompt melhor | Aceito; superado em parte pela [043](043-sucessor-e-um-agente.md) · **não vale na `consertos-e-reach-out`** |
+| [042](042-automation-subagente-persona.md) | Três coisas diferentes chamadas "sub-agente": persona, automation e sub-agente | Aceito · vale em parte na `consertos-e-reach-out` (persona e agente ficam; a automação não) |
+| [043](043-sucessor-e-um-agente.md) | O sucessor é um AGENTE, e o Opus melhora o código dele por patch | aceita; implementada e coroada no dev · **não vale na `consertos-e-reach-out`** |
+| [044](044-chat-segue-o-coroado.md) | Depois da coroa, o Chat é reapontado à mão (a P35 reprovou o repasse: 17,4 s > 10 s) | aceita · **não vale na `consertos-e-reach-out`** |
 | [045](045-reach-out-entrega-ao-dono.md) | O Reach out entrega a resposta na conversa direta DO DONO (a P36 mediu que ela morria no trace) | aceita |
-| [046](046-depois-da-coroa-vale-o-painel-do-sucessor.md) | Depois da coroa vale o painel do sucessor: a 10ª checagem só exige que ele devolva as permissões (opção A do dono) | aceita |
-| [047](047-espera-do-chat-tem-cartao.md) | Toda espera do Chat recebe o cartão: fila até sair, marca fora da pasta, varredura das antigas, `ask` durável | aceita |
-| [048](048-um-modelo-so-e-o-juiz-de-fora.md) | Um modelo para conversar (gpt-6-luna), outro para escrever o sucessor (gpt-5.6-sol), um terceiro para julgar (deepseek-v4-flash) | aceita |
+| [046](046-depois-da-coroa-vale-o-painel-do-sucessor.md) | Depois da coroa vale o painel do sucessor: a 10ª checagem só exige que ele devolva as permissões (opção A do dono) | aceita · **não vale na `consertos-e-reach-out`** |
+| [047](047-espera-do-chat-tem-cartao.md) | Toda espera do Chat recebe o cartão: fila até sair, marca fora da pasta, varredura das antigas, `ask` durável | aceita · vale em parte na `consertos-e-reach-out` (a decisão 16, do tique de sonho, saiu) |
+| [048](048-um-modelo-so-e-o-juiz-de-fora.md) | Um modelo para conversar (gpt-6-luna), outro para escrever o sucessor (gpt-5.6-sol), um terceiro para julgar (deepseek-v4-flash) | aceita · vale em parte na `consertos-e-reach-out` (`CODEGEN_MODEL` saiu com o codegen) |

@@ -1,5 +1,7 @@
 # ADR-040 — Isolamento e escalonamento de privilégio nos caminhos novos
 
+> ⚠️ **VALE EM PARTE na branch `consertos-e-reach-out`.** Os controles do repasse entre agentes (`agent.message`) continuam valendo por inteiro. Tudo que trata de **projetos filhos**, autenticação pai→filho e entrega de chave ao filho descreve um caminho que não existe nesta branch.
+
 Status: **Aceito** · 2026-09-19
 Relaciona: [ADR-002](002-agente-pasta-sem-codigo.md) (a decisão fundadora),
 [ADR-021](021-acesso-aprovado-no-painel.md) (o painel decide),

@@ -1,5 +1,10 @@
 # Spec — F10: auditoria final de tudo, evals de todas as ferramentas, e um modelo só (`gpt-6-luna`)
 
+> ⚠️ **VALE EM PARTE na branch `consertos-e-reach-out`.** A auditoria, os evals e o **modelo do
+> agente + juiz de fora** valem. O que descreve sucessor coroado, `succession health`, `agent.create`
+> e o modelo que escrevia o sucessor (`CODEGEN_MODEL`) não existe aqui — ver
+> [ADR-048](../adr/048-um-modelo-so-e-o-juiz-de-fora.md), corrigida.
+
 - **Data:** 2026-09-23
 - **Branch:** `evolucao-f5-f8` (a `main`, em `e4b8006`, não se toca)
 - **Estado:** dev pai v179, sucessor coroado `1w3Pju8v…` v27, health 10/10, suíte 2328 verde
