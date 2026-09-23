@@ -20,12 +20,23 @@ O que o gasclaw faz em cada etapa, contado por quem usa.
 > retomada mandava o prompt do agente duas vezes ao modelo (custava o dobro das instruções), só quem
 > fez o pedido pode aprovar, responder ou mandar continuar, e um clique duplo conta uma vez.
 >
+> 👆 **O clique no cartão responde na hora, e o trabalho vem logo atrás:** o Google Chat dá 30 segundos
+> para um clique, e o turno do agente não cabe nesse tempo — o cartão mostrava "gasclaw não processou sua
+> solicitação" em vermelho enquanto o trabalho era feito duas vezes em paralelo. Agora o clique só registra
+> a sua decisão e confirma no ato; a continuação chega como mensagem nova em até um minuto. Custa a mesma
+> chamada ao modelo de antes. E clicar num cartão de um pedido **já encerrado** passa a dizer que ele
+> acabou, em vez de acusar o arquivo de ter sido mexido por fora.
+>
 > ⏳ **Pergunta parada tem prazo, e duas perguntas ao mesmo tempo têm ordem:** com duas perguntas abertas na
 > mesma conversa, o que você digita responde a **mais antiga** — e o cartão da outra diz isso. Uma espera sem
 > resposta por **7 dias** é encerrada com um aviso honesto no Chat, em vez de ficar pendurada para sempre.
 >
 > 💤 **Sonho:** a estimativa de quanto dura um passo passa a ser **de cada agente**, lembra só as 5 últimas
 > medidas e tem teto — antes uma medida ruim, de um agente só, podia parar o sonho de todos para sempre.
+>
+> ⚡ **O minuto parado ficou mais barato:** quando não há nada a registrar, o gatilho de 1 minuto deixa de
+> tomar a trava global (a mesma que o seu "Aprovar" precisa pegar) e de reler as configurações inteiras só
+> para descobrir que não há nada. Você sente isso como um "Aprovar" que não diz mais "ocupado".
 
 > 📬 **O Reach out passa a te procurar de verdade (F9, ADR-045):** a resposta de um job agendado chega
 > na **sua conversa direta com o app no Google Chat**. Antes ela ficava só no trace, e nada te avisava.

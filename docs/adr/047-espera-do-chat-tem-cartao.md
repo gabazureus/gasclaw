@@ -49,10 +49,12 @@ O commit 3ab7d54 passou a postar o cartão no `after` do pump. A auditoria segui
    e depois é marcada `handled`.
 5. **`ask` durável no Chat**: os botões levam pasta e run, sem token. O clique confere quem clicou pelo
    e-mail do evento, como a tela (`runDecide`). A resposta DIGITADA responde a pergunta aberta: o índice
-   `ASKRUN:<sessão>` (Properties) aponta o run, e a mensagem só vale se vier de quem pediu o run.
+   `ASKRUN:<sessão>` (Properties) aponta a FILA de runs com pergunta aberta (decisão 10), e a mensagem só
+   vale se vier de quem pediu o run e for da MESMA conversa.
 6. **Depois do clique**, a continuação sai pelo caminho da entrega: a resposta final, ou o cartão da próxima
    espera, vai como mensagem nova, com recibo. O cartão clicado só confirma e perde os botões. O caminho
-   síncrono legado (sem entrega) continua trocando o cartão no lugar.
+   síncrono legado (sem entrega) continua trocando o cartão no lugar. Ver a decisão 14: o clique já não faz
+   o trabalho, só o registra.
 7. **O trace ganha o status `waiting`**, com o que falta no passo (`aguardando: aprovação de tasks.create`).
 8. **Resposta sem credencial passa por `RunIO.resume`** (pergunta do `ask` e Continue, no Chat, digitada ou
    na tela): trava, leitura do Drive e assinatura conferida antes de `enqueue` re-assinar. O botão leva a
@@ -78,6 +80,25 @@ O commit 3ab7d54 passou a postar o cartão no `after` do pump. A auditoria segui
    tique (`at` na autoridade), e o Drive só abre para ela. Sete dias porque a credencial vale 24 h e se renova
    no clique: uma semana cobre fim de semana e folga curta sem deixar lixo permanente nos 500 KB.
 
+14. **O clique só REGISTRA a decisão; o trabalho é do gatilho** (2026-09-22, ao vivo). Retomar o turno dentro
+   do clique gastava a janela de 30 s que o Chat dá a um cartão: o turno (modelo + ferramenta) não cabe, a
+   execução morria, o Chat mostrava "gasclaw não processou sua solicitação" em vermelho, e o gatilho pegava
+   o MESMO run em paralelo — os dois interrompidos, um no meio de uma chamada PAGA. O clique agora grava a
+   decisão, devolve o run à fila e confirma no cartão; o worker de 1 min continua dali, em até um minuto.
+   O run SEM entrega (tela, caminho síncrono) segue retomando na hora: ali quem espera é uma página aberta.
+   Custo medido: UMA chamada ao modelo por aprovação, a mesma do caminho antigo (`triggerDoesTheWork`).
+15. **Clique num cartão de pedido já encerrado diz que acabou, não que foi adulterado** (2026-09-22, ao vivo).
+   Ao terminar, o run perde a autoridade de propósito (`forget`), e sem ela a conferência de assinatura não
+   tem com o que comparar — o clique atrasado ouvia "this task was changed outside gasclaw", uma acusação
+   falsa. `decide` passa a conferir o ESTADO antes da assinatura (leitura pura: nada grava, nada executa),
+   como o caminho do `ask` (`resume`) já fazia.
+16. **A estimativa do passo de sonho é POR AGENTE e esquece.** `DREAMSTEP_MS:<folderId>` guarda a janela dos
+   últimos `DREAM_STEP_WINDOW` (5) tiques com passo medido; a estimativa é o maior da janela, nunca abaixo
+   da conservadora (90 s) nem acima do teto `DREAM_STEP_CAP_MS` (240 s). A chave global anterior valia para
+   todos os agentes e só crescia: um passo fora da curva impedia qualquer passo de começar, e sem passo não
+   havia medida nova — o sonho parava para sempre. A chave termina em `:<pasta>`, então `forgetAgentProps` a
+   apaga junto com o agente; a global sai uma vez.
+
 ## Consequências
 
 - Tique ocioso: nenhuma leitura nova, e agora MEDIDO — o teste conta acessos a `DriveApp` e à Drive API com
@@ -86,16 +107,28 @@ O commit 3ab7d54 passou a postar o cartão no `after` do pump. A auditoria segui
   já tratadas ela não abre o Drive (teste `nenhum tique ocioso relê o Drive`).
 - Uma espera sem resposta segura a autoridade `A:` enquanto espera. Isso já valia antes. O teto de 500 KB das
   Properties é o limite.
-- O índice `ASKRUN:` é um por conversa e sobrescrito pela pergunta seguinte. Ele é apagado quando a pergunta
-  é respondida.
+- O índice `ASKRUN:` é um por conversa e guarda a FILA das perguntas digitáveis abertas, da mais antiga à
+  mais nova (decisão 10). A pergunta respondida sai da fila; a chave é apagada quando a fila esvazia. O
+  formato antigo (um `runId` cru) continua sendo lido, como lista de um.
+- O aviso "outra pergunta minha ainda está aberta" é escrito no texto do cartão na hora do POST. Se a
+  pergunta mais antiga for respondida depois, o aviso do cartão seguinte fica velho — ele continua dizendo
+  que há outra na frente quando já não há. Aceito: o cartão do Chat não é reescrito por nós (o `requestId`
+  estável existe justamente para NÃO mandar outra mensagem), e a mensagem digitada continua respondendo a
+  mais antiga da fila, que nesse caso já é a dele. O aviso erra para o lado seguro.
+- A credencial do cartão fica no CacheService por 6 h (`cardtok:<runId>`), só para o POST repetido ser o
+  MESMO cartão. O cache do script não é legível por usuário nenhum, e quem manda continua sendo o hash
+  gravado no run: um token de cache que não bate com a credencial é descartado.
 - Os três limites da primeira versão foram FECHADOS na mesma data (decisões 10 a 12 acima): a fila de
   perguntas, o `release` condicional e o `requestId` estável. Fica em aberto só o que a plataforma impõe: se o
   Google Chat aceitar o POST e a resposta se perder na rede, a tentativa seguinte usa o mesmo `requestId` e o
   Chat devolve a mensagem já criada — nenhum cartão a mais.
-- Mutações equivalentes (sobrevivem porque uma guarda anterior já cobre): trocar o destino pelo do arquivo
-  (o `authorizedDelivery` exige igualdade antes) e desistir sem conferir a assinatura (o claim marca o run
-  adulterado antes de chegar ao cartão).
-- Implementação: `waitKey`/`waitLabel` (`src/run.ts`), `settle` (`src/runner.ts`), `scan`/`markPrompted`
-  (`src/runStore.ts`), `resume` (`src/runStore.ts`), `promptInChat`/`recoverWaits`/`answerOpenAsk`/`durableChatClick` (`src/main.ts`),
+- Mutação equivalente, agora com o teste da porta que realmente cobre: apagar a conferência de assinatura
+  DENTRO do `promptInChat` não quebra nada, porque o claim (`runner.ts`, `c.tampered`) chega antes e é mais
+  forte — recusa o run inteiro. O teste `arquivo adulterado NA FILA não vira cartão nem credencial` prende
+  essa primeira porta; a segunda fica por escrito no código, como decisão.
+- Implementação: `waitKey`/`waitLabel`/`WAIT_TTL_MS` (`src/run.ts`), `settle` (`src/runner.ts`),
+  `scan`/`markPrompted`/`leaseOf`/`release`/`decide` (`src/runStore.ts`), `resume` (`src/runStore.ts`),
+  `promptInChat`/`approvalToken`/`recoverWaits`/`findWaitRun`/`expireWaits`/`answerOpenAsk`/`openAsks`/`setOpenAsks`/`triggerDoesTheWork`/`durableChatClick`
+  e o passo `poc p36 waits` (`src/main.ts`), `stableRequestId` (`src/chatDelivery.ts`),
   `approvalCard(…, durableAsk)` (`src/approval.ts`), `finish` (`src/trace.ts`). Testes em
-  `test/chatEspera.test.ts` e `test/runner.test.ts`.
+  `test/chatEspera.test.ts`, `test/runner.test.ts` e `test/dreamTick.test.ts`.

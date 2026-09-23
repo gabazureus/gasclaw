@@ -22,6 +22,7 @@ export GASCLAW_ENGINE_URL="https://script.google.com/a/macros/<domínio>/s/<Depl
 ./gasclaw poc p36 wake          # um job daqui a 2 min na agenda REAL (--variant deny: pede ferramenta fora da lista)
 ./gasclaw poc p36 wakeread      # o último despertar: status, resposta, entrega
 ./gasclaw poc p36 wakeclear     # devolve a agenda anterior
+./gasclaw poc p36 waits         # as esperas pela autoridade: cartão postado, recibo, hora, fila e estado (ADR-047)
 ./gasclaw poc p36 create        # o efeito de agent.create: o agente nasce sem nada
 ./gasclaw poc p36 createclean   # tira o agente de teste do painel (a pasta fica no Drive)
 unset GASCLAW_ENGINE_URL        # up/down/ship/restart/rollback recusam com ela definida

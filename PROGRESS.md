@@ -260,7 +260,7 @@ durável parou em `waiting` pedindo aprovação de `tasks.create` (trace `202609
 |---|---|---|:--:|
 | I1 | nenhum cartão numa espera | a entrega ignorava `waiting`/`paused` | ✅ 3ab7d54 |
 | I2 | trace `ok` num run parado | `finish` só conhecia ok/erro | ✅ status `waiting` + passo `aguardando: …` |
-| I3 | cartão com uma chance só | o `settle` soltava a espera ANTES do POST; a marca ficava no cache | ✅ fila até o cartão sair, `prompted` na autoridade, nova tentativa a cada 5 min |
+| I3 | cartão com uma chance só | o `settle` soltava a espera ANTES do POST; a marca ficava no cache | ✅ fila até o cartão sair, `prompted` na autoridade, nova tentativa quando o arrendamento vence (`LEASE_MS`, 6 min) |
 | I4 | o run de ontem nunca receberia o cartão | já estava fora da fila | ✅ varredura das esperas sobre a leitura de Properties que o tique já fazia |
 | I5 | `ask` retomava FORA do run durável | o cartão usava o ticket de 10 min do caminho síncrono | ✅ botões com pasta e run; a resposta digitada responde a pergunta aberta |
 | I6 | resposta final duas vezes depois do Approve | o cartão era trocado pela resposta e a entrega mandava de novo | ✅ a continuação sai pela entrega, e o cartão só confirma |
@@ -272,14 +272,13 @@ durável parou em `waiting` pedindo aprovação de `tasks.create` (trace `202609
 | R4 | clique duplo no `ask` reaplicava a resposta; `runDecide` adotava arquivo editado | resposta sem credencial não tinha trava nem assinatura | ✅ `RunIO.resume` |
 | R5 | botão de pergunta antiga respondia a nova | o botão não dizia de qual espera era | ✅ `wait` no botão |
 | R6 | pasta apagada de outro agente travava a varredura | uma exceção abortava a busca | ✅ pasta por pasta, 3 tiques de chance |
-
 | A1 | **(2ª rodada)** duas perguntas digitáveis dividiam uma vaga | `ASKRUN:` guardava um runId só | ✅ fila: a digitada responde a mais antiga, e o cartão da seguinte avisa |
 | A2 | clique entre o POST e a marca apagava o ponteiro do clique | `dequeue` incondicional | ✅ `io.release` só apaga o ponteiro do claim |
 | A3 | cartão repetido quando a marca não gravava | `requestId` aleatório por tentativa | ✅ `requestId` da espera (+ credencial) e token reaproveitado |
 | A4 | espera nunca respondida segurava a autoridade para sempre | não havia prazo | ✅ 7 dias → `failed` com motivo entregue no Chat, autoridade fora |
 | A5 | "o tique ocioso não abre o Drive" era afirmação | nenhum teste media | ✅ teste conta `DriveApp` + Drive API: zero |
 | A6 | `DREAMSTEP_MS` global e só crescia | uma chave para todos os agentes, sem esquecer | ✅ por agente, janela das últimas 5 medidas, teto de 240 s |
-| A7 | identificadores em português da F9 | — | ✅ `PROTECTED_NAMES`, `opensRegex`, `capsSide`, `longestStep`… com a lista de guardas e os testes coerentes |
+| A7 | identificadores em português **dos trechos da F9** | — | ✅ `PROTECTED_NAMES`, `opensRegex`, `capsSide`, `longestStep`… com a lista de guardas e os testes coerentes. O resto do `src` segue em português; não era o escopo |
 
 Testes: 2279 → **2326**, tsc limpo. **43 mutações**: 41 pegas e 2 equivalentes (destino tirado do arquivo,
 desistência sem conferir assinatura: uma guarda anterior já cobre cada uma). Revisão: security-scanner +
@@ -291,7 +290,7 @@ Pelo sucessor (`poc p36 waits`): o run de 2026-09-21 (`spaces/g_jQUqAAAAE/messag
 da v24 — a marca só nasce depois de o POST do cartão dar certo. O recibo (`card`) passou a ser gravado na v25,
 então o deste cartão não aparece. Tique ocioso (`poc p3 idle`, 4 medidas, sem lote pendente): 844–1021 ms no
 total. A parte da fila e das esperas, que é o que mudou, ficou entre 52 e 129 ms; o restante é reconcile + lote
-do trace, que esta rodada não tocou. O critério da P3 é 1000 ms: duas das quatro medidas passaram por até 21 ms.
+do trace, que esta rodada não tocou. O critério da P3 é 1000 ms: duas das quatro medidas o ULTRAPASSARAM, por até 21 ms.
 
 
 | POC | Pergunta | Status |

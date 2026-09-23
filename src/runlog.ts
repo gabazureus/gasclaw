@@ -381,8 +381,18 @@ export function cleanupRuns(now = Date.now()): number {
 export function cleanupRunsDaily() {
   try {
     const today = new Date().toISOString().slice(0, 10);
-    if (props().getProperty('RUNS_CLEANUP_DAY') === today) return;
+    // A guarda é do DIA, mas era lida das Properties a cada tique de 1 min — um round-trip de serviço por
+    // minuto, para sempre, só para reler a mesma data. Medido na P3 (2026-09-23): era o que sobrava do
+    // `drainMs` depois do atalho da fila vazia. O cache é ATALHO: quem decide continua sendo a Property, e
+    // perder o cache só custa a leitura de volta, nunca uma faxina repetida.
+    const mark = `runs:cleanup:${today}`;
+    if (cache().get(mark)) return;
+    if (props().getProperty('RUNS_CLEANUP_DAY') === today) {
+      cache().put(mark, '1', SIX_HOURS);
+      return;
+    }
     props().setProperty('RUNS_CLEANUP_DAY', today);
+    cache().put(mark, '1', SIX_HOURS);
     cleanupRuns();
   } catch (err) {
     warn('limpeza', err);

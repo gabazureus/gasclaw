@@ -125,6 +125,10 @@ export type DrainResult = { drained: number; ms: number; rows: boolean; json: nu
  * devolve entradas à fila), então ela nunca esconde trabalho novo. O prazo curto é o limite do estrago se
  * uma dessas remoções falhar: no pior caso a linha sai cinco tiques depois, e nada se perde — a fila mora
  * nas Properties, não no cache.
+ *
+ * O atalho NÃO renova a marca de propósito. Renovando, um tique parado a manteria viva para sempre e uma
+ * remoção que falhasse esconderia a linha para sempre junto. Assim, a cada 5 min um tique paga a leitura
+ * inteira e confere — quatro em cada cinco saem baratos, e a quinta é a verificação.
  */
 const EMPTY_KEY = 'obs:empty';
 

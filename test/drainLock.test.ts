@@ -90,3 +90,42 @@ describe('tique ocioso: a drenagem com fila vazia não toma o lock nem relê as 
     expect(ordem).toContain('lock'); // voltou a drenar de verdade
   });
 });
+
+// A faxina de 90 dias roda UMA vez por dia, mas a guarda que decide isso lia as Properties a cada tique —
+// um round-trip de serviço por minuto, para sempre, só para reler a mesma data. Medido na P3: era o que
+// sobrava do `drainMs` depois do atalho da fila vazia.
+describe('a guarda da faxina diária não relê as Properties a cada tique', () => {
+  test('a segunda chamada no mesmo dia sai pelo cache', async () => {
+    vi.doUnmock('../src/runlog');
+    vi.resetModules();
+    const env2 = stubGas();
+    let leituras = 0;
+    const real = PropertiesService.getScriptProperties();
+    vi.stubGlobal('PropertiesService', { getScriptProperties: () => ({ ...real, getProperty: (k: string) => (leituras++, real.getProperty(k)) }), getUserProperties: () => real });
+    const { cleanupRunsDaily } = await import('../src/runlog');
+    cleanupRunsDaily();
+    expect(leituras).toBeGreaterThan(0); // a primeira do dia confere na fonte da verdade
+    expect(env2.props['RUNS_CLEANUP_DAY']).toBeDefined();
+    leituras = 0;
+    cleanupRunsDaily();
+    expect(leituras).toBe(0);
+  });
+
+  test('sem o cache, a Property ainda decide (a fonte da verdade não mudou)', async () => {
+    vi.doUnmock('../src/runlog');
+    vi.resetModules();
+    const env2 = stubGas();
+    const { cleanupRunsDaily } = await import('../src/runlog');
+    cleanupRunsDaily();
+    const dia = env2.props['RUNS_CLEANUP_DAY'];
+    env2.cache = {}; // cache perdido
+    let regravou = 0;
+    const real = PropertiesService.getScriptProperties();
+    vi.stubGlobal('PropertiesService', { getScriptProperties: () => ({ ...real, setProperty: (k: string, v: string) => { if (k === 'RUNS_CLEANUP_DAY') regravou++; real.setProperty(k, v); } }), getUserProperties: () => real });
+    cleanupRunsDaily();
+    expect(env2.props['RUNS_CLEANUP_DAY']).toBe(dia);
+    // Sem a releitura da Property, o cache perdido faria a faxina do dia rodar DE NOVO — 200 PATCH em série
+    // por tique até o cache voltar. Regravar a marca é o sinal de que ela rodou.
+    expect(regravou).toBe(0);
+  });
+});
