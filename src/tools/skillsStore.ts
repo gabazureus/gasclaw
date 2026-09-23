@@ -67,7 +67,9 @@ export function skillsIO(folderId: string, cache = CacheService.getScriptCache()
       const atual = fileOf(folderId, nome);
       if (atual && !replace) return 'exists';
       if (!atual) {
-        // O teto é o mesmo do índice: skill que a leitura não serviria não deve nascer.
+        // Teto da PASTA. Ele não é o do índice: uma linha do índice vale até 244 caracteres contra 1500
+        // de teto, então no pior caso só ~6 das 30 chegam ao prompt — as demais aparecem como "(+N skill(s)
+        // fora deste índice)" em `skillIndex`, nunca em silêncio.
         const io = skillsIO(folderId, cache);
         if (io.index().length >= MAX_SKILLS) return 'full';
       }

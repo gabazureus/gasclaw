@@ -191,7 +191,9 @@ export function runTurn(i: TurnInput): TurnResult {
         continue;
       }
       if (tool.ownerOnly && !i.ctx.isOwner) {
-        ev('refused', 'recusado: as ferramentas do Google são só do dono do gasclaw');
+        // A mensagem NOMEIA a tool: `ownerOnly` deixou de ser só do Google (a `skill.write` grava na pasta
+        // do dono), e uma recusa que fala do Google para uma skill é uma mentira que o modelo repassa.
+        ev('refused', `recusado: a tool "${nome}" é só do dono do gasclaw`);
         continue;
       }
       const d = k === 0 ? decision : undefined;

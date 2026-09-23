@@ -2156,7 +2156,6 @@ function pocP28(step?: string): unknown {
   return { pass: false, error: 'steps: wired, count' };
 }
 
-/** Estado da sonda P29. Vive numa Property porque a execução morre em 6 min e a cota não cabe nela. */
 /**
  * A conversa com ESTE agente no Google Chat, para o painel. O app do dev e o de prod respondem com o mesmo
  * nome ("gasclaw"), e o dono não conseguia saber em qual conversa escrever. A conversa certa sai da

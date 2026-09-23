@@ -54,3 +54,28 @@ describe('corpo sob demanda', () => {
     expect(skillBody('x', '   ')).toBe('A skill x está vazia.');
   });
 });
+
+// CORTAR EM SILÊNCIO ERA METADE DO DEFEITO (mesma lição de `workspace.ts`, que marca "(trimmed: …)").
+//
+// `MAX_SKILLS` é 30, mas uma linha do índice vale até 244 caracteres (nome 40 + descrição 200) contra um
+// teto de 1500 — então, no pior caso, só 6 skills chegam ao prompt. As outras sumiam sem marca nenhuma:
+// o agente não sabia que existiam, e a `skill.write` respondia "está no índice a partir do próximo turno"
+// para uma skill que nenhum turno veria. O índice agora DIZ quantas ficaram de fora.
+describe('índice cheio: o que não coube é dito, não sumido', () => {
+  const muitas = (n: number, tamanho: number) =>
+    Array.from({ length: n }, (_, i) => ({ name: `skill-${String(i).padStart(2, '0')}`, description: 'd'.repeat(tamanho) }));
+
+  test('com 30 skills de descrição máxima, o índice cabe no teto E conta as que ficaram fora', () => {
+    const idx = skillIndex(muitas(30, 200));
+    expect(idx.length).toBeLessThanOrEqual(SKILL_INDEX_MAX);
+    const listadas = idx.split('\n').filter((l) => l.startsWith('- ')).length;
+    expect(listadas).toBeLessThan(30); // controle positivo: neste tamanho ELE CORTA mesmo
+    expect(idx).toContain(`+${30 - listadas} more skill`);
+  });
+
+  test('quando tudo cabe, não há marca de corte', () => {
+    const idx = skillIndex(muitas(5, 20));
+    expect(idx.split('\n').filter((l) => l.startsWith('- '))).toHaveLength(5);
+    expect(idx).not.toMatch(/not shown/);
+  });
+});

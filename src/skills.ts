@@ -27,18 +27,32 @@ export function skillDescription(md: string, max = 200): string {
   return (fromFm || first || '(sem descrição)').slice(0, max);
 }
 
-/** Índice que vai no prompt: uma linha por skill, dentro do teto. */
+// Em inglês como o resto do que o MOTOR escreve (ADR-033): esta linha entra no prompt do modelo.
+const foraDoIndice = (n: number) => `(+${n} more skill(s) not shown here)`;
+
+/**
+ * Índice que vai no prompt: uma linha por skill, dentro do teto — e o que NÃO coube é dito.
+ *
+ * Uma linha vale até 244 caracteres (nome 40 + descrição 200) contra 1500 de teto, então o `MAX_SKILLS`
+ * de 30 da pasta não cabe aqui no pior caso: só ~6 chegam. Cortar em silêncio deixava o agente sem saber
+ * que a skill existe — o mesmo defeito que `workspace.ts` já marca com "(trimmed: …)".
+ */
 export function skillIndex(skills: Skill[], max = SKILL_INDEX_MAX): string {
   if (!skills.length) return '';
+  const ordenadas = [...skills].sort((a, b) => a.name.localeCompare(b.name));
   const lines: string[] = [];
   let left = max;
-  for (const s of [...skills].sort((a, b) => a.name.localeCompare(b.name))) {
+  for (const s of ordenadas) {
     const line = `- ${s.name}: ${s.description}`;
     if (line.length + 1 > left) break;
     lines.push(line);
     left -= line.length + 1;
   }
-  return lines.join('\n');
+  // A marca também paga o próprio espaço: sem isto ela estouraria o teto que ela mesma anuncia.
+  while (lines.length && foraDoIndice(ordenadas.length - lines.length).length + 1 > left) {
+    left += lines.pop()!.length + 1;
+  }
+  return lines.length === ordenadas.length ? lines.join('\n') : [...lines, foraDoIndice(ordenadas.length - lines.length)].join('\n');
 }
 
 /** Bloco do índice no prompt do agente (vazio quando não há skills). */

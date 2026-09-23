@@ -1,6 +1,6 @@
 // Tarefas (E6): Google Tasks API v1 por REST, escopo tasks, sempre na lista padrão (@default).
 import { asData, enc, gcall, type Google, incompleta, ownerGoogle } from './google';
-import type { Schema, Tool, ToolCtx } from './registry';
+import type { Schema, Tool } from './registry';
 
 export const TASKS_URL = 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks';
 export const TASK_ID = /^[A-Za-z0-9_-]{5,200}$/;

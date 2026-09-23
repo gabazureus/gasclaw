@@ -31,6 +31,8 @@ export type EvalEnv = {
   skill?: (name: string) => string | null; // corpo das skills (delivery 3); no dev vem do skillsIO da pasta do agente
   /** Escreve uma skill na pasta do agente do eval (tool `skill.write`), para o cenário exercitar o caminho real. */
   skillWrite?: (name: string, md: string, replace: boolean) => 'created' | 'replaced' | 'exists' | 'full';
+  /** Índice das skills da pasta, lido a cada turno: é o que `skillsBlock` põe no prompt. */
+  skills?: () => { name: string; description: string }[];
   bootstrap?: { read: () => string | null; consume: () => void }; // ritual de estreia (delivery 4)
   google?: Google; // ferramentas do Workspace (E6); o runner também usa para apagar os dados de teste
   zone?: { timeZone: string; offset: string };
@@ -172,6 +174,9 @@ export function runSpec(runSpec: RunSpec, env: EvalEnv, modelOverride?: string):
           tools,
           ctx: { now: env.now, ownerDm, memory: env.memory, google: env.google, skill: env.skill, skillWrite: env.skillWrite, ...env.zone },
           steps,
+          // O índice das skills FALTAVA aqui: sem ele `skillsBlock` era sempre vazio no eval, e nenhum
+          // cenário conseguia provar que a skill aprovada aparece no prompt do turno seguinte.
+          skills: env.skills?.(),
           bootstrap: env.bootstrap && {
             read: () => {
               const md = env.bootstrap!.read();
@@ -309,6 +314,7 @@ export function evalAction(md: string, owner: string, model?: string, llm?: Eval
       newToken,
       skill: (name) => skillsIO(folder.getId()).body(name),
       skillWrite: (name: string, md: string, replace: boolean) => skillsIO(folder.getId()).write(name, md, replace),
+      skills: () => skillsIO(folder.getId()).index(),
       bootstrap: bootstrapIO(folder.getId()),
       google: gasGoogle,
       zone: zone(),

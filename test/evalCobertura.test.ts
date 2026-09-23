@@ -1,9 +1,10 @@
 // F10 parte 2: os cenários novos do Workspace, com Google falso. Sem isto, um eval de calendar/drive/
 // gmail/sheets/tasks só rodaria no dev (`./gasclaw eval`) e ninguém veria a suíte quebrar.
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { runEval, type EvalEnv } from '../src/evalEntry';
 import type { GReq, GRes } from '../src/tools/google';
+import { toolCatalog } from '../src/tools/registry';
 import { buildSpec, withAccess } from '../src/workspace';
 
 function env(responder: (r: GReq) => GRes) {
@@ -84,5 +85,43 @@ describe('cobertura de evals: um cenário por ferramenta do Workspace', () => {
     expect(r.checks.filter((c) => !c.pass)).toEqual([]);
     expect(reqs.every((q) => q.method === 'post')).toBe(true);
     expect(r.cleanup).toEqual({ removed: 0, missing: 0, failed: [] });
+  });
+});
+
+// A CATRACA que faltava. O `CHANGELOG.md` promete "cada ferramenta do agente tem pelo menos um cenário de
+// avaliação" e a spec das skills pede isso como critério (S7) — mas nada CONFERIA, e a `skill.write` nasceu
+// sem eval nenhum sem ninguém ficar vermelho. Agora a promessa tem quem a cobre.
+describe('cobertura tool → eval: nenhuma ferramenta entra no catálogo sem cenário', () => {
+  test('toda tool do registry aparece em pelo menos um evals/*.md', () => {
+    const arquivos = readdirSync('evals').filter((f) => f.endsWith('.md'));
+    expect(arquivos.length).toBeGreaterThan(10); // controle positivo: a pasta foi mesmo lida
+    const texto = arquivos.map((f) => readFileSync(`evals/${f}`, 'utf8')).join('\n');
+    expect(toolCatalog().map((t) => t.name).filter((n) => !texto.includes(n))).toEqual([]);
+  });
+});
+
+// O cenário da skill proposta pelo agente (S7 da spec). Roda OFFLINE, com a pasta do Drive de mentira:
+// sem isto ele só existiria no `./gasclaw eval`, contra o modelo de verdade, e a suíte nunca o veria.
+describe('skill-escreve: a skill só nasce depois do clique', () => {
+  const skillEnv = () => {
+    const pasta = new Map<string, string>();
+    const { e } = env(() => ({ code: 200, body: '{}' }));
+    return {
+      e: {
+        ...e,
+        skillWrite: (name: string, md: string, replace: boolean) =>
+          (pasta.has(name) && !replace ? 'exists' : (pasta.set(name, md), pasta.has(name) ? 'created' : 'created')) as 'created' | 'exists',
+        skills: () => [...pasta.keys()].map((name) => ({ name, description: 'Como fechar a semana' })),
+      } as EvalEnv,
+      pasta,
+    };
+  };
+
+  test('o cenário passa, e a skill fica na pasta com o corpo proposto', () => {
+    const { e, pasta } = skillEnv();
+    const r = runEval(read('skill-escreve'), e);
+    expect(r.checks.filter((c) => !c.pass).map((c) => c.check)).toEqual([]);
+    expect([...pasta.keys()]).toEqual(['fechamento-semanal']);
+    expect(pasta.get('fechamento-semanal')).toContain('compare com a semana anterior');
   });
 });

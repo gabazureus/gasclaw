@@ -23,6 +23,10 @@ function env(llm: EvalEnv['llm'], over: Partial<EvalEnv> = {}) {
     bootstrap: { read: () => 'Pergunte como a pessoa prefere ser chamada e que estilo prefere.', consume: () => {} },
     // provider de skill falso: sem ele, cenários com read_skill passariam pelo motivo errado ("skills indisponíveis")
     skill: (name) => (name === 'briefing' ? '---\ndescription: Briefing semanal\n---\n1. abra os números da semana\n2. compare com a semana anterior' : null),
+    // pelo mesmo motivo, a escrita: sem ela o cenário `skill-escreve` passaria por "skill writing is not
+    // available in this channel" em vez de exercitar o card e o clique. O conteúdo gravado é conferido em
+    // `test/evalCobertura.test.ts`, que usa uma pasta de mentira de verdade.
+    skillWrite: () => 'created',
     ...over,
   };
   return { e, mem };

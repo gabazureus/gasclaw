@@ -1,7 +1,7 @@
 // Lista fechada de tools (ADR-002): nova tool exige deploy; o frontmatter `tools:` do AGENTS só escolhe entre estas.
 import type { ToolDef } from '../llm';
 import { CALENDAR_TOOLS } from './calendar';
-import { SKILL_NAME, skillBody, skillMarkdown, validateSkill } from '../skills';
+import { SKILL_BODY_MAX, SKILL_DESCRIPTION_MAX, SKILL_NAME, skillBody, skillMarkdown, validateSkill } from '../skills';
 import { CONTACTS_TOOLS } from './contacts';
 import { DRIVE_TOOLS } from './driveTools';
 import { GMAIL_TOOLS } from './gmail';
@@ -118,14 +118,20 @@ export const TOOLS: Tool[] = [
       type: 'object',
       properties: {
         name: { type: 'string', description: 'short name, lowercase letters and hyphens', maxLength: 40 },
-        description: { type: 'string', description: 'one line saying what it is for', maxLength: 200 },
-        body: { type: 'string', description: 'the steps, in markdown', maxLength: 6000 },
+        // Os tetos vêm das constantes, não de números repetidos: o schema e o `validateSkill` recusando
+        // em tamanhos diferentes seria o modelo levando um "não" que o schema tinha dito que era "sim".
+        description: { type: 'string', description: 'one line saying what it is for', maxLength: SKILL_DESCRIPTION_MAX },
+        body: { type: 'string', description: 'the steps, in markdown', maxLength: SKILL_BODY_MAX },
         replace: { type: 'boolean', description: 'true only to replace a skill that already exists' },
       },
       required: ['name', 'description', 'body'],
       additionalProperties: false,
     },
     approval: 'always',
+    // Só o DONO (auditoria de 2026-09-23). Quem aprova um card é quem pediu, então sem isto um usuário
+    // aprovado no painel escrevia na pasta do dono e aprovava a si mesmo — e o texto gravado vira
+    // instrução no prompt de todo turno seguinte, inclusive nas DMs dele.
+    ownerOnly: true,
     run: (a, ctx) => {
       const proposta = { name: String(a.name ?? '').trim().toLowerCase(), description: String(a.description ?? ''), body: String(a.body ?? '') };
       const erro = validateSkill(proposta);
@@ -134,7 +140,9 @@ export const TOOLS: Tool[] = [
       const replace = a.replace === true;
       const out = ctx.skillWrite(proposta.name, skillMarkdown(proposta), replace);
       if (out === 'exists') throw new Error(`the skill "${proposta.name}" already exists: ask again with replace: true to replace it`);
-      if (out === 'full') throw new Error('this agent already has the maximum number of skills: remove one in the panel first');
+      // O painel NÃO lista nem apaga skills (a spec previa isso e não foi feito), então a mensagem manda
+      // para onde a skill realmente está. Dizer "no painel" treinava o dono a procurar o que não existe.
+      if (out === 'full') throw new Error('this agent already has the maximum number of skills: delete one under skills/ in this agent folder first');
       return out === 'replaced' ? `replaced the skill "${proposta.name}".` : `saved the skill "${proposta.name}". It is in the index from the next turn on.`;
     },
   },

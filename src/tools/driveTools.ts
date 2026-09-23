@@ -1,6 +1,6 @@
 // Drive, Docs e Sheets (E6): REST com o escopo `drive` já no manifesto (files.list/export/upload; Sheets values.get/append).
 import { asData, enc, gcall, type Google, gtext, incompleta, ownerGoogle, qs } from './google';
-import type { Schema, Tool, ToolCtx } from './registry';
+import type { Schema, Tool } from './registry';
 
 const DRIVE = 'https://www.googleapis.com/drive/v3/files';
 const SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets';

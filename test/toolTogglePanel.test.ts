@@ -100,3 +100,17 @@ describe('painel: o controle é operável, não só visível', () => {
     expect(html()).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|eval\(|new Function|document\.write/);
   });
 });
+
+// O painel desenha um cabeçalho por GRUPO, e o rótulo vem de um mapa escrito à mão no HTML. Quando um
+// grupo novo entra no registry e ninguém lembra do mapa, o `|| g.name` cai e a tela mostra a chave crua
+// ("skill", "agent", minúsculas, no meio de "Drive, Docs and Sheets"). Foi o que aconteceu com `skill`.
+describe('o painel tem rótulo para TODO grupo do registry', () => {
+  test('GROUP_LABEL não deixa grupo nenhum cair no nome cru', async () => {
+    const { toolCatalog } = await import('../src/tools/registry');
+    const html = readFileSync('src/settings.html', 'utf8');
+    const mapa = html.match(/const GROUP_LABEL = \{([^}]*)\}/)![1];
+    const rotulados = [...mapa.matchAll(/(?:^|,)\s*(?:'([^']*)'|(\w+))\s*:/g)].map((m) => m[1] ?? m[2]);
+    expect(rotulados).toContain('memory'); // controle positivo: o mapa foi mesmo lido
+    expect([...new Set(toolCatalog().map((t) => t.group))].filter((g) => !rotulados.includes(g))).toEqual([]);
+  });
+});

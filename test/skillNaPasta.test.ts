@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { stubGas, type GasEnv } from './gasEnv';
 import { skillsIO } from '../src/tools/skillsStore';
+import { buildSpec, withAccess } from '../src/workspace';
 
 const FOLDER = 'f1';
 let env: GasEnv;
@@ -53,6 +54,17 @@ describe('skillsIO.write: a skill nasce na pasta do agente', () => {
     expect(io.index().map((s) => s.name)).toContain('briefing');
   });
 
+  // O teto existe para o índice não estourar o prompt. Sem teste, apagar a checagem deixava a 31ª skill
+  // nascer — e o agente ouviria "salvei" para uma skill que nenhum turno veria.
+  test('no teto de skills, a próxima NÃO nasce: devolve `full`', () => {
+    const io = skillsIO(FOLDER);
+    for (let i = 0; i < 30; i++) expect(io.write(`skill-${i}`, md(`Skill ${i}`, 'passo'), false)).toBe('created');
+    expect(io.write('skill-30', md('Skill 30', 'passo'), false)).toBe('full');
+    expect(skillsIO(FOLDER).body('skill-30')).toBeNull();
+    // Substituir uma que já existe continua valendo no teto: não cria pasta nova.
+    expect(io.write('skill-0', md('Skill 0 nova', 'outro passo'), true)).toBe('replaced');
+  });
+
   test('nome inválido não cria pasta nenhuma', () => {
     expect(skillsIO(FOLDER).write('Nome Invalido', md('x', 'y'), false)).toBe('exists');
     expect(skillsIO(FOLDER).index()).toHaveLength(0);
@@ -60,15 +72,32 @@ describe('skillsIO.write: a skill nasce na pasta do agente', () => {
 });
 
 describe('fiação: o turno recebe a escrita, e o corpo continua fora do prompt', () => {
-  test('o toolkit do chat monta `skillWrite`, e a skill gravada entra no índice do prompt', async () => {
+  // O teste que estava aqui importava `__test_spec`, que NÃO EXISTE em main.ts, e depois fazia `void spec`.
+  // Ele só reexercitava o `skillsIO` — apagar a linha `skillWrite:` do `chatDeps` mantinha a suíte inteira
+  // verde (1652/1652), e a tool morreria no motor real com "skill writing is not available in this channel".
+  // A porta certa é o `__test_chatDeps`, o mesmo padrão do `test/bordaFiada.test.ts`.
+  const spec = () => withAccess(buildSpec(FOLDER, 'agente-teste', { AGENTS: 'Regras' }), { users: [], tools: ['skill'] });
+
+  test('o `chatDeps` de PRODUÇÃO monta `skillWrite`, e ele grava na pasta DAQUELE agente', async () => {
+    env.props['OWNER'] = 'dono@x.com';
+    env.props['AGENTS'] = JSON.stringify([{ name: 'agente-teste', folderId: FOLDER }]);
     const m = await import('../src/main');
-    const io = skillsIO(FOLDER);
-    io.write('briefing', md('Briefing semanal', 'o passo a passo secreto'), false);
-    const spec = (m as unknown as { __test_spec?: (f: string) => unknown }).__test_spec;
-    void spec;
-    const idx = skillsIO(FOLDER).index();
-    expect(idx.map((s) => s.description)).toContain('Briefing semanal');
+    const ctx = m.__test_chatDeps().toolkit!(spec(), true).ctx;
+    expect(ctx.skillWrite).toBeTypeOf('function');
+    expect(ctx.skillWrite!('briefing', md('Briefing semanal', 'o passo a passo secreto'), false)).toBe('created');
+    expect(skillsIO(FOLDER).body('briefing')).toContain('o passo a passo secreto');
+  });
+
+  test('o mesmo `chatDeps` põe a skill gravada no índice do prompt — e só o índice', async () => {
+    env.props['OWNER'] = 'dono@x.com';
+    env.props['AGENTS'] = JSON.stringify([{ name: 'agente-teste', folderId: FOLDER }]);
+    const m = await import('../src/main');
+    const deps = m.__test_chatDeps();
+    deps.toolkit!(spec(), true).ctx.skillWrite!('briefing', md('Briefing semanal', 'o passo a passo secreto'), false);
+    const kit = deps.toolkit!(spec(), true);
+    expect(kit.skills?.map((s) => s.description)).toContain('Briefing semanal');
     // O CORPO não vai junto: o índice é nome + descrição, e o procedimento vem pela `read_skill`.
-    expect(JSON.stringify(idx)).not.toContain('passo a passo secreto');
+    expect(JSON.stringify(kit.skills)).not.toContain('passo a passo secreto');
+    expect(kit.ctx.skill!('briefing')).toContain('o passo a passo secreto');
   });
 });

@@ -533,7 +533,7 @@
   // Liga/desliga POR ferramenta. Checkbox nativo de propósito: teclado, foco visível e leitura de rótulo
   // já vêm prontos, e um "switch" de ARIA feito à mão só teria como reinventá-los pior.
   const APPROVAL = { never: 'no approval needed', once: 'asks for approval the 1st time', always: 'always asks for approval' };
-  const GROUP_LABEL = { '': 'General', memory: 'Memory', calendar: 'Calendar', gmail: 'Gmail', contacts: 'Contacts', tasks: 'Tasks', drive: 'Drive, Docs and Sheets' };
+  const GROUP_LABEL = { '': 'General', memory: 'Memory', skill: 'Skills', agent: 'Other agents', calendar: 'Calendar', gmail: 'Gmail', contacts: 'Contacts', tasks: 'Tasks', drive: 'Drive, Docs and Sheets' };
 
   function toolsBox(folderId, x, resumo, fmt, holder) {
     const box = document.createElement('fieldset');
@@ -895,7 +895,7 @@
       fs.append(button('Add to the schedule', () => {
         const jobs = (sc.jobs || []).map((j) => ({ at: j.at, prompt: j.prompt, days: j.days })).concat([{ at: hora.value, prompt: oque.value, days: [] }]);
         call('setAgentSchedule', folderId, jobs)
-          .then(() => { $('msg').textContent = 'Scheduled.'; showAgentSettings(folderId, document.getElementById('agent-settings-' + folderId) || box.parentNode); })
+          .then(() => { $('msg').textContent = 'Scheduled.'; showAgentSettings(folderId, box.parentNode); })
           .catch((e) => { $('msg').className = 'err'; $('msg').textContent = e.message; });
       }));
       // A lista fechada de auto-aprovação, com o que NUNCA entra dito antes do clique.

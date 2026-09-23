@@ -10,10 +10,35 @@ import { buildSpec, withAccess } from '../src/workspace';
 const call = (name: string, args: string): Completion => ({ text: '', toolCalls: [{ id: 'c1', type: 'function', function: { name, arguments: args } }] });
 
 describe('ferramentas do Google são só do dono (revisão E6, blocker 2)', () => {
-  test('todas as tools do Workspace são ownerOnly; now, memory e ask não', () => {
+  // `skill.write` entra nesta lista (auditoria de 2026-09-23): ela GRAVA na pasta do dono, e o texto
+  // gravado vira instrução no prompt de TODO turno seguinte, inclusive nas DMs do dono. Quem aprova um
+  // card é quem PEDIU (`redeemGrant`), então sem isto um usuário aprovado no painel — que não é o dono —
+  // escrevia na pasta dele e aprovava a si mesmo.
+  test('as tools do Workspace e a escrita de skill são ownerOnly; now, memory e ask não', () => {
     const google = ['calendar', 'gmail', 'contacts', 'tasks', 'drive'];
-    for (const t of TOOLS) expect([t.name, t.ownerOnly === true]).toEqual([t.name, google.some((g) => allowedTools([g]).includes(t))]);
+    const daPasta = ['skill.write'];
+    for (const t of TOOLS) expect([t.name, t.ownerOnly === true]).toEqual([t.name, google.some((g) => allowedTools([g]).includes(t)) || daPasta.includes(t.name)]);
     expect(allowedTools(['drive']).every((t) => t.ownerOnly)).toBe(true);
+  });
+
+  test('runTurn: não dono pedindo skill.write → recusado ANTES do card, e a pasta não é tocada', () => {
+    const gravadas: string[] = [];
+    const ctx: ToolCtx = { now: () => '', ownerDm: false, isOwner: false, memory: { read: () => '', write: () => {} }, skillWrite: (n) => (gravadas.push(n), 'created') };
+    const script = [call('skill_write', '{"name":"x-y","description":"d","body":"b"}'), { text: 'não posso' }];
+    const r = runTurn({ system: 's', history: [], text: 'salve', tools: allowedTools(['skill']), ctx, llm: () => script.shift()!, runId: 'r', steps: 3, deadlineMs: 1e12, clock: () => 0 });
+    expect(r.events[0]).toMatchObject({ name: 'skill.write', status: 'refused' });
+    expect(r.pending).toBeUndefined(); // nem chegou a virar card
+    expect(gravadas).toEqual([]);
+  });
+
+  // A recusa precisa dizer QUAL ferramenta foi recusada. A mensagem antiga falava só do Google, e uma
+  // skill recusada chegava ao modelo como "as ferramentas do Google são só do dono" — mentira.
+  test('a recusa nomeia a ferramenta, e não finge que toda ownerOnly é do Google', () => {
+    const ctx: ToolCtx = { now: () => '', ownerDm: false, isOwner: false, memory: { read: () => '', write: () => {} }, skillWrite: () => 'created' };
+    const script = [call('skill_write', '{"name":"x-y","description":"d","body":"b"}'), { text: 'ok' }];
+    const r = runTurn({ system: 's', history: [], text: 'salve', tools: allowedTools(['skill']), ctx, llm: () => script.shift()!, runId: 'r', steps: 3, deadlineMs: 1e12, clock: () => 0 });
+    expect(r.events[0].result).toContain('skill.write');
+    expect(r.events[0].result).toContain('só do dono');
   });
 
   test('ownerGoogle recusa quem não é o dono mesmo com google no contexto', () => {

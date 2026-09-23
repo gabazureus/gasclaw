@@ -1,6 +1,6 @@
 // Gmail (E6): Gmail API v1 por REST, escopos gmail.readonly (ler) e gmail.compose (rascunho e envio; doc de messages.send).
-import { asData, base64, enc, fromBase64, gcall, type Google, headerValue, incompleta, ownerGoogle, parseEmails, qs } from './google';
-import type { Schema, Tool, ToolCtx } from './registry';
+import { asData, base64, enc, fromBase64, gcall, headerValue, incompleta, ownerGoogle, parseEmails, qs } from './google';
+import type { Schema, Tool } from './registry';
 
 const GM = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const MAX_LIST = 10;

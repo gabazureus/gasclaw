@@ -6,7 +6,7 @@
 import { redeemGrant, type GrantResult } from './approval';
 import { claimable, parseStatus } from './agentCaps';
 import type { Decision } from './agent';
-import { AUTH_PREFIX, authKey, claim, isFinished, nextClaimable, nextExhausted, parseRun, pointerOf, queueKey, runAuthority, splitRunQueue, type DurableRun, type OrphanWait, type RunAuthority, type RunPointer, WAIT_TTL_MS } from './run';
+import { AUTH_PREFIX, authKey, claim, nextClaimable, nextExhausted, parseRun, pointerOf, queueKey, runAuthority, splitRunQueue, type DurableRun, type OrphanWait, type RunAuthority, type RunPointer, WAIT_TTL_MS } from './run';
 
 const CACHE_S = 21_600; // 6 h: só acelera; quando expira, o run volta do Drive
 const CACHE_MAX = 90_000;

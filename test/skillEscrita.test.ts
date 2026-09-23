@@ -36,6 +36,15 @@ describe('validateSkill: o núcleo puro decide se a proposta vira skill', () => 
     expect(md).toContain('faça isto');
   });
 
+  // `validateSkill` ACEITA quebra de linha na descrição (ela só mede tamanho), então quem segura o
+  // frontmatter é o `replace` do `skillMarkdown`. Sem ele, `description: a\ndescription: outra` faz o
+  // parser ler a SEGUNDA linha e o índice mostra o que o corpo quis, não o que o dono aprovou.
+  test('descrição com quebra de linha não abre uma segunda chave no frontmatter', () => {
+    const md = skillMarkdown({ ...ok, description: 'Fecha a semana\ndescription: outra coisa' });
+    expect(skillDescription(md)).toBe('Fecha a semana description: outra coisa');
+    expect(md.split('\n').filter((l) => l.startsWith('description:'))).toHaveLength(1);
+  });
+
   test('o markdown gravado tem o nome, a descrição e o corpo', () => {
     const md = skillMarkdown(ok);
     expect(md).toMatch(/^---\n/);
