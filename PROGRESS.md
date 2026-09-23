@@ -250,6 +250,29 @@ dependências das guardas desprotegidas. Todos foram consertados, com teste.
 sonho guarda o prompt inteiro em cada chave; um patch pode montar o nome de uma guarda sem escrevê-lo
 (`"assert"+"Owner"`); com a identidade do app, `findDirectMessage` só aceita o id numérico da conta; ~~`DREAMSTEP_MS` só cresce e é global~~ — **fechado em 2026-09-22**: a estimativa é por agente, guarda as últimas 5 medidas e tem teto de 240 s.
 
+### F10 — auditoria final, evals de todas as ferramentas e um modelo por papel (2026-09-23)
+
+Spec: [auditoria final e modelo único](docs/specs/2026-09-23-auditoria-final-e-modelo-unico.md) · decisão: [ADR-048](docs/adr/048-um-modelo-so-e-o-juiz-de-fora.md)
+
+| # | Item | Estado | Evidência |
+|---|---|---|---|
+| A | Auditoria do diff `e4b8006..HEAD` (segurança + corretude) | ✅ | 7 achados, todos consertados com teste e mutação; suíte 2363 verde, `tsc` rc=0 |
+| A1 | **Crítico:** espera do Chat cujo POST do cartão falhava virava estado preso, com mensagem que mentia ("a resposta está no painel" — o dono nunca foi perguntado) | ✅ | `src/runner.ts`: falha honesta, e o run sai do limbo |
+| A2 | **Segurança (médio):** o relógio da expiração de 7 dias vinha de campo NÃO ASSINADO do arquivo do run — dava para a espera nunca expirar, ou para matar uma aprovação viva | ✅ | `writeAuthority` com relógio injetado; o carimbo só avança quando a assinatura muda |
+| A3 | A varredura era mais fraca que a invariante: run na SEGUNDA espera nunca era recuperado | ✅ | `promptedAt` no registro; predicado corrigido |
+| A4 | Quatro oráculos vácuos (prefixo de fila errado, contagem tarde demais, dois que passavam com a guarda removida) | ✅ | `test/chatEspera.test.ts` |
+| P1 | **Tique ocioso (critério P3/ADR-027: < 1000 ms)** | ✅ medido, **11 amostras** | min 466 · mediana 763 · **máx 961** · 0 acima do limite. Onde vai o tempo: reconcile 319 ms, drain 329 ms, fila 49 ms. Os consertos (atalho de vazio no reconcile; arrendamento do sonho só com ciclo ativo — 2880 escritas/dia a menos) esperam publicação para o "depois" |
+| P2 | A chamada de modelo "a mais" por aprovação | ✅ explicado | é o resumo da sessão (`flushMemory` + compactação), que a perna retomada é a primeira a alcançar; entra no teto do run. No real, um "Olá" já custa 2 chamadas. Registrado na ADR-047 |
+| B | Cobertura ferramenta → eval | ✅ | 10 cenários novos: nenhuma ferramenta ficou sem eval; 46 embutidos no motor |
+| C | Um modelo por papel | ✅ no código | agente e padrão `openai/gpt-6-luna`; sucessor `openai/gpt-5.6-sol`; juiz `deepseek/deepseek-v4-flash-0731` — os três ids conferidos no catálogo do OpenRouter |
+| C1 | A independência do juiz passa a VALER | ✅ | `judgeIsIndependent` tinha teste e ZERO chamadores; agora `judgeFor` decide nos dois lugares onde se julga, e recusa também gerador com roteamento automático |
+| D | `./gasclaw model <id>` | ✅ | troca o modelo do agente sem clique, com a autoridade do painel (ADR-021/022) |
+| E | Publicar, medir o "depois", trocar o modelo do agente vivo, `eval --all`, health 10/10 | ⛔ **bloqueado** | a credencial do clasp exige novo login do dono (`invalid_rapt`); nada disso roda sem publicar |
+
+**Custo antes da troca:** 2026-09-22, 3 requisições em `openai/gpt-5.6-luna`, 21.579 tokens, US$ 0,0065.
+Pelos preços do catálogo, o mesmo tráfego em `gpt-6-luna` custa cerca de metade (entrada US$ 0,10/M contra
+US$ 0,20; saída US$ 0,50/M contra US$ 1,20).
+
 ### Incidente de 2026-09-21 — o pedido do Chat que ficou no "thinking…" ([ADR-047](docs/adr/047-espera-do-chat-tem-cartao.md))
 
 O dono pediu no Chat (DM com o app do dev, que segue o sucessor coroado) uma auditoria da semana. O run
