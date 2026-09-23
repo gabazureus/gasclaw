@@ -1,5 +1,11 @@
 # POC P32 — o Opus devolve um patch válido do motor inteiro, dentro de 6 min?
 
+> **Não vale nesta branch (`consertos-e-reach-out`).** A área que esta POC mediu
+> saiu — o auto-aprimoramento (sonho, sucessão) e a geração de código (filhos,
+> enxame, criar agentes) não existem aqui. A sonda correspondente saiu do
+> `src/main.ts`. **O registro fica**: a medição aconteceu, e apagá-la esconderia
+> o que já se sabe sobre a plataforma.
+
 > **Status: APROVADA na rodada 2 (dev v147), os cinco critérios.** E o patch que o Opus devolveu
 > achou um **defeito real** no agente, já portado para o `src/` com teste. GPT-6-Astra fica para depois
 > da virada do dia (decisão de orçamento do dono). Ver [ADR-043](../../docs/adr/043-sucessor-e-um-agente.md).

@@ -1,5 +1,10 @@
 # POC P36 — as quatro capacidades no motor que responde
 
+> **Parcialmente válida nesta branch (`consertos-e-reach-out`).** Os passos de
+> Reach out (`status`, `wake`, `dm`, `wakeread`, `waits`, `wakeclear`) CONTINUAM
+> valendo e são o que esta branch precisa medir. Os passos `dream`/`dreamstate`
+> e `create`/`createclean` saíram junto com as capacidades que mediam.
+
 > **Status:** medida em 2026-09-21 no dev, no sucessor coroado (v14–v20). Serviu para fechar a F9
 > ([spec](../../docs/specs/2026-09-21-fechamento-da-branch.md)).
 

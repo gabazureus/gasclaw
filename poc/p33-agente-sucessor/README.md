@@ -1,5 +1,11 @@
 # POC P33 — um agente completo sobe como OUTRO projeto, nascendo parado?
 
+> **Não vale nesta branch (`consertos-e-reach-out`).** A área que esta POC mediu
+> saiu — o auto-aprimoramento (sonho, sucessão) e a geração de código (filhos,
+> enxame, criar agentes) não existem aqui. A sonda correspondente saiu do
+> `src/main.ts`. **O registro fica**: a medição aconteceu, e apagá-la esconderia
+> o que já se sabe sobre a plataforma.
+
 > **Status: C1 e C3 MEDIDOS; C2 e C4 com evidência INDIRETA (dev v151)** — e a primeira tentativa
 > do dono achou um portão humano que a spec não tinha previsto (o projeto GCP). Ver [ADR-043](../../docs/adr/043-sucessor-e-um-agente.md).
 

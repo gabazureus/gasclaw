@@ -1,5 +1,11 @@
 # POC P35 — o Chat pode seguir o motor coroado sozinho?
 
+> **Não vale nesta branch (`consertos-e-reach-out`).** A área que esta POC mediu
+> saiu — o auto-aprimoramento (sonho, sucessão) e a geração de código (filhos,
+> enxame, criar agentes) não existem aqui. A sonda correspondente saiu do
+> `src/main.ts`. **O registro fica**: a medição aconteceu, e apagá-la esconderia
+> o que já se sabe sobre a plataforma.
+
 > **Status: REPROVADA em C2 (dev v165, 2026-09-21).** C1 passou. O repasse síncrono pai → sucessor não
 > cabe no Chat; o caminho é o manual da [ADR-044](../../docs/adr/044-chat-segue-o-coroado.md).
 

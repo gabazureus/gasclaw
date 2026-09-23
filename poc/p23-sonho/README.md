@@ -1,5 +1,11 @@
 # POC P23 — cabe um ciclo de sonho na cota do Apps Script?
 
+> **Não vale nesta branch (`consertos-e-reach-out`).** A área que esta POC mediu
+> saiu — o auto-aprimoramento (sonho, sucessão) e a geração de código (filhos,
+> enxame, criar agentes) não existem aqui. A sonda correspondente saiu do
+> `src/main.ts`. **O registro fica**: a medição aconteceu, e apagá-la esconderia
+> o que já se sabe sobre a plataforma.
+
 > **Estado: critério escrito, NADA medido e NENHUMA linha de código escrita.**
 > Nenhum número desta página existe ainda. Não cite nada daqui como evidência.
 > Esta ordem é a regra do `CLAUDE.md`: critério medido antes do código.

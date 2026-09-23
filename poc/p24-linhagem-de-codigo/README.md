@@ -1,5 +1,11 @@
 # POC P24 — o agente pode gerar o código de um sucessor dentro do Google?
 
+> **Não vale nesta branch (`consertos-e-reach-out`).** A área que esta POC mediu
+> saiu — o auto-aprimoramento (sonho, sucessão) e a geração de código (filhos,
+> enxame, criar agentes) não existem aqui. A sonda correspondente saiu do
+> `src/main.ts`. **O registro fica**: a medição aconteceu, e apagá-la esconderia
+> o que já se sabe sobre a plataforma.
+
 > ## ⏸️ PRONTA E NÃO MEDIDA — e isso é decisão, não pendência (2026-09-19)
 >
 > O desenho desta POC está correto e os critérios continuam válidos. O que ela mede **ainda não é

@@ -1,5 +1,10 @@
 # POC P25 — o trace tem combustível para formar aglomerado determinístico?
 
+> **Continua valendo nesta branch (`consertos-e-reach-out`).** O que consumia o
+> aglomerado — o ciclo de sonho — saiu, mas o CONTADOR e o agrupamento não: eles
+> viraram telemetria do turno em `src/failureLog.ts`, gravada a cada run e lida
+> pelo painel (`agentFailures`) e pela sonda P28.
+
 > **Critério escrito antes de qualquer linha.** A medição inicial já foi feita e está no fim.
 
 ## A pergunta

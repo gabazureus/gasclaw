@@ -1,5 +1,11 @@
 # POC P29 — quantos filhos a plataforma aceita por dia, e quanto custa um clique?
 
+> **Não vale nesta branch (`consertos-e-reach-out`).** A área que esta POC mediu
+> saiu — o auto-aprimoramento (sonho, sucessão) e a geração de código (filhos,
+> enxame, criar agentes) não existem aqui. A sonda correspondente saiu do
+> `src/main.ts`. **O registro fica**: a medição aconteceu, e apagá-la esconderia
+> o que já se sabe sobre a plataforma.
+
 > **Status: C1, C2 e C4 MEDIDOS e verdes (dev v132–v133, 2026-09-20). C3 aguarda o clique do
 > dono** — é o portão da plataforma, e a sonda só lê o que já aconteceu. A medição achou um
 > **defeito do produto** (D3) que bloqueava a corrida, e ele foi consertado e remedido.

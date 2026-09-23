@@ -1,5 +1,11 @@
 # POC P34 — o pai avalia o sucessor de fora?
 
+> **Não vale nesta branch (`consertos-e-reach-out`).** A área que esta POC mediu
+> saiu — o auto-aprimoramento (sonho, sucessão) e a geração de código (filhos,
+> enxame, criar agentes) não existem aqui. A sonda correspondente saiu do
+> `src/main.ts`. **O registro fica**: a medição aconteceu, e apagá-la esconderia
+> o que já se sabe sobre a plataforma.
+
 > **Status: PASSOU (dev v151, 2026-09-21).** Ver [ADR-043](../../docs/adr/043-sucessor-e-um-agente.md)
 > e a [spec](../../docs/specs/2026-09-21-sucessao-por-patch.md).
 
