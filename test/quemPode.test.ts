@@ -30,7 +30,6 @@ type Motor = Record<string, (...a: unknown[]) => unknown>;
 const acoes: [string, (m: Motor) => unknown][] = [
   ['setAgentCapability', (m) => m.setAgentCapability('fa', 'dream', true)],
   ['passBaton', (m) => m.passBaton('fa', 'fb', 5)],
-  ['startAgentDream', (m) => m.startAgentDream('fa')],
   ['writeSuccessor', (m) => m.writeSuccessor('fa', '')],
   ['successorOptions', (m) => m.successorOptions('fa')],
   ['evaluateSuccessor', (m) => m.evaluateSuccessor('x')],

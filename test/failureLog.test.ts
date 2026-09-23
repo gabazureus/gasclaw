@@ -9,7 +9,7 @@
 // própria decisão.
 import { describe, expect, test } from 'vitest';
 import { countByKind, failProp, failuresFrom, parseFailures, serializeFailures, withFailure } from '../src/failureLog';
-import type { Failure } from '../src/dreamCycle';
+import type { Failure } from '../src/failureLog';
 
 const AGORA = 1_700_000_000_000;
 const DIA = 24 * 3600_000;

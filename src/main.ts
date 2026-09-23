@@ -1,16 +1,12 @@
 import { judgeFor, namesOf, scenarioMd, SCENARIOS } from './judgeSet';
 import { parseScenario } from './eval';
-import { nextStepWindow, parseStepWindow, startDream, stepEstimate, tickDream, withDreamLease, type DreamDeps } from './dreamTick';
-import { dreamIO } from './dreamStore';
-import { failProp, failuresFrom, parseFailures, serializeFailures, withFailure } from './failureLog';
+import { cluster, failProp, failuresFrom, hasMaterial, parseFailures, serializeFailures, withFailure, type Failure } from './failureLog';
 import { mergeAcrossGenerations, originLabel, parseSchema, validateValues, type ConfigField } from './agentConfig';
 import { capAction, childrenSpendUpperBound, FAMILY_NOTE } from './family';
 import { BUDGET_CEILING_USD, effectiveBudget, parseBudgetOverride } from './budget';
 import { burstReading, consentReading, P29_MAX_CREATES, parseP29State, quotaReading, withCreated, withRefusal, type BurstRow, type ConsentRow, type P29State } from './swarm';
-import { cluster, eliminated, hasMaterial, type Failure } from './dreamCycle';
 import { AUTO_NOTE, cleanAutoList, mayAutoApprove, NEVER_AUTO, noReplySpan, onProactiveBlock } from './autoApprove';
 import { dueJobs, JOB_MAX, jobText, parseSchedule, serializeSchedule } from './schedule';
-import { board } from './dreamBoard';
 import { AUTH_LABEL, authState, childrenWrites, KIND_LABEL, KIND_WHAT, readChildrenFrom, redirectTarget, withChild, withoutChild, type Child } from './children';
 import { pocP10 } from '../poc/p10-editor/harness';
 import { pocP14 } from '../poc/p14-trace/harness';
@@ -2016,7 +2012,6 @@ export function runDetail(id: string) {
 
 /** Alvo do gatilho de 1 min (sem assertOwner: o gatilho roda como o dono). */
 export function drainRuns() {
-  const inicio = Date.now(); // o teto de 6 min conta daqui; o sonho, último, usa o que sobrar
   if (runP3WorkerProbe()) return { n: 0, ms: 0, oldest: null };
   if (runP3IdleProbe()) return { n: 0, ms: 0, oldest: null };
   if (runP22TickProbe()) return { n: 0, ms: 0, oldest: null };
@@ -2035,37 +2030,9 @@ export function drainRuns() {
   let drained: ReturnType<typeof observe.drain> | null = null;
   isolado('drain', () => void (drained = observe.drain()));
   isolado('runs', () => workRuns()); // gravar o trace em lote e avançar o run durável (ADR-027)
-  // O sonho é o ÚLTIMO e toma no máximo 5 passos: o trabalho que o dono pediu vem primeiro, sempre.
   // Proatividade: o MESMO worker, nenhum gatilho novo (item 28). Isolado como os outros — um defeito
   // no despertar não pode cancelar o trabalho que o dono pediu.
   isolado('wake', () => tickProactive());
-  // Prazo: 330 s dos 360 s, sobrando para gravar. Arrendamento até o teto: tique sobreposto pula o sonho.
-  //
-  // O ARRENDAMENTO SÓ É TOMADO SE HOUVER CICLO (P3/ADR-027, 2026-09-23): ele custa um SEGUNDO ScriptLock
-  // global — o mesmo que o "Aprovar" do dono precisa tomar — e DUAS escritas de Property (pôr e tirar), todo
-  // minuto, 2880 por dia, mesmo sem nenhum ciclo para avançar. `DREAMLOCK:<pasta>` é o ponteiro do ciclo ativo
-  // (`dreamStore`): sem nenhum, `tickDream` voltaria `idle` para cada agente e o tique teria pago o preço à toa.
-  const sonhando = Object.keys(PropertiesService.getScriptProperties().getProperties()).some((k) => k.startsWith(DREAM_LOCK_PREFIX));
-  if (sonhando) isolado('dream', () => void withDreamLease(Date.now(), inicio + 360_000, () => {
-    const d = dreamDeps();
-    const props = PropertiesService.getScriptProperties();
-    const congelamento = props.getProperty('CAPS_ENABLED');
-    for (const a of store.listAgents()) {
-      // Este laço rodava para TODOS os agentes, sem conferir nada. Um agente ARQUIVADO continuaria
-      // sonhando e gastando cota — o oposto do que arquivar significa — e a chave de emergência não
-      // pararia justamente o que roda sozinho, que é o que ela existe para parar.
-      if (!mayAct(a.folderId, 'dream').ok) continue;
-      // A estimativa do passo é POR AGENTE (modelo e cenários diferem) e esquece: o maior passo dos últimos
-      // `DREAM_STEP_WINDOW` tiques medidos, com teto (`stepEstimate`). A chave termina em `:<pasta>`, então
-      // `forgetAgentProps` a apaga junto com o agente.
-      const key = `DREAMSTEP_MS:${a.folderId}`;
-      const window = parseStepWindow(props.getProperty(key));
-      const r = tickDream(a.folderId, d, inicio + 330_000, stepEstimate(window));
-      if (r.longestStepMs) props.setProperty(key, JSON.stringify(nextStepWindow(window, r.longestStepMs)));
-    }
-    // A chave global da F9 valia para todos os agentes e só crescia: sai uma vez.
-    if (props.getProperty('DREAMSTEP_MS') !== null) props.deleteProperty('DREAMSTEP_MS');
-  }));
   return drained ?? { n: 0, ms: 0, oldest: null };
 }
 
@@ -3030,39 +2997,6 @@ function postChildJson(url: string, action: string, body: string): { code: numbe
   return { code: res.getResponseCode(), body: res.getContentText() };
 }
 
-function dreamDeps(): DreamDeps {
-  const key = store.getApiKey();
-  const tz = Session.getScriptTimeZone();
-  return {
-    spec: (folderId) => withAccess(loadAgent(folderId), approvedOf(folderId)),
-    // O SONHO RODA EM CAIXA DE AREIA. Esta é a correção mais grave dos três ciclos, e o defeito era
-    // destruição de dado do dono por gatilho automático:
-    //
-    // O laço de sonho roda o harness de EVAL, e os evals têm efeito REAL — `e6-agenda` diz, com todas
-    // as letras, que "o clique em Aprovar cria o evento real (com Meet) na agenda do dono". No caminho
-    // do sonho não há clique: `evalApproves` aprova sozinho. Com `google: gasGoogle` e a pasta VIVA,
-    // ligar `dream` fazia o gatilho de 1 minuto criar eventos, documentos, tarefas e rascunhos de
-    // verdade na conta do dono — várias vezes por ciclo, 27 cenários de gate por candidato.
-    //
-    // Pior: dez cenários declaram `memory: reset`, e `runEval` faz `env.memory.write('')`. A memória
-    // CURADA do dono era zerada e sobrescrita com lixo de teste ("prefiro café") no primeiro tique.
-    // Sem arquivo, sem lixeira, sem desfazer.
-    //
-    // A caixa de areia é a única resposta: um sonho que precisa tocar a conta do dono para se medir
-    // não é um sonho, é um agente agindo sem supervisão com o nome trocado.
-    env: (folderId) => sandboxEvalEnv(folderId, key, store.isEnabled), // a chave geral do dono para o sonho também
-    generate: (messages, temperature) => {
-      const r = runFree((id) => complete(key ?? '', id, messages, 2000, undefined, undefined, temperature), { tools: false });
-      return typeof r.text === 'string' ? r.text : '';
-    },
-    // CONTAGEM sobre o trace, nunca impressão do modelo: "7 runs falharam tocando agenda" é um inteiro;
-    // "percebi que você anda precisando de ajuda" não é evidência de nada. Sem material o ciclo não roda.
-    material: agentMaterial,
-    now: Date.now,
-    cycleId: () => `d${Date.now().toString(36)}`,
-  };
-}
-
 /**
  * Registra UMA falha real deste agente. Chamado quando um run termina mal — é o combustível do
  * aglomerado, e sem ele o organismo não tem o que contar.
@@ -3100,33 +3034,6 @@ export function agentFailures(folderId: string) {
   const cs = cluster(falhas, 30 * 24 * 3600_000, Date.now());
   const m = hasMaterial(cs);
   return { folderId, total: falhas.length, clusters: cs.slice(0, 5), hasMaterial: m.ok, reason: m.reason };
-}
-
-/** Começa um ciclo de sonho neste agente. Só o dono, e só com a capacidade `dream` aprovada. */
-export function startAgentDream(folderId: string) {
-  assertOwner();
-  // O botão do DONO também passa pelo portão: a chave de emergência que não para o que o dono
-  // aciona não é chave de emergência, é sugestão.
-  const pode = mayAct(folderId, 'dream');
-  if (!pode.ok) return { started: false, cycleId: null, reason: pode.reason };
-  const caps = parseCapabilities(PropertiesService.getScriptProperties().getProperty(`CAP:${folderId}`));
-  if (!can(caps, 'dream')) throw new Error('this agent does not have the dream capability turned on');
-  const nome = agentName(folderId);
-  const t = runlog.begin('config', { question: `dream cycle for ${nome}`, agent: nome });
-  const r = t.step('start_dream', () => startDream(folderId, dreamDeps()), () => ({ folderId }));
-  t.end({ answer: r.started ? `cycle ${r.cycleId} started` : `did not start: ${r.reason}` });
-  return r;
-}
-
-/** O estado do ciclo deste agente, para a tela. */
-export function agentDream(folderId: string) {
-  assertOwner();
-  const io = dreamIO();
-  const cycleId = io.active(folderId);
-  const state = cycleId ? io.load(folderId, cycleId) : null;
-  // ITEM 36: o placar vem PRONTO do servidor. Calcular na tela significaria a regra de "venceu" morar
-  // em dois lugares — e o dia em que os dois discordassem, o dono acreditaria no que está na frente dele.
-  return { folderId, cycleId, state, board: board(state), material: agentMaterial(folderId) };
 }
 
 export function observability() {
@@ -4534,14 +4441,7 @@ function pocP36(step?: string, params: Record<string, string> = {}): unknown {
   const agora = new Date();
   const minutos = Number(Utilities.formatDate(agora, tz, 'HH')) * 60 + Number(Utilities.formatDate(agora, tz, 'mm'));
   if (step === 'status') {
-    return { pass: true, enabled: store.isEnabled(), agent: ag.name, capsApproved: parseCapabilities(props.getProperty(`CAP:${id}`)), capsEffective: effectiveCapabilities(parseCapabilities(props.getProperty(`CAP:${id}`)), props.getProperty('CAPS_ENABLED')), creator: creatorOf(props.getProperty('CREATOR'), store.listAgents()), tools: approvedOf(id)?.tools ?? [], autoApprove: agentSchedule(id).autoApprove, schedule: parseSchedule(props.getProperty(schedProp(id))).jobs, seen: props.getProperty(seenProp(id)), nowMinute: minutos, dream: dreamIO().active(id), mayAct: { dream: mayAct(id, 'dream'), initiative: mayAct(id, 'initiative'), succeed: mayAct(id, 'succeed'), create: mayAct(id, 'create') } };
-  }
-  // D1 — o ciclo começa pelo MESMO botão do dono; o worker de 1 min é quem o avança.
-  if (step === 'dream') return { pass: true, ...startAgentDream(id) };
-  if (step === 'dreamstate') {
-    const d = agentDream(id);
-    const s = d.state;
-    return { pass: !!s, cycleId: d.cycleId, status: s?.status ?? null, stepsDone: s?.done.length ?? 0, stepsTotal: s?.plan.steps.length ?? 0, eliminated: s ? eliminated(s.tally).length : 0, candidates: s ? s.plan.candidates.length : 0, error: s?.error ?? null, board: d.board ? d.board.rows.map((r) => ({ wins: r.wins, passes: r.passes, runs: r.runs })) : null, material: d.material };
+    return { pass: true, enabled: store.isEnabled(), agent: ag.name, capsApproved: parseCapabilities(props.getProperty(`CAP:${id}`)), capsEffective: effectiveCapabilities(parseCapabilities(props.getProperty(`CAP:${id}`)), props.getProperty('CAPS_ENABLED')), creator: creatorOf(props.getProperty('CREATOR'), store.listAgents()), tools: approvedOf(id)?.tools ?? [], autoApprove: agentSchedule(id).autoApprove, schedule: parseSchedule(props.getProperty(schedProp(id))).jobs, seen: props.getProperty(seenProp(id)), nowMinute: minutos, mayAct: { initiative: mayAct(id, 'initiative') } };
   }
   // R1 — um job daqui a 2 min na agenda REAL; o worker dispara pelo caminho de sempre. A agenda anterior fica guardada.
   if (step === 'wake') {
@@ -4616,7 +4516,7 @@ function pocP36(step?: string, params: Record<string, string> = {}): unknown {
     props.deleteProperty('P36_CREATED');
     return { pass: !store.listAgents().some((a) => a.folderId === f), removed: f };
   }
-  return { pass: false, error: 'steps: status, dream, dreamstate, wake [--variant deny], wakeread, wakeclear, create, createclean' };
+  return { pass: false, error: 'steps: status, wake [--variant deny], wakeread, wakeclear, create, createclean' };
 }
 
 const POCS: Record<string, (step?: string, params?: Record<string, string>) => unknown> = {

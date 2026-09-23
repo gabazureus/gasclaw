@@ -102,9 +102,6 @@ describe('fiação: a porta do sucessor e o juiz do pai', () => {
     expect(porta).not.toMatch(/judgeRun\(|evaluate\(|judgeMessages\(|gradeMessages\(/);
   });
 
-  test('a caixa de areia do sonho e a da porta são a MESMA função', () => {
-    expect(main).toContain('env: (folderId) => sandboxEvalEnv(folderId, key, store.isEnabled)');
-  });
 
   test('a porta vem antes do segredo da CLI — o pai não o tem', () => {
     expect(main.indexOf("action === 'evalrun'")).toBeLessThan(main.indexOf("action === 'setsecret'"));

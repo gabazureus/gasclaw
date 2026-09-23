@@ -11,7 +11,57 @@
 // um modelo produz com a mesma facilidade quando é verdade e quando não é. O C7 mediu desvio de 2,19 numa
 // escala de 4 na medida por LLM; o inteiro não tem desvio nenhum.
 
-import type { Failure, FailureKind } from './dreamCycle';
+// ---------- Os tipos e a leitura por aglomerado ----------
+//
+// Moravam em `dreamCycle.ts`, que saiu com o ciclo de sonho (branch `consertos-e-reach-out`). O
+// CONTADOR sobrevive porque ele não é do sonho: é telemetria honesta do turno, gravada a cada run e
+// lida pelo painel (`agentFailures`). O agrupamento vem junto pelo mesmo motivo — ele é uma LEITURA
+// determinística do que já falhou, sem modelo nenhum no caminho.
+
+/**
+ * O que o painel lê para saber o que anda falhando. Vem do trace e dos runs que já aconteceram —
+ * nunca de um cenário que o modelo imaginou. Um número que o modelo escreve tem a mesma cara quando
+ * é verdade e quando não é; um inteiro contado não tem.
+ */
+export type FailureKind = 'refused_tool' | 'no_answer' | 'step_limit' | 'denied' | 'tool_error';
+
+export type Failure = { at: number; kind: FailureKind; tool?: string; session?: string };
+
+/** Agrupamento determinístico: contagem de inteiros, sem chamada de modelo no caminho da leitura. */
+export type Cluster = { kind: FailureKind; tool: string; count: number };
+
+/**
+ * Agrupa por (tipo, ferramenta) e ordena por contagem. **Nenhum modelo participa.** Um rótulo
+ * bonito pode ser gerado depois, para o painel — mas ele não decide nada, e por isso não está aqui.
+ */
+export function cluster(failures: readonly Failure[], sinceMs: number, now: number): Cluster[] {
+  const counts = new Map<string, Cluster>();
+  for (const f of failures) {
+    if (!Number.isFinite(f.at) || f.at < now - sinceMs || f.at > now) continue;
+    const tool = f.tool ?? '';
+    const key = `${f.kind}:${tool}`;
+    const cur = counts.get(key);
+    if (cur) cur.count += 1;
+    else counts.set(key, { kind: f.kind, tool, count: 1 });
+  }
+  // Ordem estável: contagem desc, depois tipo e ferramenta, para o mesmo dado dar sempre o mesmo
+  // resultado. Sem isso a "contagem determinística" teria ordem não determinística, que é o mesmo
+  // defeito com outro nome.
+  return [...counts.values()].sort((a, b) => b.count - a.count || a.kind.localeCompare(b.kind) || a.tool.localeCompare(b.tool));
+}
+
+/** Limiar para um aglomerado merecer destaque na tela. A P25 mediu ZERO falhas no dev: até existir
+ *  dado real, este número é ponto de partida declarado, não critério calibrado. */
+export const CLUSTER_MIN = 3;
+
+/** Há aglomerado que valha a pena mostrar? Abaixo do limiar a tela diz por quê, em vez de afirmar. */
+export function hasMaterial(clusters: readonly Cluster[], min = CLUSTER_MIN): { ok: boolean; reason: string; top: Cluster | null } {
+  const top = clusters[0] ?? null;
+  if (!top) return { ok: false, reason: 'no real failures in the window: nothing to report', top: null };
+  if (top.count < min) return { ok: false, reason: `the biggest cluster has ${top.count} occurrences, below the ${min} needed`, top };
+  return { ok: true, reason: '', top };
+}
+
 
 const PROP_MAX = 8_000; // Script Properties: 9 KB por valor, a mesma margem do usage.ts e do saveAgents
 const MAX_ENTRIES = 300;
