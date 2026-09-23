@@ -24,8 +24,11 @@ describe('nada no repositório revela o projeto Apps Script do dono', () => {
     expect(vazando).toEqual([]);
   });
 
-  test('o padrão pega um id de verdade (senão a catraca seria decoração)', () => {
-    expect(ID_LONGO.test('1w3Pju8vyj9y1ZgBIZZDDtgRAXuBOljQ8ZyOPU-kOOUFcwtVlwB7MHb0W')).toBe(true);
-    expect(ID_LONGO.test('1w3Pju8v')).toBe(false); // o prefixo curto da tela continua valendo
+  // O controle positivo é MONTADO, não escrito: um id de verdade colado aqui faria a catraca acusar o
+  // próprio arquivo de teste assim que ele fosse rastreado — foi o que aconteceu na primeira versão.
+  test('o padrão pega um id do tamanho real (senão a catraca seria decoração)', () => {
+    expect(ID_LONGO.test('1' + 'a'.repeat(56))).toBe(true);
+    expect(ID_LONGO.test('AKfycb' + 'b'.repeat(50))).toBe(true);
+    expect(ID_LONGO.test('1w3Pju8v')).toBe(false); // o prefixo curto que a tela mostra continua valendo
   });
 });
