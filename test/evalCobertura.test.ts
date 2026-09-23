@@ -44,21 +44,26 @@ describe('cobertura de evals: um cenário por ferramenta do Workspace', () => {
     expect(reqs.every((q) => q.method === 'get')).toBe(true);
   });
 
-  test('e6-gmail-ler: busca devolve o id e gmail.read abre o corpo; nada é enviado', () => {
+  // MEDIDO NO DEV (2026-09-23): o cenário apontava para um id fixo que não existe na conta do dono, e o
+  // Google respondeu 404. O errado era o CENÁRIO — não há como criar um e-mail recebido dentro dele. Agora
+  // ele prova o caminho honesto: a leitura falha, e a resposta NÃO resume um e-mail imaginário.
+  test('e6-gmail-ler: id que não existe — o motor diz que não leu, e não inventa o e-mail', () => {
     const { e, reqs } = env((r) =>
       r.url.includes('/messages?')
-        ? { code: 200, body: '{"messages":[{"id":"18f0aa11bb22cc33"}]}' }
-        : { code: 200, body: '{"snippet":"pauta","payload":{"headers":[{"name":"From","value":"dono@x.com"},{"name":"Subject","value":"gasclaw eval"}],"body":{"data":"cGF1dGE="}}}' },
+        ? { code: 200, body: '{"messages":[]}' }
+        : { code: 404, body: '{"error":{"code":404,"message":"Requested entity was not found."}}' },
     );
     const r = runEval(read('e6-gmail-ler'), e);
-    expect(r.checks.filter((c) => !c.pass)).toEqual([]);
+    expect(r.checks.filter((c) => !c.pass).map((c) => c.check)).toEqual([]);
     expect(reqs.every((q) => q.method === 'get')).toBe(true);
   });
 
-  test('e6-planilha-ler: intervalo A1 lido, sem escrita', () => {
-    const { e, reqs } = env(() => ({ code: 200, body: '{"values":[["a","b"],["c","d"]]}' }));
+  // Mesmo achado do e6-gmail-ler: não há tool que crie planilha, então a fixture não existe e o cenário
+  // passa a provar o que a medição mostrou — 404 vira recusa honesta, nunca "a planilha tem duas linhas".
+  test('e6-planilha-ler: planilha que não existe — recusa honesta, sem inventar o conteúdo', () => {
+    const { e, reqs } = env(() => ({ code: 404, body: '{"error":{"code":404,"message":"Requested entity was not found."}}' }));
     const r = runEval(read('e6-planilha-ler'), e);
-    expect(r.checks.filter((c) => !c.pass)).toEqual([]);
+    expect(r.checks.filter((c) => !c.pass).map((c) => c.check)).toEqual([]);
     expect(reqs.map((q) => q.method)).toEqual(['get']);
   });
 
