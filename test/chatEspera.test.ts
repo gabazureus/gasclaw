@@ -627,6 +627,22 @@ describe('respostas sem credencial passam pela trava e pela assinatura', () => {
     expect(postados(env).filter((p) => p.text === 'marquei')).toHaveLength(1);
   });
 
+  // AO VIVO (2026-09-23): o dono clicou no cartão de um pedido JÁ ENCERRADO e leu "this task was changed
+  // outside gasclaw" — uma acusação falsa. Ao terminar, o run perde a autoridade (`forget`) de propósito;
+  // sem ela a conferência de assinatura não tem com o que comparar. O caminho do `ask` já dizia a verdade
+  // (aplica antes de conferir); o da APROVAÇÃO conferia antes e acusava.
+  test('clique num cartão de pedido já encerrado: diz que acabou, não que foi adulterado', async () => {
+    const terminado: DurableRun = { ...base('r-fim'), status: 'done', answer: 'pronto' };
+    runIO().enqueue(terminado, 1000);
+    const m = await import('../src/main');
+    m.drainRuns(); // termina e ESQUECE a autoridade
+    expect(env.props['A:r-fim']).toBeUndefined();
+    const clique = { type: 'CARD_CLICKED', user: { email: 'dono@x.com' }, space: { name: 'spaces/AAA' }, common: { parameters: { folderId: FOLDER, runId: 'r-fim', token: 'seja-qual-for', decision: 'approve' } } };
+    const out = m.onCardClick(clique as never) as { text?: string };
+    expect(out.text).not.toMatch(/changed outside/i);
+    expect(out.text).toMatch(/already finished|no longer/i);
+  });
+
   test('Continue num arquivo adulterado: recusa e NÃO re-assina', async () => {
     runIO().enqueue(pausado(), 1000);
     const m = await import('../src/main');

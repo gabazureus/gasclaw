@@ -299,6 +299,11 @@ export function runIO(
       try {
         const run = loadFresh(folderId, runId); // autorização sempre lê a fonte da verdade
         if (!run) return { kind: 'rejected', error: 'I could not find that task' };
+        // ESTADO ANTES DE ASSINATURA (achado ao vivo, 2026-09-23): um run que ACABOU perdeu a autoridade
+        // (`forget`), e sem ela a conferência não tem com o que comparar — o clique atrasado num cartão velho
+        // ouvia "mudou por fora", uma acusação falsa. Leitura pura: nada é gravado e nada é executado aqui.
+        // O caminho do `ask` (`resume`) já fazia assim; este conferia antes e acusava.
+        if (run.status !== 'waiting' || run.pending?.kind !== 'approval') return { kind: 'rejected', error: 'this request already finished' };
         // O run esperou FORA da fila — é a janela mais longa que o atacante tem para editar o arquivo na
         // pasta compartilhada. Conferir aqui é o que impede aprovar uma coisa e executar outra.
         if (!untampered(run)) return { kind: 'rejected', error: 'this task was changed outside gasclaw after the request was created; I will not run it' };
