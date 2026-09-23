@@ -277,7 +277,7 @@ remote_to() { # $1 URL base (…/exec ou …/dev) · $2 "acao&a=b" (já no forma
   [ -n "$t" ] || t=$(gcloud auth print-access-token 2>/dev/null) || return 1
   # Espelho do MUTATING de src/cli.ts. São duas listas porque o shell não lê o TS; se divergirem, a ação sai por
   # GET e o web app responde 405 — foi o que aconteceu com `tools`. Mexeu lá, mexe aqui.
-  case " eval poc enable disable drain step tools capability battery interval budget succeed automate evaluate rebase sync inherit succession measure lineage " in
+  case " eval poc enable disable drain step tools capability model battery interval budget succeed automate evaluate rebase sync inherit succession measure lineage " in
     *" $action "*) # M1: ação com efeito → POST; parâmetros no corpo; token e segredo pelo stdin, nunca em argv nem na URL
       # `return 1`, nunca `die`: quem chama guarda com `|| true` e `die` faz `exit`, que `|| true` NAO captura.
       # Com o `2>&1` do chamador engolindo a mensagem, o ./gasclaw up morria mudo aqui e pulava health,
@@ -810,6 +810,13 @@ console.log(`${r.agent}: ${r.enabled.length} tool(s) enabled`);for(const t of r.
 console.log(`people: ${r.users.length?r.users.join(", "):"owner only"}`)})'
 }
 
+cmd_model() { # o modelo do agente: ./gasclaw model <id do OpenRouter|--folder> [pasta]  (sem id: volta ao do AGENTS.md)
+  local id="${1:-}" folder="${2:-}"
+  [ -z "$id" ] || printf '%s' "$id" | grep -qE '^[A-Za-z0-9._~:/-]+$' || die "invalid model id: $id"
+  remote "model${id:+&model=$id}${folder:+&folder=$folder}" | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const r=JSON.parse(s);if(r.ok===false){console.error(r.error);process.exit(1)}
+console.log(`model: ${r.override ?? r.fromFolder} (${r.override ? "set here" : "from the agent folder"})`)})'
+}
+
 cmd_swarm() { # a corrida do enxame (F6): ./gasclaw swarm <battery|interval|budget|run|measure|status>
   local sub="${1:-}"; shift || true
   local folder="${SWARM_FOLDER:-}"
@@ -1108,6 +1115,7 @@ gasclaw — agents that live in your Google Drive, running on Google Apps Script
   ./gasclaw usage [YYYY-MM-DD]  cost per model: last 7 days, or the 24 h of one day
   ./gasclaw eval <scenario|--all> [--model id]  run evals/*.md on dev (exit != 0 on failure)
   ./gasclaw tools all|none|<a,b,c> [folder]     turn the agent's tools on and off
+  ./gasclaw model [<openrouter id>] [folder]    set the agent's model (no id: back to the one in AGENTS.md)
   ./gasclaw swarm <sub>       the swarm run: battery, interval, budget, run, measure, status
   ./gasclaw succession <sub>  the successor agent: write, status, health, evaluate, rebase, sync, inherit, pull (you crown it in the panel)
   ./gasclaw onboard           guided setup menu (the default before anything is published)
@@ -1118,11 +1126,16 @@ TXT
 
 # Publicar, pausar e voltar versão são do motor DESTE projeto: com a variável apontando para outro, `up` ligaria
 # e mediria o outro, e `down` o pausaria (revisão F9).
-case "$CMD" in up|down|restart|ship|rollback) [ -z "${GASCLAW_ENGINE_URL:-}" ] || die "unset GASCLAW_ENGINE_URL first: $CMD acts on this project's engine" ;; esac
+# `ci` entra na lista porque ele PUBLICA (chama `publish`) e imprime a URL do motor apontado como se fosse a
+# do que acabou de subir — o leitor acredita que publicou onde nao publicou (auditoria 2026-09-23).
+case "$CMD" in up|down|restart|ship|ci|rollback) [ -z "${GASCLAW_ENGINE_URL:-}" ] || die "unset GASCLAW_ENGINE_URL first: $CMD acts on this project's engine" ;; esac
+# `grep -qE '^...$'` casa QUALQUER LINHA: com uma quebra embutida, bastava a PRIMEIRA linha ser valida para o
+# resto passar junto. Endurecimento: valor de uma linha so, conferido antes do padrao.
+case "${GASCLAW_ENGINE_URL:-}" in *[$'\n\r']*) die "GASCLAW_ENGINE_URL must be a single line" ;; esac
 [ -z "${GASCLAW_ENGINE_URL:-}" ] || printf '%s' "$GASCLAW_ENGINE_URL" | grep -qE '^https://script\.google\.com/(a/macros/[A-Za-z0-9.-]+|macros)/s/[A-Za-z0-9_-]+/(exec|dev)$' \
   || die "GASCLAW_ENGINE_URL must be an Apps Script web app URL (https://script.google.com/.../macros/s/<id>/exec)"
 case "$CMD" in
-  up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs|eval|limits|usage|tools|swarm|succession|onboard) "cmd_$CMD" "$@" ;;
+  up|down|restart|ship|ci|logs|status|doctor|rollback|open|poc|trace|runs|eval|limits|usage|tools|model|swarm|succession|onboard) "cmd_$CMD" "$@" ;;
   # Sem argumento: quem ainda nao publicou nao quer uma lista de 15 comandos, quer saber por onde comecar.
   # Quem ja publicou ja sabe, e a lista e mais util. O `help` explicito sempre mostra a lista.
   '') if [ -n "$(var "DEPLOY_ID_$UP")" ]; then cmd_help; else cmd_onboard; fi ;;

@@ -319,7 +319,8 @@ export const loopIsDeadWeight = (h: LoopHealth, minCycles = 20): boolean => h.cy
  * gastariam orçamento em dobro e poderiam promover candidatos diferentes em cima um do outro.
  * A chave é por pasta, no mesmo formato das outras chaves presas a `folderId`.
  */
-export const dreamLockKey = (folderId: string): string => `DREAMLOCK:${folderId}`;
+export const DREAM_LOCK_PREFIX = 'DREAMLOCK:';
+export const dreamLockKey = (folderId: string): string => `${DREAM_LOCK_PREFIX}${folderId}`;
 
 // ---------- §F: arquivar encerra o que está em voo ----------
 

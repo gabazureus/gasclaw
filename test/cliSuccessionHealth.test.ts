@@ -62,7 +62,9 @@ function sourced(snippet: string, engineUrl: string): string {
 const OK_URL = 'https://script.google.com/macros/s/AKfyc_1-x/exec';
 
 describe('GASCLAW_ENGINE_URL: as travas da CLI', () => {
-  test.each(['up', 'down', 'restart', 'ship', 'rollback'])('%s recusa enquanto ela aponta para outro motor', (cmd) => {
+  // `ci` faltava na lista (auditoria de 2026-09-23): ele chama `publish`, que IMPRIME a URL do motor
+  // APONTADO como se fosse a que acabou de ser publicada — a leitura errada mais cara que a CLI tem.
+  test.each(['up', 'down', 'restart', 'ship', 'ci', 'rollback'])('%s recusa enquanto ela aponta para outro motor', (cmd) => {
     const r = run([cmd], OK_URL);
     expect(r.code).not.toBe(0);
     expect(r.out).toContain(`unset GASCLAW_ENGINE_URL first: ${cmd}`);
@@ -72,6 +74,13 @@ describe('GASCLAW_ENGINE_URL: as travas da CLI', () => {
     expect(r.code).not.toBe(0);
     expect(r.out).toContain('must be an Apps Script web app URL');
   });
+  // `grep -qE '^…$'` casa QUALQUER LINHA: uma URL válida com uma segunda linha colada passava na validação.
+  test('URL com quebra de linha embutida é recusada, mesmo com a primeira linha válida', () => {
+    const r = run(['help'], `${OK_URL}\nhttps://evil.example.com/x`);
+    expect(r.code).not.toBe(0);
+    expect(r.out).toMatch(/GASCLAW_ENGINE_URL/);
+  });
+
   test('as formas reais passam: /a/macros/<domínio>/ e /dev', () => {
     expect(run(['help'], 'https://script.google.com/a/macros/example.com/s/AKfyc_1-x/dev').code).toBe(0);
     expect(run(['help'], OK_URL).code).toBe(0);

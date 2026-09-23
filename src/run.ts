@@ -64,6 +64,12 @@ export type RunAuthority = {
   prompted?: string;
   /** Recibo do Chat (`spaces/…/messages/…`) do último cartão postado: a prova de que ele chegou. */
   card?: string;
+  /**
+   * Quando o `prompted` acima foi gravado. Sem ele a varredura só sabia "já houve cartão ALGUMA vez", que é
+   * mais fraco que a invariante de `settle`/`promptInChat` (`prompted !== waitKey`): um run na SEGUNDA espera
+   * carrega o `prompted` da primeira e, se o ponteiro se perdesse, nunca era recuperado.
+   */
+  promptedAt?: number;
   /** Última gravação nossa deste run (ou a primeira vez que a varredura o viu): é daqui que a espera expira. */
   at?: number;
 };

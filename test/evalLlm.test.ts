@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { JUDGE_MODEL } from '../src/judgeSet';
 import { expect, test } from 'vitest';
 import { evalLlm, runEval, type EvalEnv } from '../src/evalEntry';
 import type { Message, ToolDef } from '../src/llm';
@@ -26,6 +27,6 @@ test('P16: toda chamada ao modelo do eval, inclusive a do juiz, passa pelo llm i
   expect(r.judge).toEqual({ pass: true, reason: 'ok' });
   expect(calls).toEqual([
     { model: 'x/modelo', judge: false, tools: 0 },
-    { model: 'x/modelo', judge: true, tools: 0 },
+    { model: JUDGE_MODEL, judge: true, tools: 0 }, // F10: quem julga é de outra família, não o modelo que rodou
   ]);
 });

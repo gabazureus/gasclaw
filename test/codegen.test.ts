@@ -6,21 +6,23 @@ import { readFileSync } from 'node:fs';
 // diferença entre os dois casos é que a pasta é compartilhável e o modelo não — mas a consequência de
 // errar é a mesma, e por isso o crivo é igualmente fechado.
 import { describe, expect, test } from 'vitest';
-import { CHILD_FORBIDDEN_SCOPES, checkSuccessorSource, CODE_MAX_TOKENS, codeTokens, extractSource, narrowScopes, OPUS_MODEL, SOURCE_MAX_CHARS, successorManifest, successorMessages } from '../src/codegen';
+import { CHILD_FORBIDDEN_SCOPES, checkSuccessorSource, CODE_MAX_TOKENS, codeTokens, extractSource, narrowScopes, CODEGEN_MODEL, SOURCE_MAX_CHARS, successorManifest, successorMessages } from '../src/codegen';
 import { familyOf, judgeIsIndependent } from '../src/dream';
 
 describe('o gerador é o Opus, e isso é uma exceção declarada', () => {
   // D4 manda usar modelo gratuito em tudo. Escrever código é o caso em que um modelo fraco produz
   // algo PLAUSÍVEL e quebrado — e o resultado não é uma resposta ruim na tela, é um projeto implantado.
   test('o modelo do gerador é um Opus fixado, nunca roteamento automático', () => {
-    expect(OPUS_MODEL).toBe('anthropic/claude-opus-5');
-    expect(familyOf(OPUS_MODEL)).toBe('anthropic');
+    // F10: o dono trocou o escritor do sucessor para `gpt-5.6-sol`. O que o teste protege não é a marca:
+    // é continuar FIXADO (sem roteamento automático) e de família conhecida, para o juiz poder ser de outra.
+    expect(CODEGEN_MODEL).toBe('openai/gpt-5.6-sol');
+    expect(familyOf(CODEGEN_MODEL)).toBe('openai');
   });
 
   // Se o Opus gera, um juiz Anthropic decidiria em parte por parentesco (arXiv:2410.21819).
   test('um juiz da mesma família é recusado pelo critério que já existe', () => {
-    expect(judgeIsIndependent(OPUS_MODEL, 'anthropic/claude-sonnet-5').ok).toBe(false);
-    expect(judgeIsIndependent(OPUS_MODEL, 'google/gemini-2.0-flash-exp:free').ok).toBe(true);
+    expect(judgeIsIndependent(CODEGEN_MODEL, 'openai/gpt-6-luna').ok).toBe(false); // mesma família do escritor
+    expect(judgeIsIndependent(CODEGEN_MODEL, 'google/gemini-2.0-flash-exp:free').ok).toBe(true);
   });
 });
 

@@ -323,7 +323,7 @@ describe('2c. depois do Approve: a resposta final chega, e a próxima aprovaçã
     expect(out.cardsV2).toEqual([]);
     expect(out.text).toMatch(/carrying on/i);
     expect(salvo(env, 'r-janela')?.status).toBe('queued');
-    expect(env.props[`Q:r-janela`] ?? env.props[`q:r-janela`] ?? JSON.stringify(env.props)).toContain('r-janela'); // ponteiro na fila
+    expect(env.props['R:r-janela']).toBeDefined(); // o ponteiro da FILA é `R:`; o oráculo antigo (`Q:`) casava sempre
   });
 
   test('Approve: o gatilho seguinte termina o run e a resposta final é POSTADA uma vez', async () => {
@@ -480,6 +480,10 @@ describe('2d/2f. o que acontece em volta de uma espera', () => {
     m.drainRuns();
     expect(cartoes(env)).toHaveLength(0);
     expect(JSON.parse(env.props['A:r-aprova']).auth).toBe(auth.auth);
+    // Quem recusou foi a VARREDURA (`recoverWaits`), antes do cartão: ela marca `handled` e não re-enfileira.
+    // O crivo dentro do `promptInChat` continua lá como segunda linha; este teste não é a prova dele.
+    expect(JSON.parse(env.props['A:r-aprova']).prompted).toBe('handled');
+    expect(env.props['R:r-aprova']).toBeUndefined();
   });
 
   test('Deny: o cartão confirma e o run segue sem a ação', async () => {
@@ -954,6 +958,7 @@ describe('itens abertos do ADR-047', () => {
     expect(pastas).toBe(0);
     // A espera da TELA não é candidata a cartão (não há Chat para onde mandar): a varredura nem olha para ela.
     expect(JSON.parse(env.props['A:tela-3']).prompted).toBeUndefined();
+    expect(env.props['R:tela-3']).toBeUndefined(); // e NÃO volta para a fila (sem isto, o oráculo acima passa com a varredura solta)
     expect(env.calls.filter((c) => /googleapis\.com\/(drive|upload\/drive)/.test(c.url))).toHaveLength(0);
   });
 });

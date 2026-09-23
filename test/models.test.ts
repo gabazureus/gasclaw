@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { DEFAULT_MODEL } from '../src/workspace';
 import { reduceModels, validateChoice } from '../src/models';
 
 const api = {
@@ -29,5 +30,12 @@ describe('validateChoice (C5)', () => {
   test('aceita modelo sem tools quando o agente não tem tools', () => expect(validateChoice(list, 'meta/llama:free', [])).toBeNull());
   test('aceita modelo com tools', () => expect(validateChoice(list, 'openai/gpt-x', ['now', 'memory'])).toBeNull());
   test('recusa id que não está na lista do OpenRouter', () => expect(validateChoice(list, 'nao/existe', [])).toMatch(/is not in the OpenRouter list/));
-  test('openrouter/auto sempre é aceito', () => expect(validateChoice(list, 'openrouter/auto', ['now'])).toBeNull());
+  // F10: o padrão do motor deixou de ser `openrouter/auto`, então ele perdeu o passe livre — vale a regra
+  // de todo mundo: só passa se estiver na lista do OpenRouter. (Um agente nele não consegue ser avaliado:
+  // `judgeFor` recusa gerador de roteamento automático, porque ele pode cair na família do juiz.)
+  test('openrouter/auto não tem mais passe livre: vale a lista', () => {
+    expect(validateChoice(list, 'openrouter/auto', ['now'])).toMatch(/is not in the OpenRouter list/);
+    expect(validateChoice(reduceModels({ data: [...api.data, { id: 'openrouter/auto', pricing: { prompt: '-1', completion: '-1' }, supported_parameters: ['tools'] }] }), 'openrouter/auto', ['now'])).toBeNull();
+  });
+  test('o padrão do motor sempre é aceito', () => expect(validateChoice(list, DEFAULT_MODEL, ['now'])).toBeNull());
 });

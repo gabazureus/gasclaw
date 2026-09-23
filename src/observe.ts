@@ -43,7 +43,7 @@ export function enqueue(run: Run): void {
     const e = queueEntry(run);
     props().setProperties({ [`${QUEUE_PREFIX}${e.id}`]: JSON.stringify(e), [`${TERMINAL_PREFIX}${e.id}`]: JSON.stringify(terminalSnapshot(run)) });
     props().deleteProperty(`${RUNNING_PREFIX}${e.id}`);
-    cache().removeAll(['obs:props', EMPTY_KEY]);
+    cache().removeAll(['obs:props', EMPTY_KEY, RECONCILE_IDLE_KEY]);
     const full = JSON.stringify(redact(run));
     if (full.length < 95_000) cache().put(`qjson:${run.id}`, full, 21_600);
   } catch (err) {
@@ -64,7 +64,7 @@ export function enqueueOnce(run: Run, markerKey: string, markerValue: string): b
     return false;
   }
   try {
-    cache().removeAll(['obs:props', EMPTY_KEY]);
+    cache().removeAll(['obs:props', EMPTY_KEY, RECONCILE_IDLE_KEY]);
     const full = JSON.stringify(redact(run));
     if (full.length < 95_000) cache().put(`qjson:${run.id}`, full, 21_600);
   } catch (err) {
@@ -131,6 +131,13 @@ export type DrainResult = { drained: number; ms: number; rows: boolean; json: nu
  * inteira e confere — quatro em cada cinco saem baratos, e a quinta é a verificação.
  */
 const EMPTY_KEY = 'obs:empty';
+
+/**
+ * Marca irmã da de cima, para o `reconcileStaleRuns` (runlog): "não há marcador de run nenhum, não há o que
+ * reconciliar". Mora aqui porque quem a INVALIDA é quem cria os marcadores — as duas funções abaixo —, e a
+ * regra é a mesma: prazo curto, sem renovação, apagada na MESMA execução que cria trabalho novo.
+ */
+export const RECONCILE_IDLE_KEY = 'runlog:idle';
 
 export function drain(max = 200, inline = false): DrainResult {
   const t0 = Date.now();

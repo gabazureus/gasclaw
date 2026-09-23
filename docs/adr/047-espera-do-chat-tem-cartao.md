@@ -126,6 +126,19 @@ O commit 3ab7d54 passou a postar o cartão no `after` do pump. A auditoria segui
   DENTRO do `promptInChat` não quebra nada, porque o claim (`runner.ts`, `c.tampered`) chega antes e é mais
   forte — recusa o run inteiro. O teste `arquivo adulterado NA FILA não vira cartão nem credencial` prende
   essa primeira porta; a segunda fica por escrito no código, como decisão.
+- **A chamada de modelo "a mais" por aprovação NÃO é defeito** (auditoria de 2026-09-23, para a próxima não
+  reabrir): quem aprova vê uma chamada além das do turno. Ela é o RESUMO DA SESSÃO — `flushMemory` mais
+  `d.compact` sob `if (!turn.pending && !turn.stopped)` (`src/main.ts`) —, e a perna retomada pela aprovação é
+  simplesmente a primeira a chegar ao fim do run, onde a conversa é gravada e compactada. É trabalho de fim de
+  run, não do clique, e é cobrado corretamente no teto de custo do run.
+- Uma espera que ESGOTA as tentativas de POST do cartão (Chat fora do ar por ~24 min) vira `failed` com a
+  verdade — "I could not reach Google Chat to ask you about this task" — e não com "a resposta está no
+  painel", que era o recado da desistência de ENTREGA e prometia uma resposta que ninguém chegou a dar
+  (auditoria de 2026-09-23; `runner.ts`, ramo `c.exhausted` condicionado a `!waitKey`).
+- A varredura compara `at` com `promptedAt` (ambos do NOSSO relógio, ver `writeAuthority`), e não só "existe
+  `prompted`": um run na SEGUNDA espera carrega o `prompted` da primeira e, sem a comparação, nunca era
+  recuperado. O carimbo `at` não vem mais do `updatedAt` do arquivo — campo não assinado, e portanto uma data
+  escolhida por quem tem acesso à pasta, capaz de tornar a espera eterna ou de forjar o prazo de 7 dias.
 - Implementação: `waitKey`/`waitLabel`/`WAIT_TTL_MS` (`src/run.ts`), `settle` (`src/runner.ts`),
   `scan`/`markPrompted`/`leaseOf`/`release`/`decide` (`src/runStore.ts`), `resume` (`src/runStore.ts`),
   `promptInChat`/`approvalToken`/`recoverWaits`/`findWaitRun`/`expireWaits`/`answerOpenAsk`/`openAsks`/`setOpenAsks`/`triggerDoesTheWork`/`durableChatClick`

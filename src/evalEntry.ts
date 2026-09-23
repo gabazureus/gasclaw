@@ -1,4 +1,5 @@
 // Execução de um cenário de eval no dev (E0). runEval recebe o ambiente injetado (testável); evalAction liga no GAS.
+import { judgeFor } from './judgeSet';
 import { DEFAULT_STEPS, type ToolEvent, type TurnResult } from './agent';
 import type { Ticket } from './approval';
 import { cacheTickets, newToken } from './approvalStore';
@@ -122,7 +123,9 @@ export type RunTrace = { name: string; turns: TurnOutcome[]; convo: { user: stri
  */
 export function runEval(md: string, env: EvalEnv, modelOverride?: string): EvalResult {
   const s = parseScenario(md);
-  return judgeRun(s, runSpec(toRunSpec(s), env, modelOverride), env);
+  const trace = runSpec(toRunSpec(s), env, modelOverride);
+  // O juiz vem de `judgeFor`: outra família que a de quem respondeu (F10). Antes era o MESMO modelo.
+  return judgeRun(s, trace, env, judgeFor(trace.model));
 }
 
 /** A metade que RODA. Recebe o cenário sem gabarito e devolve o que aconteceu. */

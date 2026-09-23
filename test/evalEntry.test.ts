@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
+import { JUDGE_MODEL } from '../src/judgeSet';
 import { describe, expect, test } from 'vitest';
 import type { Ticket } from '../src/approval';
 import type { Tickets } from '../src/chat';
@@ -28,14 +29,15 @@ function env(llm: EvalEnv['llm'], over: Partial<EvalEnv> = {}) {
 }
 
 describe('runEval', () => {
-  test('smoke: chat sintético da DM do dono passa por llm_call e reply; juiz soft usa o modelo', () => {
+  // F10: o juiz NÃO é mais o modelo que respondeu — é o fixado de outra família (`judgeFor`).
+  test('smoke: chat sintético da DM do dono passa por llm_call e reply; o JUIZ é de outra família', () => {
     const calls: string[] = [];
     const { e } = env((model, m) => (calls.push(model), m[0].content.includes('avalia') ? { text: 'PASS: cumprimentou' } : { text: 'Olá!' }));
     const r = runEval(readFileSync('evals/smoke.md', 'utf8'), e, 'x/modelo');
     expect(r.pass).toBe(true);
     expect(r.replies).toEqual(['Olá!']);
     expect(r.judge).toEqual({ pass: true, reason: 'cumprimentou' });
-    expect(calls).toEqual(['x/modelo', 'x/modelo']);
+    expect(calls).toEqual(['x/modelo', JUDGE_MODEL]);
     expect(r.ms).toBeGreaterThan(0);
   });
 

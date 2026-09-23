@@ -95,13 +95,23 @@ function runClaim(d: StepDeps, c: { pointer: import('./run').RunPointer; run: Du
   if (c.exhausted) {
     // Se o que esgotou foi a ENTREGA de um run que já respondeu, a resposta não pode ser jogada fora:
     // `afterFailure` sobrescreveria `answer` com "Não consegui terminar". Desistimos só da entrega.
-    if (c.run.delivery?.status === 'pending' && !isOpen(c.run.status)) {
+    //
+    // `!waitKey` é a diferença entre "já respondi e não consegui entregar" e "nem cheguei a te PERGUNTAR".
+    // Sem ele, uma espera cujo cartão nunca saiu caía aqui (`isOpen` é só queued|running) e o dono lia "a
+    // resposta está no painel" — não havia resposta —, com a entrega marcada `failed` e a varredura pulando
+    // o run até o TTL de 7 dias. Ela vai para o `afterFailure` abaixo, que diz a verdade.
+    if (c.run.delivery?.status === 'pending' && !isOpen(c.run.status) && !waitKey(c.run)) {
       const parado = deliveryGivenUp(c.run, `não consegui entregar no Google Chat depois de ${MAX_ATTEMPTS} tentativas; a resposta está no painel`, now);
       d.io.save(parado);
       d.io.dequeue(parado.runId);
       return parado;
     }
-    return settle(d, afterFailure(c.run, c.run.error ?? 'não consegui completar depois de várias tentativas', MAX_ATTEMPTS, now), false);
+    // A espera que esgotou as tentativas gastou-as tentando POSTAR O CARTÃO: o motivo honesto é esse, não o
+    // `error` de um passo antigo (que pode nem existir).
+    const motivo = waitKey(c.run)
+      ? 'I could not reach Google Chat to ask you about this task'
+      : c.run.error ?? 'não consegui completar depois de várias tentativas';
+    return settle(d, afterFailure(c.run, motivo, MAX_ATTEMPTS, now), false);
   }
 
   // A execução anterior morreu com uma tool de efeito em voo. Não dá para saber se o e-mail saiu: não repete.

@@ -24,7 +24,7 @@ describe('segredo da CLI (M1: CSRF)', () => {
   });
   // Lista fixa de propósito: criar uma ação com efeito tem de quebrar este teste, para ninguém deixá-la acessível por GET.
   test('ações com efeito saem do GET', () => {
-    expect([...MUTATING].sort()).toEqual(['automate', 'battery', 'budget', 'capability', 'disable', 'drain', 'enable', 'eval', 'evaluate', 'inherit', 'interval', 'lineage', 'measure', 'poc', 'rebase', 'step', 'succeed', 'succession', 'sync', 'tools']);
+    expect([...MUTATING].sort()).toEqual(['automate', 'battery', 'budget', 'capability', 'disable', 'drain', 'enable', 'eval', 'evaluate', 'inherit', 'interval', 'lineage', 'measure', 'model', 'poc', 'rebase', 'step', 'succeed', 'succession', 'sync', 'tools']);
   });
 
   // O ESPELHO NO SHELL, que NUNCA teve teste. São duas listas porque o shell não lê TypeScript, e o

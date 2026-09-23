@@ -12,7 +12,9 @@ export type AgentSpec = { folderId: string; name: string; config: AgentConfig; s
 export const ROLES = ['AGENTS', 'SOUL', 'IDENTITY', 'USER'] as const;
 export type Role = (typeof ROLES)[number];
 export const FILES = ROLES.map((r) => `${r}.md`);
-export const DEFAULT_MODEL = 'openrouter/auto';
+// F10 (2026-09-23): FIXADO no modelo que o dono escolheu, no lugar de `openrouter/auto`. Roteamento
+// automático troca de família sem ninguém decidir — e um juiz só é independente de quem se sabe quem gerou.
+export const DEFAULT_MODEL = 'openai/gpt-6-luna';
 export const DOC_MIME = 'application/vnd.google-apps.document';
 export const SHEET_MIME = 'application/vnd.google-apps.spreadsheet';
 const MAX_FILE = 20_000;

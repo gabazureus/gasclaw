@@ -22,8 +22,12 @@ import type { Message } from './llm';
  *
  * Fixado, e não `openrouter/auto`: roteamento automático faria o gerador mudar de família sem
  * ninguém decidir, e `judgeIsIndependent` depende de saber QUEM gerou.
+ *
+ * F10 (2026-09-23), decisão do dono: `openai/gpt-5.6-sol` no lugar do Opus 5. Continua sendo um modelo
+ * FORTE e FIXADO, separado do modelo do agente — o que esta linha protege não é a marca, é a diferença
+ * entre conversar e escrever código que vira projeto implantado.
  */
-export const OPUS_MODEL = 'anthropic/claude-opus-5';
+export const CODEGEN_MODEL = 'openai/gpt-5.6-sol';
 
 /** Teto de fonte que ainda cabe numa revisão humana antes de publicar. */
 export const SOURCE_MAX_CHARS = 20_000;

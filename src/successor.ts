@@ -10,7 +10,7 @@
 //    são conhecidos antes da chamada; descobri-los depois seria dólar gasto para nada.
 // 2. O CUSTO É CONTADO MESMO QUANDO O RESULTADO É JOGADO FORA. O dinheiro saiu. Não contabilizar uma
 //    geração reprovada furaria o teto diário exatamente pelo caminho mais provável: o das tentativas.
-import { checkSuccessorSource, extractSource, narrowScopes, OPUS_MODEL, successorManifest, successorMessages } from './codegen';
+import { checkSuccessorSource, extractSource, narrowScopes, CODEGEN_MODEL, successorManifest, successorMessages } from './codegen';
 import { CODEGEN_BUDGET_USD, mayWriteProject, withinDailyCap } from './dream';
 import type { Child } from './children';
 
@@ -97,7 +97,7 @@ export function generateSuccessor(req: SuccessorRequest, d: SuccessorDeps): Succ
   if (!escopos.ok) return fail(escopos.reason);
 
   // ---- 2. a única linha cara do arquivo ----
-  const gen = d.complete(successorMessages(req.incumbentSource, req.material, escopos.scopes), OPUS_MODEL);
+  const gen = d.complete(successorMessages(req.incumbentSource, req.material, escopos.scopes), CODEGEN_MODEL);
   const custo = Number.isFinite(gen.costUsd) ? gen.costUsd : 0;
   d.addSpent(custo); // antes de qualquer recusa: o gasto não depende do veredito
 

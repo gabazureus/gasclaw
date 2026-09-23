@@ -10,8 +10,11 @@ const fakeSign = (v: string) => {
   return h.toString(16).padStart(16, '0');
 };
 
-/** Fakes no mesmo estilo do approvalStore.test: o Drive vira um Map atrás da porta RunFiles. */
-function fakes() {
+/**
+ * Fakes no mesmo estilo do approvalStore.test: o Drive vira um Map atrás da porta RunFiles.
+ * O relógio da AUTORIDADE é injetado como o `sign` já era: o carimbo de expiração não pode vir do arquivo.
+ */
+function fakes(clock: () => number = () => NOW) {
   const store = new Map<string, string>();
   const cached = new Map<string, string>();
   const disk = new Map<string, string>();
@@ -27,7 +30,7 @@ function fakes() {
   const cache = { get: (k: string) => cached.get(k) ?? null, put: (k: string, v: string) => { if (failCachePut) throw new Error('cache indisponível'); cached.set(k, v); }, remove: (k: string) => void cached.delete(k) };
   const lock = { tryLock: () => free, releaseLock: () => {} };
   const files: RunFiles = { read: (f, n) => disk.get(`${f}/${n}`) ?? null, write: (f, n, raw) => void disk.set(`${f}/${n}`, raw) };
-  return { store, cached, disk, files, busy: () => void (free = false), failSet: () => void (failSet = true), failCachePut: () => void (failCachePut = true), io: runIO(props as never, cache as never, lock as never, files, fakeSign) };
+  return { store, cached, disk, files, busy: () => void (free = false), failSet: () => void (failSet = true), failCachePut: () => void (failCachePut = true), io: runIO(props as never, cache as never, lock as never, files, fakeSign, clock) };
 }
 
 const mk = (runId: string, over: Partial<DurableRun> = {}): DurableRun => ({
@@ -289,5 +292,66 @@ describe('destino da entrega no ponteiro', () => {
     h.failSet();
     expect(() => h.io.enqueue(comEntrega('spaces/AAA'), NOW)).toThrow(/Script Properties/);
     expect(h.io.authority('r1')).toBeNull(); // nada de autoridade meia-boca
+  });
+});
+
+// Auditoria de 2026-09-23. Duas coisas no mesmo lugar, porque são o mesmo campo: o `at` da autoridade.
+//
+// (2) O predicado da varredura (`a.space && !a.prompted`) era mais FRACO que a invariante que `settle` e
+// `promptInChat` usam (`prompted !== waitKey`). Um run na SEGUNDA espera carrega o `prompted` da primeira:
+// se o ponteiro se perdesse, ele nunca era recuperado e morria no TTL de 7 dias, mudo.
+//
+// (6) O carimbo `at` vinha de `r.updatedAt`, que está em `RUN_UNSIGNED_FIELDS`: quem escreve na pasta do
+// agente o move à vontade e `untampered` passa. Data no futuro = espera imortal; data no passado = o
+// `expireWaits` mata uma aprovação VIVA e entrega "esperei 7 dias" ao dono. O carimbo é NOSSO relógio.
+describe('carimbo da espera (`at`): relógio nosso, e a varredura enxerga a invariante inteira', () => {
+  const espera = (key: string, updatedAt: number): DurableRun => {
+    const pending = { kind: 'approval' as const, name: 'gmail.send', callId: key, key: `r1:0:${key}`, args: {} };
+    return mk('r1', {
+      status: 'waiting',
+      pending,
+      snapshot: { messages: [], step: 0, queue: [] },
+      delivery: { kind: 'google-chat', space: 'spaces/AAA', requestId: '123e4567-e89b-42d3-a456-426614174000', notBefore: NOW, status: 'pending' },
+      updatedAt,
+    });
+  };
+
+  it('a SEGUNDA espera volta à varredura, apesar do `prompted` da primeira', () => {
+    let t = NOW;
+    const h = fakes(() => t);
+    h.io.save(espera('c1', NOW));
+    h.io.markPrompted('r1', 'approval:r1:0:c1', t); // o cartão da primeira espera saiu
+    expect(h.io.scan(t).orphans).toEqual([]); // tratada: a varredura não olha de novo
+
+    t += 60_000; // o dono respondeu, o run andou e parou numa espera NOVA
+    h.io.save(espera('c2', t));
+
+    expect(h.io.scan(t).orphans).toEqual([{ runId: 'r1', folderId: 'f1' }]);
+  });
+
+  it('`updatedAt` adulterado para o FUTURO não torna a espera imortal', () => {
+    let t = NOW;
+    const h = fakes(() => t);
+    h.io.save(espera('c1', NOW + 400 * 86_400_000)); // o atacante editou só este campo, que não é assinado
+    t += 8 * 86_400_000;
+    expect(h.io.scan(t).expired).toEqual([{ runId: 'r1', folderId: 'f1' }]);
+  });
+
+  it('`updatedAt` adulterado para o PASSADO não cancela uma aprovação viva', () => {
+    let t = NOW;
+    const h = fakes(() => t);
+    h.io.save(espera('c1', NOW - 400 * 86_400_000));
+    t += 60_000;
+    expect(h.io.scan(t).expired).toEqual([]); // nada de "esperei 7 dias" numa espera de um minuto
+  });
+
+  it('regravar o MESMO estado não renova o prazo: só progresso real move o carimbo', () => {
+    let t = NOW;
+    const h = fakes(() => t);
+    const r = espera('c1', NOW);
+    h.io.save(r);
+    t += 8 * 86_400_000;
+    h.io.save(r); // a varredura devolvendo o órfão à fila, sem nada ter mudado
+    expect(h.io.scan(t).expired).toEqual([{ runId: 'r1', folderId: 'f1' }]);
   });
 });

@@ -1,4 +1,4 @@
-import { namesOf, scenarioMd, SCENARIOS } from './judgeSet';
+import { judgeFor, namesOf, scenarioMd, SCENARIOS } from './judgeSet';
 import { parseScenario } from './eval';
 import { nextStepWindow, parseStepWindow, startDream, stepEstimate, tickDream, withDreamLease, type DreamDeps } from './dreamTick';
 import { dreamIO } from './dreamStore';
@@ -60,7 +60,7 @@ import * as observe from './observe';
 import * as runlog from './runlog';
 import {
   CAPABILITIES, can, canSucceed, capsAfterSuccession, creatorOf, DEFAULT_INTERVAL_MS, bestHeirOf, forgetAgentProps, intervalOf, mayGenerate,
-  accessAfterArchive, capsAfterCreatorMoved, capsEnabled, clearCreator, effectiveCapabilities, isRunnable, nextGeneration, parseCapabilities, parseStatus, setCreator, type Capability, type LineageEntry,
+  accessAfterArchive, capsAfterCreatorMoved, capsEnabled, clearCreator, DREAM_LOCK_PREFIX, effectiveCapabilities, isRunnable, nextGeneration, parseCapabilities, parseStatus, setCreator, type Capability, type LineageEntry,
 } from './agentCaps';
 import { beatsIncumbent, CODEGEN_BUDGET_USD, mayWriteProject, withinDailyCap } from './dream';
 import { generateSuccessor, sourceOfChild, type SuccessorDeps } from './successor';
@@ -69,7 +69,7 @@ import { codeDelta, judgeCase, parseBattery, previousScore, scoreRun, withMeasur
 import { applyPatch, parsePatch, type Change, type PatchFile } from './patch';
 import { seedSource } from './seed';
 import { engineIdentity } from './identity';
-import { CHILD_FORBIDDEN_SCOPES, codeTokens, narrowScopes, OPUS_MODEL } from './codegen';
+import { CHILD_FORBIDDEN_SCOPES, codeTokens, narrowScopes, CODEGEN_MODEL } from './codegen';
 import * as store from './store';
 import { memoryIO } from './tools/memoryStore';
 import { allowedTools, findTool, toolCatalog } from './tools/registry';
@@ -212,6 +212,9 @@ function mutate(action: string, p: Record<string, string>): unknown {
   }
   if (action === 'drain') return { ok: true, trigger: observe.ensureTrigger(), ...observe.drain() };
   if (action === 'tools') return setTools(p.folder || '', p.set ?? '');
+  // F10: o MODELO do agente pela CLI, mesma autoridade do painel (o dono, provado pelo segredo; ADR-021/022).
+  // Sem isto, "um modelo só" dependia de clique — e depois do setup nada deve depender de operação manual.
+  if (action === 'model') return setAgentModel(p.folder || (defaultAgent()?.folderId ?? ''), p.model ?? null);
   // A CORRIDA DO ENXAME PELA CLI (F6). Mesma autoridade do painel — o dono, provado pelo segredo —
   // por outra porta, como já vale para `tools` (ADR-021/022). Sem isto, conduzir uma corrida de 24 h
   // exigiria o dono clicando em cada geração, e o pedido era acompanhar, não operar.
@@ -2037,7 +2040,13 @@ export function drainRuns() {
   // no despertar não pode cancelar o trabalho que o dono pediu.
   isolado('wake', () => tickProactive());
   // Prazo: 330 s dos 360 s, sobrando para gravar. Arrendamento até o teto: tique sobreposto pula o sonho.
-  isolado('dream', () => void withDreamLease(Date.now(), inicio + 360_000, () => {
+  //
+  // O ARRENDAMENTO SÓ É TOMADO SE HOUVER CICLO (P3/ADR-027, 2026-09-23): ele custa um SEGUNDO ScriptLock
+  // global — o mesmo que o "Aprovar" do dono precisa tomar — e DUAS escritas de Property (pôr e tirar), todo
+  // minuto, 2880 por dia, mesmo sem nenhum ciclo para avançar. `DREAMLOCK:<pasta>` é o ponteiro do ciclo ativo
+  // (`dreamStore`): sem nenhum, `tickDream` voltaria `idle` para cada agente e o tique teria pago o preço à toa.
+  const sonhando = Object.keys(PropertiesService.getScriptProperties().getProperties()).some((k) => k.startsWith(DREAM_LOCK_PREFIX));
+  if (sonhando) isolado('dream', () => void withDreamLease(Date.now(), inicio + 360_000, () => {
     const d = dreamDeps();
     const props = PropertiesService.getScriptProperties();
     const congelamento = props.getProperty('CAPS_ENABLED');
@@ -2549,9 +2558,9 @@ export function automationOptions(folderId: string) {
     scopes: escopos,
     scopesError: erro,
     material: agentMaterial(id),
-    generator: OPUS_MODEL,
+    generator: CODEGEN_MODEL,
     budget: { spentToday: gasto, cap: budgetNow().codegenUsd, perRun: CODEGEN_BUDGET_USD },
-    note: `An automation is new CODE, written by ${OPUS_MODEL}, deployed as its own Apps Script project. It is a tool, not a successor: it inherits fewer scopes than this engine has — never the same set, and never the ones that let a project write other projects. Google will not run it until you authorize it.`,
+    note: `An automation is new CODE, written by ${CODEGEN_MODEL}, deployed as its own Apps Script project. It is a tool, not a successor: it inherits fewer scopes than this engine has — never the same set, and never the ones that let a project write other projects. Google will not run it until you authorize it.`,
   };
 }
 
@@ -2675,7 +2684,7 @@ export function writeAutomation(folderId: string, requestedScopes: string[], goa
     generation: nextGeneration('codegen', anterior.filter((e) => e.parent === id).map((e) => e.generation)[0] ?? 1),
     delta: null, // nada foi medido ainda: o sucessor não rodou, e inventar um delta seria mentir
     costUsd: r.costUsd,
-    summary: `successor code written by ${OPUS_MODEL} with ${r.child.scopes.length} scope(s)`,
+    summary: `successor code written by ${CODEGEN_MODEL} with ${r.child.scopes.length} scope(s)`,
   };
   props.setProperty(lineageProp, JSON.stringify([...anterior, entrada].slice(-100)));
 
@@ -3381,7 +3390,7 @@ function pocP26(step?: string): unknown {
   }
   if (step === 'budget') {
     const hoje = codegenSpentToday(Date.now());
-    return { pass: Number.isFinite(hoje) && hoje >= 0, spentTodayUsd: hoje, capUsd: budgetNow().codegenUsd, perRunUsd: CODEGEN_BUDGET_USD, generator: OPUS_MODEL };
+    return { pass: Number.isFinite(hoje) && hoje >= 0, spentTodayUsd: hoje, capUsd: budgetNow().codegenUsd, perRunUsd: CODEGEN_BUDGET_USD, generator: CODEGEN_MODEL };
   }
   return { pass: false, error: 'steps: scopes, budget' };
 }
@@ -3758,7 +3767,7 @@ export function writeSuccessor(folderId: string, goal?: string) {
   let custo = 0;
   let fim: string | undefined;
   try {
-    const r = complete(key, OPUS_MODEL, patchMessages(arquivos, pedido), SUCCESSOR_MAX_TOKENS, undefined, [], undefined, { max_tokens: SUCCESSOR_REASONING });
+    const r = complete(key, CODEGEN_MODEL, patchMessages(arquivos, pedido), SUCCESSOR_MAX_TOKENS, undefined, [], undefined, { max_tokens: SUCCESSOR_REASONING });
     texto = r.text;
     custo = Number(r.usage?.cost ?? 0);
     fim = r.finish_reason;
@@ -3784,7 +3793,7 @@ export function writeSuccessor(folderId: string, goal?: string) {
   const dep = deployAgentProject(call, own, files, `${agente.name} — successor agent ${new Date().toISOString().slice(0, 10)}`, slot);
   if (!dep.ok) return { ok: false as const, reason: `${dep.stage}: ${dep.reason}`, costUsd: custo };
 
-  const rec: SuccessorRecord = { scriptId: dep.scriptId, url: dep.url, folderId: id, at: Date.now(), model: OPUS_MODEL, explanation: prep.explanation, changes: prep.changes, costUsd: custo, evaluation: null, crownedAt: null };
+  const rec: SuccessorRecord = { scriptId: dep.scriptId, url: dep.url, folderId: id, at: Date.now(), model: CODEGEN_MODEL, explanation: prep.explanation, changes: prep.changes, costUsd: custo, evaluation: null, crownedAt: null };
   saveSuccessor(props, rec);
   const anterior = lineage().entries;
   const entrada: LineageEntry = {
@@ -3795,7 +3804,7 @@ export function writeSuccessor(folderId: string, goal?: string) {
     generation: nextGeneration('codegen', anterior.filter((e) => e.parent === id).map((e) => e.generation)[0] ?? 1),
     delta: null, // nada foi medido: a avaliação de fora vem depois
     costUsd: custo,
-    summary: `successor AGENT patched by ${OPUS_MODEL} (${prep.changes.length} change(s)): ${prep.explanation.slice(0, 160)}`,
+    summary: `successor AGENT patched by ${CODEGEN_MODEL} (${prep.changes.length} change(s)): ${prep.explanation.slice(0, 160)}`,
   };
   props.setProperty(lineageProp, JSON.stringify([...anterior, entrada].slice(-100)));
   return {
@@ -3841,7 +3850,8 @@ function evaluateFromOutside(url: string, folderId: string, key: string, n?: num
       erro = `HTTP ${r.code}: the successor answered something that is not JSON`;
     }
     const titular = runSpec(spec, envPai);
-    rows.push({ name: nome, successor: trace ? judgeRun(cenario, trace, envPai).pass : null, incumbent: judgeRun(cenario, titular, envPai).pass, ...(erro ? { error: erro } : {}), ...(vazou ? { verdictLeaked: true } : {}) });
+    // O JUIZ é de outra família (F10): quem responde é o modelo do agente, quem julga não é parente dele.
+    rows.push({ name: nome, successor: trace ? judgeRun(cenario, trace, envPai, judgeFor(trace.model)).pass : null, incumbent: judgeRun(cenario, titular, envPai, judgeFor(titular.model)).pass, ...(erro ? { error: erro } : {}), ...(vazou ? { verdictLeaked: true } : {}) });
   }
   const medidos = rows.filter((l) => l.successor !== null);
   return {
@@ -4164,10 +4174,10 @@ export function successorOptions(folderId: string) {
     scopes: escopos,
     scopesError: erro,
     material: agentMaterial(id),
-    generator: OPUS_MODEL,
+    generator: CODEGEN_MODEL,
     budget: { spentToday: codegenSpentToday(Date.now()), cap: budgetNow().codegenUsd },
     successors: successionState().successors.filter((r) => r.folderId === id),
-    note: `The successor is THIS agent, improved: ${OPUS_MODEL} reads this engine's code and returns a small patch with an explanation of what it improves. The patch is deployed as another Apps Script project with the same scopes, born paused. This engine evaluates it from outside with its own judge; you read the change, the explanation and the score, and crown it.`,
+    note: `The successor is THIS agent, improved: ${CODEGEN_MODEL} reads this engine's code and returns a small patch with an explanation of what it improves. The patch is deployed as another Apps Script project with the same scopes, born paused. This engine evaluates it from outside with its own judge; you read the change, the explanation and the score, and crown it.`,
   };
 }
 
@@ -4189,7 +4199,7 @@ export function successorOptions(folderId: string) {
  * só ao PRÉ-teste de custo — o custo gravado é o `usage.cost` que a API devolve.
  */
 const P32_MODELS: Record<string, { id: string; inUsd: number; outUsd: number }> = {
-  opus: { id: OPUS_MODEL, inUsd: 5, outUsd: 25 },
+  opus: { id: CODEGEN_MODEL, inUsd: 5, outUsd: 25 },
   gpt: { id: 'openai/gpt-6-astra', inUsd: 10, outUsd: 50 },
 };
 

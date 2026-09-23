@@ -117,6 +117,24 @@ describe('pumpOnce: um passo por execução', () => {
     expect(h.io.load('f1', 'r1')?.delivery?.status).toBe('pending'); // a entrega final continua pendente no Drive
   });
 
+  // Auditoria de 2026-09-23: o POST do cartão falhando SEMPRE (Chat fora do ar por ~24 min) levava a espera a
+  // esgotar MAX_ATTEMPTS. O ramo de desistência de ENTREGA a pegava (`isOpen` é só queued|running, e `waiting`
+  // cai fora dele) e dizia "a resposta está no painel" — não há resposta nenhuma: o dono NUNCA foi perguntado.
+  // Pior, a entrega virava `failed` e o `recoverWaits` passava a pular o run: invisível até o TTL de 7 dias.
+  it('espera cujo cartão nunca sai vira falha HONESTA, não "a resposta está no painel"', () => {
+    const h = harness(pedeAprovacao);
+    h.io.enqueue(mk({ delivery: entregaChat }), NOW);
+    // Nenhum `markPrompted`: é isso que o POST que falha significa. O arrendamento vence entre as voltas.
+    for (let i = 0; i < 4 * MAX_ATTEMPTS; i++) {
+      pumpOnce(h.d);
+      h.tick(LEASE_MS + 1);
+    }
+    const depois = h.io.load('f1', 'r1')!;
+    expect(depois.status).toBe('failed'); // e não `waiting` preso, invisível para a varredura até o TTL
+    expect(depois.answer).toMatch(/could not reach Google Chat/); // a verdade: ninguém chegou a ser perguntado
+    expect(h.queued()).toBe(false); // parou de tentar
+  });
+
   it('ponteiro velho de uma espera cujo cartão já saiu: só limpa a fila', () => {
     const h = harness(pedeAprovacao);
     h.io.enqueue(mk({ delivery: entregaChat }), NOW);

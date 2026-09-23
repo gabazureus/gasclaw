@@ -139,6 +139,8 @@ export function runIO(
    * por força bruta em milissegundos; aqui o espaço é 2^256 e não há ataque prático contra SHA-256 completo.
    */
   sign: (value: string) => string = sha256Hex,
+  /** Relógio da autoridade, injetado como o `sign`: o prazo da espera não pode vir de um campo do arquivo. */
+  clock: () => number = () => Date.now(),
 ): RunIO {
   const load: RunIO['load'] = (folderId, runId) => {
     const hit = cache.get(runCacheKey(folderId, runId));
@@ -187,7 +189,7 @@ export function runIO(
     try {
       const a = JSON.parse(raw) as Partial<RunAuthority>;
       return typeof a.auth === 'string' && a.auth
-        ? { auth: a.auth, ...(typeof a.space === 'string' ? { space: a.space } : {}), ...(typeof a.thread === 'string' ? { thread: a.thread } : {}), ...(typeof a.folderId === 'string' ? { folderId: a.folderId } : {}), ...(typeof a.prompted === 'string' ? { prompted: a.prompted } : {}), ...(Number.isFinite(a.at) ? { at: Number(a.at) } : {}), ...(typeof a.card === 'string' ? { card: a.card } : {}) }
+        ? { auth: a.auth, ...(typeof a.space === 'string' ? { space: a.space } : {}), ...(typeof a.thread === 'string' ? { thread: a.thread } : {}), ...(typeof a.folderId === 'string' ? { folderId: a.folderId } : {}), ...(typeof a.prompted === 'string' ? { prompted: a.prompted } : {}), ...(Number.isFinite(a.at) ? { at: Number(a.at) } : {}), ...(Number.isFinite(a.promptedAt) ? { promptedAt: Number(a.promptedAt) } : {}), ...(typeof a.card === 'string' ? { card: a.card } : {}) }
         : null;
     } catch {
       return null;
@@ -210,8 +212,18 @@ export function runIO(
       : r.delivery
         ? { space: r.delivery.space, ...(r.delivery.thread ? { thread: r.delivery.thread } : {}) }
         : {};
+    // O CARIMBO É DO NOSSO RELÓGIO, nunca do arquivo. Ele vinha de `r.updatedAt`, que está em
+    // `RUN_UNSIGNED_FIELDS` (e está certo: gravações fora de banda o movem legitimamente) — então quem
+    // escreve na pasta do agente escolhia a data e `untampered` passava. Futuro: a espera nunca expira
+    // (autoridade e credencial eternas). Passado: o `expireWaits` mata uma aprovação VIVA e entrega
+    // "esperei 7 dias" ao dono — cancelamento sob demanda (auditoria de 2026-09-23).
+    //
+    // E ele só ANDA em progresso de verdade, medido pela assinatura: regravar o mesmo estado (a varredura
+    // devolvendo um órfão à fila) não pode renovar o prazo de 7 dias, ou uma espera nunca expiraria.
+    const auth = sign(runAuthority(r));
+    const at = antes && antes.auth === auth ? antes.at ?? clock() : clock();
     // `prompted` sobrevive às gravações: é ele que diz à varredura que esta espera já tem cartão no Chat.
-    setProp(authKey(r.runId), JSON.stringify({ ...destino, auth: sign(runAuthority(r)), folderId: r.folderId, at: r.updatedAt, ...(antes?.prompted ? { prompted: antes.prompted } : {}), ...(antes?.card ? { card: antes.card } : {}) } satisfies RunAuthority));
+    setProp(authKey(r.runId), JSON.stringify({ ...destino, auth, folderId: r.folderId, at, ...(antes?.prompted ? { prompted: antes.prompted } : {}), ...(antes?.promptedAt !== undefined ? { promptedAt: antes.promptedAt } : {}), ...(antes?.card ? { card: antes.card } : {}) } satisfies RunAuthority));
   };
 
   /**
@@ -246,7 +258,11 @@ export function runIO(
       // Parada há mais que WAIT_TTL_MS (Chat ou tela): expira. Senão, espera do Chat nunca tratada: cartão.
       // Sem destino = run da tela (não há Chat para onde mandar); com `prompted` = já tratada.
       if (a.at !== undefined && now - a.at > WAIT_TTL_MS) expired.push(w);
-      else if (a.space && !a.prompted) orphans.push(w);
+      // A INVARIANTE é `prompted !== waitKey` (ver `settle` e `promptInChat`), e ler o `waitKey` exigiria abrir
+      // o Drive por registro — o que o tique ocioso não pode pagar. O `at` é o substituto barato: ele só anda
+      // quando o estado assinado muda, então uma espera NOVA tem `at` maior que o `promptedAt` do cartão
+      // anterior. Sem isto, a segunda espera de um run herdava o "já tratada" da primeira (2026-09-23).
+      else if (a.space && (!a.prompted || (a.at ?? 0) > (a.promptedAt ?? 0))) orphans.push(w);
     }
     return { pointers, orphans, expired };
   };
@@ -270,7 +286,12 @@ export function runIO(
     markPrompted: (runId, key, now, card) => {
       const a = readAuthority(runId);
       // `at` só nasce aqui quando o registro é antigo (sem ele): assim até a espera legada tem prazo para expirar.
-      if (a) setProp(authKey(runId), JSON.stringify({ ...a, prompted: key, at: a.at ?? now, ...(card ? { card } : {}) } satisfies RunAuthority));
+      // `promptedAt` é o que permite à varredura comparar com o `at` da espera ATUAL: sem ele, o cartão da
+      // primeira espera silenciava para sempre a segunda.
+      // Os dois carimbos saem do MESMO relógio (o nosso) para poderem ser comparados: o `now` de quem chama
+      // pode ter sido lido antes das gravações desta mesma rotina (a credencial do cartão, por exemplo), e
+      // um `promptedAt` anterior ao `at` faria a varredura achar que a espera é nova a cada tique.
+      if (a) setProp(authKey(runId), JSON.stringify({ ...a, prompted: key, at: a.at ?? now, promptedAt: clock(), ...(card ? { card } : {}) } satisfies RunAuthority));
     },
     leaseOf: (runId) => splitRunQueue(props.getProperties()).find((x) => x.runId === runId)?.leaseUntil,
     release,

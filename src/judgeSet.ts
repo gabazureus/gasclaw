@@ -10,6 +10,24 @@
 // enxergaria o próprio juiz. Agora a frase é literal — se o cenário não estiver no build, ele não existe
 // para o motor.
 
+import { familyOf, judgeIsIndependent } from './dream';
+
+/**
+ * O JUIZ, fixado noutra família (decisão do dono, F10): juiz e avaliado no mesmo modelo é auto-elogio —
+ * o próprio `judgeIsIndependent` já dizia isso, e não era chamado em lugar nenhum de produção.
+ */
+export const JUDGE_MODEL = 'deepseek/deepseek-v4-flash-0731';
+
+/** O juiz para este gerador — ou recusa dizendo por quê. É AQUI que a regra da independência vale. */
+export function judgeFor(generatorModel: string): string {
+  // GERADOR com roteamento automático também recusa: `openrouter/auto` pode cair NA FAMÍLIA DO JUIZ, e
+  // ninguém veria. `judgeIsIndependent` só barra o auto do lado do juiz; aqui o outro lado importa igual.
+  if (familyOf(generatorModel) === 'openrouter') throw new Error(`no independent judge for ${generatorModel}: auto routing can land on the judge family`);
+  const v = judgeIsIndependent(generatorModel, JUDGE_MODEL);
+  if (!v.ok) throw new Error(`no independent judge for ${generatorModel}: ${v.reason}`);
+  return JUDGE_MODEL;
+}
+
 export type JudgeSet = 'gate' | 'quality' | 'holdout';
 export type Scenario = { name: string; set: JudgeSet; md: string };
 

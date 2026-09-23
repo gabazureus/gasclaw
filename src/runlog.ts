@@ -1,7 +1,7 @@
 // Trace do agente (ADR-014), borda: cache ao vivo no turno; a planilha "gasclaw — execuções" (1 linha por run) e
 // gasclaw/runs/<id>.json (completo, 90 dias) são gravados em lote pelo observe.drain (gatilho de 1 min ou fallback).
 // NUNCA lança: falha de gravação vira console.warn e a resposta segue.
-import { enqueue, enqueueOnce, RUNNING_PREFIX, TERMINAL_PREFIX } from './observe';
+import { enqueue, enqueueOnce, RECONCILE_IDLE_KEY as IDLE_KEY, RUNNING_PREFIX, TERMINAL_PREFIX } from './observe';
 import { closeStale, expired, finish, HEADER, redact, renderTree, setStep, span, startRun, type Run, type RunKind, type RunMeta, type RunOutcome } from './trace';
 import { ensureFolderPath, SHEET_MIME } from './workspace';
 
@@ -116,6 +116,7 @@ function runningSnapshot(run: Run): Run {
 function persistRunning(run: Run) {
   try {
     props().setProperty(`${RUNNING_PREFIX}${run.id}`, JSON.stringify(runningSnapshot(run)));
+    cache().remove(IDLE_KEY); // nasceu trabalho: o atalho de vazio do reconcile não pode escondê-lo
   } catch (err) {
     warn('marcador running', err);
   }
@@ -217,12 +218,24 @@ let lastDetail: ReconcileDetail = { propsMs: 0, sweepMs: 0, idsMs: 0, scanMs: 0,
 export const reconcileDetail = (): ReconcileDetail => lastDetail;
 
 export function reconcileStaleRuns(now = Date.now()): number {
+  // ATALHO DE VAZIO, o mesmo desenho do `obs:empty` da drenagem (P3/ADR-027, 2026-09-23): sem NENHUM marcador
+  // de run, tudo o que esta rotina fazia era tomar o ScriptLock global — o mesmo que o "Aprovar" do dono
+  // precisa tomar — e ler as Properties inteiras para achar zero. A marca dura 5 min e não se renova sozinha:
+  // quem cria um marcador a apaga na MESMA execução (`observe.enqueue`/`enqueueOnce`, `persistRunning`), e a
+  // cada 5 min um tique paga a leitura inteira e confere. Nada se perde: a verdade mora nas Properties.
+  if (cache().get(IDLE_KEY)) return 0;
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(3_000)) return 0;
   try {
     const tProps = Date.now();
     const properties = props().getProperties();
     const propsMs = Date.now() - tProps;
+    const marcadores = Object.keys(properties).some((k) => k.startsWith(RUNNING_PREFIX) || k.startsWith(STALE_PREFIX) || k.startsWith(TERMINAL_PREFIX));
+    if (!marcadores && !liveIds().length) {
+      cache().put(IDLE_KEY, '1', 300);
+      lastDetail = { propsMs, sweepMs: 0, idsMs: 0, scanMs: 0, ids: 0, qjsonGets: 0 };
+      return 0;
+    }
     const tSweep = Date.now();
     for (const [key, value] of Object.entries(properties)) {
       if (key.startsWith(STALE_PREFIX) || key.startsWith(TERMINAL_PREFIX)) {
