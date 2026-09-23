@@ -1435,5 +1435,31 @@
         "evidence": "ADR-047 com decis\u00f5es 10-13, PROGRESS A1-A7 e evid\u00eancia real, CHANGELOG; nomes em ingl\u00eas nos trechos F9 e novos"
       }
     }
+  },
+  {
+    "phase": "F10 \u2014 auditoria final, evals de todas as ferramentas e um modelo por papel (Review+Implement; publica\u00e7\u00e3o bloqueada)",
+    "summary": "7 achados de auditoria consertados com teste e muta\u00e7\u00e3o; tique medido (11 amostras, m\u00e1x 961 ms, 0 acima do limite); P2 explicado; 10 evals novos cobrem toda ferramenta; modelos por papel trocados com os 3 ids provados no cat\u00e1logo; publica\u00e7\u00e3o no dev bloqueada por credencial do clasp (invalid_rapt)",
+    "scores": {
+      "correctness": {
+        "score": 8,
+        "note": "2363/2363 verdes, tsc rc=0; P1 medido no motor real (466/763/961 ms, N=11); o DEPOIS dos consertos e os 46 evals n\u00e3o rodaram: dependem de publicar"
+      },
+      "design": {
+        "score": 9,
+        "note": "um modelo por PAPEL em vez de um s\u00f3: juiz de outra fam\u00edlia (regra que existia sem uso e agora vale em judgeFor), escritor do sucessor fixado e forte; `./gasclaw model` tira a troca do clique"
+      },
+      "testing": {
+        "score": 9,
+        "note": "cada conserto com vermelho antes e muta\u00e7\u00e3o; 4 or\u00e1culos v\u00e1cuos trocados por or\u00e1culos que mordem; cobertura ferramenta\u2192eval fechada (10 cen\u00e1rios novos, n\u00e3o-vacuidade verificada por muta\u00e7\u00e3o)"
+      },
+      "safety": {
+        "score": 9,
+        "note": "achado m\u00e9dio fechado: o rel\u00f3gio da expira\u00e7\u00e3o vinha de campo n\u00e3o assinado (dava para a espera nunca expirar ou matar aprova\u00e7\u00e3o viva); cr\u00edtico da espera presa com mensagem que mentia; nada publicado sem o login do dono, e sem contornar as travas do ./gasclaw"
+      },
+      "clarity": {
+        "score": 8,
+        "note": "ADR-048, PROGRESS com a tabela de evid\u00eancias, CHANGELOG e READMEs; o relat\u00f3rio final fica incompleto enquanto os n\u00fameros do depois n\u00e3o existirem"
+      }
+    }
   }
 ]
